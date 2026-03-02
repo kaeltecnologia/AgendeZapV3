@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   searchGoogleMaps,
   SerperPlace,
@@ -6,6 +6,8 @@ import {
   saveCampaigns,
   loadSerperKey,
   saveSerperKey,
+  loadSerperKeyRemote,
+  saveSerperKeyRemote,
 } from '../services/serperService';
 
 
@@ -18,6 +20,13 @@ interface Props {
 const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, onGoToDisparo }) => {
   const [serperKey, setSerperKey] = useState(() => loadSerperKey());
   const [showKey, setShowKey] = useState(false);
+
+  // On mount: load from Supabase (cross-device). If remote key exists, sync it to localStorage.
+  useEffect(() => {
+    loadSerperKeyRemote().then(remote => {
+      if (remote) { setSerperKey(remote); saveSerperKey(remote); }
+    });
+  }, []);
   const [keyword, setKeyword] = useState('');
   const [city, setCity] = useState('');
   const [searching, setSearching] = useState(false);
@@ -128,7 +137,11 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
             <input
               type={showKey ? 'text' : 'password'}
               value={serperKey}
-              onChange={e => { setSerperKey(e.target.value); saveSerperKey(e.target.value); }}
+              onChange={e => {
+                setSerperKey(e.target.value);
+                saveSerperKey(e.target.value);          // localStorage (sync)
+                saveSerperKeyRemote(e.target.value);    // Supabase (async, cross-device)
+              }}
               placeholder="Cole sua chave da API aqui..."
               className="w-full px-4 py-2.5 bg-slate-50 rounded-2xl text-xs font-mono outline-none border-2 border-transparent focus:border-orange-500 transition-all pr-12"
             />
@@ -144,7 +157,7 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
           )}
         </div>
         <p className="text-[9px] font-bold text-slate-300">
-          A chave é salva localmente no navegador. Serper.dev oferece 2.500 buscas gratuitas/mês.
+          Chave salva na nuvem — disponível em qualquer dispositivo. Serper.dev oferece 2.500 buscas gratuitas/mês.
         </p>
       </div>
 

@@ -2,6 +2,10 @@
  * serperService.ts
  * Prospecção de contatos via Google Maps usando Serper.dev.
  */
+import { supabase } from './supabase';
+
+// Special tenant_id row used to persist SuperAdmin-level config in Supabase
+const SA_ID = 'superadmin';
 
 export interface SerperPlace {
   id: string;
@@ -48,6 +52,33 @@ export function loadSerperKey(): string {
 
 export function saveSerperKey(key: string) {
   localStorage.setItem(SERPER_KEY_STORAGE, key);
+}
+
+/** Load Serper key from Supabase (cross-device). Returns '' on failure. */
+export async function loadSerperKeyRemote(): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('tenant_settings')
+      .select('follow_up')
+      .eq('tenant_id', SA_ID)
+      .maybeSingle();
+    return (data?.follow_up as any)?._serper_key || '';
+  } catch { return ''; }
+}
+
+/** Persist Serper key to Supabase so it survives browser clears and device switches. */
+export async function saveSerperKeyRemote(key: string): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from('tenant_settings')
+      .select('follow_up')
+      .eq('tenant_id', SA_ID)
+      .maybeSingle();
+    const follow_up = { ...(data?.follow_up as object || {}), _serper_key: key };
+    await supabase
+      .from('tenant_settings')
+      .upsert({ tenant_id: SA_ID, follow_up }, { onConflict: 'tenant_id' });
+  } catch { /* non-fatal — localStorage is the fallback */ }
 }
 
 export function loadAdminInstance(): string {

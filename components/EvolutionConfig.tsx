@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { evolutionService } from '../services/evolutionService';
 import { db } from '../services/mockDb';
 
+const WEBHOOK_URL = 'https://cnnfnqrnjckntnxdgwae.supabase.co/functions/v1/whatsapp-webhook';
+
 interface LogEntry {
   timestamp: string;
   type: 'POLLING' | 'GEMINI' | 'SUCCESS' | 'ERROR' | 'INFO';
@@ -79,10 +81,10 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       const result = await evolutionService.createAndFetchQr(name);
 
       if (result.status === 'success') {
-        // Always disable the external webhook right after connect/restart,
-        // since Evolution API may restore the previously configured webhook URL.
-        evolutionService.disableWebhook(name).catch(() => {});
-        addLog('INFO', 'Webhook externo desativado — usando polling local.');
+        // Register the Edge Function webhook so messages are processed 24/7,
+        // even when the browser tab is closed.
+        evolutionService.enableWebhook(name, WEBHOOK_URL).catch(() => {});
+        addLog('INFO', 'Webhook Edge Function registrado — operação 24/7 ativa.');
 
         if (result.qrcode) {
           setQrCode(result.qrcode);
@@ -115,10 +117,10 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       if (!mounted) return;
       setInstanceStatus(status);
 
-      // When connection (re)opens, immediately disable the external webhook.
-      // Evolution API may restore a previously configured webhook URL on reconnect.
+      // When connection (re)opens, immediately re-register the Edge Function webhook
+      // so 24/7 operation is restored without waiting for the 5-min AiPollingManager cycle.
       if (status === 'open' && lastStatus !== 'open') {
-        evolutionService.disableWebhook(name).catch(() => {});
+        evolutionService.enableWebhook(name, WEBHOOK_URL).catch(() => {});
       }
       lastStatus = status;
     };

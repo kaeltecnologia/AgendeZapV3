@@ -44,9 +44,13 @@ const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, c
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Initial check + 30-second heartbeat to keep connection status accurate
   useEffect(() => {
     if (!instanceName) return;
-    evolutionService.checkStatus(instanceName).then(s => setConnected(s === 'open'));
+    const tick = () => evolutionService.checkStatus(instanceName).then(s => setConnected(s === 'open'));
+    tick();
+    const interval = setInterval(tick, 30_000);
+    return () => clearInterval(interval);
   }, [instanceName, setConnected]);
 
   useEffect(() => {
