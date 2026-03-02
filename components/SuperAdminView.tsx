@@ -11,6 +11,7 @@ import { ProspectCampaign, loadCampaigns, saveCampaigns, loadAdminInstance } fro
 import AdminConversasPanel from './AdminConversasPanel';
 import AdminProspeccaoPanel from './AdminProspeccaoPanel';
 import AdminDisparoPanel from './AdminDisparoPanel';
+import CampaignsStatusView from './CampaignsStatusView';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ interface AdminLog {
   detail: string;
 }
 
-type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte';
+type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas';
 
 const STATUS_COLORS: Record<string, string> = {
   [TenantStatus.ACTIVE]: '#22c55e',
@@ -926,8 +927,12 @@ END $$;`.trim();
           initialCampaignId={disparoCampaignId}
           onGoToConexao={() => setTab('conversas' as Tab)}
           onDeleteCampaign={(id) => handleCampaignsChange(prospectCampaigns.filter(c => c.id !== id))}
+          onGoToCampaigns={() => setTab('campanhas' as Tab)}
         />
       )}
+
+      {/* ══════════════════════ CAMPANHAS (status) ══════════════════════ */}
+      {tab === 'campanhas' && <CampaignsStatusView />}
 
       {/* ══════════════════════ SUPORTE ══════════════════════ */}
       {tab === 'suporte' && (() => {

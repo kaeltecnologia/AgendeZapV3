@@ -511,15 +511,123 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   await sendMsg(instanceName, phone, brain.reply);
 }
 
+// ── Campaign-tick: server-side bulk dispatch ──────────────────────────
+function randRangeEF(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function isInWindowEF(windowStart: string, windowEnd: string): boolean {
+  // Evaluate in America/Sao_Paulo time (UTC-3) so user-defined hours make sense
+  const fmt = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const [h, m] = fmt.format(new Date()).split(':').map(Number);
+  const nowMins = h * 60 + m;
+  const [sh, sm] = windowStart.split(':').map(Number);
+  const [eh, em] = windowEnd.split(':').map(Number);
+  return nowMins >= sh * 60 + sm && nowMins < eh * 60 + em;
+}
+
+async function processCampaignTick(): Promise<void> {
+  const now = new Date().toISOString();
+
+  // Find all running campaigns whose next_send_at is due
+  const { data: campaigns } = await supabase
+    .from('bulk_campaigns')
+    .select('*')
+    .eq('status', 'running')
+    .lte('next_send_at', now);
+
+  if (!campaigns?.length) return;
+
+  for (const camp of campaigns) {
+    try {
+      const contacts: { id: string; name: string; phone: string }[] = camp.contacts || [];
+      const messages: string[] = (camp.messages || []).filter((m: string) => m?.trim());
+
+      // Campaign finished
+      if (camp.current_index >= contacts.length || !messages.length) {
+        await supabase.from('bulk_campaigns')
+          .update({ status: 'done', updated_at: new Date().toISOString() })
+          .eq('id', camp.id);
+        continue;
+      }
+
+      // Time window check — reschedule for next minute if outside window
+      if (camp.use_time_window && !isInWindowEF(camp.window_start, camp.window_end)) {
+        await supabase.from('bulk_campaigns')
+          .update({
+            next_send_at: new Date(Date.now() + 60_000).toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', camp.id);
+        continue;
+      }
+
+      const contact = contacts[camp.current_index];
+      const msg = messages[camp.sent_count % messages.length];
+
+      let ok = false;
+      try {
+        await sendMsg(camp.admin_instance, contact.phone, msg);
+        ok = true;
+      } catch (e) {
+        console.error('[Campaign] sendMsg error:', e);
+      }
+
+      const newSent = camp.sent_count + (ok ? 1 : 0);
+      const newErrors = camp.error_count + (ok ? 0 : 1);
+      const newIndex = camp.current_index + 1;
+      const isLast = newIndex >= contacts.length;
+
+      let nextMs = 0;
+      if (!isLast) {
+        const isPause = camp.pause_every > 0 && (camp.sent_count + 1) % camp.pause_every === 0;
+        nextMs = (isPause
+          ? randRangeEF(camp.pause_min, camp.pause_max)
+          : randRangeEF(camp.delay_min, camp.delay_max)
+        ) * 1_000;
+      }
+
+      await supabase.from('bulk_campaigns')
+        .update({
+          sent_count: newSent,
+          error_count: newErrors,
+          current_index: newIndex,
+          status: isLast ? 'done' : 'running',
+          next_send_at: new Date(Date.now() + nextMs).toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', camp.id);
+
+    } catch (e) {
+      console.error('[Campaign] tick error for', camp.id, e);
+    }
+  }
+}
+
 // ── Webhook entry point ───────────────────────────────────────────────
 Deno.serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-campaign-tick',
   };
 
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+
+  // ── Campaign-tick shortcut (browser polls + pg_cron) ─────────────────
+  if (req.headers.get('x-campaign-tick') === 'true') {
+    try {
+      await processCampaignTick();
+    } catch (e: any) {
+      console.error('[CampaignTick] error:', e);
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 
   try {
     const body = await req.json();

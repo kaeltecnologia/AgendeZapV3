@@ -51,7 +51,7 @@ enum View {
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
-type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte';
+type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas';
 
 const SESSION_KEY = 'agz_session';
 
@@ -379,6 +379,7 @@ const App: React.FC = () => {
                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">WhatsApp Admin</p>
                 <NavItem active={superAdminTab === 'conversas'} onClick={navTo(() => setSuperAdminTab('conversas'))} icon={<IconChat />} label="Conversas" />
                 <NavItem active={superAdminTab === 'disparo'} onClick={navTo(() => setSuperAdminTab('disparo'))} icon={<IconBroadcast />} label="Disparador" />
+                <NavItem active={superAdminTab === 'campanhas'} onClick={navTo(() => setSuperAdminTab('campanhas'))} icon={<IconBroadcast />} label="Campanhas" />
                 <NavItem active={superAdminTab === 'prospeccao'} onClick={navTo(() => setSuperAdminTab('prospeccao'))} icon={<IconUsers />} label="Prospecção" />
               </div>
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
@@ -466,7 +467,7 @@ const App: React.FC = () => {
             <div className="w-1 h-6 rounded-full bg-orange-500" />
             <h2 className="text-sm font-black text-slate-700 tracking-widest uppercase">
               {role === 'SUPERADMIN'
-                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'Conversas Admin', disparo: 'Disparador Admin', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada' } as Record<SuperAdminTab, string>)[superAdminTab]
+                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'Conversas Admin', disparo: 'Disparador Admin', campanhas: 'Campanhas em Andamento', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada' } as Record<SuperAdminTab, string>)[superAdminTab]
                 : tenantName}
             </h2>
           </div>
