@@ -658,7 +658,9 @@ class DatabaseService {
           systemPrompt: fu._systemPrompt || '',
           agentName: fu._agentName || '',
           openaiApiKey: fu._openaiApiKey || '',
-          msgBufferSecs: fu._msgBufferSecs ?? 30
+          msgBufferSecs: fu._msgBufferSecs ?? 30,
+          trialStartDate: fu._trialStartDate ?? null,
+          trialWarningSent: fu._trialWarningSent ?? false
         };
       }
     } catch (e) {
@@ -694,7 +696,9 @@ class DatabaseService {
         _systemPrompt: newS.systemPrompt ?? curr.systemPrompt ?? '',
         _agentName: newS.agentName ?? curr.agentName ?? '',
         _openaiApiKey: newS.openaiApiKey ?? curr.openaiApiKey ?? '',
-        _msgBufferSecs: newS.msgBufferSecs ?? curr.msgBufferSecs ?? 30
+        _msgBufferSecs: newS.msgBufferSecs ?? curr.msgBufferSecs ?? 30,
+        _trialStartDate: newS.trialStartDate !== undefined ? newS.trialStartDate : (curr.trialStartDate ?? null),
+        _trialWarningSent: newS.trialWarningSent ?? curr.trialWarningSent ?? false
       };
 
       const { error } = await supabase.from('tenant_settings').upsert(

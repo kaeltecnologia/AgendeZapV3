@@ -370,29 +370,29 @@ const AppointmentsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     const isAI = a.source === BookingSource.AI;
                     const isPlan = a.isPlan || a.source === BookingSource.PLAN;
                     return (
-                      <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={a.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                         <td className="px-8 py-6">
                           <div className="flex flex-col gap-1">
-                            <span className="text-xs font-black text-slate-400 uppercase">{appDate.toLocaleDateString('pt-BR')}</span>
+                            <span className="text-xs font-black text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 uppercase transition-colors">{appDate.toLocaleDateString('pt-BR')}</span>
                             <span className="text-lg font-black text-orange-500">{appDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full w-fit uppercase tracking-widest ${isAI ? 'bg-orange-100 text-orange-600' : isPlan ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+                            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full w-fit uppercase tracking-widest ${isAI ? 'bg-orange-100 text-orange-600' : isPlan ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
                               {isAI ? '⚡ Agente IA' : isPlan ? '📦 Plano' : '✏️ Manual'}
                             </span>
                           </div>
                         </td>
                         <td className="px-8 py-6">
-                          <span className="font-black text-black uppercase tracking-tight text-sm">{c?.name || '—'}</span>
+                          <span className="font-black text-black group-hover:text-slate-700 dark:text-slate-100 dark:group-hover:text-slate-200 uppercase tracking-tight text-sm transition-colors">{c?.name || '—'}</span>
                         </td>
                         <td className="px-8 py-6">
-                          <span className="font-black text-black text-sm">{svc?.name || '—'}</span>
-                          {svc && !isPlan && <p className="text-[10px] text-slate-400 font-bold uppercase">R$ {svc.price.toFixed(2)} · {svc.durationMinutes}min</p>}
+                          <span className="font-black text-black group-hover:text-slate-700 dark:text-slate-100 dark:group-hover:text-slate-200 text-sm transition-colors">{svc?.name || '—'}</span>
+                          {svc && !isPlan && <p className="text-[10px] text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 font-bold uppercase transition-colors">R$ {svc.price.toFixed(2)} · {svc.durationMinutes}min</p>}
                           {svc && isPlan && <p className="text-[10px] text-blue-500 font-bold uppercase">Plano · {svc.durationMinutes}min</p>}
                         </td>
-                        <td className="px-8 py-6 font-bold text-slate-500 uppercase text-xs tracking-wider">{p?.name || '—'}</td>
+                        <td className="px-8 py-6 font-bold text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200 uppercase text-xs tracking-wider transition-colors">{p?.name || '—'}</td>
                         <td className="px-8 py-6">
                           <span className={`text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest ${
-                            a.status === AppointmentStatus.FINISHED ? 'bg-black text-white' :
-                            a.status === AppointmentStatus.CANCELLED ? 'bg-red-50 text-red-500' : 'bg-orange-100 text-orange-600'
+                            a.status === AppointmentStatus.FINISHED ? 'bg-black text-white dark:bg-white dark:text-black' :
+                            a.status === AppointmentStatus.CANCELLED ? 'bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400' : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
                           }`}>{a.status}</span>
                         </td>
                         <td className="px-8 py-6 text-right">
@@ -404,7 +404,7 @@ const AppointmentsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                               setExtraValue(a.extraValue || 0);
                               setExtraNote(a.extraNote || '');
                             }}
-                            className="text-black font-black text-[10px] uppercase hover:text-orange-500 transition-colors"
+                            className="text-black dark:text-slate-200 font-black text-[10px] uppercase hover:text-orange-500 dark:hover:text-orange-400 transition-colors"
                           >
                             GERENCIAR
                           </button>

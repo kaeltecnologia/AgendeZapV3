@@ -102,7 +102,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
 
   // New tenant modal
   const [showNew, setShowNew] = useState(false);
-  const [successData, setSuccessData] = useState<{ email: string; pass: string; slug: string } | null>(null);
+  const [successData, setSuccessData] = useState<{ email: string; pass: string; slug: string; isDemo: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -112,6 +112,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [newDueDay, setNewDueDay] = useState('');
   const [newNicho, setNewNicho] = useState('Barbearia');
   const [newSubscriptionPlan, setNewSubscriptionPlan] = useState('START');
+  const [newIsDemo, setNewIsDemo] = useState(false);
 
   // Edit modal
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
@@ -218,6 +219,13 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
       const t = await db.addTenant({ name: newName, slug, email, password: pass, subscriptionPlan: newSubscriptionPlan, status: TenantStatus.ACTIVE, monthlyFee: fee, nicho: newNicho });
       if (phone || dueDay) await db.updateTenant(t.id, { phone, due_day: dueDay });
 
+      // Demo/trial: activate 7-day trial period
+      await db.updateSettings(t.id, {
+        themeColor: '#f97316',
+        aiActive: false,
+        trialStartDate: newIsDemo ? new Date().toISOString() : null,
+      });
+
       try {
         await Promise.race([
           evolutionService.createAndFetchQr(slug),
@@ -225,9 +233,9 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
         ]);
       } catch { /* Evolution timeout is non-fatal */ }
 
-      setSuccessData({ email, pass, slug });
-      setNewName(''); setNewEmail(''); setNewPass(''); setNewFee('0'); setNewPhone(''); setNewDueDay(''); setNewNicho('Barbearia'); setNewSubscriptionPlan('START');
-      saveAdminLog('TENANT_CREATED', `${newName} (${email})`);
+      setSuccessData({ email, pass, slug, isDemo: newIsDemo });
+      setNewName(''); setNewEmail(''); setNewPass(''); setNewFee('0'); setNewPhone(''); setNewDueDay(''); setNewNicho('Barbearia'); setNewSubscriptionPlan('START'); setNewIsDemo(false);
+      saveAdminLog('TENANT_CREATED', `${newName} (${email})${newIsDemo ? ' [DEMO]' : ''}`);
       setLogs(loadAdminLogs());
       load();
     } catch (e: any) {
@@ -1043,7 +1051,7 @@ END $$;`.trim();
       {/* New tenant modal */}
       {showNew && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
-          <div className="flex items-center justify-center min-h-full p-4">
+          <div className="flex items-start justify-center min-h-full py-8 px-4">
             <div className="bg-white rounded-[40px] w-full max-w-md p-12 space-y-8 animate-scaleUp border-4 border-black">
               {!successData ? (
                 <>
@@ -1086,6 +1094,32 @@ END $$;`.trim();
                         ))}
                       </div>
                     </div>
+                    {/* Demo / Trial toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setNewIsDemo(v => !v)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                        newIsDemo
+                          ? 'bg-amber-50 border-amber-400'
+                          : 'bg-slate-50 border-slate-100 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{newIsDemo ? '🕐' : '💳'}</span>
+                        <div className="text-left">
+                          <p className={`text-xs font-black uppercase tracking-widest ${newIsDemo ? 'text-amber-700' : 'text-slate-500'}`}>
+                            {newIsDemo ? 'Conta Demo (trial 7 dias)' : 'Conta Paga'}
+                          </p>
+                          <p className={`text-[10px] font-bold ${newIsDemo ? 'text-amber-500' : 'text-slate-400'}`}>
+                            {newIsDemo ? 'IA desativada — expira em 7 dias' : 'Sem restrições de trial'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className={`w-11 h-6 rounded-full transition-all flex items-center px-0.5 ${newIsDemo ? 'bg-amber-400' : 'bg-slate-200'}`}>
+                        <div className={`w-5 h-5 rounded-full bg-white shadow transition-all ${newIsDemo ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </div>
+                    </button>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Mensalidade (R$)</label>
@@ -1108,8 +1142,18 @@ END $$;`.trim();
                 </>
               ) : (
                 <div className="text-center space-y-8">
-                  <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center text-4xl mx-auto">✓</div>
-                  <h2 className="text-2xl font-black text-black uppercase">Licença Ativada!</h2>
+                  <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl mx-auto ${successData.isDemo ? 'bg-amber-100 text-amber-500' : 'bg-green-100 text-green-500'}`}>
+                    {successData.isDemo ? '🕐' : '✓'}
+                  </div>
+                  <h2 className="text-2xl font-black text-black uppercase">
+                    {successData.isDemo ? 'Demo Criado!' : 'Licença Ativada!'}
+                  </h2>
+                  {successData.isDemo && (
+                    <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 text-center">
+                      <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Conta Trial — 7 dias</p>
+                      <p className="text-[10px] font-bold text-amber-600 mt-1">IA desativada até ativar assinatura. O cliente verá o aviso de expiração no sistema.</p>
+                    </div>
+                  )}
                   <div className="bg-slate-50 p-6 rounded-2xl text-left border border-slate-100 space-y-3">
                     <p className="text-[9px] font-black text-slate-400 uppercase">E-mail</p>
                     <p className="font-black text-black break-all">{successData.email}</p>

@@ -21,6 +21,7 @@ import MarketingView from './components/MarketingView';
 import SuperAdminView from './components/SuperAdminView';
 import Login from './components/Login';
 import AiPollingManager from './components/AiPollingManager';
+import TrialExpiredView from './components/TrialExpiredView';
 import BookingPage from './components/BookingPage';
 import { db } from './services/mockDb';
 import { TenantStatus } from './types';
@@ -70,6 +71,8 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
+  const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
+  const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
@@ -93,6 +96,32 @@ const App: React.FC = () => {
       localStorage.setItem('agz_dark', '0');
     }
   }, [darkMode]);
+
+  // ── Trial check — runs every minute; auto-disables AI when expired ───
+  useEffect(() => {
+    if (!tenantId || role !== 'TENANT') { setTrialInfo(null); return; }
+
+    const check = async () => {
+      const settings = await db.getSettings(tenantId);
+      if (!settings.trialStartDate) { setTrialInfo(null); return; } // paid account
+
+      const daysPassed = Math.floor(
+        (Date.now() - new Date(settings.trialStartDate).getTime()) / 86_400_000
+      );
+      const daysLeft = Math.max(0, 7 - daysPassed);
+      const isExpired = daysPassed >= 7;
+
+      setTrialInfo({ daysLeft, isExpired, active: !isExpired });
+
+      if (isExpired && settings.aiActive) {
+        await db.updateSettings(tenantId, { aiActive: false });
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
+  }, [tenantId, role]);
 
   useEffect(() => {
     const init = async () => {
@@ -195,7 +224,8 @@ const App: React.FC = () => {
       if (newTenant) {
         await db.updateSettings(newTenant.id, {
           themeColor: '#f97316',
-          aiActive: false
+          aiActive: false,
+          trialStartDate: new Date().toISOString()
         });
 
         setTenantId(newTenant.id);
@@ -316,7 +346,12 @@ const App: React.FC = () => {
   return (
     // ✅ CORREÇÃO: sem overflow nem transform aqui — deixa fixed dos modais escapar para a viewport
     <div className="flex h-screen bg-slate-50/30">
-      {tenantId && <AiPollingManager tenantId={tenantId} />}
+      {tenantId && (
+        <AiPollingManager
+          tenantId={tenantId}
+          onStatus={(connected, aiActive) => setPollingStatus({ connected, aiActive })}
+        />
+      )}
 
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
@@ -442,6 +477,30 @@ const App: React.FC = () => {
                 <button onClick={() => window.location.reload()} className="text-[9px] font-black text-red-500 underline uppercase">Reconectar</button>
               </div>
             )}
+            {/* AI / WhatsApp status badge — only for tenant users */}
+            {role === 'TENANT' && pollingStatus !== null && (
+              <button
+                onClick={() => setCurrentView(View.CONEXOES)}
+                title={
+                  !pollingStatus.aiActive ? 'IA desligada — clique para configurar' :
+                  !pollingStatus.connected ? 'WhatsApp desconectado — clique para reconectar' :
+                  'IA Online'
+                }
+                className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${
+                  !pollingStatus.aiActive
+                    ? 'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100'
+                    : pollingStatus.connected
+                    ? 'border-green-200 bg-green-50 text-green-600 hover:bg-green-100'
+                    : 'border-red-200 bg-red-50 text-red-500 hover:bg-red-100 animate-pulse'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  !pollingStatus.aiActive ? 'bg-slate-300' :
+                  pollingStatus.connected ? 'bg-green-500' : 'bg-red-500'
+                }`} />
+                {!pollingStatus.aiActive ? 'IA off' : pollingStatus.connected ? 'IA online' : 'WA offline'}
+              </button>
+            )}
             <button
               onClick={() => setDarkMode(d => !d)}
               title={darkMode ? 'Modo Claro' : 'Modo Escuro'}
@@ -457,7 +516,42 @@ const App: React.FC = () => {
 
         {/* ✅ Scroll acontece aqui, não no main — fixed dos modais escapa para a viewport corretamente */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-10">{renderView()}</div>
+
+          {/* ── Trial banner (active, non-expired) ──────────────────── */}
+          {trialInfo?.active && !trialInfo.isExpired && role === 'TENANT' && (
+            <div className={`mx-6 mt-4 px-5 py-3 rounded-2xl flex items-center justify-between ${
+              trialInfo.daysLeft <= 1
+                ? 'bg-orange-50 border border-orange-200'
+                : 'bg-amber-50 border border-amber-100'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <span className="text-base">{trialInfo.daysLeft <= 1 ? '⚠️' : '⏱️'}</span>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${
+                  trialInfo.daysLeft <= 1 ? 'text-orange-700' : 'text-amber-700'
+                }`}>
+                  {trialInfo.daysLeft === 0
+                    ? 'Teste grátis — último dia!'
+                    : `Teste grátis — faltam ${trialInfo.daysLeft} dia${trialInfo.daysLeft !== 1 ? 's' : ''}`}
+                </span>
+              </div>
+              <button
+                onClick={() => setCurrentView(View.PLANOS)}
+                className={`text-[9px] font-black uppercase tracking-widest underline transition-colors ${
+                  trialInfo.daysLeft <= 1
+                    ? 'text-orange-600 hover:text-orange-800'
+                    : 'text-amber-600 hover:text-amber-800'
+                }`}
+              >
+                Ver planos →
+              </button>
+            </div>
+          )}
+
+          {/* ── Main content / Expired overlay ─────────────────────── */}
+          {trialInfo?.isExpired && role === 'TENANT'
+            ? <TrialExpiredView tenantId={tenantId} />
+            : <div className="p-10">{renderView()}</div>
+          }
         </div>
       </main>
 

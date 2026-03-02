@@ -15,6 +15,9 @@ const _processedIds = new Set<string>();
 const _sessionStart = Math.floor(Date.now() / 1000);
 let _isBusy = false;
 
+// ── Status callback — shared with App.tsx for header badge ────────────
+let _statusCallback: ((connected: boolean, aiActive: boolean) => void) | null = null;
+
 // ── Persistent dedup via localStorage ────────────────────────────────
 // IDs marked as processed are persisted for 30 min so page reloads and
 // multiple-tab restarts never re-process the same message.
@@ -185,9 +188,21 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
 async function poll(tenantId: string) {
   if (_isBusy) return;
   _isBusy = true;
+
+  // ── Safety timeout: if poll hangs > 20 s, release the lock ──────────
+  const _busyTimeout = setTimeout(() => {
+    if (_isBusy) {
+      console.warn('[AiPolling] Poll timeout — releasing busy lock after 20 s');
+      _isBusy = false;
+    }
+  }, 20_000);
+
   try {
     const settings = await db.getSettings(tenantId);
-    if (!settings.aiActive) return;
+    if (!settings.aiActive) {
+      _statusCallback?.(false, false);
+      return;
+    }
 
     const { data: tenants } = await supabase.from('tenants').select('*');
     const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
@@ -195,7 +210,9 @@ async function poll(tenantId: string) {
 
     const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
     const connectionStatus = await evolutionService.checkStatus(instanceName);
-    if (connectionStatus !== 'open') return;
+    const isConnected = connectionStatus === 'open';
+    _statusCallback?.(isConnected, true);
+    if (!isConnected) return;
 
     const messages = await evolutionService.fetchRecentMessages(instanceName, 10);
     if (!messages || !Array.isArray(messages)) return;
@@ -283,11 +300,21 @@ async function poll(tenantId: string) {
   } catch (e: any) {
     console.error('[AiPolling] Poll error:', e.message);
   } finally {
+    clearTimeout(_busyTimeout);
     _isBusy = false;
   }
 }
 
-const AiPollingManager: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const AiPollingManager: React.FC<{
+  tenantId: string;
+  onStatus?: (connected: boolean, aiActive: boolean) => void;
+}> = ({ tenantId, onStatus }) => {
+
+  // ── Wire up the module-level status callback ──────────────────────────
+  useEffect(() => {
+    _statusCallback = onStatus ?? null;
+    return () => { _statusCallback = null; };
+  });
 
   // ── Activate Edge Function webhook for 24/7 operation ────────────────
   // Runs on mount and every 5 min to re-register if Evolution API resets it.
@@ -332,6 +359,27 @@ const AiPollingManager: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         const { data: tenants } = await supabase.from('tenants').select('*');
         const tenant = (tenants || []).find((t: any) => t.id === tenantId);
         if (tenant) await runFollowUp(tenant);
+
+        // ── Trial Day 6 warning ─────────────────────────────────────
+        const settings = await db.getSettings(tenantId);
+        if (settings.trialStartDate && !settings.trialWarningSent && tenant?.phone) {
+          const daysPassed = Math.floor(
+            (Date.now() - new Date(settings.trialStartDate).getTime()) / 86_400_000
+          );
+          if (daysPassed >= 6) {
+            const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+            const connStatus = await evolutionService.checkStatus(instanceName);
+            if (connStatus === 'open') {
+              await evolutionService.sendMessage(
+                instanceName,
+                tenant.phone,
+                `⏰ *Seu teste gratuito termina amanhã!*\n\nPara continuar usando o AgendeZap com IA de agendamento, escolha um plano:\n\n🟢 *Start* — R$ 39,90/mês\n🔵 *Profissional* — R$ 89,90/mês\n🟣 *Elite* — R$ 149,90/mês\n\nAcesse o sistema e clique em "Ver planos" para continuar. 🚀`
+              );
+              await db.updateSettings(tenantId, { trialWarningSent: true });
+              console.log('[Trial] Aviso do dia 6 enviado para', tenant.phone);
+            }
+          }
+        }
       } catch (e: any) {
         console.error('[FollowUp] Erro no scheduler:', e.message);
       }

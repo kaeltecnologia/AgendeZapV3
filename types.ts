@@ -155,6 +155,8 @@ export interface TenantSettings {
   agentName?: string;                   // AI agent personality name
   openaiApiKey?: string;                // OpenAI API key (uses gpt-4o-mini when set)
   msgBufferSecs?: number;               // message buffer window in seconds (default 30)
+  trialStartDate?: string | null;       // ISO datetime — set at first registration; null = paid account
+  trialWarningSent?: boolean;           // true once Day 6 WhatsApp warning was sent
 }
 
 export interface Appointment {
