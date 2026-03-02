@@ -1,0 +1,620 @@
+import React, { useState, useEffect } from 'react';
+import Dashboard from './components/Dashboard';
+import EvolutionConfig from './components/EvolutionConfig';
+import AIChatSimulator from './components/AIChatSimulator';
+import AppointmentsView from './components/AppointmentsView';
+import ServicesView from './components/ServicesView';
+import ProfessionalsView from './components/ProfessionalsView';
+import CustomersView from './components/CustomersView';
+import AiAgentConfig from './components/AiAgentConfig';
+import StoreProfile from './components/StoreProfile';
+import FinancialView from './components/FinancialView';
+import GeneralSettings from './components/GeneralSettings';
+import FollowUpView from './components/FollowUpView';
+import PlansView from './components/PlansView';
+import ConversationsView from './components/ConversationsView';
+import BroadcastView from './components/BroadcastView';
+import ConexoesView from './components/ConexoesView';
+import EstoqueView from './components/EstoqueView';
+import PerformanceView from './components/PerformanceView';
+import MarketingView from './components/MarketingView';
+import SuperAdminView from './components/SuperAdminView';
+import Login from './components/Login';
+import AiPollingManager from './components/AiPollingManager';
+import BookingPage from './components/BookingPage';
+import { db } from './services/mockDb';
+import { TenantStatus } from './types';
+import PlanGate from './components/PlanGate';
+import PlanUpgradeModal from './components/PlanUpgradeModal';
+import { hasFeature, FeatureKey } from './config/planConfig';
+
+enum View {
+  DASHBOARD = 'DASHBOARD',
+  AGENDAMENTOS = 'AGENDAMENTOS',
+  SERVICOS = 'SERVICOS',
+  PROFISSIONAIS = 'PROFISSIONAIS',
+  CLIENTES = 'CLIENTES',
+  PERFIL = 'PERFIL',
+  FINANCEIRO = 'FINANCEIRO',
+  CONEXOES = 'CONEXOES',
+  FOLLOW_UP = 'FOLLOW_UP',
+  TEST_WA = 'TEST_WA',
+  CONFIGURACOES = 'CONFIGURACOES',
+  PLANOS = 'PLANOS',
+  CONVERSAS = 'CONVERSAS',
+  DISPARADOR = 'DISPARADOR',
+  ESTOQUE = 'ESTOQUE',
+  PERFORMANCE = 'PERFORMANCE',
+  MARKETING = 'MARKETING',
+  SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD'
+}
+
+type Role = 'TENANT' | 'SUPERADMIN';
+type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte';
+
+const SESSION_KEY = 'agz_session';
+
+const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [role, setRole] = useState<Role>('TENANT');
+  const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
+  const [tenantId, setTenantId] = useState<string>('');
+  const [tenantSlug, setTenantSlug] = useState<string>('');
+  const [tenantName, setTenantName] = useState<string>('Carregando...');
+  const [isReady, setIsReady] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('dashboard');
+  const [tenantPlan, setTenantPlan] = useState<string>('START');
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('agz_dark') === '1');
+  const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
+
+  // Persist session whenever auth/nav state changes
+  useEffect(() => {
+    if (isAuthenticated) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        isAuthenticated, role, tenantId, tenantSlug, tenantName,
+        tenantPlan, isImpersonating, currentView, superAdminTab,
+      }));
+    }
+  }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, isImpersonating, currentView, superAdminTab]);
+
+  // Close sidebar on mobile after any nav action
+  const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('agz_dark', '1');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('agz_dark', '0');
+    }
+  }, [darkMode]);
+
+  useEffect(() => {
+    const init = async () => {
+      // Restore saved session before checking DB
+      try {
+        const saved = localStorage.getItem(SESSION_KEY);
+        if (saved) {
+          const s = JSON.parse(saved);
+          if (s.isAuthenticated) {
+            setIsAuthenticated(true);
+            setRole(s.role || 'TENANT');
+            setTenantId(s.tenantId || '');
+            setTenantSlug(s.tenantSlug || '');
+            setTenantName(s.tenantName || '');
+            setTenantPlan(s.tenantPlan || 'START');
+            setIsImpersonating(s.isImpersonating || false);
+            setCurrentView(s.currentView || View.DASHBOARD);
+            setSuperAdminTab(s.superAdminTab || 'dashboard');
+          }
+        }
+      } catch {
+        // ignore malformed session
+      }
+
+      try {
+        await db.checkConnection();
+      } catch (err) {
+        console.warn("Utilizando Local Storage como fallback.");
+      } finally {
+        setIsReady(true);
+      }
+    };
+    init();
+  }, []);
+
+  const handleLogin = async (selectedRole: Role, userSlug?: string, userEmail?: string, userPassword?: string) => {
+    console.log(`Tentativa de login: ${selectedRole}, Slug: ${userSlug}`);
+    try {
+      if (selectedRole === 'SUPERADMIN') {
+        setRole('SUPERADMIN');
+        setIsAuthenticated(true);
+        setCurrentView(View.SUPERADMIN_DASHBOARD);
+        return;
+      }
+
+      if (userSlug) {
+        const targetSlug = userSlug.toLowerCase().trim();
+        const tenants = await db.getAllTenants();
+
+        let myTenant = tenants.find(t => t.slug === targetSlug);
+
+        if (!myTenant && userEmail) {
+          myTenant = tenants.find(t => t.email?.toLowerCase() === userEmail.toLowerCase());
+        }
+
+        if (!myTenant) {
+          console.warn(`Barbearia não encontrada: ${targetSlug}`);
+          alert("Barbearia não encontrada. Verifique o e-mail cadastrado ou entre em contato com o suporte.");
+          return;
+        }
+
+        if (myTenant.password && userPassword && myTenant.password !== userPassword) {
+          alert("Senha incorreta.");
+          return;
+        }
+
+        console.log(`Login bem-sucedido: ${myTenant.name}`);
+        setTenantId(myTenant.id);
+        setTenantSlug(myTenant.slug);
+        setTenantName(myTenant.name);
+        setTenantPlan(myTenant.plan || 'START');
+        setRole('TENANT');
+        setIsAuthenticated(true);
+        setCurrentView(View.DASHBOARD);
+      }
+    } catch (err) {
+      console.error("Login Error:", err);
+      alert("Falha crítica na conexão com o Supabase.");
+    }
+  };
+
+  const handleRegister = async (storeName: string, email: string, pass: string) => {
+    try {
+      const slug = email.split('@')[0].toLowerCase().trim();
+      const tenants = await db.getAllTenants();
+      const exists = tenants.find(t => t.slug === slug);
+
+      if (exists) {
+        throw new Error("Este e-mail/slug já está cadastrado.");
+      }
+
+      const newTenant = await db.addTenant({
+        name: storeName,
+        slug: slug,
+        plan: 'BASIC',
+        status: TenantStatus.ACTIVE,
+        monthlyFee: 0
+      });
+
+      if (newTenant) {
+        await db.updateSettings(newTenant.id, {
+          themeColor: '#f97316',
+          aiActive: false
+        });
+
+        setTenantId(newTenant.id);
+        setTenantSlug(newTenant.slug);
+        setTenantName(newTenant.name);
+        setTenantPlan(newTenant.plan || 'START');
+        setRole('TENANT');
+        setIsAuthenticated(true);
+        setCurrentView(View.DASHBOARD);
+      }
+    } catch (err: any) {
+      throw err;
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(SESSION_KEY);
+    setIsAuthenticated(false);
+    setRole('TENANT');
+    setTenantId('');
+    setTenantSlug('');
+    setIsImpersonating(false);
+    setCurrentView(View.DASHBOARD);
+  };
+
+  const handleImpersonate = (id: string, name: string, slug: string, plan?: string) => {
+    setTenantId(id);
+    setTenantSlug(slug);
+    setTenantName(name);
+    setTenantPlan(plan || 'START');
+    setRole('TENANT');
+    setIsImpersonating(true);
+    setCurrentView(View.DASHBOARD);
+  };
+
+  const handleGatedNav = (view: View, feature: FeatureKey) => {
+    if (!hasFeature(tenantPlan, feature)) {
+      setUpgradeModal({ feature });
+    } else {
+      setCurrentView(view);
+    }
+  };
+
+  const handleExitImpersonation = () => {
+    setRole('SUPERADMIN');
+    setIsImpersonating(false);
+    setTenantId('');
+    setTenantSlug('');
+    setCurrentView(View.SUPERADMIN_DASHBOARD);
+  };
+
+  const bookingSlug = (() => {
+    const m = window.location.hash.match(/^#\/agendar\/(.+)$/);
+    return m ? m[1] : null;
+  })();
+  if (bookingSlug) return <BookingPage slug={bookingSlug} />;
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
+        <div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin"></div>
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Estabelecendo Conexão Supabase...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} onRegister={handleRegister} />;
+  }
+
+  const renderView = () => {
+    if (role === 'SUPERADMIN') return <SuperAdminView activeTab={superAdminTab} onTabChange={setSuperAdminTab} onImpersonate={handleImpersonate} />;
+
+    switch (currentView) {
+      case View.DASHBOARD: return <Dashboard tenantId={tenantId} onNavigate={setCurrentView} />;
+      case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} />;
+      case View.SERVICOS: return <ServicesView tenantId={tenantId} />;
+      case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} />;
+      case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
+      case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
+      case View.FINANCEIRO: return (
+        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+          <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />
+        </PlanGate>
+      );
+      case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} />;
+      case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} />;
+      case View.PLANOS: return <PlansView tenantId={tenantId} />;
+      case View.TEST_WA: return (
+        <PlanGate feature="assistenteAdmin" tenantPlan={tenantPlan}>
+          <AIChatSimulator tenantId={tenantId} />
+        </PlanGate>
+      );
+      case View.CONVERSAS: return <ConversationsView tenantId={tenantId} />;
+      case View.DISPARADOR: return (
+        <PlanGate feature="disparo" tenantPlan={tenantPlan}>
+          <BroadcastView tenantId={tenantId} />
+        </PlanGate>
+      );
+      case View.ESTOQUE: return (
+        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+          <EstoqueView tenantId={tenantId} />
+        </PlanGate>
+      );
+      case View.PERFORMANCE: return (
+        <PlanGate feature="performance" tenantPlan={tenantPlan}>
+          <PerformanceView tenantId={tenantId} />
+        </PlanGate>
+      );
+      case View.MARKETING: return <MarketingView tenantId={tenantId} />;
+      case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
+      default: return <Dashboard tenantId={tenantId} />;
+    }
+  };
+
+  const dbOnline = db.isOnline();
+
+  return (
+    // ✅ CORREÇÃO: sem overflow nem transform aqui — deixa fixed dos modais escapar para a viewport
+    <div className="flex h-screen bg-slate-50/30">
+      {tenantId && <AiPollingManager tenantId={tenantId} />}
+
+      {/* Mobile sidebar backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`fixed md:relative inset-y-0 left-0 w-64 bg-white flex flex-col shrink-0 border-r border-slate-200 z-50 h-screen md:sticky md:top-0 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="p-8 flex flex-col space-y-2">
+          <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">AgendeZap</h1>
+          {role === 'SUPERADMIN' && <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full w-fit tracking-widest uppercase">SUPER ADMIN</span>}
+        </div>
+
+        <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
+          {role === 'SUPERADMIN' ? (
+            <>
+              <NavItem active={superAdminTab === 'dashboard'} onClick={navTo(() => setSuperAdminTab('dashboard'))} icon={<IconDashboard />} label="Dashboard" />
+              <NavItem active={superAdminTab === 'clients'} onClick={navTo(() => setSuperAdminTab('clients'))} icon={<IconUsers />} label="Clientes SaaS" />
+              <NavItem active={superAdminTab === 'avisos'} onClick={navTo(() => setSuperAdminTab('avisos'))} icon={<IconBroadcast />} label="Avisos" />
+              <NavItem active={superAdminTab === 'cobranca'} onClick={navTo(() => setSuperAdminTab('cobranca'))} icon={<IconFinance />} label="Cobrança" />
+              <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">WhatsApp Admin</p>
+                <NavItem active={superAdminTab === 'conversas'} onClick={navTo(() => setSuperAdminTab('conversas'))} icon={<IconChat />} label="Conversas" />
+                <NavItem active={superAdminTab === 'disparo'} onClick={navTo(() => setSuperAdminTab('disparo'))} icon={<IconBroadcast />} label="Disparador" />
+                <NavItem active={superAdminTab === 'prospeccao'} onClick={navTo(() => setSuperAdminTab('prospeccao'))} icon={<IconUsers />} label="Prospecção" />
+              </div>
+              <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Sistema</p>
+                <NavItem active={superAdminTab === 'logs'} onClick={navTo(() => setSuperAdminTab('logs'))} icon={<IconTerminal />} label="Logs" />
+                <NavItem active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
+                <NavItem active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
+              </div>
+              <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Suporte</p>
+                <NavItem active={superAdminTab === 'suporte'} onClick={navTo(() => setSuperAdminTab('suporte'))} icon={<IconChat />} label="Caixa de Entrada" />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* ── Convidar Parceiro ── */}
+              <button
+                onClick={navTo(() => setShowInviteModal(true))}
+                className="w-full flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-2"
+              >
+                <IconGift />
+                <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>
+              </button>
+
+              {/* ── Grupo 1 ── */}
+              <NavItem active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
+              <NavItem active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
+              <NavItem active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
+              <NavItem active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
+              <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
+              <NavItem active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
+
+              {/* ── Grupo 2 ── */}
+              <div className="pt-3 mt-1 border-t border-slate-100 space-y-1">
+                <NavItem active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="Conversas" />
+                <NavItem active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparador" />
+                <NavItem active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
+                <NavItem active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
+              </div>
+
+              {/* ── Grupo 3 ── */}
+              <div className="pt-3 mt-1 border-t border-slate-100 space-y-1">
+                <NavItem active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
+                <NavItem active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
+                <NavItem active={currentView === View.ESTOQUE} onClick={navTo(() => handleGatedNav(View.ESTOQUE, 'financeiro'))} icon={<IconBox />} label="Estoque" />
+              </div>
+
+              {/* ── Grupo 4 ── */}
+              <div className="pt-3 mt-1 border-t border-slate-100 space-y-1">
+                <NavItem active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
+                <NavItem active={currentView === View.TEST_WA} onClick={navTo(() => handleGatedNav(View.TEST_WA, 'assistenteAdmin'))} icon={<IconTerminal />} label="Terminal IA" />
+                <NavItem active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
+              </div>
+            </>
+          )}
+
+        </nav>
+
+        <div className="p-6 border-t border-slate-100 bg-slate-50/50 space-y-2">
+          {isImpersonating && (
+            <button onClick={handleExitImpersonation} className="flex items-center gap-2 w-full bg-orange-500 text-white px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-black transition-all">
+              <span>↩</span><span>Sair da conta</span>
+            </button>
+          )}
+          <button onClick={handleLogout} className="flex items-center space-x-3 w-full text-slate-400 hover:text-red-500 transition-all font-bold text-xs uppercase tracking-widest">
+            <IconLogout /> <span>Sair</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ✅ CORREÇÃO PRINCIPAL: main sem overflow-auto — o scroll fica no div interno */}
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="px-4 md:px-10 py-5 flex items-center justify-between shrink-0 bg-slate-50 z-40 border-b border-slate-200 sticky top-0">
+          <div className="flex items-center gap-3">
+            {/* Hamburger — mobile only */}
+            <button
+              className="md:hidden flex flex-col gap-1.5 p-2 rounded-xl hover:bg-slate-100 transition-all"
+              onClick={() => setSidebarOpen(v => !v)}
+              aria-label="Menu"
+            >
+              <span className="w-5 h-0.5 bg-slate-700 block" />
+              <span className="w-5 h-0.5 bg-slate-700 block" />
+              <span className="w-5 h-0.5 bg-slate-700 block" />
+            </button>
+            <div className="w-1 h-6 rounded-full bg-orange-500" />
+            <h2 className="text-sm font-black text-slate-700 tracking-widest uppercase">
+              {role === 'SUPERADMIN'
+                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'Conversas Admin', disparo: 'Disparador Admin', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada' } as Record<SuperAdminTab, string>)[superAdminTab]
+                : tenantName}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            {!dbOnline && (
+              <div className="bg-red-50 border border-red-100 px-4 py-2 rounded-xl flex items-center space-x-3">
+                <span className="text-[10px] font-black text-red-600 uppercase">Modo Offline</span>
+                <button onClick={() => window.location.reload()} className="text-[9px] font-black text-red-500 underline uppercase">Reconectar</button>
+              </div>
+            )}
+            <button
+              onClick={() => setDarkMode(d => !d)}
+              title={darkMode ? 'Modo Claro' : 'Modo Escuro'}
+              className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-slate-400 hover:bg-slate-100 transition-all"
+            >
+              {darkMode
+                ? <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                : <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              }
+            </button>
+          </div>
+        </header>
+
+        {/* ✅ Scroll acontece aqui, não no main — fixed dos modais escapa para a viewport corretamente */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-10">{renderView()}</div>
+        </div>
+      </main>
+
+      {upgradeModal && (
+        <PlanUpgradeModal
+          feature={upgradeModal.feature}
+          tenantPlan={tenantPlan}
+          tenantId={tenantId}
+          onClose={() => setUpgradeModal(null)}
+        />
+      )}
+
+      {showInviteModal && (
+        <InvitePartnerModal
+          tenantId={tenantId}
+          tenantName={tenantName}
+          onClose={() => { setShowInviteModal(false); setInviteResult(null); }}
+          result={inviteResult}
+          onResult={setInviteResult}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── Invite Partner Modal ──────────────────────────────────────────────────
+const InvitePartnerModal: React.FC<{
+  tenantId: string;
+  tenantName: string;
+  onClose: () => void;
+  result: { email: string; password: string; phone: string } | null;
+  onResult: (r: { email: string; password: string; phone: string }) => void;
+}> = ({ tenantId, tenantName, onClose, result, onResult }) => {
+  const [name, setName] = React.useState('');
+  const [phone, setPhone] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const handleSend = async () => {
+    if (!name.trim() || !phone.trim()) { setError('Preencha nome e WhatsApp.'); return; }
+    setSending(true);
+    setError('');
+    try {
+      const creds = await (db as any).createInvitedDemo(tenantId, tenantName, name.trim(), phone.trim());
+      onResult({ ...creds, phone: phone.trim() });
+    } catch (e: any) {
+      setError('Erro ao criar convite: ' + (e.message || 'tente novamente.'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const waText = result
+    ? encodeURIComponent(
+        `Olá ${name}! 🎉\n\nVocê foi convidado(a) para testar o *AgendeZap* gratuitamente por 7 dias!\n\n` +
+        `Acesse: https://app.agendezap.com\n` +
+        `Login: ${result.email}\nSenha: ${result.password}\n\n` +
+        `Qualquer dúvida, é só chamar! 😊`
+      )
+    : '';
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl w-full max-w-md p-10 space-y-6 animate-scaleUp">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-black uppercase tracking-tight">Convidar Parceiro</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Gera acesso demo de 7 dias + notifica o suporte</p>
+          </div>
+          <button onClick={onClose} className="text-slate-300 hover:text-black text-2xl font-black transition-all">✕</button>
+        </div>
+
+        {!result ? (
+          <>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Nome do Estabelecimento</label>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Ex: Barbearia do João"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">WhatsApp (com DDD)</label>
+                <input
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="5511999999999"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all"
+                />
+              </div>
+              {error && <p className="text-xs font-bold text-red-500">{error}</p>}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={onClose} className="flex-1 py-3.5 font-black text-slate-400 text-xs uppercase tracking-widest">Cancelar</button>
+              <button
+                onClick={handleSend}
+                disabled={sending}
+                className="flex-1 py-3.5 bg-orange-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all disabled:opacity-50"
+              >
+                {sending ? 'Gerando...' : 'Enviar Convite'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-5 space-y-3">
+              <p className="text-xs font-black text-green-700 uppercase tracking-widest">Convite gerado com sucesso!</p>
+              <div className="space-y-1.5 text-sm">
+                <p><span className="font-black text-slate-500">Login:</span> <span className="font-bold text-black">{result.email}</span></p>
+                <p><span className="font-black text-slate-500">Senha:</span> <span className="font-bold text-black">{result.password}</span></p>
+                <p className="text-[10px] text-slate-400 pt-1">Acesso gratuito por 7 dias · Registrado na caixa de suporte</p>
+              </div>
+            </div>
+            <a
+              href={`https://wa.me/${result.phone.replace(/\D/g, '')}?text=${waText}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-600 transition-all"
+            >
+              <IconWhatsapp2 /> Enviar pelo WhatsApp
+            </a>
+            <button onClick={onClose} className="w-full py-3 font-black text-slate-400 text-xs uppercase tracking-widest hover:text-black transition-all">Fechar</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const NavItem = ({ active, onClick, icon, label, color }: any) => (
+  <button onClick={onClick} className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${active ? 'bg-black text-white shadow-xl scale-105' : `text-slate-500 hover:bg-slate-100 ${color || ''}`}`}>
+    <span className={`text-xl mr-3 ${active ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}>{icon}</span>
+    <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>
+  </button>
+);
+
+const IconDashboard = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>;
+const IconCalendar = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
+const IconScissors = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>;
+const IconUsers = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
+const IconUserCircle = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="10" r="3"></circle><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"></path></svg>;
+const IconFinance = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
+const IconBox = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>;
+const IconWhatsapp = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"></path></svg>;
+const IconClock = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+const IconSettings = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>;
+const IconTerminal = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>;
+const IconLogout = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;
+const IconPlans = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>;
+const IconChat = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>;
+const IconBroadcast = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>;
+const IconTrophy = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+const IconMarketing = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
+const IconGift = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>;
+const IconWhatsapp2 = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>;
+
+export default App;
