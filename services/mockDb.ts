@@ -21,7 +21,7 @@ import {
   Tenant, Professional, Service, Appointment,
   Customer, AppointmentStatus, PaymentMethod, TenantSettings,
   TenantStatus, BookingSource, Expense, BreakPeriod, Plan,
-  FollowUpNamedMode, InventoryItem, RecurringSchedule
+  FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product
 } from '../types';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -1095,6 +1095,184 @@ class DatabaseService {
         : i
     );
     await this.updateSettings(tenantId, { inventory: updated });
+  }
+
+  // ── Comanda (ordem de serviço) ─────────────────────────────────────
+  // Supabase-first with localStorage fallback (key: agz_comandas_<tenantId>)
+
+  private _lsComandaKey(tenantId: string) { return `agz_comandas_${tenantId}`; }
+
+  private _nextComandaNumber(tenantId: string): number {
+    const key = `agz_comanda_counter_${tenantId}`;
+    const n = parseInt(localStorage.getItem(key) || '0') + 1;
+    try { localStorage.setItem(key, String(n)); } catch {}
+    return n;
+  }
+
+  private _lsGetComandas(tenantId: string): Comanda[] {
+    try { return JSON.parse(localStorage.getItem(this._lsComandaKey(tenantId)) || '[]'); }
+    catch { return []; }
+  }
+
+  private _lsSaveComandas(tenantId: string, list: Comanda[]) {
+    try { localStorage.setItem(this._lsComandaKey(tenantId), JSON.stringify(list)); } catch {}
+  }
+
+  private _rowToComanda(r: any): Comanda {
+    return {
+      id: r.id,
+      tenant_id: r.tenant_id,
+      appointment_id: r.appointment_id,
+      professional_id: r.professional_id,
+      customer_id: r.customer_id,
+      items: r.items || [],
+      status: r.status,
+      paymentMethod: r.payment_method ?? undefined,
+      notes: r.notes ?? undefined,
+      createdAt: r.created_at || r.createdAt,
+      closedAt: r.closed_at ?? r.closedAt ?? undefined,
+      number: r.number ?? undefined,
+    } as Comanda;
+  }
+
+  async createComanda(data: Omit<Comanda, 'id' | 'createdAt'>): Promise<Comanda> {
+    const number = this._nextComandaNumber(data.tenant_id);
+    const comanda: Comanda = { ...data, id: generateId(), createdAt: new Date().toISOString(), number };
+    try {
+      const { error } = await supabase.from('comandas').insert({
+        id: comanda.id,
+        tenant_id: comanda.tenant_id,
+        appointment_id: comanda.appointment_id,
+        professional_id: comanda.professional_id,
+        customer_id: comanda.customer_id,
+        items: comanda.items,
+        status: comanda.status,
+        payment_method: comanda.paymentMethod ?? null,
+        notes: comanda.notes ?? null,
+        created_at: comanda.createdAt,
+        closed_at: comanda.closedAt ?? null,
+        number: comanda.number ?? null,
+      });
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      console.warn('[Comandas] Supabase insert failed, using localStorage:', err);
+      const list = this._lsGetComandas(comanda.tenant_id);
+      list.unshift(comanda);
+      this._lsSaveComandas(comanda.tenant_id, list);
+    }
+    return comanda;
+  }
+
+  async getComandas(tenantId: string): Promise<Comanda[]> {
+    try {
+      const { data, error } = await supabase
+        .from('comandas')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      const supabaseList = (data || []).map((r: any) => this._rowToComanda(r));
+      // Merge with localStorage (in case some were created offline)
+      const local = this._lsGetComandas(tenantId);
+      const supabaseIds = new Set(supabaseList.map(c => c.id));
+      const onlyLocal = local.filter(c => !supabaseIds.has(c.id));
+      return [...onlyLocal, ...supabaseList];
+    } catch (err) {
+      console.warn('[Comandas] Supabase fetch failed, using localStorage:', err);
+      return this._lsGetComandas(tenantId);
+    }
+  }
+
+  async getComanda(id: string): Promise<Comanda | null> {
+    try {
+      const { data } = await supabase.from('comandas').select('*').eq('id', id).maybeSingle();
+      if (data) return this._rowToComanda(data);
+    } catch {}
+    // Fallback: search localStorage across all tenants
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('agz_comandas_'));
+    for (const k of keys) {
+      try {
+        const list: Comanda[] = JSON.parse(localStorage.getItem(k) || '[]');
+        const found = list.find(c => c.id === id);
+        if (found) return found;
+      } catch {}
+    }
+    return null;
+  }
+
+  async updateComanda(id: string, updates: Partial<Comanda>): Promise<void> {
+    // Update in localStorage first (works offline)
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('agz_comandas_'));
+    for (const k of keys) {
+      try {
+        const list: Comanda[] = JSON.parse(localStorage.getItem(k) || '[]');
+        const idx = list.findIndex(c => c.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...updates };
+          localStorage.setItem(k, JSON.stringify(list));
+        }
+      } catch {}
+    }
+    // Try Supabase
+    try {
+      const patch: Record<string, any> = {};
+      if (updates.items !== undefined)         patch.items          = updates.items;
+      if (updates.status !== undefined)        patch.status         = updates.status;
+      if (updates.paymentMethod !== undefined) patch.payment_method = updates.paymentMethod;
+      if (updates.notes !== undefined)         patch.notes          = updates.notes;
+      if (updates.closedAt !== undefined)      patch.closed_at      = updates.closedAt;
+      const { error } = await supabase.from('comandas').update(patch).eq('id', id);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      console.warn('[Comandas] Supabase update failed, localStorage updated only:', err);
+    }
+  }
+
+  async decrementInventory(tenantId: string, itemId: string, qty: number): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const updated = (s.inventory || []).map(i =>
+      i.id === itemId
+        ? { ...i, quantity: Math.max(0, i.quantity - qty), lastUpdated: new Date().toISOString() }
+        : i
+    );
+    await this.updateSettings(tenantId, { inventory: updated });
+  }
+
+  // ─── PRODUCTS (retail products for sale to clients) ──────────────────
+
+  async getProducts(tenantId: string): Promise<Product[]> {
+    const s = await this.getSettings(tenantId);
+    return s.products || [];
+  }
+
+  async addProduct(tenantId: string, item: Omit<Product, 'id' | 'lastUpdated'>): Promise<Product> {
+    const s = await this.getSettings(tenantId);
+    const newItem: Product = { ...item, id: generateId(), lastUpdated: new Date().toISOString() };
+    await this.updateSettings(tenantId, { products: [...(s.products || []), newItem] });
+    return newItem;
+  }
+
+  async updateProduct(tenantId: string, id: string, updates: Partial<Product>): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const updated = (s.products || []).map(p =>
+      p.id === id ? { ...p, ...updates, lastUpdated: new Date().toISOString() } : p
+    );
+    await this.updateSettings(tenantId, { products: updated });
+  }
+
+  async deleteProduct(tenantId: string, id: string): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    await this.updateSettings(tenantId, { products: (s.products || []).filter(p => p.id !== id) });
+  }
+
+  async decrementProduct(tenantId: string, itemId: string, qty: number): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const updated = (s.products || []).map(p =>
+      p.id === itemId && p.quantity !== undefined
+        ? { ...p, quantity: Math.max(0, p.quantity - qty), lastUpdated: new Date().toISOString() }
+        : p
+    );
+    await this.updateSettings(tenantId, { products: updated });
   }
 
   // ── Cross-process message deduplication ───────────────────────────

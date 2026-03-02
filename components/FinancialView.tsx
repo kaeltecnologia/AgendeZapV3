@@ -1,14 +1,20 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
-import { PaymentMethod, AppointmentStatus, Professional, Expense, Appointment } from '../types';
+import { PaymentMethod, AppointmentStatus, Professional, Expense, Appointment, Service, Comanda, ComandaItem } from '../types';
 import { hasFeature } from '../config/planConfig';
 
 const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const comandaItemTotal = (item: ComandaItem) => {
+  const gross = item.qty * item.unitPrice;
+  if (item.discountType === 'percent') return gross * (1 - item.discount / 100);
+  return gross - (item.discount ?? 0);
+};
+
 const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
   const hasCaixa = hasFeature(tenantPlan, 'caixaAvancado');
-  const [activeTab, setActiveTab] = useState<'visao' | 'caixa' | 'config'>('visao');
+  const [activeTab, setActiveTab] = useState<'visao' | 'caixa' | 'config' | 'profissionais'>('visao');
 
   // ── Visão Financeira state ────────────────────────────────────────────────
   const [period, setPeriod] = useState(30);
@@ -20,10 +26,16 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [expProfId, setExpProfId] = useState('');
   const [expPaymentMethod, setExpPaymentMethod] = useState<PaymentMethod>(PaymentMethod.MONEY);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [expensesList, setExpensesList] = useState<Expense[]>([]);
   const [revenuesList, setRevenuesList] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [proBreakdown, setProBreakdown] = useState<Array<{
+    prof: Professional; count: number; revenue: number;
+    commRate: number; commission: number; avgTicket: number; topSvcName: string;
+  }>>([]);
+  const [proDetailProf, setProDetailProf] = useState<Professional | null>(null);
 
   // ── Caixa state ───────────────────────────────────────────────────────────
   const [caixaDate, setCaixaDate] = useState(new Date().toISOString().split('T')[0]);
@@ -39,31 +51,87 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [pros, summ, exps, apps, st] = await Promise.all([
+    const [pros, svcs, summ, exps, apps, st, allComandas] = await Promise.all([
       db.getProfessionals(tenantId),
+      db.getServices(tenantId),
       db.getFinancialSummary(tenantId, period, selectedProfId),
       db.getExpenses(tenantId),
       db.getAppointments(tenantId),
       db.getSettings(tenantId),
+      db.getComandas(tenantId),
     ]);
     setProfessionals(pros);
+    setServices(svcs);
     setSummary(summ);
-    setExpensesList(exps);
+    setExpensesList(exps.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     setSettings(st);
     const startDate = new Date(); startDate.setDate(startDate.getDate() - period);
-    setRevenuesList(apps.filter(a =>
+    const allRevenues = apps.filter(a =>
       a.status === AppointmentStatus.FINISHED &&
       !a.isPlan &&
-      new Date(a.startTime) >= startDate &&
-      (!selectedProfId || a.professional_id === selectedProfId)
-    ));
-    // Init config
+      new Date(a.startTime) >= startDate
+    );
+    setRevenuesList(
+      allRevenues
+        .filter(a => !selectedProfId || a.professional_id === selectedProfId)
+        .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+    );
+
+    // Per-professional breakdown using comanda items for multi-pro attribution
+    const commMap: Record<string, number> = {};
+    pros.forEach(p => { commMap[p.id] = st.professionalMeta?.[p.id]?.commissionRate ?? 0; });
+
+    const closedComandas = allComandas.filter((c: Comanda) =>
+      c.status === 'closed' && c.closedAt && new Date(c.closedAt) >= startDate
+    );
+    const appointmentsWithComanda = new Set(closedComandas.map((c: Comanda) => c.appointment_id));
+
+    // Revenue per professional: from comanda items first, then fallback to amountPaid
+    const proRevMap: Record<string, number> = {};
+    const proCountMap: Record<string, number> = {};
+    const proSvcCountMap: Record<string, Record<string, number>> = {};
+
+    // 1. From closed comandas (supports multi-professional items)
+    closedComandas.forEach((c: Comanda) => {
+      c.items.forEach(item => {
+        const profId = item.professionalId ?? c.professional_id;
+        proRevMap[profId] = (proRevMap[profId] ?? 0) + comandaItemTotal(item);
+        proSvcCountMap[profId] = proSvcCountMap[profId] ?? {};
+        if (item.type === 'service') {
+          proSvcCountMap[profId][item.itemId] = (proSvcCountMap[profId][item.itemId] ?? 0) + 1;
+        }
+      });
+      // Count procedures per original professional
+      proCountMap[c.professional_id] = (proCountMap[c.professional_id] ?? 0) + 1;
+    });
+
+    // 2. From appointments without comanda (direct FINISHED, legacy)
+    allRevenues
+      .filter(a => !appointmentsWithComanda.has(a.id))
+      .forEach(a => {
+        proRevMap[a.professional_id] = (proRevMap[a.professional_id] ?? 0) + (a.amountPaid || 0);
+        proCountMap[a.professional_id] = (proCountMap[a.professional_id] ?? 0) + 1;
+        proSvcCountMap[a.professional_id] = proSvcCountMap[a.professional_id] ?? {};
+        proSvcCountMap[a.professional_id][a.service_id] = (proSvcCountMap[a.professional_id][a.service_id] ?? 0) + 1;
+      });
+
+    const breakdown = pros.map(p => {
+      const revenue = proRevMap[p.id] ?? 0;
+      const count = proCountMap[p.id] ?? 0;
+      const commRate = commMap[p.id] ?? 0;
+      const commission = revenue * commRate / 100;
+      const avgTicket = count > 0 ? revenue / count : 0;
+      const svcCounts = proSvcCountMap[p.id] ?? {};
+      const topSvcId = Object.entries(svcCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+      const topSvcName = svcs.find(s => s.id === topSvcId)?.name ?? '—';
+      return { prof: p, count, revenue, commRate, commission, avgTicket, topSvcName };
+    }).filter(r => r.revenue > 0 || r.count > 0).sort((a, b) => b.revenue - a.revenue);
+    setProBreakdown(breakdown);
+    // Init config (reuse commMap already built above)
     setCfgDebit(st.cardFees?.debit ?? 0);
     setCfgCredit(st.cardFees?.credit ?? 0);
     setCfgInstallment(st.cardFees?.installment ?? 0);
     setCfgGoal(st.monthlyRevenueGoal ?? 0);
-    const commMap: Record<string, number> = {};
-    pros.forEach(p => { commMap[p.id] = st.professionalMeta?.[p.id]?.commissionRate ?? 0; });
     setCfgCommissions(commMap);
     setLoading(false);
   }, [tenantId, period, selectedProfId]);
@@ -150,6 +218,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 w-fit">
         {([
           { key: 'visao', label: 'Visão Financeira', gated: false },
+          { key: 'profissionais', label: 'Profissionais', gated: false },
           { key: 'caixa', label: 'Caixa', gated: !hasCaixa },
           { key: 'config', label: 'Configurações', gated: !hasCaixa },
         ] as const).map(t => (
@@ -268,6 +337,141 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── ABA: PROFISSIONAIS ───────────────────────────────────────────── */}
+      {activeTab === 'profissionais' && (
+        <div className="space-y-6">
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white rounded-[24px] border-2 border-slate-100 p-5">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Profissionais Ativos</p>
+              <p className="text-2xl font-black text-black">{proBreakdown.length}</p>
+            </div>
+            <div className="bg-white rounded-[24px] border-2 border-slate-100 p-5">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Gerado pela Equipe</p>
+              <p className="text-2xl font-black text-black">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.revenue, 0))}</p>
+            </div>
+            <div className="bg-white rounded-[24px] border-2 border-orange-100 p-5">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Comissões a Pagar</p>
+              <p className="text-2xl font-black text-orange-500">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.commission, 0))}</p>
+            </div>
+          </div>
+
+          {/* Period filter */}
+          <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+            {[7, 30, 90].map(d => (
+              <button key={d} onClick={() => setPeriod(d)}
+                className={`px-4 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${period === d ? 'bg-black text-white' : 'text-slate-400'}`}>
+                {d}D
+              </button>
+            ))}
+          </div>
+
+          {proBreakdown.length === 0 ? (
+            <div className="bg-white rounded-[28px] border-2 border-dashed border-slate-200 p-16 text-center">
+              <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Nenhum atendimento no período</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-[28px] border-2 border-slate-100 overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Profissional</th>
+                    <th className="px-6 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Atend.</th>
+                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Receita</th>
+                    <th className="px-6 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão %</th>
+                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão R$</th>
+                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Ticket Médio</th>
+                    <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Top Procedimento</th>
+                    <th className="px-6 py-4" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {proBreakdown.map(r => (
+                    <tr key={r.prof.id} className="border-b border-slate-50 hover:bg-slate-50 transition-all">
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-black text-black">{r.prof.name}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">{r.prof.specialty}</p>
+                      </td>
+                      <td className="px-6 py-4 text-center text-sm font-black text-black">{r.count}</td>
+                      <td className="px-6 py-4 text-right text-sm font-black text-black">R$ {fmtBRL(r.revenue)}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="text-xs font-black text-orange-500">{r.commRate}%</span>
+                      </td>
+                      <td className="px-6 py-4 text-right text-sm font-black text-orange-500">R$ {fmtBRL(r.commission)}</td>
+                      <td className="px-6 py-4 text-right text-xs font-bold text-slate-500">R$ {fmtBRL(r.avgTicket)}</td>
+                      <td className="px-6 py-4 text-xs font-bold text-slate-500">{r.topSvcName}</td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => setProDetailProf(r.prof)}
+                          className="text-[10px] font-black text-slate-400 uppercase hover:text-orange-500 transition-all"
+                        >
+                          Detalhes
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-50 border-t-2 border-slate-200">
+                    <td className="px-6 py-4 text-xs font-black text-black uppercase">Total</td>
+                    <td className="px-6 py-4 text-center text-xs font-black text-black">{proBreakdown.reduce((s, r) => s + r.count, 0)}</td>
+                    <td className="px-6 py-4 text-right text-xs font-black text-black">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.revenue, 0))}</td>
+                    <td />
+                    <td className="px-6 py-4 text-right text-xs font-black text-orange-500">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.commission, 0))}</td>
+                    <td colSpan={3} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Detail modal */}
+          {proDetailProf && (() => {
+            const appts = revenuesList.filter(a => a.professional_id === proDetailProf.id);
+            return (
+              <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] overflow-y-auto">
+                <div className="flex justify-center items-start min-h-full p-6 pt-10">
+                  <div className="bg-white rounded-[40px] w-full max-w-xl p-8 space-y-5 animate-scaleUp border-4 border-black">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-xl font-black text-black uppercase">{proDetailProf.name}</h2>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{proDetailProf.specialty} · Últimos {period} dias</p>
+                      </div>
+                      <button onClick={() => setProDetailProf(null)} className="text-slate-400 hover:text-black font-black text-xl">✕</button>
+                    </div>
+                    {appts.length === 0 ? (
+                      <p className="text-sm font-bold text-slate-300 text-center py-8">Nenhum atendimento no período</p>
+                    ) : (
+                      <div className="max-h-[400px] overflow-y-auto space-y-1">
+                        {appts.map(a => {
+                          const svc = services.find(s => s.id === a.service_id);
+                          return (
+                            <div key={a.id} className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 rounded-2xl">
+                              <div>
+                                <p className="text-xs font-black text-black">{svc?.name ?? '—'}</p>
+                                <p className="text-[9px] font-bold text-slate-400">
+                                  {new Date(a.startTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                  {a.paymentMethod ? ` · ${a.paymentMethod}` : ''}
+                                </p>
+                              </div>
+                              <p className="text-sm font-black text-black">R$ {fmtBRL(a.amountPaid || 0)}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="border-t border-slate-100 pt-4 flex justify-between">
+                      <span className="text-[10px] font-black text-slate-400 uppercase">{appts.length} atendimento{appts.length !== 1 ? 's' : ''}</span>
+                      <span className="text-sm font-black text-black">Total: R$ {fmtBRL(appts.reduce((s, a) => s + (a.amountPaid || 0), 0))}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

@@ -1,9 +1,11 @@
 
 export enum AppointmentStatus {
-  PENDING = 'PENDING',
+  PENDING   = 'PENDING',
   CONFIRMED = 'CONFIRMED',
+  ARRIVED   = 'ARRIVED',    // Cliente chegou — abre comanda automaticamente
+  FINISHED  = 'FINISHED',
+  NO_SHOW   = 'NO_SHOW',    // Faltou
   CANCELLED = 'CANCELLED',
-  FINISHED = 'FINISHED'
 }
 
 export enum BookingSource {
@@ -67,16 +69,30 @@ export interface BreakPeriod {
   endTime: string;                // HH:mm
 }
 
+// Retail product for sale to clients (separate from InventoryItem/insumos)
+export interface Product {
+  id: string;
+  name: string;
+  category?: string;
+  costPrice: number;   // custo de compra
+  salePrice: number;   // preço de venda ao cliente
+  quantity?: number;   // estoque opcional
+  unit?: string;
+  active: boolean;
+  lastUpdated: string;
+}
+
 // Stock / inventory item
 export interface InventoryItem {
   id: string;
   name: string;
   category?: string;
   quantity: number;
-  unit: string;         // "unidades", "ml", "g", "kg", "L"
-  purchaseCost: number; // cost per unit at last purchase
-  minStock?: number;    // low-stock alert threshold
-  lastUpdated: string;  // ISO datetime
+  unit: string;          // "unidades", "ml", "g", "kg", "L"
+  purchaseCost: number;  // cost per unit at last purchase
+  salePrice?: number;    // sale price to client (used in comandas)
+  minStock?: number;     // low-stock alert threshold
+  lastUpdated: string;   // ISO datetime
 }
 
 // Monthly / recurring service plan (package)
@@ -142,7 +158,8 @@ export interface TenantSettings {
     recurringSchedule?: RecurringSchedule;
   }>;
   followUpSent?: Record<string, string>; // tracks sent messages e.g. "aviso::apptId" → "YYYY-MM-DD"
-  inventory?: InventoryItem[];           // product stock list
+  inventory?: InventoryItem[];           // product stock list (insumos)
+  products?: Product[];                  // retail products for sale to clients
   monthlyRevenueGoal?: number;          // meta mensal de faturamento da barbearia em R$
   cardFees?: {                          // taxas de cartão em percentual (ex: 1.5 = 1,5%)
     debit: number;
@@ -246,4 +263,33 @@ export interface Customer {
   planId?: string | null;     // active plan id
   planServiceId?: string | null; // specific service covered by plan
   recurringSchedule?: RecurringSchedule; // auto-scheduling config for plan customers
+}
+
+// ── Comanda (ordem de serviço) ─────────────────────────────────────────────
+
+export interface ComandaItem {
+  id: string;
+  type: 'service' | 'product';
+  itemId: string;       // service_id or product id
+  name: string;
+  qty: number;
+  unitPrice: number;
+  discountType: 'value' | 'percent'; // tipo de desconto: R$ ou %
+  discount: number;     // valor digitado (R$ flat ou % dependendo de discountType)
+  professionalId?: string; // profissional responsável por este item
+}
+
+export interface Comanda {
+  id: string;
+  tenant_id: string;
+  appointment_id: string;
+  professional_id: string;
+  customer_id: string;
+  items: ComandaItem[];
+  status: 'open' | 'closed';
+  paymentMethod?: PaymentMethod;
+  notes?: string;
+  createdAt: string;
+  closedAt?: string;
+  number?: number;  // sequential comanda number per tenant (#001, #002…)
 }

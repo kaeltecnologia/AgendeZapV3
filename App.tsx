@@ -16,6 +16,8 @@ import ConversationsView from './components/ConversationsView';
 import BroadcastView from './components/BroadcastView';
 import ConexoesView from './components/ConexoesView';
 import EstoqueView from './components/EstoqueView';
+import ProductsView from './components/ProductsView';
+import ComandasView from './components/ComandasView';
 import PerformanceView from './components/PerformanceView';
 import MarketingView from './components/MarketingView';
 import SuperAdminView from './components/SuperAdminView';
@@ -45,6 +47,8 @@ enum View {
   CONVERSAS = 'CONVERSAS',
   DISPARADOR = 'DISPARADOR',
   ESTOQUE = 'ESTOQUE',
+  PRODUTOS = 'PRODUTOS',
+  COMANDAS = 'COMANDAS',
   PERFORMANCE = 'PERFORMANCE',
   MARKETING = 'MARKETING',
   SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD'
@@ -301,7 +305,7 @@ const App: React.FC = () => {
 
     switch (currentView) {
       case View.DASHBOARD: return <Dashboard tenantId={tenantId} onNavigate={setCurrentView} />;
-      case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} />;
+      case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} />;
       case View.SERVICOS: return <ServicesView tenantId={tenantId} />;
       case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} />;
       case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
@@ -330,6 +334,8 @@ const App: React.FC = () => {
           <EstoqueView tenantId={tenantId} />
         </PlanGate>
       );
+      case View.PRODUTOS: return <ProductsView tenantId={tenantId} />;
+      case View.COMANDAS: return <ComandasView tenantId={tenantId} />;
       case View.PERFORMANCE: return (
         <PlanGate feature="performance" tenantPlan={tenantPlan}>
           <PerformanceView tenantId={tenantId} />
@@ -407,6 +413,7 @@ const App: React.FC = () => {
               {/* ── Grupo 1 ── */}
               <NavItem active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
               <NavItem active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
+              <NavItem active={currentView === View.COMANDAS} onClick={navTo(() => setCurrentView(View.COMANDAS))} icon={<IconScissors />} label="Comandas" />
               <NavItem active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
               <NavItem active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
               <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
@@ -425,6 +432,7 @@ const App: React.FC = () => {
                 <NavItem active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
                 <NavItem active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
                 <NavItem active={currentView === View.ESTOQUE} onClick={navTo(() => handleGatedNav(View.ESTOQUE, 'financeiro'))} icon={<IconBox />} label="Estoque" />
+                <NavItem active={currentView === View.PRODUTOS} onClick={navTo(() => setCurrentView(View.PRODUTOS))} icon={<IconShoppingBag />} label="Produtos" />
               </div>
 
               {/* ── Grupo 4 ── */}
@@ -709,6 +717,7 @@ const IconChat = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-
 const IconBroadcast = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>;
 const IconTrophy = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
 const IconMarketing = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
+const IconShoppingBag = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>;
 const IconGift = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>;
 const IconWhatsapp2 = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>;
 

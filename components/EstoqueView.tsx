@@ -24,6 +24,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [newQty, setNewQty] = useState(0);
   const [newUnit, setNewUnit] = useState('unidades');
   const [newCost, setNewCost] = useState(0);
+  const [newSalePrice, setNewSalePrice] = useState(0);
   const [newMinStock, setNewMinStock] = useState(0);
 
   // Stock entry modal (add quantity)
@@ -37,6 +38,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [editCategory, setEditCategory] = useState('');
   const [editUnit, setEditUnit] = useState('');
   const [editMinStock, setEditMinStock] = useState(0);
+  const [editSalePrice, setEditSalePrice] = useState(0);
 
   // Filter
   const [search, setSearch] = useState('');
@@ -58,7 +60,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const resetAddForm = () => {
     setNewName(''); setNewCategory('Higiene'); setNewQty(0);
-    setNewUnit('unidades'); setNewCost(0); setNewMinStock(0);
+    setNewUnit('unidades'); setNewCost(0); setNewSalePrice(0); setNewMinStock(0);
   };
 
   const handleAdd = async () => {
@@ -71,6 +73,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         quantity: newQty,
         unit: newUnit,
         purchaseCost: newCost,
+        salePrice: newSalePrice > 0 ? newSalePrice : undefined,
         minStock: newMinStock,
       });
       await load();
@@ -103,6 +106,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     try {
       await db.updateInventoryItem(tenantId, editItem.id, {
         name: editName, category: editCategory, unit: editUnit, minStock: editMinStock,
+        salePrice: editSalePrice > 0 ? editSalePrice : undefined,
       });
       await load();
       setEditItem(null);
@@ -121,6 +125,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setEditCategory(item.category || 'Outros');
     setEditUnit(item.unit);
     setEditMinStock(item.minStock || 0);
+    setEditSalePrice(item.salePrice ?? 0);
   };
 
   const openEntry = (item: InventoryItem) => {
@@ -216,6 +221,11 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-orange-500" />
             </div>
             <div>
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Preço de Venda (R$) <span className="text-slate-300 normal-case font-bold">— usado nas comandas</span></label>
+              <input type="number" min={0} step={0.01} value={newSalePrice} onChange={e => setNewSalePrice(Number(e.target.value))}
+                className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-orange-500" />
+            </div>
+            <div>
               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Alerta mínimo (qtd.)</label>
               <input type="number" min={0} value={newMinStock} onChange={e => setNewMinStock(Number(e.target.value))}
                 className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-orange-500" />
@@ -246,7 +256,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <table className="w-full">
           <thead className="bg-slate-50">
             <tr>
-              {['Produto', 'Categoria', 'Quantidade', 'Custo Unit.', 'Valor Total', 'Ações'].map(h => (
+              {['Produto', 'Categoria', 'Quantidade', 'Custo Unit.', 'Preço Venda', 'Valor Total', 'Ações'].map(h => (
                 <th key={h} className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
               ))}
             </tr>
@@ -254,7 +264,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           <tbody className="divide-y divide-slate-50">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-slate-300 font-black uppercase text-xs">
+                <td colSpan={7} className="text-center py-12 text-slate-300 font-black uppercase text-xs">
                   Nenhum produto cadastrado
                 </td>
               </tr>
@@ -277,6 +287,11 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </td>
                   <td className="px-5 py-4 font-bold text-sm text-slate-700">
                     R$ {item.purchaseCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-5 py-4">
+                    {item.salePrice
+                      ? <span className="font-black text-sm text-emerald-600">R$ {item.salePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      : <span className="text-[10px] font-bold text-slate-300">—</span>}
                   </td>
                   <td className="px-5 py-4 font-black text-sm text-black">
                     R$ {(item.quantity * item.purchaseCost).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -358,6 +373,11 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Qtd. mínima para alerta</label>
                 <input type="number" min={0} value={editMinStock} onChange={e => setEditMinStock(Number(e.target.value))}
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-orange-500" />
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Preço de Venda (R$)</label>
+                <input type="number" min={0} step={0.01} value={editSalePrice} onChange={e => setEditSalePrice(Number(e.target.value))}
                   className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-orange-500" />
               </div>
             </div>

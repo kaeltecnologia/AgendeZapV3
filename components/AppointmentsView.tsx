@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod } from '../types';
-import { sendProfessionalNotification } from '../services/notificationService';
+import { sendProfessionalNotification, sendClientArrivedNotification } from '../services/notificationService';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -12,7 +12,7 @@ function generateId(): string {
     : Math.random().toString(36).substring(2, 11);
 }
 
-const AppointmentsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void }> = ({ tenantId, onOpenComandas }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
     id: string; basePrice: number; extraValue?: number; extraNote?: string;
@@ -56,6 +56,9 @@ const AppointmentsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   // search
   const [searchTerm, setSearchTerm] = useState('');
+
+  // inline status editing
+  const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
 
   // break modal form
   const [brkLabel, setBrkLabel] = useState('');
@@ -163,11 +166,48 @@ const AppointmentsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const handleFinish = async () => {
     if (!showFinishModal) return;
-    await db.updateAppointmentStatus(showFinishModal.id, editStatus, {
-      paymentMethod, amountPaid: showFinishModal.basePrice + extraValue, extraNote, extraValue
-    });
+    try {
+      await db.updateAppointmentStatus(showFinishModal.id, editStatus, {
+        paymentMethod, amountPaid: showFinishModal.basePrice + extraValue, extraNote, extraValue
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+    }
+
+    // When client arrives: notify + create comanda (best-effort, independent)
+    if (editStatus === AppointmentStatus.ARRIVED) {
+      // Notificar sempre, independente da comanda
+      const fullApp = appointments.find(a => a.id === showFinishModal.id);
+      if (fullApp) sendClientArrivedNotification(fullApp).catch(err =>
+        console.warn('Notificação ARRIVED falhou:', err)
+      );
+      // Criar comanda
+      try {
+        const svc = services.find(s => s.id === showFinishModal.service_id);
+        await db.createComanda({
+          tenant_id: tenantId,
+          appointment_id: showFinishModal.id,
+          professional_id: showFinishModal.professional_id!,
+          customer_id: showFinishModal.customer_id!,
+          items: svc ? [{
+            id: generateId(), type: 'service', itemId: svc.id,
+            name: svc.name, qty: 1, unitPrice: svc.price,
+            discountType: 'value' as const, discount: 0,
+            professionalId: showFinishModal.professional_id,
+          }] : [],
+          status: 'open',
+        });
+      } catch (err) {
+        console.error('Erro ao criar comanda:', err);
+      }
+    }
+
     setShowFinishModal(null);
-    refreshData();
+    if (editStatus === AppointmentStatus.ARRIVED) {
+      onOpenComandas?.();
+    } else {
+      refreshData();
+    }
   };
 
   const openBreakModal = () => {
@@ -390,24 +430,107 @@ const AppointmentsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         </td>
                         <td className="px-8 py-6 font-bold text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200 uppercase text-xs tracking-wider transition-colors">{p?.name || '—'}</td>
                         <td className="px-8 py-6">
-                          <span className={`text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest ${
-                            a.status === AppointmentStatus.FINISHED ? 'bg-black text-white dark:bg-white dark:text-black' :
-                            a.status === AppointmentStatus.CANCELLED ? 'bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400' : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
-                          }`}>{a.status}</span>
+                          {editingStatusId === a.id ? (
+                            <select
+                              autoFocus
+                              defaultValue={a.status}
+                              onChange={async e => {
+                                const newStatus = e.target.value as AppointmentStatus;
+                                setEditingStatusId(null);
+                                if (newStatus === AppointmentStatus.FINISHED) {
+                                  setShowFinishModal({ id: a.id, basePrice: svc?.price || 0, ...a });
+                                  setEditStatus(AppointmentStatus.FINISHED);
+                                  setPaymentMethod(a.paymentMethod || PaymentMethod.PIX);
+                                  setExtraValue(a.extraValue || 0);
+                                  setExtraNote(a.extraNote || '');
+                                } else if (newStatus === AppointmentStatus.ARRIVED) {
+                                  // 1. Atualizar status
+                                  try {
+                                    await db.updateAppointmentStatus(a.id, newStatus, {});
+                                  } catch (err) {
+                                    console.error('Erro ao atualizar status ARRIVED:', err);
+                                  }
+                                  // 2. Notificar profissional (independente da comanda)
+                                  sendClientArrivedNotification(a).catch(err =>
+                                    console.warn('Notificação ARRIVED falhou:', err)
+                                  );
+                                  // 3. Criar comanda (best-effort)
+                                  try {
+                                    const svcObj = services.find(s => s.id === a.service_id);
+                                    const existingComandas = await db.getComandas(tenantId);
+                                    const alreadyHasComanda = existingComandas.some(c => c.appointment_id === a.id);
+                                    if (!alreadyHasComanda) {
+                                      await db.createComanda({
+                                        tenant_id: tenantId,
+                                        appointment_id: a.id,
+                                        professional_id: a.professional_id,
+                                        customer_id: a.customer_id,
+                                        items: svcObj ? [{
+                                          id: generateId(), type: 'service' as const, itemId: svcObj.id,
+                                          name: svcObj.name, qty: 1, unitPrice: svcObj.price,
+                                          discountType: 'value' as const, discount: 0,
+                                          professionalId: a.professional_id,
+                                        }] : [],
+                                        status: 'open',
+                                      });
+                                    }
+                                  } catch (err) {
+                                    console.error('Erro ao criar comanda:', err);
+                                  }
+                                  // 4. Navegar para Comandas
+                                  onOpenComandas ? onOpenComandas() : refreshData();
+                                } else {
+                                  try {
+                                    await db.updateAppointmentStatus(a.id, newStatus, {});
+                                  } catch (err) {
+                                    console.error('Erro ao atualizar status:', err);
+                                  }
+                                  refreshData();
+                                }
+                              }}
+                              onBlur={() => setEditingStatusId(null)}
+                              className="text-[10px] font-black rounded-xl border-2 border-orange-400 bg-white dark:bg-gray-800 dark:text-white outline-none cursor-pointer px-2 py-1"
+                            >
+                              <option value={AppointmentStatus.PENDING}>Pendente</option>
+                              <option value={AppointmentStatus.CONFIRMED}>Confirmado</option>
+                              <option value={AppointmentStatus.ARRIVED}>Cliente Chegou</option>
+                              <option value={AppointmentStatus.FINISHED}>Finalizado</option>
+                              <option value={AppointmentStatus.NO_SHOW}>Faltou</option>
+                              <option value={AppointmentStatus.CANCELLED}>Cancelado</option>
+                            </select>
+                          ) : (
+                            <span
+                              onClick={() => setEditingStatusId(a.id)}
+                              title="Clique para alterar status"
+                              className={`text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest cursor-pointer hover:opacity-75 transition-opacity ${
+                                a.status === AppointmentStatus.FINISHED  ? 'bg-black text-white dark:bg-white dark:text-black' :
+                                a.status === AppointmentStatus.ARRIVED   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                a.status === AppointmentStatus.NO_SHOW   ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                a.status === AppointmentStatus.CANCELLED ? 'bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400' :
+                                a.status === AppointmentStatus.CONFIRMED ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                              }`}>{
+                                a.status === AppointmentStatus.ARRIVED  ? 'CHEGOU' :
+                                a.status === AppointmentStatus.NO_SHOW  ? 'FALTOU' :
+                                a.status
+                              }</span>
+                          )}
                         </td>
                         <td className="px-8 py-6 text-right">
-                          <button
-                            onClick={() => {
-                              setShowFinishModal({ id: a.id, basePrice: svc?.price || 0, ...a });
-                              setEditStatus(a.status);
-                              setPaymentMethod(a.paymentMethod || PaymentMethod.PIX);
-                              setExtraValue(a.extraValue || 0);
-                              setExtraNote(a.extraNote || '');
-                            }}
-                            className="text-black dark:text-slate-200 font-black text-[10px] uppercase hover:text-orange-500 dark:hover:text-orange-400 transition-colors"
-                          >
-                            GERENCIAR
-                          </button>
+                          {a.status === AppointmentStatus.FINISHED ? (
+                            <button
+                              onClick={() => {
+                                setShowFinishModal({ id: a.id, basePrice: svc?.price || 0, ...a });
+                                setEditStatus(a.status);
+                                setPaymentMethod(a.paymentMethod || PaymentMethod.PIX);
+                                setExtraValue(a.extraValue || 0);
+                                setExtraNote(a.extraNote || '');
+                              }}
+                              className="text-black dark:text-slate-200 font-black text-[10px] uppercase hover:text-orange-500 dark:hover:text-orange-400 transition-colors"
+                            >
+                              DETALHES
+                            </button>
+                          ) : null}
                         </td>
                       </tr>
                     );
@@ -622,8 +745,11 @@ const AppointmentsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Status</label>
                 <select value={editStatus} onChange={e => setEditStatus(e.target.value as AppointmentStatus)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black">
+                  <option value={AppointmentStatus.PENDING}>PENDENTE</option>
                   <option value={AppointmentStatus.CONFIRMED}>CONFIRMADO</option>
+                  <option value={AppointmentStatus.ARRIVED}>CLIENTE CHEGOU</option>
                   <option value={AppointmentStatus.FINISHED}>FINALIZADO</option>
+                  <option value={AppointmentStatus.NO_SHOW}>FALTOU</option>
                   <option value={AppointmentStatus.CANCELLED}>CANCELADO</option>
                 </select>
               </div>

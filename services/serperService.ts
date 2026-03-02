@@ -98,23 +98,38 @@ export async function searchGoogleMaps(
   keyword: string,
   city: string,
   apiKey: string,
+  onProgress?: (page: number, found: number) => void,
 ): Promise<SearchResult> {
   const q = `${keyword.trim()} em ${city.trim()}`;
-  const res = await fetch('https://google.serper.dev/maps', {
-    method: 'POST',
-    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q, gl: 'br', hl: 'pt', num: 100 }),
-  });
+  const MAX_PAGES = 10; // up to ~200 results
+  const allRaw: any[] = [];
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as any;
-    throw new Error(err.message || `Serper API — erro ${res.status}`);
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    onProgress?.(page, allRaw.length);
+
+    const res = await fetch('https://google.serper.dev/maps', {
+      method: 'POST',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q, gl: 'br', hl: 'pt', num: 20, page }),
+    });
+
+    if (!res.ok) {
+      if (page === 1) {
+        const err = await res.json().catch(() => ({})) as any;
+        throw new Error(err.message || `Serper API — erro ${res.status}`);
+      }
+      break; // subsequent pages failing → stop gracefully
+    }
+
+    const data = await res.json();
+    const pagePlaces: any[] = data.places || [];
+
+    if (!pagePlaces.length) break; // no more results
+    allRaw.push(...pagePlaces);
+    if (pagePlaces.length < 20) break; // last partial page
   }
 
-  const data = await res.json();
-  const raw: any[] = data.places || [];
-
-  const mapped = raw
+  const mapped = allRaw
     .map((p, i) => ({
       id: p.placeId || `serper-${i}`,
       name: p.title || p.name || '',

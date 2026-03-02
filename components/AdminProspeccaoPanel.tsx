@@ -30,6 +30,7 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
   const [keyword, setKeyword] = useState('');
   const [city, setCity] = useState('');
   const [searching, setSearching] = useState(false);
+  const [searchProgress, setSearchProgress] = useState<{ page: number; found: number } | null>(null);
   const [searchError, setSearchError] = useState('');
   const [results, setResults] = useState<SerperPlace[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -43,6 +44,7 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
     if (!city.trim()) { setSearchError('Informe a cidade'); return; }
 
     setSearching(true);
+    setSearchProgress(null);
     setSearchError('');
     setResults([]);
     setSelectedIds(new Set());
@@ -50,9 +52,13 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
     setDuplicatesRemoved(0);
 
     try {
-      const { places, duplicatesRemoved: removed } = await searchGoogleMaps(keyword, city, serperKey);
+      const { places, duplicatesRemoved: removed } = await searchGoogleMaps(
+        keyword, city, serperKey,
+        (page, found) => setSearchProgress({ page, found }),
+      );
       setResults(places);
       setDuplicatesRemoved(removed);
+      setSearchProgress(null);
       setShowResults(true);
       // Auto-select todos com telefone
       setSelectedIds(new Set(places.filter(p => p.phone).map(p => p.id)));
@@ -204,9 +210,34 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
 
       {/* Results */}
       {searching && (
-        <div className="bg-slate-50 rounded-[28px] p-12 text-center">
-          <p className="text-sm font-black text-slate-400 uppercase animate-pulse">Buscando estabelecimentos...</p>
-          <p className="text-[10px] font-bold text-slate-300 mt-1">Consultando Google Maps via Serper.dev</p>
+        <div className="bg-slate-50 rounded-[28px] p-12 text-center space-y-3">
+          <p className="text-sm font-black text-slate-400 uppercase animate-pulse">
+            {searchProgress
+              ? `Buscando página ${searchProgress.page}...`
+              : 'Iniciando busca...'}
+          </p>
+          {searchProgress && (
+            <p className="text-[10px] font-bold text-slate-400">
+              {searchProgress.found > 0
+                ? `${searchProgress.found} estabelecimentos encontrados até agora`
+                : 'Consultando Google Maps via Serper.dev'}
+            </p>
+          )}
+          {searchProgress && (
+            <div className="flex justify-center gap-1 mt-2">
+              {Array.from({ length: 10 }, (_, i) => (
+                <div
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    i < searchProgress.page ? 'bg-orange-500' : 'bg-slate-200'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+          <p className="text-[9px] font-bold text-slate-300">
+            Até 10 páginas · máx. ~200 resultados
+          </p>
         </div>
       )}
 
