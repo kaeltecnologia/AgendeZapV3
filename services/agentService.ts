@@ -312,7 +312,11 @@ async function callBrain(
   const isFirstMessage = history.filter(h => h.role === 'bot').length === 0;
 
   const greetSection = shouldGreet
-    ? `\n🌅 SAUDAÇÃO DO DIA (OBRIGATÓRIA): Esta é a primeira interação com este cliente hoje. Inicie sua resposta com "${brasiliaGreeting}!" de forma natural e calorosa (ex: "${brasiliaGreeting}, tudo bem? 😊"). Faça isso UMA VEZ APENAS — nunca repita a saudação em outras respostas.\n`
+    ? `\n🌅 PRIMEIRA SAUDAÇÃO DO DIA:
+• Cumprimente com "${brasiliaGreeting}!" de forma calorosa e apresente o estabelecimento: "${tenantName}".
+• Pergunte apenas "Como posso te ajudar?" — nada mais.
+• ❌ NÃO liste serviços, profissionais, preços nem horários na saudação inicial.
+• ✅ Exemplo exato: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Como posso te ajudar?"\n`
     : '';
 
   const groupSection = groupCtx
@@ -352,10 +356,11 @@ async function callBrain(
 1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ HORÁRIO → 5️⃣ CONFIRMAÇÃO\n`;
 
   const profSelectionRule = professionals.length > 1 && !data.professionalId
-    ? `\n⚠️ PROFISSIONAL — REGRA ABSOLUTA (${professionals.map(p => p.name).join(', ')} disponíveis):
-• O cliente ainda NÃO escolheu profissional. PERGUNTE: "Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}" — uma pergunta direta e curta.
-• NUNCA escolha um profissional automaticamente. Só defina professionalId no JSON quando o cliente mencionar o nome explicitamente.
-• Se o cliente questionar sua escolha ("por que você escolheu X?", "quem é X?", "você que escolheu?") → responda: "Desculpe! Você que escolhe 😊 Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
+    ? `\n⚠️ PROFISSIONAL — ainda não definido. Profissionais: ${professionals.map(p => `${p.name} (ID:"${p.id}")`).join(', ')}
+• Se o cliente mencionou um nome NESTA MENSAGEM → extraia o professionalId correspondente e confirme a escolha (ex: "Ótimo, com o ${professionals[0].name}! Tem algum dia de preferência?").
+• Se o cliente NÃO mencionou nenhum profissional → pergunte: "Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}"
+• NUNCA escolha sozinho. NUNCA repita a pergunta se o cliente já disse um nome.
+• Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
     : '';
 
   const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}.
@@ -380,7 +385,7 @@ ${tomLine}
 • 1 emoji no máximo ${emojisHint}
 • SEMPRE termine com pergunta curta ou confirmação
 
-${isFirstMessage ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou (nome, serviço, profissional, etc.) sem perguntar de novo.\n' : ''}
+${isFirstMessage && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou (nome, serviço, profissional, etc.) sem perguntar de novo.\n' : ''}
 📅 AO OFERECER HORÁRIO (somente após profissional já definido no CONTEXTO ATUAL):
 • ❌ ERRADO: "Temos disponível às 15:00"
 • ✅ CERTO: "Com o [nome do profissional já escolhido] às 15:00 pode ser? 😊"
@@ -494,6 +499,35 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
 }
 
 // =====================================================================
+// PROFESSIONAL NAME MATCHER — TypeScript layer, more reliable than LLM extraction
+// =====================================================================
+
+/**
+ * Tries to find a professional mentioned by name in the user's message.
+ * Normalizes accents and is case-insensitive. Tries full name first, then first name.
+ */
+function matchProfessionalName(
+  text: string,
+  professionals: Array<{ id: string; name: string }>
+): { id: string; name: string } | null {
+  const norm = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+
+  const normText = norm(text);
+
+  // Full name match
+  for (const p of professionals) {
+    if (normText.includes(norm(p.name))) return p;
+  }
+  // First name match (min 3 chars to avoid false positives)
+  for (const p of professionals) {
+    const firstName = norm(p.name).split(' ')[0];
+    if (firstName.length >= 3 && new RegExp(`\\b${firstName}\\b`).test(normText)) return p;
+  }
+  return null;
+}
+
+// =====================================================================
 // BRASÍLIA GREETING — time-aware, once per day per phone
 // =====================================================================
 
@@ -522,8 +556,10 @@ function buildGroupCtx(data: SessionData): string {
 
   const lines: string[] = [`Cliente quer agendar para si e para ${gb.companionDesc || 'um acompanhante'}.`];
 
-  if (gb.sameService === undefined) {
-    lines.push('PERGUNTA PENDENTE: "Os dois vão fazer o mesmo procedimento?"');
+  if (!data.serviceId) {
+    lines.push('Primeiro, descubra qual serviço o CLIENTE deseja. Não pergunte sobre o acompanhante ainda — colete o serviço do cliente primeiro.');
+  } else if (gb.sameService === undefined) {
+    lines.push(`Serviço do cliente já definido (${data.serviceName}). PERGUNTA PENDENTE: "O acompanhante vai fazer o mesmo procedimento (${data.serviceName}) ou outro?"`);
   } else if (!gb.companionServiceId) {
     lines.push('PERGUNTA PENDENTE: Qual serviço o acompanhante vai fazer? (liste os disponíveis)');
   } else if (gb.resolvedMode === 'consecutive' && gb.companion2Time) {
@@ -830,6 +866,17 @@ export async function handleMessage(
       sameService: undefined,
     };
     console.log('[Agent] Group booking detected:', session.data.groupBooking.companionDesc);
+  }
+
+  // ─── TypeScript-layer professional name pre-extraction ─────────────
+  // Runs BEFORE calling LLM so "profSelectionRule" is not injected when user already said a name.
+  if (!session.data.professionalId && profOptions.length > 1) {
+    const matchedProf = matchProfessionalName(lowerText, profOptions);
+    if (matchedProf) {
+      session.data.professionalId = matchedProf.id;
+      session.data.professionalName = matchedProf.name;
+      console.log('[Agent] TS pre-extracted professional:', matchedProf.name);
+    }
   }
 
   // ─── Add user message to history ───────────────────────────────────

@@ -189,7 +189,8 @@ async function callBrain(
   apiKey: string, tenantName: string, today: string,
   services: any[], professionals: any[],
   history: any[], data: any,
-  availableSlots?: string[], customSystemPrompt?: string
+  availableSlots?: string[], customSystemPrompt?: string,
+  shouldGreet?: boolean, brasiliaGreeting?: string
 ): Promise<any | null> {
   const svcList = services.map(s => `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`).join('\n');
   const profList = professionals.length > 0 ? professionals.map(p => `• ${p.name} — ID:"${p.id}"`).join('\n') : '• (apenas um profissional disponível)';
@@ -208,9 +209,28 @@ async function callBrain(
   const histStr = history.slice(-10).map((h: any) => `${h.role === 'user' ? 'Cliente' : 'Agente'}: ${h.text}`).join('\n');
   const isFirst = history.filter((h: any) => h.role === 'bot').length === 0;
 
+  const greetSection = shouldGreet
+    ? `\n🌅 PRIMEIRA SAUDAÇÃO DO DIA:
+• Cumprimente com "${brasiliaGreeting}!" de forma calorosa e apresente o estabelecimento: "${tenantName}".
+• Pergunte apenas "Como posso te ajudar?" — nada mais.
+• ❌ NÃO liste serviços, profissionais, preços nem horários na saudação inicial.
+• ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Como posso te ajudar?"\n`
+    : '';
+
+  const flowSection = `\n📋 FLUXO (siga nesta ordem — pule etapas já no CONTEXTO ATUAL ou que o cliente já informou):
+1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ HORÁRIO → 5️⃣ CONFIRMAÇÃO\n`;
+
+  const profSelectionRule = professionals.length > 1 && !data.professionalId
+    ? `\n⚠️ PROFISSIONAL — ainda não definido. Profissionais disponíveis: ${professionals.map(p => `${p.name} (ID:"${p.id}")`).join(', ')}
+• Se o cliente mencionou um nome NESTA MENSAGEM → extraia o professionalId e confirme.
+• Se NÃO mencionou → pergunte: "Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}"
+• NUNCA escolha sozinho. NUNCA repita a pergunta se o cliente já disse um nome.
+• Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
+    : '';
+
   const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}.
-Imite exatamente o estilo de um atendente humano brasileiro de barbearia — informal, caloroso, direto.
-${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}
+Atendente brasileiro — informal, caloroso, direto. Máximo 2-3 linhas por resposta.
+${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${greetSection}
 SERVIÇOS: ${svcList}
 PROFISSIONAIS: ${profList}${slotsSection}
 
@@ -219,51 +239,36 @@ ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("s
 
 HISTÓRICO (mais recente no final):
 ${histStr}
-
+${flowSection}${profSelectionRule}
 ════════════════════════════════
-COMO RESPONDER — APRENDA COM HUMANOS:
+COMO RESPONDER:
 ════════════════════════════════
 
-📏 FORMATO OBRIGATÓRIO:
-• Máximo 2-3 linhas por mensagem
-• Tom: brasileiro informal — "meu querido", "luquinha", "beleza", "fechou", "acho q vai ficar corrido"
-• 1 emoji no máximo (👍 😊 ✂️ 💈)
-• SEMPRE termine com pergunta curta ou confirmação
+📏 FORMATO:
+• Máximo 2-3 linhas • Tom informal brasileiro • 1 emoji no máximo • Sempre termine com pergunta
 
-${isFirst ? `🤝 PRIMEIRA MENSAGEM — cumprimente com calor:
-• "Olá boa tarde meu querido! ..." ou "Bom dia! ..."
-• Processe tudo que o cliente já informou na primeira mensagem
-` : ''}
-📅 AO OFERECER HORÁRIO:
+${isFirst && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou sem perguntar de novo.\n' : ''}
+📅 AO OFERECER HORÁRIO (somente após profissional já definido no CONTEXTO ATUAL):
 • ❌ ERRADO: "Temos disponível às 15:00"
-• ✅ CERTO: "Com o Matheus às 15:00 pode ser? 😊"
-• Sempre: PROFISSIONAL + HORÁRIO + "pode ser?" ou "serve?"
+• ✅ CERTO: "Com o [profissional escolhido] às 15:00 pode ser? 😊"
 
-❌ QUANDO O HORÁRIO PEDIDO NÃO ESTÁ DISPONÍVEL:
-1. Explique brevemente por quê: "Após as 18h não teria essa semana"
-2. Ofereça o mais próximo: "Mas teria amanhã às 17:00"
-3. Pergunte: "Serve??" — NUNCA assuma aceitação
-
-✅ QUANDO CLIENTE CONFIRMA (sim/ok/pode/beleza/bora/isso):
-• Defina "confirmed":true — o sistema gravará automaticamente
-• Responda apenas: "Agendado! Te esperamos 😊" ou "Fechou! 👍"
-
-🔄 QUANDO CLIENTE MUDA DE IDEIA OU DESISTE:
-• "Fechou meu querido! Até a próxima 😊" — Sem drama, aceite naturalmente
+❌ HORÁRIO INDISPONÍVEL: explique + ofereça alternativa + pergunte "Serve?"
+✅ CONFIRMAÇÃO: "confirmed":true → responda só "Agendado! Te esperamos 😊"
+🔄 DESISTÊNCIA: aceite naturalmente, sem drama
 
 💡 CASOS ESPECIAIS:
-• 2 serviços ("barba e cabelo") → verifique combo no cardápio, senão use o mais longo
-• 2 pessoas ("pra mim e pro meu pia") → agenda separada, resolva um de cada vez
-• 2 profissionais opcionais ("Matheus ou Felipe") → escolha o que tiver horário disponível
-• Preço perguntado → informe direto: "Corte está R$40,00"
-• Agenda cheia → "Essa semana tá cheio, mas semana que vem teria. Vamos agendar?"
+• 2 serviços → use o de maior duração ou combo
+• 2 pessoas → descubra o serviço do cliente primeiro, depois pergunte sobre o acompanhante
+• 2 profissionais opcionais (cliente diz EXPLICITAMENTE "X ou Y") → somente neste caso escolha o disponível
+• Preço → informe direto: "Corte está R$40,00"
+• Agenda cheia → sugira outra semana
 
 ════════════════════════════════
-EXTRAÇÃO DE DADOS:
+EXTRAÇÃO:
 ════════════════════════════════
-• Horários em texto: "nove horas"→"09:00", "dez da manhã"→"10:00", "três da tarde"→"15:00", "meio dia"→"12:00"
-• NUNCA repita perguntas sobre info já coletada no CONTEXTO ATUAL
-• Use horários SOMENTE da lista disponível — nunca invente
+• Horários: "nove horas"→"09:00", "três da tarde"→"15:00", "meio dia"→"12:00"
+• NUNCA repita perguntas sobre info já no CONTEXTO ATUAL
+• Use horários SOMENTE da lista disponível
 
 RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
 {"reply":"...","extracted":{"clientName":null,"serviceId":null,"professionalId":null,"date":null,"time":null,"confirmed":null,"cancelled":null}}`;
@@ -304,13 +309,45 @@ async function sendMsg(instanceName: string, phone: string, text: string) {
   }).catch(e => console.error('[sendMsg] error:', e));
 }
 
+// ── Professional name matcher ─────────────────────────────────────────
+function matchProfessionalName(text: string, professionals: Array<{ id: string; name: string }>): { id: string; name: string } | null {
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+  const normText = norm(text);
+  for (const p of professionals) {
+    if (normText.includes(norm(p.name))) return p;
+  }
+  for (const p of professionals) {
+    const first = norm(p.name).split(' ')[0];
+    if (first.length >= 3 && new RegExp(`\\b${first}\\b`).test(normText)) return p;
+  }
+  return null;
+}
+
+// ── Brasília greeting ─────────────────────────────────────────────────
+function getBrasiliaGreeting(): { greeting: string; dateStr: string } {
+  const b = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const h = b.getUTCHours();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return {
+    greeting: h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite',
+    dateStr: `${b.getUTCFullYear()}-${p(b.getUTCMonth() + 1)}-${p(b.getUTCDate())}`,
+  };
+}
+
 // ── Main agent logic ──────────────────────────────────────────────────
 async function runAgent(tenant: any, phone: string, text: string, settings: any, pushName?: string) {
   const tenantId = tenant.id;
   const tenantName = tenant.nome || tenant.name || 'Barbearia';
   const instanceName = tenant.evolution_instance || `agz_${(tenant.slug || '').replace(/[^a-z0-9]/g, '')}`;
-  const apiKey = (settings.openaiApiKey || '').trim() || (tenant.gemini_api_key || '');
-  if (!apiKey) { console.warn('[Agent] no API key'); return; }
+
+  // Key hierarchy: tenant key → global shared key → Gemini
+  let apiKey = (settings.openaiApiKey || '').trim();
+  if (!apiKey) {
+    const { data: globalRows } = await supabase.from('global_settings').select('key, value').catch(() => ({ data: [] }));
+    const sharedKey = ((globalRows || []).find((r: any) => r.key === 'shared_openai_key')?.value || '').trim();
+    apiKey = sharedKey || (tenant.gemini_api_key || '').trim();
+  }
+  if (!apiKey) { console.warn('[Agent] no API key for tenant', tenant.id); return; }
 
   const lowerText = text.toLowerCase();
   const isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
@@ -391,6 +428,19 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     session = { data: knownName ? { clientName: knownName } : {}, history: [] };
   }
 
+  // Greeting flag (persisted in session to survive cold starts)
+  const { greeting: brasiliaGreeting, dateStr: brasiliaDate } = getBrasiliaGreeting();
+  const shouldGreet = session.data.greetedAt !== brasiliaDate;
+
+  // Professional name pre-extraction (TypeScript layer — more reliable than LLM)
+  if (!session.data.professionalId && professionals.length > 1) {
+    const matched = matchProfessionalName(lowerText, professionals);
+    if (matched) {
+      session.data.professionalId = matched.id;
+      session.data.professionalName = matched.name;
+    }
+  }
+
   session.history.push({ role: 'user', text });
 
   // Prefetch slots if we know prof+date
@@ -400,7 +450,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
 
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionals, session.history, session.data, prefetchedSlots, customPrompt || undefined);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionals, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
@@ -437,7 +487,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       await sendMsg(instanceName, phone, msg);
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionals, session.history, session.data, newSlots, customPrompt || undefined);
+    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionals, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting);
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;
@@ -506,6 +556,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     session.data.pendingConfirm = true;
   }
 
+  if (shouldGreet) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
   await saveSession(tenantId, phone, session.data, session.history);
   await sendMsg(instanceName, phone, brain.reply);
@@ -707,11 +758,15 @@ Deno.serve(async (req) => {
         const msgType = msg.messageType || msg.type || '';
         const isAudio = ['audioMessage', 'pttMessage'].includes(msgType) || !!msg.message?.audioMessage || !!msg.message?.pttMessage;
         if (isAudio) {
-          const apiKey = (settings.openaiApiKey || '').trim() || (tenant.gemini_api_key || '');
-          if (apiKey) {
+          let audioKey = (settings.openaiApiKey || '').trim();
+          if (!audioKey) {
+            const { data: gRows } = await supabase.from('global_settings').select('key, value').catch(() => ({ data: [] }));
+            audioKey = ((gRows || []).find((r: any) => r.key === 'shared_openai_key')?.value || '').trim() || (tenant.gemini_api_key || '').trim();
+          }
+          if (audioKey) {
             const audio = await fetchAudioBase64(instanceName, msg);
             if (audio) {
-              const transcribed = await transcribeAudio(apiKey, audio.base64, audio.mimeType);
+              const transcribed = await transcribeAudio(audioKey, audio.base64, audio.mimeType);
               if (transcribed) text = transcribed;
             }
           }
