@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "Passo 3: Deploy da Edge Function..." -ForegroundColor Yellow
 
-& $EXE functions deploy whatsapp-webhook
+& $EXE functions deploy whatsapp-webhook --no-verify-jwt
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
