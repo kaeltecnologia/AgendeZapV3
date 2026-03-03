@@ -88,10 +88,23 @@ function saveSession(session: Session): void {
   session.updatedAt = Date.now();
   if (session.history.length > 20) session.history = session.history.slice(-20);
   sessions.set(sessionKey(session.tenantId, session.phone), session);
+  // Persistir no Supabase para sobreviver ao fechamento do browser (fire & forget)
+  supabase.from('agent_sessions').upsert({
+    tenant_id: session.tenantId,
+    phone: session.phone,
+    data: session.data,
+    history: session.history,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'tenant_id,phone' }).catch(e =>
+    console.error('[Agent] Supabase session save error:', e)
+  );
 }
 
 function clearSession(tenantId: string, phone: string): void {
   sessions.delete(sessionKey(tenantId, phone));
+  supabase.from('agent_sessions')
+    .delete().eq('tenant_id', tenantId).eq('phone', phone)
+    .catch(() => {});
 }
 
 // ── Called by followUpService after each successful send ─────────────
@@ -303,7 +316,9 @@ async function callBrain(
     ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? `\n(Horários para esta data ainda não verificados — NÃO sugira horários específicos ainda)`
-      : '');
+      : (data.professionalId && !data.date
+        ? `\n⛔ DIA NÃO DEFINIDO — NÃO sugira horários. Pergunte o dia de preferência primeiro.`
+        : ''));
 
   const histStr = history.slice(-10).map(h =>
     `${h.role === 'user' ? 'Cliente' : 'Agente'}: ${h.text}`
@@ -352,8 +367,12 @@ async function callBrain(
     : '';
 
   // ── Sequential flow + professional selection rule ─────────────────────
-  const flowSection = `\n📋 FLUXO OBRIGATÓRIO (siga esta ordem — pule etapas que já estão no CONTEXTO ATUAL ou que o cliente já informou na mensagem):
-1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ HORÁRIO → 5️⃣ CONFIRMAÇÃO\n`;
+  const flowSection = `\n📋 FLUXO OBRIGATÓRIO (pule etapas que o cliente já informou — não repita perguntas):
+1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ PERÍODO (manhã/tarde) → 5️⃣ HORÁRIO → 6️⃣ CONFIRMAÇÃO
+⛔ REGRAS ABSOLUTAS:
+• Se DIA não estiver no CONTEXTO ATUAL → pergunte "Tem algum dia de preferência?" ANTES de qualquer horário
+• Se DIA definido mas PERÍODO não → pergunte "Prefere de manhã ou à tarde?"
+• ❌ JAMAIS mencione ou sugira horário específico (ex: "09:00", "15:00") sem ter DIA confirmado no CONTEXTO ATUAL\n`;
 
   const profSelectionRule = professionals.length > 1 && !data.professionalId
     ? `\n⚠️ PROFISSIONAL — ainda não definido. Profissionais: ${professionals.map(p => `${p.name} (ID:"${p.id}")`).join(', ')}
@@ -557,11 +576,11 @@ function buildGroupCtx(data: SessionData): string {
   const lines: string[] = [`Cliente quer agendar para si e para ${gb.companionDesc || 'um acompanhante'}.`];
 
   if (!data.serviceId) {
-    lines.push('Primeiro, descubra qual serviço o CLIENTE deseja. Não pergunte sobre o acompanhante ainda — colete o serviço do cliente primeiro.');
+    lines.push('O cliente pode já ter mencionado o serviço nesta mensagem — EXTRAIA o serviceId do texto ANTES de perguntar. Só pergunte "Qual serviço você quer?" se não foi possível extrair. Não pergunte sobre o acompanhante antes de ter o serviço do cliente definido.');
   } else if (gb.sameService === undefined) {
-    lines.push(`Serviço do cliente já definido (${data.serviceName}). PERGUNTA PENDENTE: "O acompanhante vai fazer o mesmo procedimento (${data.serviceName}) ou outro?"`);
+    lines.push(`Serviço do CLIENTE já definido: "${data.serviceName}". PRÓXIMA PERGUNTA OBRIGATÓRIA: "O acompanhante vai fazer ${data.serviceName} também ou outro serviço?" — NÃO pule esta etapa, NÃO pergunte profissional nem dia ainda.`);
   } else if (!gb.companionServiceId) {
-    lines.push('PERGUNTA PENDENTE: Qual serviço o acompanhante vai fazer? (liste os disponíveis)');
+    lines.push(`PRÓXIMA PERGUNTA OBRIGATÓRIA: Qual serviço o acompanhante vai fazer? Opções: ${data.serviceName} ou outro? Liste os serviços disponíveis.`);
   } else if (gb.resolvedMode === 'consecutive' && gb.companion2Time) {
     lines.push(`SOLUÇÃO ENCONTRADA: mesmo profissional (${data.professionalName}) em horários consecutivos — pessoa 1 às ${data.time}, acompanhante às ${gb.companion2Time}. Apresente ao cliente e peça confirmação.`);
   } else if (gb.resolvedMode === 'parallel' && gb.companion2ProfName) {
@@ -821,6 +840,27 @@ export async function handleMessage(
 
   // ─── New session — create, then let AI handle greeting + extraction ─
   let session = getSession(tenantId, phone);
+  // Tentar restaurar do Supabase se não estiver na memória (garante continuidade após fechar o browser)
+  if (!session) {
+    try {
+      const { data: sbSess } = await supabase
+        .from('agent_sessions')
+        .select('data, history, updated_at')
+        .eq('tenant_id', tenantId)
+        .eq('phone', phone)
+        .maybeSingle();
+      if (sbSess && Date.now() - new Date(sbSess.updated_at).getTime() < SESSION_TIMEOUT_MS) {
+        session = {
+          tenantId, phone,
+          data: sbSess.data as SessionData,
+          history: sbSess.history as HistoryEntry[],
+          updatedAt: new Date(sbSess.updated_at).getTime(),
+        };
+        sessions.set(sessionKey(tenantId, phone), session);
+        console.log('[Agent] Sessão restaurada do Supabase para', phone);
+      }
+    } catch { /* ignorar erro de restauração */ }
+  }
   if (!session) {
     const { data: existing } = await supabase.from('customers').select('nome')
       .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
