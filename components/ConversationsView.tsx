@@ -172,6 +172,12 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-refresh every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => { load(); }, 5000);
+    return () => clearInterval(interval);
+  }, [load]);
+
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
