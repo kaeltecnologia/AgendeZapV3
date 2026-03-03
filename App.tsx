@@ -22,6 +22,7 @@ import PerformanceView from './components/PerformanceView';
 import MarketingView from './components/MarketingView';
 import NotasFiscaisView from './components/NotasFiscaisView';
 import FolhaPagamentoView from './components/FolhaPagamentoView';
+import EstoqueProdutosView from './components/EstoqueProdutosView';
 import SuperAdminView from './components/SuperAdminView';
 import Login from './components/Login';
 import AiPollingManager from './components/AiPollingManager';
@@ -55,6 +56,7 @@ enum View {
   NOTAS_FISCAIS = 'NOTAS_FISCAIS',
   FOLHA_PAGAMENTO = 'FOLHA_PAGAMENTO',
   MARKETING = 'MARKETING',
+  ESTOQUE_PRODUTOS = 'ESTOQUE_PRODUTOS',
   SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD'
 }
 
@@ -78,6 +80,7 @@ const App: React.FC = () => {
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [relatoriosOpen, setRelatoriosOpen] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
   const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
@@ -94,6 +97,13 @@ const App: React.FC = () => {
 
   // Close sidebar on mobile after any nav action
   const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
+
+  // Auto-expand Relatórios submenu when on Marketing or Performance
+  useEffect(() => {
+    if (currentView === View.MARKETING || currentView === View.PERFORMANCE) {
+      setRelatoriosOpen(true);
+    }
+  }, [currentView]);
 
   useEffect(() => {
     if (darkMode) {
@@ -339,6 +349,11 @@ const App: React.FC = () => {
         </PlanGate>
       );
       case View.PRODUTOS: return <ProductsView tenantId={tenantId} />;
+      case View.ESTOQUE_PRODUTOS: return (
+        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+          <EstoqueProdutosView tenantId={tenantId} />
+        </PlanGate>
+      );
       case View.COMANDAS: return <ComandasView tenantId={tenantId} />;
       case View.PERFORMANCE: return (
         <PlanGate feature="performance" tenantPlan={tenantPlan}>
@@ -416,41 +431,61 @@ const App: React.FC = () => {
                 <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>
               </button>
 
-              {/* ── 📊 Gestão Operacional ── */}
+              {/* ── Operacional ── */}
               <div className="space-y-0.5">
-                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">📊 Operacional</p>
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operacional</p>
                 <NavItem active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
                 <NavItem active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
                 <NavItem active={currentView === View.COMANDAS} onClick={navTo(() => setCurrentView(View.COMANDAS))} icon={<IconScissors />} label="Comandas" />
-                <NavItem active={currentView === View.ESTOQUE} onClick={navTo(() => handleGatedNav(View.ESTOQUE, 'financeiro'))} icon={<IconBox />} label="Estoque" />
-              </div>
-
-              {/* ── 👥 Relacionamento ── */}
-              <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
-                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">👥 Relacionamento</p>
-                <NavItem active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
                 <NavItem active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="Conversas" />
-                <NavItem active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparador" />
-                <NavItem active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
               </div>
 
-              {/* ── 💰 Financeiro & Vendas ── */}
+              {/* ── Operação ── */}
+              <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operação</p>
+                <NavItem active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />
+                <NavItem active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
+                <NavItem active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
+                <NavItem active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />
+                <NavItem active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
+              </div>
+
+              {/* ── Financeiro & Vendas ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>
                 <NavItem active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
-                <NavItem active={currentView === View.PRODUTOS} onClick={navTo(() => setCurrentView(View.PRODUTOS))} icon={<IconShoppingBag />} label="Produtos" />
                 <NavItem active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => setCurrentView(View.NOTAS_FISCAIS))} icon={<IconDoc />} label="Notas Fiscais" />
-                <NavItem active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => setCurrentView(View.FOLHA_PAGAMENTO))} icon={<IconWallet />} label="Folha Pgto" />
-                <NavItem active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
-                <NavItem active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
+                <NavItem active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => setCurrentView(View.FOLHA_PAGAMENTO))} icon={<IconWallet />} label="Folha Pgto." />
+                {/* Relatórios — item expansível */}
+                <button
+                  onClick={() => setRelatoriosOpen(v => !v)}
+                  className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${
+                    currentView === View.MARKETING || currentView === View.PERFORMANCE
+                      ? 'bg-black text-white shadow-xl scale-105'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className={`text-xl mr-3 ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}>
+                    <IconMarketing />
+                  </span>
+                  <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : ''}`}>
+                    Relatórios
+                  </span>
+                  <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-300'}`}>▶</span>
+                </button>
+                {relatoriosOpen && (
+                  <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
+                    <NavItem active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
+                    <NavItem active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
+                  </div>
+                )}
               </div>
 
-              {/* ── 🛠️ Configurações do Negócio ── */}
+              {/* ── Base ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
-                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">🛠️ Configurações</p>
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Base</p>
                 <NavItem active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
                 <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
-                <NavItem active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
                 <NavItem active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
                 <NavItem active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
                 <NavItem active={currentView === View.TEST_WA} onClick={navTo(() => handleGatedNav(View.TEST_WA, 'assistenteAdmin'))} icon={<IconTerminal />} label="Terminal IA" />

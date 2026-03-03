@@ -736,7 +736,15 @@ export async function handleMessage(
 
   const activeProfessionals = professionals.filter((p: any) => p.active).map((p: any) => ({ ...p, name: (p.name || '').trim() }));
   const activeServices = services.filter((s: any) => s.active);
-  const apiKey = (settings.openaiApiKey || '').trim() || geminiKey;
+
+  // Key hierarchy: tenant's own key → shared global key (SuperAdmin) → Gemini
+  const tenantKey = (settings.openaiApiKey || '').trim();
+  let apiKey = tenantKey;
+  if (!apiKey) {
+    const globalCfg = await db.getGlobalConfig();
+    const sharedKey = (globalCfg['shared_openai_key'] || '').trim();
+    apiKey = sharedKey || geminiKey;
+  }
 
   if (!apiKey) {
     return `Erro: chave de API não configurada. Por favor, configure em Ajustes → Agente IA.`;

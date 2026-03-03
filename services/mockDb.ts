@@ -1375,6 +1375,36 @@ class DatabaseService {
       return true; // unexpected error — fail open
     }
   }
+
+  // ─── Global Config (SuperAdmin-only, shared across all tenants) ─────────────
+  // SQL (run once): CREATE TABLE IF NOT EXISTS global_settings (key TEXT PRIMARY KEY, value TEXT);
+  private readonly GLOBAL_LS_KEY = 'agz_global_cfg';
+
+  async getGlobalConfig(): Promise<Record<string, string>> {
+    try {
+      const { data } = await supabase.from('global_settings').select('key, value');
+      if (data && data.length > 0) {
+        return Object.fromEntries(data.map((r: any) => [r.key, r.value]));
+      }
+    } catch {}
+    try {
+      const raw = localStorage.getItem(this.GLOBAL_LS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+  }
+
+  async saveGlobalConfig(updates: Record<string, string>): Promise<void> {
+    try {
+      const rows = Object.entries(updates).map(([key, value]) => ({ key, value }));
+      await supabase.from('global_settings').upsert(rows);
+    } catch {}
+    // Always persist to localStorage too (works offline / before table is created)
+    try {
+      const current = await this.getGlobalConfig();
+      localStorage.setItem(this.GLOBAL_LS_KEY, JSON.stringify({ ...current, ...updates }));
+    } catch {}
+  }
 }
 
 export const db = new DatabaseService();

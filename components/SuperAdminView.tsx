@@ -138,6 +138,12 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [usageStats, setUsageStats] = useState<UsageSummary | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
 
+  // Shared OpenAI key
+  const [sharedOpenAiKey, setSharedOpenAiKey] = useState('');
+  const [showSharedKey, setShowSharedKey] = useState(false);
+  const [savingSharedKey, setSavingSharedKey] = useState(false);
+  const [sharedKeySaved, setSharedKeySaved] = useState(false);
+
   // Billing
   const [billingReminders, setBillingReminders] = useState<BillingReminder[]>(loadBillingConfig);
   const [runningBilling, setRunningBilling] = useState(false);
@@ -176,7 +182,12 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     setUsageLoading(false);
   }, [usagePeriod]);
 
-  useEffect(() => { if (tab === 'ia') loadUsage(); }, [tab, loadUsage]);
+  useEffect(() => {
+    if (tab === 'ia') {
+      loadUsage();
+      db.getGlobalConfig().then(cfg => setSharedOpenAiKey(cfg['shared_openai_key'] || ''));
+    }
+  }, [tab, loadUsage]);
 
   const loadSupportRequests = useCallback(async () => {
     setSupportLoading(true);
@@ -283,6 +294,14 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   };
 
   // ── Announcements ────────────────────────────────────────────────────────────
+
+  const handleSaveSharedKey = async () => {
+    setSavingSharedKey(true);
+    await db.saveGlobalConfig({ shared_openai_key: sharedOpenAiKey.trim() });
+    setSavingSharedKey(false);
+    setSharedKeySaved(true);
+    setTimeout(() => setSharedKeySaved(false), 2500);
+  };
 
   const handleAnnounce = async () => {
     if (!announceMsg.trim()) return;
@@ -829,6 +848,47 @@ END $$;`.trim();
       {/* ══════════════════════ IA / TOKENS ══════════════════════ */}
       {tab === 'ia' && (
         <div className="space-y-6">
+
+          {/* ── Chave OpenAI Compartilhada ── */}
+          <div className="bg-white rounded-3xl border-2 border-orange-100 p-8 space-y-5">
+            <div>
+              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">🔑 Chave OpenAI Compartilhada</p>
+              <p className="text-xs text-slate-400 mt-1">Disponibilizada automaticamente para todos os tenants que não configuraram chave própria. Não é visível para os usuários.</p>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <input
+                  type={showSharedKey ? 'text' : 'password'}
+                  value={sharedOpenAiKey}
+                  onChange={e => setSharedOpenAiKey(e.target.value)}
+                  placeholder="sk-proj-..."
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-mono text-sm outline-none focus:border-orange-500 transition-all pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSharedKey(v => !v)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-black transition-colors text-xs font-black uppercase"
+                >
+                  {showSharedKey ? 'Ocultar' : 'Ver'}
+                </button>
+              </div>
+              <button
+                onClick={handleSaveSharedKey}
+                disabled={savingSharedKey}
+                className={`px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  sharedKeySaved ? 'bg-green-500 text-white' : 'bg-black text-white hover:bg-orange-500'
+                }`}
+              >
+                {savingSharedKey ? 'Salvando...' : sharedKeySaved ? '✓ Salvo' : 'Salvar'}
+              </button>
+            </div>
+            {sharedOpenAiKey && (
+              <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">
+                ✓ Chave configurada — {sharedOpenAiKey.length} caracteres
+              </p>
+            )}
+          </div>
+
           {/* Period selector + refresh */}
           <div className="flex items-center gap-4 flex-wrap">
             {(['today', 'week', 'month'] as const).map(p => (
