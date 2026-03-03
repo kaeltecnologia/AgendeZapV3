@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
+import { emitirNfse } from '../services/focusNfeService';
 import {
   Comanda, ComandaItem, PaymentMethod, AppointmentStatus,
   Professional, Customer, Service, Product,
+  FocusNfeConfig, NotaFiscal,
 } from '../types';
 
 function generateId(): string {
@@ -52,19 +54,26 @@ const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [closeNotes, setCloseNotes] = useState('');
   const [closing, setClosing] = useState(false);
 
+  // ── NFS-e on close ────────────────────────────────────────────────
+  const [focusNfeConfig, setFocusNfeConfig] = useState<FocusNfeConfig | null>(null);
+  const [emitNfseOnClose, setEmitNfseOnClose] = useState(false);
+  const [nfseTomadorCpf, setNfseTomadorCpf] = useState('');
+
   // ── Detail modal ──────────────────────────────────────────────────
   const [detailComanda, setDetailComanda] = useState<Comanda | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [c, pros, custs, svcs, prods, settings] = await Promise.all([
+      const [c, pros, custs, svcs, prods, settings, nfeCfg] = await Promise.all([
         db.getComandas(tenantId),
         db.getProfessionals(tenantId),
         db.getCustomers(tenantId),
         db.getServices(tenantId),
         db.getProducts(tenantId),
         db.getSettings(tenantId),
+        db.getFocusNfeConfig(tenantId),
       ]);
+      setFocusNfeConfig(nfeCfg);
       setComandas(c);
       setProfessionals(pros);
       setCustomers(custs);
@@ -143,6 +152,7 @@ const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setClosing(true);
     try {
       const total = comandaTotal(closeComanda);
+      const closedAt = new Date().toISOString();
       // Decrement product stock for each product item
       for (const item of closeComanda.items) {
         if (item.type === 'product') {
@@ -153,14 +163,56 @@ const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         status: 'closed',
         paymentMethod: closePayment,
         notes: closeNotes || undefined,
-        closedAt: new Date().toISOString(),
+        closedAt,
       });
       await db.updateAppointmentStatus(closeComanda.appointment_id, AppointmentStatus.FINISHED, {
         paymentMethod: closePayment,
         amountPaid: total,
       });
+
+      // ── NFS-e automática ao fechar ──────────────────────────────────
+      if (emitNfseOnClose && focusNfeConfig?.token) {
+        const declaravel = calcDeclaravel(closeComanda);
+        const notaId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : Math.random().toString(36).substring(2, 11);
+        const nota: NotaFiscal = {
+          id: notaId,
+          comandaIds: [closeComanda.id],
+          status: 'pendente',
+          valorBruto: total,
+          valorDeclaravel: declaravel,
+          tomadorCpfCnpj: nfseTomadorCpf || undefined,
+          createdAt: closedAt,
+        };
+        await db.saveNotaFiscal(tenantId, nota);
+        // Fire-and-forget: emit and update status asynchronously
+        emitirNfse({
+          config: focusNfeConfig,
+          dataEmissao: closedAt.slice(0, 10),
+          tomadorNome: 'Consumidor',
+          tomadorCpfCnpj: nfseTomadorCpf || undefined,
+          discriminacao: `Serviços — Comanda #${closeComanda.number ?? closeComanda.id.slice(0, 6)}`,
+          valorServicos: total,
+          valorDeclaravel: declaravel,
+          referencia: notaId,
+        }).then(res => {
+          db.saveNotaFiscal(tenantId, {
+            ...nota,
+            status: res.success ? 'emitida' : 'erro',
+            focusNfeRef: res.ref,
+            nfseNumero: res.nfseNumero,
+            nfseLink: res.link,
+            errorMsg: res.error,
+            emitedAt: res.success ? new Date().toISOString() : undefined,
+          });
+        }).catch(err => console.error('NFS-e background emit error:', err));
+      }
+
       setCloseComanda(null);
       setCloseNotes('');
+      setEmitNfseOnClose(false);
+      setNfseTomadorCpf('');
       load();
     } finally {
       setClosing(false);
@@ -174,6 +226,14 @@ const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       acc[profId] = (acc[profId] ?? 0) + itemTotal(item);
       return acc;
     }, {} as Record<string, number>);
+
+  // ── Lei do Salão-Parceiro: valor declarável (cota-parte estabelecimento) ──
+  const calcDeclaravel = (c: Comanda): number =>
+    c.items.reduce((acc, item) => {
+      const profId = item.professionalId ?? c.professional_id;
+      const rate = commissionMap[profId] ?? 0;
+      return acc + itemTotal(item) * (1 - rate / 100);
+    }, 0);
 
   const open = comandas
     .filter(c => c.status === 'open')
@@ -672,6 +732,32 @@ const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-500"
                   />
                 </div>
+
+                {/* NFS-e option (only shown if FocusNFe is configured) */}
+                {focusNfeConfig?.cnpj && (
+                  <div className="space-y-2">
+                    <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl px-4 py-3 flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="emitNfse"
+                        checked={emitNfseOnClose}
+                        onChange={e => setEmitNfseOnClose(e.target.checked)}
+                        className="accent-blue-500 w-4 h-4"
+                      />
+                      <label htmlFor="emitNfse" className="text-xs font-black text-blue-700 cursor-pointer">
+                        Emitir NFS-e ao fechar
+                      </label>
+                    </div>
+                    {emitNfseOnClose && (
+                      <input
+                        value={nfseTomadorCpf}
+                        onChange={e => setNfseTomadorCpf(e.target.value)}
+                        placeholder="CPF/CNPJ do tomador (opcional)"
+                        className="w-full p-3.5 bg-blue-50 border-2 border-blue-100 rounded-2xl text-xs font-bold outline-none focus:border-blue-400 transition-all"
+                      />
+                    )}
+                  </div>
+                )}
 
                 <div className="flex gap-3">
                   <button onClick={() => setCloseComanda(null)} className="flex-1 py-3 text-slate-400 font-black text-xs uppercase">Cancelar</button>

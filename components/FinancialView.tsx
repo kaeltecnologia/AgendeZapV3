@@ -141,11 +141,21 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   // ── Expense modal ─────────────────────────────────────────────────────────
   const handleAddExpense = async () => {
     if (!expDesc || expAmount <= 0) return;
+    const today = new Date().toISOString();
     await db.addExpense({
       tenant_id: tenantId, description: expDesc, amount: expAmount,
       category: expCategory, professional_id: expCategory === 'PROFESSIONAL' ? expProfId : undefined,
-      date: new Date().toISOString(), paymentMethod: expPaymentMethod
+      date: today, paymentMethod: expPaymentMethod
     });
+    // Despesa de profissional → registra também como adiantamento na folha de pagamento
+    if (expCategory === 'PROFESSIONAL' && expProfId) {
+      await db.addAdiantamento(tenantId, {
+        professionalId: expProfId,
+        amount: expAmount,
+        date: today.slice(0, 10),
+        description: expDesc,
+      });
+    }
     setExpDesc(''); setExpAmount(0); setExpCategory('COMPANY'); setExpProfId('');
     setExpPaymentMethod(PaymentMethod.MONEY);
     setShowExpModal(false);

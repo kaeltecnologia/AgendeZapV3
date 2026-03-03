@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { AppointmentStatus, BookingSource } from '../types';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 const PIE_COLORS = ['#0f172a', '#f97316', '#64748b', '#94a3b8'];
 
@@ -96,6 +96,61 @@ const MarketingView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const pieData = stats
     .filter(s => s.count > 0)
     .map(s => ({ name: SOURCE_LABELS[s.source], value: s.count }));
+
+  // ── Distribuição por hora do dia ─────────────────────────────────────────
+  const hourCounts = Array(24).fill(0) as number[];
+  curAppts.forEach(a => {
+    const h = new Date(a.startTime).getHours();
+    if (h >= 0 && h < 24) hourCounts[h]++;
+  });
+  const maxHourCount = Math.max(...hourCounts, 1);
+  const topHour = hourCounts.indexOf(Math.max(...hourCounts));
+
+  // ── Distribuição por dia da semana ───────────────────────────────────────
+  const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const dayCounts = Array(7).fill(0) as number[];
+  curAppts.forEach(a => { dayCounts[new Date(a.startTime).getDay()]++; });
+  const maxDayCount = Math.max(...dayCounts, 1);
+  const topDayIdx = dayCounts.indexOf(Math.max(...dayCounts));
+  const dayBarData = DAY_NAMES.map((name, i) => ({ name, total: dayCounts[i] }));
+
+  // ── Horizonte de agendamento — quanto antes os clientes marcam ───────────
+  const nowTs = Date.now();
+  const futureAppts = appointments.filter(a =>
+    (a.status === AppointmentStatus.PENDING || a.status === AppointmentStatus.CONFIRMED) &&
+    new Date(a.startTime).getTime() > nowTs
+  );
+  const ANT_BUCKETS = [
+    { label: 'Hoje/Amanhã', min: 0, max: 1 },
+    { label: '2–6 dias',    min: 2, max: 6 },
+    { label: '1 semana',    min: 7, max: 13 },
+    { label: '2 semanas',   min: 14, max: 20 },
+    { label: '3+ semanas',  min: 21, max: Infinity },
+  ];
+  const antCounts = ANT_BUCKETS.map(b => ({ ...b, count: 0 }));
+  futureAppts.forEach(a => {
+    const days = Math.floor((new Date(a.startTime).getTime() - nowTs) / 86400000);
+    const bucket = antCounts.find(b => days >= b.min && days <= b.max);
+    if (bucket) bucket.count++;
+  });
+  const maxAntCount = Math.max(...antCounts.map(b => b.count), 1);
+  const antTotal = antCounts.reduce((s, b) => s + b.count, 0);
+
+  // ── Comportamento dos clientes ───────────────────────────────────────────
+  const uniqueCustomers = new Set(curAppts.map(a => a.customer_id)).size;
+  const customerApptCounts: Record<string, number> = {};
+  curAppts.forEach(a => { customerApptCounts[a.customer_id] = (customerApptCounts[a.customer_id] || 0) + 1; });
+  const repeatCustomers = Object.values(customerApptCounts).filter(n => n > 1).length;
+  const finishedCount = curAppts.filter(a => a.status === AppointmentStatus.FINISHED).length;
+  const noShowCount   = curAppts.filter(a => a.status === AppointmentStatus.NO_SHOW).length;
+  const attendanceRate = curAppts.length > 0 ? Math.round(finishedCount / curAppts.length * 100) : 0;
+  const noShowRate    = curAppts.length > 0 ? Math.round(noShowCount / curAppts.length * 100) : 0;
+
+  // ── hora chart data ──────────────────────────────────────────────────────
+  const hourBarData = hourCounts.map((count, h) => ({
+    name: `${String(h).padStart(2, '0')}h`,
+    total: count,
+  }));
 
   if (loading) {
     return (
@@ -236,6 +291,134 @@ const MarketingView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           <strong>Taxa de Conversão:</strong> % de agendamentos que chegaram ao status Finalizado.
           {' '}O canal com maior taxa indica melhor qualidade de intenção do cliente.
         </p>
+      </div>
+
+      {/* ── Comportamento dos Clientes ─────────────────────────────────── */}
+      <div>
+        <h2 className="text-base font-black text-black uppercase tracking-widest mb-4">Comportamento dos Clientes</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Clientes únicos', value: uniqueCustomers, sub: `no período`, color: 'text-black' },
+            { label: 'Clientes recorrentes', value: repeatCustomers,
+              sub: uniqueCustomers > 0 ? `${Math.round(repeatCustomers/uniqueCustomers*100)}% do total` : '—',
+              color: 'text-orange-500' },
+            { label: 'Taxa de presença', value: `${attendanceRate}%`,
+              sub: `${finishedCount} de ${curAppts.length} comparecerem`,
+              color: attendanceRate >= 70 ? 'text-green-600' : 'text-orange-500' },
+            { label: 'Taxa de falta', value: `${noShowRate}%`,
+              sub: `${noShowCount} não compareceu`,
+              color: noShowRate > 15 ? 'text-red-500' : 'text-slate-500' },
+          ].map(c => (
+            <div key={c.label} className="bg-white rounded-2xl border border-slate-100 p-5">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{c.label}</p>
+              <p className={`text-3xl font-black leading-none ${c.color}`}>{c.value}</p>
+              <p className="text-[10px] text-slate-400 mt-1">{c.sub}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Horários de Pico ───────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-black text-sm text-black">Horários de Pico</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Distribuição de agendamentos por hora · Pico: <strong>{String(topHour).padStart(2,'0')}h</strong>
+              {hourCounts[topHour] > 0 ? ` (${hourCounts[topHour]} agend.)` : ''}
+            </p>
+          </div>
+        </div>
+        {curAppts.length > 0 ? (
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={hourBarData} margin={{ top: 0, right: 8, left: -24, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="name" tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} interval={1} />
+              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+              <Tooltip
+                formatter={(v: any) => [`${v} agend.`, 'Total']}
+                contentStyle={{ borderRadius: 10, border: '1px solid #f1f5f9', fontSize: 11 }}
+              />
+              <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                {hourBarData.map((_, i) => (
+                  <Cell key={i} fill={hourCounts[i] === maxHourCount && maxHourCount > 0 ? '#f97316' : '#0f172a'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[160px] flex items-center justify-center">
+            <p className="text-xs text-slate-400">Sem dados no período</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Dias da Semana ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+          <div>
+            <h3 className="font-black text-sm text-black">Dias Mais Fortes</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Dia com mais agendamentos: <strong>{DAY_NAMES[topDayIdx]}</strong>
+              {dayCounts[topDayIdx] > 0 ? ` (${dayCounts[topDayIdx]} agend.)` : ''}
+            </p>
+          </div>
+          <div className="space-y-2">
+            {dayBarData.map((d, i) => (
+              <div key={d.name} className="flex items-center gap-3">
+                <span className={`text-[10px] font-black w-7 ${i === topDayIdx ? 'text-orange-500' : 'text-slate-400'}`}>
+                  {d.name}
+                </span>
+                <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${i === topDayIdx ? 'bg-orange-500' : 'bg-slate-800'}`}
+                    style={{ width: `${Math.round(d.total / maxDayCount * 100)}%` }}
+                  />
+                </div>
+                <span className={`text-xs font-black w-6 text-right ${i === topDayIdx ? 'text-orange-500' : 'text-slate-500'}`}>
+                  {d.total}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Horizonte de Agendamento ────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+          <div>
+            <h3 className="font-black text-sm text-black">Com Quanto Antecedência Marcam</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {antTotal} agendamento{antTotal !== 1 ? 's' : ''} futuros confirmados / pendentes
+            </p>
+          </div>
+          {antTotal === 0 ? (
+            <div className="h-[120px] flex items-center justify-center">
+              <p className="text-xs text-slate-400">Sem agendamentos futuros pendentes</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {antCounts.map(b => (
+                <div key={b.label} className="flex items-center gap-3">
+                  <span className="text-[10px] font-black text-slate-400 w-24 shrink-0">{b.label}</span>
+                  <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-black transition-all"
+                      style={{ width: `${Math.round(b.count / maxAntCount * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-black text-slate-600 w-8 text-right">{b.count}</span>
+                  <span className="text-[10px] text-slate-400 w-8">
+                    {antTotal > 0 ? `${Math.round(b.count / antTotal * 100)}%` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-slate-400 border-t border-slate-50 pt-3">
+            Baseado nos agendamentos PENDENTES e CONFIRMADOS com data futura.
+            Se a maioria marcou com 1–2 dias, os clientes tendem a agendar de última hora.
+          </p>
+        </div>
       </div>
     </div>
   );

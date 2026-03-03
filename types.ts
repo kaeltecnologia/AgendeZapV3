@@ -125,6 +125,58 @@ export interface FollowUpNamedMode {
   fixedTime?: string;   // HH:mm — used by aviso type
 }
 
+// ── NFS-e / Nota Fiscal de Serviço ──────────────────────────────────────────
+
+export interface FocusNfeConfig {
+  token: string;                  // API token FocusNFe (deixar vazio — pendente configuração)
+  cnpj: string;                   // CNPJ do prestador  ex: "12345678000199"
+  inscricaoMunicipal: string;     // Inscrição Municipal
+  codigoServico: string;          // Código do serviço (ex: "7.02")
+  aliquotaIss: number;            // Alíquota ISS em % (ex: 5)
+  municipio: number;              // Código IBGE do município (ex: 4115200 = Maringá/PR)
+  ambiente: 'homologacao' | 'producao';
+}
+
+export interface NotaFiscal {
+  id: string;
+  comandaIds: string[];           // IDs das comandas incluídas nesta nota
+  emitedAt?: string;              // ISO datetime da emissão
+  status: 'nao_emitida' | 'pendente' | 'emitida' | 'erro';
+  valorBruto: number;             // total das comandas (bruto)
+  valorDeclaravel: number;        // cota-parte do estabelecimento (base ISS)
+  focusNfeRef?: string;           // referência retornada pelo FocusNFe
+  nfseNumero?: string;            // número da NFS-e emitida
+  nfseLink?: string;              // link do PDF/XML
+  errorMsg?: string;              // mensagem de erro (se status='erro')
+  tomadorNome?: string;
+  tomadorCpfCnpj?: string;
+  createdAt: string;
+}
+
+export interface Adiantamento {
+  id: string;
+  professionalId: string;
+  amount: number;
+  date: string;                   // YYYY-MM-DD
+  description?: string;
+  createdAt: string;
+}
+
+export interface PagamentoPro {
+  id: string;
+  professionalId: string;
+  periodoInicio: string;          // YYYY-MM-DD
+  periodoFim: string;             // YYYY-MM-DD
+  comissaoTotal: number;
+  adiantamentosTotal: number;
+  liquido: number;                // comissaoTotal - adiantamentosTotal
+  status: 'pendente' | 'pago';
+  paidAt?: string;
+  paidMethod?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface TenantSettings {
   followUp: {
     aviso: FollowUpConfig;
@@ -174,6 +226,10 @@ export interface TenantSettings {
   msgBufferSecs?: number;               // message buffer window in seconds (default 30)
   trialStartDate?: string | null;       // ISO datetime — set at first registration; null = paid account
   trialWarningSent?: boolean;           // true once Day 6 WhatsApp warning was sent
+  focusNfeConfig?: FocusNfeConfig;      // NFS-e emission configuration
+  adiantamentos?: Adiantamento[];       // professional advance payments
+  pagamentosPro?: PagamentoPro[];       // professional payroll records
+  notasFiscais?: NotaFiscal[];          // NFS-e history
 }
 
 export interface Appointment {

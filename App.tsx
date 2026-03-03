@@ -20,6 +20,8 @@ import ProductsView from './components/ProductsView';
 import ComandasView from './components/ComandasView';
 import PerformanceView from './components/PerformanceView';
 import MarketingView from './components/MarketingView';
+import NotasFiscaisView from './components/NotasFiscaisView';
+import FolhaPagamentoView from './components/FolhaPagamentoView';
 import SuperAdminView from './components/SuperAdminView';
 import Login from './components/Login';
 import AiPollingManager from './components/AiPollingManager';
@@ -50,6 +52,8 @@ enum View {
   PRODUTOS = 'PRODUTOS',
   COMANDAS = 'COMANDAS',
   PERFORMANCE = 'PERFORMANCE',
+  NOTAS_FISCAIS = 'NOTAS_FISCAIS',
+  FOLHA_PAGAMENTO = 'FOLHA_PAGAMENTO',
   MARKETING = 'MARKETING',
   SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD'
 }
@@ -342,6 +346,8 @@ const App: React.FC = () => {
         </PlanGate>
       );
       case View.MARKETING: return <MarketingView tenantId={tenantId} />;
+      case View.NOTAS_FISCAIS: return <NotasFiscaisView tenantId={tenantId} />;
+      case View.FOLHA_PAGAMENTO: return <FolhaPagamentoView tenantId={tenantId} />;
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
@@ -404,42 +410,50 @@ const App: React.FC = () => {
               {/* ── Convidar Parceiro ── */}
               <button
                 onClick={navTo(() => setShowInviteModal(true))}
-                className="w-full flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-2"
+                className="w-full flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-3"
               >
                 <IconGift />
                 <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>
               </button>
 
-              {/* ── Grupo 1 ── */}
-              <NavItem active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
-              <NavItem active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
-              <NavItem active={currentView === View.COMANDAS} onClick={navTo(() => setCurrentView(View.COMANDAS))} icon={<IconScissors />} label="Comandas" />
-              <NavItem active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
-              <NavItem active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
-              <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
-              <NavItem active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
+              {/* ── 📊 Gestão Operacional ── */}
+              <div className="space-y-0.5">
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">📊 Operacional</p>
+                <NavItem active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
+                <NavItem active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
+                <NavItem active={currentView === View.COMANDAS} onClick={navTo(() => setCurrentView(View.COMANDAS))} icon={<IconScissors />} label="Comandas" />
+                <NavItem active={currentView === View.ESTOQUE} onClick={navTo(() => handleGatedNav(View.ESTOQUE, 'financeiro'))} icon={<IconBox />} label="Estoque" />
+              </div>
 
-              {/* ── Grupo 2 ── */}
-              <div className="pt-3 mt-1 border-t border-slate-100 space-y-1">
+              {/* ── 👥 Relacionamento ── */}
+              <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">👥 Relacionamento</p>
+                <NavItem active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
                 <NavItem active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="Conversas" />
                 <NavItem active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparador" />
                 <NavItem active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
-                <NavItem active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
               </div>
 
-              {/* ── Grupo 3 ── */}
-              <div className="pt-3 mt-1 border-t border-slate-100 space-y-1">
+              {/* ── 💰 Financeiro & Vendas ── */}
+              <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>
                 <NavItem active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
-                <NavItem active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
-                <NavItem active={currentView === View.ESTOQUE} onClick={navTo(() => handleGatedNav(View.ESTOQUE, 'financeiro'))} icon={<IconBox />} label="Estoque" />
                 <NavItem active={currentView === View.PRODUTOS} onClick={navTo(() => setCurrentView(View.PRODUTOS))} icon={<IconShoppingBag />} label="Produtos" />
+                <NavItem active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => setCurrentView(View.NOTAS_FISCAIS))} icon={<IconDoc />} label="Notas Fiscais" />
+                <NavItem active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => setCurrentView(View.FOLHA_PAGAMENTO))} icon={<IconWallet />} label="Folha Pgto" />
+                <NavItem active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
+                <NavItem active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
               </div>
 
-              {/* ── Grupo 4 ── */}
-              <div className="pt-3 mt-1 border-t border-slate-100 space-y-1">
+              {/* ── 🛠️ Configurações do Negócio ── */}
+              <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">🛠️ Configurações</p>
+                <NavItem active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
+                <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
+                <NavItem active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
                 <NavItem active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
-                <NavItem active={currentView === View.TEST_WA} onClick={navTo(() => handleGatedNav(View.TEST_WA, 'assistenteAdmin'))} icon={<IconTerminal />} label="Terminal IA" />
                 <NavItem active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
+                <NavItem active={currentView === View.TEST_WA} onClick={navTo(() => handleGatedNav(View.TEST_WA, 'assistenteAdmin'))} icon={<IconTerminal />} label="Terminal IA" />
               </div>
             </>
           )}
@@ -720,5 +734,7 @@ const IconMarketing = () => <svg xmlns="http://www.w3.org/2000/svg" className="w
 const IconShoppingBag = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>;
 const IconGift = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>;
 const IconWhatsapp2 = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>;
+const IconDoc = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>;
+const IconWallet = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>;
 
 export default App;

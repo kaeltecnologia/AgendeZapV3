@@ -21,7 +21,8 @@ import {
   Tenant, Professional, Service, Appointment,
   Customer, AppointmentStatus, PaymentMethod, TenantSettings,
   TenantStatus, BookingSource, Expense, BreakPeriod, Plan,
-  FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product
+  FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product,
+  NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig
 } from '../types';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -660,7 +661,11 @@ class DatabaseService {
           openaiApiKey: fu._openaiApiKey || '',
           msgBufferSecs: fu._msgBufferSecs ?? 30,
           trialStartDate: fu._trialStartDate ?? null,
-          trialWarningSent: fu._trialWarningSent ?? false
+          trialWarningSent: fu._trialWarningSent ?? false,
+          focusNfeConfig: fu._focusNfeConfig ?? null,
+          adiantamentos: fu._adiantamentos ?? [],
+          pagamentosPro: fu._pagamentosPro ?? [],
+          notasFiscais: fu._notasFiscais ?? []
         };
       }
     } catch (e) {
@@ -698,7 +703,11 @@ class DatabaseService {
         _openaiApiKey: newS.openaiApiKey ?? curr.openaiApiKey ?? '',
         _msgBufferSecs: newS.msgBufferSecs ?? curr.msgBufferSecs ?? 30,
         _trialStartDate: newS.trialStartDate !== undefined ? newS.trialStartDate : (curr.trialStartDate ?? null),
-        _trialWarningSent: newS.trialWarningSent ?? curr.trialWarningSent ?? false
+        _trialWarningSent: newS.trialWarningSent ?? curr.trialWarningSent ?? false,
+        _focusNfeConfig: newS.focusNfeConfig !== undefined ? newS.focusNfeConfig : (curr.focusNfeConfig ?? null),
+        _adiantamentos: newS.adiantamentos ?? curr.adiantamentos ?? [],
+        _pagamentosPro: newS.pagamentosPro ?? curr.pagamentosPro ?? [],
+        _notasFiscais: newS.notasFiscais ?? curr.notasFiscais ?? []
       };
 
       const { error } = await supabase.from('tenant_settings').upsert(
@@ -1273,6 +1282,73 @@ class DatabaseService {
         : p
     );
     await this.updateSettings(tenantId, { products: updated });
+  }
+
+  // ─── FOCUS NFE CONFIG ───────────────────────────────────────────────
+
+  async getFocusNfeConfig(tenantId: string): Promise<FocusNfeConfig | null> {
+    const s = await this.getSettings(tenantId);
+    return s.focusNfeConfig ?? null;
+  }
+
+  async saveFocusNfeConfig(tenantId: string, cfg: FocusNfeConfig): Promise<void> {
+    await this.updateSettings(tenantId, { focusNfeConfig: cfg });
+  }
+
+  // ─── NOTAS FISCAIS (NFS-e) ──────────────────────────────────────────
+
+  async getNotasFiscais(tenantId: string): Promise<NotaFiscal[]> {
+    const s = await this.getSettings(tenantId);
+    return s.notasFiscais ?? [];
+  }
+
+  async saveNotaFiscal(tenantId: string, nota: NotaFiscal): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const existing = s.notasFiscais ?? [];
+    const idx = existing.findIndex(n => n.id === nota.id);
+    const updated = idx >= 0
+      ? existing.map(n => n.id === nota.id ? nota : n)
+      : [...existing, nota];
+    await this.updateSettings(tenantId, { notasFiscais: updated });
+  }
+
+  // ─── ADIANTAMENTOS ──────────────────────────────────────────────────
+
+  async getAdiantamentos(tenantId: string): Promise<Adiantamento[]> {
+    const s = await this.getSettings(tenantId);
+    return s.adiantamentos ?? [];
+  }
+
+  async addAdiantamento(tenantId: string, a: Omit<Adiantamento, 'id' | 'createdAt'>): Promise<Adiantamento> {
+    const s = await this.getSettings(tenantId);
+    const newA: Adiantamento = { ...a, id: generateId(), createdAt: new Date().toISOString() };
+    await this.updateSettings(tenantId, { adiantamentos: [...(s.adiantamentos ?? []), newA] });
+    return newA;
+  }
+
+  async deleteAdiantamento(tenantId: string, id: string): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    await this.updateSettings(tenantId, { adiantamentos: (s.adiantamentos ?? []).filter(a => a.id !== id) });
+  }
+
+  // ─── PAGAMENTOS PROFISSIONAL ────────────────────────────────────────
+
+  async getPagamentosPro(tenantId: string): Promise<PagamentoPro[]> {
+    const s = await this.getSettings(tenantId);
+    return s.pagamentosPro ?? [];
+  }
+
+  async addPagamentoPro(tenantId: string, p: Omit<PagamentoPro, 'id' | 'createdAt'>): Promise<PagamentoPro> {
+    const s = await this.getSettings(tenantId);
+    const newP: PagamentoPro = { ...p, id: generateId(), createdAt: new Date().toISOString() };
+    await this.updateSettings(tenantId, { pagamentosPro: [...(s.pagamentosPro ?? []), newP] });
+    return newP;
+  }
+
+  async updatePagamentoPro(tenantId: string, id: string, updates: Partial<PagamentoPro>): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const updated = (s.pagamentosPro ?? []).map(p => p.id === id ? { ...p, ...updates } : p);
+    await this.updateSettings(tenantId, { pagamentosPro: updated });
   }
 
   // ── Cross-process message deduplication ───────────────────────────
