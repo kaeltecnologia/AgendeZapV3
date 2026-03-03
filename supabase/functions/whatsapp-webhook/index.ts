@@ -76,9 +76,8 @@ async function claimMsg(key: string): Promise<boolean> {
     const { error } = await supabase.from('msg_dedup').insert({ fp: key });
     if (error?.code === '23505') return false; // already processed
     if (error) return true;  // table missing → fail open
-    // prune old entries
-    void supabase.from('msg_dedup')
-      .delete().lt('ts', new Date(Date.now() - 120_000).toISOString()).catch(() => {});
+    // prune old entries (fire-and-forget)
+    (async () => { try { await supabase.from('msg_dedup').delete().lt('ts', new Date(Date.now() - 120_000).toISOString()); } catch {} })();
     return true;
   } catch { return true; }
 }
@@ -343,8 +342,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // Key hierarchy: tenant key → global shared key → Gemini
   let apiKey = (settings.openaiApiKey || '').trim();
   if (!apiKey) {
-    const { data: globalRows } = await supabase.from('global_settings').select('key, value').catch(() => ({ data: [] }));
-    const sharedKey = ((globalRows || []).find((r: any) => r.key === 'shared_openai_key')?.value || '').trim();
+    let globalRows: any[] = [];
+    try {
+      const { data } = await supabase.from('global_settings').select('key, value');
+      globalRows = data || [];
+    } catch (e) { console.error('[runAgent] global_settings fetch error:', e); }
+    const sharedKey = (globalRows.find((r: any) => r.key === 'shared_openai_key')?.value || '').trim();
     apiKey = sharedKey || (tenant.gemini_api_key || '').trim();
   }
   if (!apiKey) { console.warn('[Agent] no API key for tenant', tenant.id); return; }
@@ -388,8 +391,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (isCancellation) {
     const sess = preSession || { data: {}, history: [] };
     sess.data.pendingCancelReason = true;
-    await saveSession(tenantId, phone, sess.data, sess.history);
     await sendMsg(instanceName, phone, `Que pena que precisou cancelar! 😕\n\nPode nos contar o motivo? Isso nos ajuda a melhorar o atendimento. 🙏`);
+    saveSession(tenantId, phone, sess.data, sess.history).catch(e => console.error('[Agent] saveSession err:', e));
     return;
   }
 
@@ -454,8 +457,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
-    await saveSession(tenantId, phone, session.data, session.history);
     await sendMsg(instanceName, phone, fallback);
+    saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
     return;
   }
 
@@ -483,8 +486,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       const msg = `Que pena! Não tem horário disponível em ${formatDate(session.data.date!)} com ${session.data.professionalName}. 😕\n\nPara qual outro dia você prefere?`;
       session.data.date = undefined;
       session.history.push({ role: 'bot', text: msg });
-      await saveSession(tenantId, phone, session.data, session.history);
       await sendMsg(instanceName, phone, msg);
+      saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
     const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionals, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting);
@@ -558,8 +561,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   if (shouldGreet) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
-  await saveSession(tenantId, phone, session.data, session.history);
   await sendMsg(instanceName, phone, brain.reply);
+  saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
 }
 
 // ── Campaign-tick: server-side bulk dispatch ──────────────────────────
@@ -760,8 +763,9 @@ Deno.serve(async (req) => {
         if (isAudio) {
           let audioKey = (settings.openaiApiKey || '').trim();
           if (!audioKey) {
-            const { data: gRows } = await supabase.from('global_settings').select('key, value').catch(() => ({ data: [] }));
-            audioKey = ((gRows || []).find((r: any) => r.key === 'shared_openai_key')?.value || '').trim() || (tenant.gemini_api_key || '').trim();
+            let gRows: any[] = [];
+            try { const { data } = await supabase.from('global_settings').select('key, value'); gRows = data || []; } catch {}
+            audioKey = ((gRows).find((r: any) => r.key === 'shared_openai_key')?.value || '').trim() || (tenant.gemini_api_key || '').trim();
           }
           if (audioKey) {
             const audio = await fetchAudioBase64(instanceName, msg);
