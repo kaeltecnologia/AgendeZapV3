@@ -365,6 +365,16 @@ async function getAvailableSlots(
   const dayConfig = settings.operatingHours?.[dayIndex];
   if (!dayConfig?.active) return [];
 
+  // Férias: retorna vazio se profissional está de férias nesta data
+  const isOnVacation = (settings.breaks || []).some((b: any) => {
+    if (b.professionalId && b.professionalId !== profId) return false;
+    if (b.type !== 'vacation') return false;
+    const vacStart = b.date || '';
+    const vacEnd = b.vacationEndDate || b.date || '';
+    return !!vacStart && date >= vacStart && date <= vacEnd;
+  });
+  if (isOnVacation) return [];
+
   const [startRange, endRange] = dayConfig.range.split('-');
   const [startH, startM] = startRange.split(':').map(Number);
   const [endH, endM] = endRange.split(':').map(Number);

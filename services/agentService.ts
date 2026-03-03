@@ -235,6 +235,12 @@ async function getAvailableSlots(
 
     const hasBreakConflict = breaks.some(brk => {
       if (brk.professionalId && brk.professionalId !== professionalId) return false;
+      // Férias: verifica faixa de datas (date → vacationEndDate)
+      if ((brk as any).type === 'vacation') {
+        const vacStart = brk.date || '';
+        const vacEnd = (brk as any).vacationEndDate || brk.date || '';
+        return !!vacStart && date >= vacStart && date <= vacEnd;
+      }
       const matchDate = !brk.date || brk.date === date;
       const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
       if (!matchDate || !matchDay) return false;

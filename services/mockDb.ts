@@ -565,6 +565,15 @@ class DatabaseService {
       const dateStr = `${startTime.getFullYear()}-${String(startTime.getMonth()+1).padStart(2,'0')}-${String(startTime.getDate()).padStart(2,'0')}`;
       for (const brk of (settings.breaks || [])) {
         if (brk.professionalId && brk.professionalId !== professionalId) continue;
+        // Férias: verifica faixa de datas (date → vacationEndDate)
+        if ((brk as any).type === 'vacation') {
+          const vacStart = brk.date || '';
+          const vacEnd = (brk as any).vacationEndDate || brk.date || '';
+          if (vacStart && dateStr >= vacStart && dateStr <= vacEnd) {
+            return { available: false, reason: `${brk.label || 'Profissional de férias'} (até ${vacEnd}).` };
+          }
+          continue;
+        }
         const matchDate = !brk.date || brk.date === dateStr;
         const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
         if (matchDate && matchDay) {

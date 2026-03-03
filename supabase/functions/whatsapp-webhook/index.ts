@@ -185,6 +185,12 @@ async function getAvailableSlots(
     if (conflict) { cursor += 30; continue; }
     const brk = breaks.some((b: any) => {
       if (b.professionalId && b.professionalId !== professionalId) return false;
+      // Férias: verifica faixa de datas (date → vacationEndDate)
+      if (b.type === 'vacation') {
+        const vacStart = b.date || '';
+        const vacEnd = b.vacationEndDate || b.date || '';
+        return !!vacStart && date >= vacStart && date <= vacEnd;
+      }
       if (b.date && b.date !== date) return false;
       if (b.dayOfWeek != null && b.dayOfWeek !== dayIndex) return false;
       return label < b.endTime && slotEndLabel > b.startTime;
@@ -610,6 +616,21 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // Safety net: impede "Agendado!" fictício quando faltam dados para booking
+  if (brain.extracted.confirmed === true && !(session.data.serviceId && session.data.professionalId && session.data.date && session.data.time)) {
+    brain.extracted.confirmed = null;
+    const missingParts = [
+      !session.data.serviceId && 'serviço',
+      !session.data.professionalId && 'profissional',
+      !session.data.date && 'data',
+      !session.data.time && 'horário',
+    ].filter(Boolean).join(', ');
+    const confirmWords = /agendad|marcad|confirm|reservad|te esperamos/i;
+    if (confirmWords.test(brain.reply || '')) {
+      brain.reply = `Quase lá! Ainda preciso saber: ${missingParts}. 😊`;
+    }
+  }
+
   // Handle booking
   if (brain.extracted.confirmed === true && session.data.serviceId && session.data.professionalId && session.data.date && session.data.time) {
     try {
@@ -842,6 +863,7 @@ Deno.serve(async (req) => {
     const fu = settingsRow?.follow_up || {};
     const settings = {
       aiActive: settingsRow?.ai_active ?? false,
+      aiLeadActive: fu._aiLeadActive !== false, // default true; false = não responder leads desconhecidos
       openaiApiKey: fu._openaiApiKey || '',
       systemPrompt: fu._systemPrompt || '',
       operatingHours: settingsRow?.operating_hours || fu._operatingHours || {},
@@ -903,6 +925,13 @@ Deno.serve(async (req) => {
       if (!text) continue;
       const phone = extractPhone(msg);
       if (!phone) continue;
+
+      // Se aiLeadActive estiver desativado, ignora mensagens de números desconhecidos
+      if (!settings.aiLeadActive) {
+        const { data: existingCust } = await supabase.from('customers')
+          .select('id').eq('tenant_id', tenant.id).eq('telefone', phone).maybeSingle();
+        if (!existingCust) continue;
+      }
 
       // Fire-and-forget: responde 200 imediatamente; debounce roda em background
       EdgeRuntime.waitUntil(
