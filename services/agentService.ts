@@ -35,6 +35,7 @@ interface SessionData {
   availableSlots?: string[];
   pendingConfirm?: boolean;       // summary shown, waiting for yes/no
   pendingCancelReason?: boolean;  // asked for cancel reason, waiting for it
+  greetedAt?: string;             // brasiliaDate when last greeted — persisted so Edge Function cold-starts don't duplicate
   // Follow-up context: set when system sends aviso/lembrete/reativacao to this phone
   pendingFollowUpType?: 'aviso' | 'lembrete' | 'reativacao';
   followUpApptTime?: string;     // HH:MM of the booked appointment (for reply context)
@@ -346,6 +347,17 @@ async function callBrain(
     ? `\n🎵 MENSAGEM POR ÁUDIO: A última mensagem do cliente foi enviada como áudio e transcrita automaticamente. Pode conter pequenas imprecisões de fala — interprete com flexibilidade. Responda normalmente, sem mencionar o áudio.\n`
     : '';
 
+  // ── Sequential flow + professional selection rule ─────────────────────
+  const flowSection = `\n📋 FLUXO OBRIGATÓRIO (siga esta ordem — pule etapas que já estão no CONTEXTO ATUAL ou que o cliente já informou na mensagem):
+1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ HORÁRIO → 5️⃣ CONFIRMAÇÃO\n`;
+
+  const profSelectionRule = professionals.length > 1 && !data.professionalId
+    ? `\n⚠️ PROFISSIONAL — REGRA ABSOLUTA (${professionals.map(p => p.name).join(', ')} disponíveis):
+• O cliente ainda NÃO escolheu profissional. PERGUNTE: "Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}" — uma pergunta direta e curta.
+• NUNCA escolha um profissional automaticamente. Só defina professionalId no JSON quando o cliente mencionar o nome explicitamente.
+• Se o cliente questionar sua escolha ("por que você escolheu X?", "quem é X?", "você que escolheu?") → responda: "Desculpe! Você que escolhe 😊 Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
+    : '';
+
   const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}.
 ${introLinha}
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${followUpCtx}${audioNote}${greetSection}${groupSection}
@@ -357,7 +369,7 @@ ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("s
 
 HISTÓRICO (mais recente no final):
 ${histStr}
-
+${flowSection}${profSelectionRule}
 ════════════════════════════════
 COMO RESPONDER — APRENDA COM HUMANOS:
 ════════════════════════════════
@@ -368,11 +380,11 @@ ${tomLine}
 • 1 emoji no máximo ${emojisHint}
 • SEMPRE termine com pergunta curta ou confirmação
 
-${isFirstMessage ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou (nome, serviço, etc.) sem perguntar de novo.\n' : ''}
-📅 AO OFERECER HORÁRIO:
+${isFirstMessage ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou (nome, serviço, profissional, etc.) sem perguntar de novo.\n' : ''}
+📅 AO OFERECER HORÁRIO (somente após profissional já definido no CONTEXTO ATUAL):
 • ❌ ERRADO: "Temos disponível às 15:00"
-• ✅ CERTO: "Com o Matheus às 15:00 pode ser? 😊"
-• Sempre: PROFISSIONAL + HORÁRIO + "pode ser?" ou "serve?"
+• ✅ CERTO: "Com o [nome do profissional já escolhido] às 15:00 pode ser? 😊"
+• Sempre: PROFISSIONAL (o que o cliente escolheu) + HORÁRIO + "pode ser?" ou "serve?"
 
 ❌ QUANDO O HORÁRIO PEDIDO NÃO ESTÁ DISPONÍVEL:
 1. Explique brevemente por quê: "Após as 18h não teria essa semana"
@@ -390,7 +402,7 @@ ${farewellLine}
 💡 CASOS ESPECIAIS:
 • 2 serviços juntos → verifique se existe combo no cardápio, senão use o de maior duração
 • 2 pessoas → siga as instruções do bloco 👥 AGENDAMENTO EM GRUPO acima
-• 2 profissionais opcionais ("Matheus ou Felipe") → escolha o que tiver horário disponível
+• 2 profissionais opcionais (cliente diz EXPLICITAMENTE "Matheus ou Felipe") → somente neste caso escolha o que tiver horário disponível
 • Preço perguntado → informe direto: "O serviço está R$40,00"
 • Agenda cheia → "Essa semana tá cheio, mas semana que vem teria. Vamos agendar?"
 ${nichoRulesSection}
@@ -790,7 +802,8 @@ export async function handleMessage(
   // ─── Brasília greeting ──────────────────────────────────────────────
   const { greeting: brasiliaGreeting, dateStr: brasiliaDate } = getBrasiliaGreeting();
   const _greetKey = `${tenantId}::${phone}`;
-  const shouldGreet = _greetedToday.get(_greetKey) !== brasiliaDate;
+  // Check both in-memory cache AND persisted session data (in case of Edge Function cold start)
+  const shouldGreet = session.data.greetedAt !== brasiliaDate && _greetedToday.get(_greetKey) !== brasiliaDate;
 
   // ─── Detect group booking intent from keywords ────────────────────────
   const groupKeywords = ['eu e ', 'pra mim e', 'para mim e', 'minha esposa', 'meu esposo',
@@ -1099,6 +1112,7 @@ export async function handleMessage(
     if (allKnown) session.data.pendingConfirm = true;
   }
 
+  if (shouldGreet) session.data.greetedAt = brasiliaDate; // persist so cold-start doesn't re-greet
   const finalReply = brain.reply;
   session.history.push({ role: 'bot', text: finalReply });
   saveSession(session);
