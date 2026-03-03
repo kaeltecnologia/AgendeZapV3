@@ -196,7 +196,8 @@ async function getAvailableSlots(
     .select('inicio, fim')
     .eq('tenant_id', tenantId)
     .eq('professional_id', professionalId)
-    .neq('status', AppointmentStatus.CANCELLED)
+    .neq('status', AppointmentStatus.CANCELLED) // frontend: 'CANCELLED'
+    .neq('status', 'cancelado')                 // legado IA: 'cancelado'
     .gte('inicio', `${date}T00:00:00`)
     .lte('inicio', `${date}T23:59:59`);
 
@@ -211,7 +212,9 @@ async function getAvailableSlots(
   let cursor = startH * 60 + startM;
   const endCursor = endH * 60 + endM;
 
-  while (cursor + durationMinutes <= endCursor) {
+  // acceptLastSlot: permite iniciar no horário exato de fechamento
+  const loopLimit = dayConfig.acceptLastSlot ? endCursor : endCursor - durationMinutes;
+  while (cursor <= loopLimit) {
     const h = Math.floor(cursor / 60);
     const m = cursor % 60;
     const label = `${pad(h)}:${pad(m)}`;
@@ -221,10 +224,12 @@ async function getAvailableSlots(
 
     if (isToday && slotStart <= now) { cursor += INTERVAL_MIN; continue; }
 
+    const BUFFER_MS = 11 * 60 * 1000; // últimos 11 min do procedimento anterior são compartilháveis
     const hasAppConflict = (appointments || []).some((a: any) => {
       const aStart = new Date(a.inicio);
       const aEnd = new Date(a.fim);
-      return aStart < slotEnd && aEnd > slotStart;
+      if (!(aStart < slotEnd && aEnd > slotStart)) return false;
+      return slotStart.getTime() < aEnd.getTime() - BUFFER_MS;
     });
     if (hasAppConflict) { cursor += INTERVAL_MIN; continue; }
 

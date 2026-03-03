@@ -95,6 +95,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   useEffect(() => { refreshData(); }, [refreshData]);
 
+  // Auto-refresh a cada 30s para mostrar agendamentos criados pela IA
+  useEffect(() => {
+    const interval = setInterval(() => { refreshData(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [refreshData]);
+
   const applyPreset = (period: string) => {
     setPresetPeriod(period);
     const now = new Date();

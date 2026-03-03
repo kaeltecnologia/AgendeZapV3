@@ -550,7 +550,12 @@ class DatabaseService {
       rangeEnd.setHours(endH, endM, 0, 0);
       const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
 
-      if (startTime < rangeStart || endTime > rangeEnd) {
+      // Se acceptLastSlot está ON, permite iniciar no horário exato de fechamento
+      // (o agendamento pode ultrapassar o horário de fechamento)
+      const exceedsEnd = dayConfig.acceptLastSlot
+        ? startTime > rangeEnd   // só bloqueia se começar DEPOIS do fechamento
+        : endTime > rangeEnd;    // comportamento padrão: deve terminar até o fechamento
+      if (startTime < rangeStart || exceedsEnd) {
         return { available: false, reason: `Fora do horário de funcionamento (${dayConfig.range}).` };
       }
 
@@ -571,16 +576,23 @@ class DatabaseService {
 
       const { data, error } = await supabase
         .from('appointments')
-        .select('*')
+        .select('inicio, fim')
         .eq('tenant_id', tenantId)
         .eq('professional_id', professionalId)
-        .neq('status', AppointmentStatus.CANCELLED);
+        .neq('status', AppointmentStatus.CANCELLED) // frontend: 'CANCELLED'
+        .neq('status', 'cancelado')                 // IA (Edge Function): 'cancelado'
+        .gte('inicio', `${dateStr}T00:00:00`)
+        .lte('inicio', `${dateStr}T23:59:59`);
       if (error) throw error;
 
+      // Margem de 11 min: novo agendamento pode iniciar nos últimos 11 min do procedimento anterior
+      const BUFFER_MS = 11 * 60 * 1000;
       const conflicts = (data || []).filter(a => {
         const aStart = new Date(a.inicio);
         const aEnd = new Date(a.fim);
-        return aStart < endTime && aEnd > startTime;
+        if (!(aStart < endTime && aEnd > startTime)) return false; // sem sobreposição
+        // Permite se o novo horário começa nos últimos 11 min do agendamento existente
+        return startTime.getTime() < aEnd.getTime() - BUFFER_MS;
       });
       return conflicts.length > 0 ? { available: false, reason: "Horário ocupado." } : { available: true };
     } catch (err) {

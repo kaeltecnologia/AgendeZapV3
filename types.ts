@@ -33,6 +33,7 @@ export enum TenantStatus {
 export interface WorkingDay {
   active: boolean;
   range: string; // "09:00-18:00"
+  acceptLastSlot?: boolean; // permite agendar no horário exato de fechamento
 }
 
 export interface FollowUpConfig {

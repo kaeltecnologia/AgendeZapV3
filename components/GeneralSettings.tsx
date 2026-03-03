@@ -50,6 +50,13 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     }));
   };
 
+  const handleToggleLastSlot = (dayIndex: number) => {
+    setOperatingHours(prev => ({
+      ...prev,
+      [dayIndex]: { ...prev[dayIndex], acceptLastSlot: !prev[dayIndex].acceptLastSlot }
+    }));
+  };
+
   const handleTimeChange = (dayIndex: number, field: 'start' | 'end', value: string) => {
     const { start, end } = parseRange(operatingHours[dayIndex]?.range || '09:00-18:00');
     const newRange = field === 'start' ? `${value}-${end}` : `${start}-${value}`;
@@ -168,6 +175,18 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                           className="bg-slate-50 border-2 border-slate-100 px-4 py-2.5 rounded-2xl text-[11px] font-black text-center focus:border-orange-500 outline-none transition-all w-32"
                         />
                       </div>
+                      <button
+                        onClick={() => handleToggleLastSlot(dayIndex)}
+                        title={day.acceptLastSlot ? 'Aceitar agendamento no horário de fechamento: ON' : 'Aceitar agendamento no horário de fechamento: OFF'}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border-2 transition-all ${
+                          day.acceptLastSlot
+                            ? 'bg-blue-50 text-blue-600 border-blue-200'
+                            : 'bg-slate-50 text-slate-300 border-slate-100'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full transition-colors ${day.acceptLastSlot ? 'bg-blue-500' : 'bg-slate-300'}`} />
+                        Último slot
+                      </button>
                       <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-3 py-2 rounded-xl uppercase">Aberto</span>
                     </div>
                   ) : (

@@ -385,8 +385,9 @@ async function getAvailableSlots(
 
   let cursor = startH * 60 + startM;
   const endCursor = endH * 60 + endM;
+  const loopLimit = dayConfig.acceptLastSlot ? endCursor : endCursor - durationMinutes;
 
-  while (cursor + durationMinutes <= endCursor) {
+  while (cursor <= loopLimit) {
     const h = Math.floor(cursor / 60);
     const m = cursor % 60;
     const label = `${_pad(h)}:${_pad(m)}`;
@@ -395,8 +396,12 @@ async function getAvailableSlots(
 
     if (isToday && slotStart <= now) { cursor += INTERVAL; continue; }
 
+    const BUFFER_MS = 11 * 60 * 1000;
     const conflict = (appts || []).some((a: any) => {
-      return new Date(a.inicio) < slotEnd && new Date(a.fim) > slotStart;
+      const aStart = new Date(a.inicio);
+      const aEnd = new Date(a.fim);
+      if (!(aStart < slotEnd && aEnd > slotStart)) return false;
+      return slotStart.getTime() < aEnd.getTime() - BUFFER_MS;
     });
     if (!conflict) slots.push(label);
     cursor += INTERVAL;

@@ -10,6 +10,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// Deno/Supabase Edge Runtime global (not in TS lib)
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
+
 // ── Config ────────────────────────────────────────────────────────────
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -151,7 +154,9 @@ async function getAvailableSlots(
 
   const { data: appts } = await supabase.from('appointments')
     .select('inicio, fim').eq('tenant_id', tenantId).eq('professional_id', professionalId)
-    .neq('status', 'cancelado').gte('inicio', `${date}T00:00:00`).lte('inicio', `${date}T23:59:59`);
+    .neq('status', 'cancelado')  // IA cancela com 'cancelado'
+    .neq('status', 'CANCELLED')  // frontend cancela com 'CANCELLED'
+    .gte('inicio', `${date}T00:00:00`).lte('inicio', `${date}T23:59:59`);
 
   const breaks: any[] = settings.breaks || [];
   const now = new Date();
@@ -159,8 +164,11 @@ async function getAvailableSlots(
   const isToday = date === todayLocal;
   const slots: string[] = [];
   let cursor = startH * 60 + startM;
+  const endCursor = endH * 60 + endM;
+  // acceptLastSlot: permite iniciar no horário exato de fechamento
+  const loopLimit = dayConfig.acceptLastSlot ? endCursor : endCursor - durationMinutes;
 
-  while (cursor + durationMinutes <= endH * 60 + endM) {
+  while (cursor <= loopLimit) {
     const h = Math.floor(cursor / 60), m = cursor % 60;
     const label = `${pad(h)}:${pad(m)}`;
     const slotStart = new Date(`${date}T${label}:00`);
@@ -168,7 +176,12 @@ async function getAvailableSlots(
     const slotEndLabel = `${pad(slotEnd.getHours())}:${pad(slotEnd.getMinutes())}`;
 
     if (isToday && slotStart <= now) { cursor += 30; continue; }
-    const conflict = (appts || []).some((a: any) => new Date(a.inicio) < slotEnd && new Date(a.fim) > slotStart);
+    const BUFFER_MS = 11 * 60 * 1000; // últimos 11 min do procedimento anterior são compartilháveis
+    const conflict = (appts || []).some((a: any) => {
+      const aStart = new Date(a.inicio), aEnd = new Date(a.fim);
+      if (!(aStart < slotEnd && aEnd > slotStart)) return false;
+      return slotStart.getTime() < aEnd.getTime() - BUFFER_MS;
+    });
     if (conflict) { cursor += 30; continue; }
     const brk = breaks.some((b: any) => {
       if (b.professionalId && b.professionalId !== professionalId) return false;
@@ -227,7 +240,11 @@ async function callBrain(
 • Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
     : '';
 
-  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}.
+  const [ty, tm, td] = today.split('-').map(Number);
+  const tomorrowDate = new Date(Date.UTC(ty, tm-1, td+1));
+  const tomorrowISO = `${tomorrowDate.getUTCFullYear()}-${pad(tomorrowDate.getUTCMonth()+1)}-${pad(tomorrowDate.getUTCDate())}`;
+
+  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today} (${DOW_PT[new Date(today+'T12:00:00Z').getUTCDay()]}).
 Atendente brasileiro — informal, caloroso, direto. Máximo 2-3 linhas por resposta.
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${greetSection}
 SERVIÇOS: ${svcList}
@@ -268,6 +285,10 @@ EXTRAÇÃO:
 • Horários: "nove horas"→"09:00", "três da tarde"→"15:00", "meio dia"→"12:00"
 • NUNCA repita perguntas sobre info já no CONTEXTO ATUAL
 • Use horários SOMENTE da lista disponível
+📅 DATAS (retorne SEMPRE em YYYY-MM-DD):
+• "hoje" → ${today} | "amanhã" → ${tomorrowISO}
+• Dia da semana (ex: "sábado") → calcule o PRÓXIMO a partir de hoje (${today}, ${DOW_PT[new Date(today+'T12:00:00Z').getUTCDay()]})
+• Nunca extraia datas no passado — se o dia já passou esta semana, use a próxima semana
 
 RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
 {"reply":"...","extracted":{"clientName":null,"serviceId":null,"professionalId":null,"date":null,"time":null,"confirmed":null,"cancelled":null}}`;
@@ -308,6 +329,40 @@ async function sendMsg(instanceName: string, phone: string, text: string) {
   }).catch(e => console.error('[sendMsg] error:', e));
 }
 
+// ── Relative date resolver (TypeScript layer — before LLM call) ───────
+function resolveRelativeDate(text: string, todayISO: string): string | null {
+  const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const t = norm(text);
+  const [y, mo, dy] = todayISO.split('-').map(Number);
+  const todayUTC = new Date(Date.UTC(y, mo - 1, dy));
+  const todayDow = todayUTC.getUTCDay(); // 0=Dom,1=Seg,...,6=Sab
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const addDays = (n: number): string => {
+    const d = new Date(Date.UTC(y, mo - 1, dy + n));
+    return `${d.getUTCFullYear()}-${p2(d.getUTCMonth()+1)}-${p2(d.getUTCDate())}`;
+  };
+  if (/\bhoje\b/.test(t)) return todayISO;
+  if (/\bamanha\b/.test(t)) return addDays(1);
+  if (/depois de amanha|depois do amanha/.test(t)) return addDays(2);
+  const dayMap: [RegExp, number][] = [
+    [/\bdomingo\b/, 0], [/\bsegunda(-feira)?\b/, 1], [/\bterca(-feira)?\b/, 2],
+    [/\bquarta(-feira)?\b/, 3], [/\bquinta(-feira)?\b/, 4], [/\bsexta(-feira)?\b/, 5],
+    [/\bsabado\b/, 6],
+  ];
+  const isNext = /proxim|semana que vem|semana proxim|outra semana/.test(t);
+  for (const [re, dow] of dayMap) {
+    if (re.test(t)) {
+      let diff = dow - todayDow;
+      if (diff < 0 || (diff === 0 && isNext)) diff += 7;
+      return addDays(diff);
+    }
+  }
+  return null;
+}
+
+// ── Day of week in Portuguese ─────────────────────────────────────────
+const DOW_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
 // ── Professional name matcher ─────────────────────────────────────────
 function matchProfessionalName(text: string, professionals: Array<{ id: string; name: string }>): { id: string; name: string } | null {
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
@@ -331,6 +386,44 @@ function getBrasiliaGreeting(): { greeting: string; dateStr: string } {
     greeting: h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite',
     dateStr: `${b.getUTCFullYear()}-${p(b.getUTCMonth() + 1)}-${p(b.getUTCDate())}`,
   };
+}
+
+// ── Message debounce: aguarda 20s para acumular mensagens rápidas ─────
+async function debouncedRun(tenant: any, phone: string, text: string, settings: any, pushName?: string) {
+  const tenantId = tenant.id;
+  const DEBOUNCE_MS = (settings.msgBufferSecs ?? 20) * 1_000;
+
+  // Load current session and append this message to the pending queue
+  const raw = await getSession(tenantId, phone) || { data: {}, history: [] };
+  const pending: string[] = [...(raw.data._pendingMsgs || []), text];
+  // Unique ID for this invocation — last writer wins
+  const myId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  await saveSession(tenantId, phone,
+    { ...raw.data, _pendingMsgs: pending, _processorId: myId },
+    raw.history
+  );
+
+  // Wait for more messages to arrive
+  await new Promise(r => setTimeout(r, DEBOUNCE_MS));
+
+  // Re-read session to check if a newer invocation superseded us
+  const fresh = await getSession(tenantId, phone);
+  if (!fresh || fresh.data._processorId !== myId) {
+    // Another message arrived after us — it will process the batch
+    return;
+  }
+
+  // We are the final processor — combine all buffered messages
+  const combined = ((fresh.data._pendingMsgs || []) as string[]).join('\n');
+
+  // Clear debounce state so runAgent sees a clean session
+  const cleanData = { ...fresh.data };
+  delete cleanData._pendingMsgs;
+  delete cleanData._processorId;
+  await saveSession(tenantId, phone, cleanData, fresh.history);
+
+  await runAgent(tenant, phone, combined || text, settings, pushName);
 }
 
 // ── Main agent logic ──────────────────────────────────────────────────
@@ -367,10 +460,11 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         const n = new Date();
         const nowLocal = `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
         const { data: appts } = await supabase.from('appointments').select('id, inicio')
-          .eq('tenant_id', tenantId).eq('customer_id', customer.id).eq('status', 'confirmado')
+          .eq('tenant_id', tenantId).eq('customer_id', customer.id)
+          .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
           .gte('inicio', nowLocal).order('inicio', { ascending: true }).limit(1);
         if (appts && appts.length > 0) {
-          await supabase.from('appointments').update({ status: 'cancelado' }).eq('id', appts[0].id);
+          await supabase.from('appointments').update({ status: 'CANCELLED' }).eq('id', appts[0].id);
           const dateFmt = new Date(appts[0].inicio.substring(0, 10) + 'T12:00:00')
             .toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
           await sendMsg(instanceName, phone, `✅ Agendamento de *${dateFmt}* cancelado!\n\nMotivo registrado. Obrigado pelo feedback! 😊`);
@@ -398,22 +492,24 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // Load data
   const [profsRes, svcsRes] = await Promise.all([
-    supabase.from('professionals').select('id, nome, ativo').eq('tenant_id', tenantId).eq('ativo', true),
+    supabase.from('professionals').select('id, nome, ativo, phone').eq('tenant_id', tenantId).eq('ativo', true),
     supabase.from('services').select('id, nome, preco, duracao_minutos, ativo').eq('tenant_id', tenantId).eq('ativo', true),
   ]);
 
-  const professionals = (profsRes.data || []).map((p: any) => ({ id: p.id, name: (p.nome || '').trim() }));
+  const profsRaw = profsRes.data || [];
+  const professionals = profsRaw.map((p: any) => ({ id: p.id, name: (p.nome || '').trim() }));
   const services = (svcsRes.data || []).map((s: any) => ({
     id: s.id, name: s.nome, durationMinutes: s.duracao_minutos, price: Number(s.preco || 0)
   }));
 
-  const now = new Date();
-  const todayISO = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  // Use Brasília time for "today" (UTC-3)
+  const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const todayISO = `${nowBrasilia.getUTCFullYear()}-${pad(nowBrasilia.getUTCMonth()+1)}-${pad(nowBrasilia.getUTCDate())}`;
 
   // Build custom system prompt with variable substitution
   let customPrompt = (settings.systemPrompt || '').trim();
   if (customPrompt) {
-    const hoje = now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const hoje = nowBrasilia.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' });
     customPrompt = customPrompt
       .replace(/\$\{tenant\.nome\}/g, tenantName)
       .replace(/\$\{hoje\}/g, hoje)
@@ -442,6 +538,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       session.data.professionalId = matched.id;
       session.data.professionalName = matched.name;
     }
+  }
+
+  // Date pre-extraction (TypeScript layer — resolves day names to YYYY-MM-DD)
+  if (!session.data.date) {
+    const resolved = resolveRelativeDate(lowerText, todayISO);
+    if (resolved) session.data.date = resolved;
   }
 
   session.history.push({ role: 'user', text });
@@ -533,19 +635,35 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         service_id: session.data.serviceId,
         inicio: startTimeStr,
         fim: endTimeStr,
-        status: 'confirmado',
-        origem: 'ai',
+        status: 'CONFIRMED',
+        origem: 'AI',
         is_plan: false,
       });
 
       await clearSession(tenantId, phone);
-      await sendMsg(instanceName, phone,
+
+      const confirmMsg =
         `✅ *Agendamento confirmado!*\n\n` +
         `📅 *Dia:* ${formatDate(session.data.date)}\n` +
         `⏰ *Horário:* ${session.data.time}\n` +
         `✂️ *Procedimento:* ${session.data.serviceName}\n` +
-        `💈 *Profissional:* ${session.data.professionalName}\n\nTe esperamos! 😊`
-      );
+        `💈 *Profissional:* ${session.data.professionalName}\n\nTe esperamos! 😊`;
+      await sendMsg(instanceName, phone, confirmMsg);
+
+      // Notify professional via WhatsApp
+      const bookedProf = profsRaw.find((p: any) => p.id === session.data.professionalId);
+      if (bookedProf?.phone) {
+        const clientName = session.data.clientName || pushName || 'Cliente';
+        sendMsg(instanceName, bookedProf.phone,
+          `📋 *Novo Agendamento (via WhatsApp)!*\n\n` +
+          `👤 *Cliente:* ${clientName}\n` +
+          `📱 *Telefone:* ${phone}\n` +
+          `📅 *Dia:* ${formatDate(session.data.date)}\n` +
+          `⏰ *Horário:* ${session.data.time}\n` +
+          `✂️ *Serviço:* ${session.data.serviceName}`
+        ).catch(() => {});
+      }
+
       return;
     } catch (e) {
       console.error('[Agent] booking error:', e);
@@ -786,8 +904,11 @@ Deno.serve(async (req) => {
       const phone = extractPhone(msg);
       if (!phone) continue;
 
-      await runAgent(tenant, phone, text, settings, msg.pushName).catch(e =>
-        console.error('[Webhook] runAgent error:', e)
+      // Fire-and-forget: responde 200 imediatamente; debounce roda em background
+      EdgeRuntime.waitUntil(
+        debouncedRun(tenant, phone, text, settings, msg.pushName).catch(e =>
+          console.error('[Webhook] debouncedRun error:', e)
+        )
       );
     }
 
