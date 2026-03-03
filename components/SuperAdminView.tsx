@@ -232,10 +232,14 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
       if (phone || dueDay) await db.updateTenant(t.id, { phone, due_day: dueDay });
 
       // Demo/trial: activate 7-day trial period
+      // Also inject the shared OpenAI key if one is configured globally
+      const globalCfg = await db.getGlobalConfig().catch(() => ({} as Record<string, string>));
+      const inheritedKey = (globalCfg['shared_openai_key'] || '').trim();
       await db.updateSettings(t.id, {
         themeColor: '#f97316',
         aiActive: false,
         trialStartDate: newIsDemo ? new Date().toISOString() : null,
+        ...(inheritedKey ? { openaiApiKey: inheritedKey } : {}),
       });
 
       try {
@@ -296,8 +300,32 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   // ── Announcements ────────────────────────────────────────────────────────────
 
   const handleSaveSharedKey = async () => {
+    const key = sharedOpenAiKey.trim();
+    if (!key) return;
     setSavingSharedKey(true);
-    await db.saveGlobalConfig({ shared_openai_key: sharedOpenAiKey.trim() });
+
+    // 1. Save to global config (localStorage + Supabase global_settings if table exists)
+    await db.saveGlobalConfig({ shared_openai_key: key });
+
+    // 2. Propagate to ALL tenants that don't have their own key configured
+    //    This ensures Edge Functions (server-side) also get the key via tenant_settings
+    try {
+      const allTenants = tenants.length > 0 ? tenants : await db.getAllTenants();
+      let propagated = 0;
+      for (const t of allTenants) {
+        try {
+          const s = await db.getSettings(t.id);
+          if (!(s.openaiApiKey || '').trim()) {
+            await db.updateSettings(t.id, { openaiApiKey: key });
+            propagated++;
+          }
+        } catch { /* skip individual tenant errors */ }
+      }
+      if (propagated > 0) {
+        console.log(`[SharedKey] Propagated to ${propagated} tenant(s)`);
+      }
+    } catch { /* non-fatal */ }
+
     setSavingSharedKey(false);
     setSharedKeySaved(true);
     setTimeout(() => setSharedKeySaved(false), 2500);
@@ -853,7 +881,7 @@ END $$;`.trim();
           <div className="bg-white rounded-3xl border-2 border-orange-100 p-8 space-y-5">
             <div>
               <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">🔑 Chave OpenAI Compartilhada</p>
-              <p className="text-xs text-slate-400 mt-1">Disponibilizada automaticamente para todos os tenants que não configuraram chave própria. Não é visível para os usuários.</p>
+              <p className="text-xs text-slate-400 mt-1">Ao salvar, a chave é propagada para todos os tenants que não configuraram a própria. Funciona no servidor (Edge Function) e no browser. Não visível para usuários.</p>
             </div>
             <div className="flex gap-3">
               <div className="flex-1 relative">
@@ -879,7 +907,7 @@ END $$;`.trim();
                   sharedKeySaved ? 'bg-green-500 text-white' : 'bg-black text-white hover:bg-orange-500'
                 }`}
               >
-                {savingSharedKey ? 'Salvando...' : sharedKeySaved ? '✓ Salvo' : 'Salvar'}
+                {savingSharedKey ? 'Propagando...' : sharedKeySaved ? '✓ Aplicado' : 'Salvar & Aplicar'}
               </button>
             </div>
             {sharedOpenAiKey && (
