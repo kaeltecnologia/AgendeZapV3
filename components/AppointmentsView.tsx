@@ -60,6 +60,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   // inline status editing
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
 
+  // delete confirmation
+  const [deleteApptId, setDeleteApptId] = useState<string | null>(null);
+  const [deletingAppt, setDeletingAppt] = useState(false);
+
   // break modal form
   const [brkLabel, setBrkLabel] = useState('');
   const [brkProfId, setBrkProfId] = useState('');
@@ -213,6 +217,20 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       onOpenComandas?.();
     } else {
       refreshData();
+    }
+  };
+
+  const handleDeleteAppointment = async () => {
+    if (!deleteApptId) return;
+    setDeletingAppt(true);
+    try {
+      await db.deleteAppointment(deleteApptId);
+      setDeleteApptId(null);
+      refreshData();
+    } catch (e) {
+      console.error('Erro ao excluir agendamento:', e);
+    } finally {
+      setDeletingAppt(false);
     }
   };
 
@@ -523,20 +541,31 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                           )}
                         </td>
                         <td className="px-8 py-6 text-right">
-                          {a.status === AppointmentStatus.FINISHED ? (
+                          <div className="flex items-center justify-end gap-3">
+                            {a.status === AppointmentStatus.FINISHED && (
+                              <button
+                                onClick={() => {
+                                  setShowFinishModal({ id: a.id, basePrice: svc?.price || 0, ...a });
+                                  setEditStatus(a.status);
+                                  setPaymentMethod(a.paymentMethod || PaymentMethod.PIX);
+                                  setExtraValue(a.extraValue || 0);
+                                  setExtraNote(a.extraNote || '');
+                                }}
+                                className="text-black dark:text-slate-200 font-black text-[10px] uppercase hover:text-orange-500 dark:hover:text-orange-400 transition-colors"
+                              >
+                                DETALHES
+                              </button>
+                            )}
                             <button
-                              onClick={() => {
-                                setShowFinishModal({ id: a.id, basePrice: svc?.price || 0, ...a });
-                                setEditStatus(a.status);
-                                setPaymentMethod(a.paymentMethod || PaymentMethod.PIX);
-                                setExtraValue(a.extraValue || 0);
-                                setExtraNote(a.extraNote || '');
-                              }}
-                              className="text-black dark:text-slate-200 font-black text-[10px] uppercase hover:text-orange-500 dark:hover:text-orange-400 transition-colors"
+                              onClick={() => setDeleteApptId(a.id)}
+                              title="Excluir agendamento"
+                              className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 transition-colors"
                             >
-                              DETALHES
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                              </svg>
                             </button>
-                          ) : null}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -548,6 +577,31 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           </div>
         </div>
       </div>
+
+      {/* ─── Delete Appointment Confirm Modal ──────── */}
+      {deleteApptId && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-sm p-10 space-y-6 border-4 border-red-500 animate-scaleUp">
+            <h2 className="text-2xl font-black text-black dark:text-white uppercase tracking-tight">Excluir Agendamento?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Esta ação é permanente e não pode ser desfeita.</p>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setDeleteApptId(null)}
+                className="flex-1 py-3 rounded-2xl border-2 border-slate-200 dark:border-slate-700 text-sm font-black text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={handleDeleteAppointment}
+                disabled={deletingAppt}
+                className="flex-1 py-3 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black uppercase tracking-widest transition-colors disabled:opacity-50"
+              >
+                {deletingAppt ? '...' : 'EXCLUIR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── New Booking Modal ─────────────────────── */}
       {showBookingModal && (

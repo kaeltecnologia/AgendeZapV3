@@ -32,6 +32,9 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [vacEnd, setVacEnd] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [deleteProId, setDeleteProId] = useState<string | null>(null);
+  const [deletingPro, setDeletingPro] = useState(false);
+
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [presetPeriod, setPresetPeriod] = useState<string>('custom');
@@ -90,6 +93,20 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   };
 
   const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); };
+
+  const handleDeletePro = async () => {
+    if (!deleteProId) return;
+    setDeletingPro(true);
+    try {
+      await db.deleteProfessional(tenantId, deleteProId);
+      setDeleteProId(null);
+      await load();
+    } catch (e: any) {
+      alert('Erro ao excluir: ' + (e.message || 'tente novamente.'));
+    } finally {
+      setDeletingPro(false);
+    }
+  };
 
   const openLunch = (pro: Professional) => {
     const existing = breaks.find(b => b.type === 'lunch' && b.professionalId === pro.id);
@@ -264,10 +281,19 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </button>
                 </div>
                 <div className="flex justify-between items-center">
-                  <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); }}
-                    className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
-                    📝 Editar
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); }}
+                      className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
+                      📝 Editar
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setDeleteProId(p.id); }}
+                      title="Excluir profissional"
+                      className="text-red-400 hover:text-red-600 transition-colors">
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                      </svg>
+                    </button>
+                  </div>
                   <button onClick={() => { setSelectedProForReport(p); setReportTab('appointments'); }} className="text-[10px] font-black text-orange-500 uppercase tracking-widest hover:tracking-wider transition-all">
                     Ver Desempenho →
                   </button>
@@ -487,6 +513,33 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DELETE PRO CONFIRM MODAL ─────────────────────────────────── */}
+      {deleteProId && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] w-full max-w-sm p-10 space-y-6 border-4 border-red-500 animate-scaleUp">
+            <h2 className="text-2xl font-black text-black uppercase tracking-tight">Excluir Profissional?</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Esta ação é <strong>permanente</strong>. O profissional será removido do sistema junto com seus metadados de configuração.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setDeleteProId(null)}
+                className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-colors"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={handleDeletePro}
+                disabled={deletingPro}
+                className="flex-1 py-3 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-black uppercase tracking-widest transition-colors disabled:opacity-50"
+              >
+                {deletingPro ? '...' : 'EXCLUIR'}
+              </button>
             </div>
           </div>
         </div>

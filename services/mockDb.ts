@@ -273,6 +273,16 @@ class DatabaseService {
     }
   }
 
+  async deleteAppointment(id: string): Promise<void> {
+    try {
+      const { error } = await supabase.from('appointments').delete().eq('id', id);
+      if (error) throw error;
+    } catch (e) {
+      console.error("Supabase Appointment Delete Error:", e);
+      throw e;
+    }
+  }
+
   // ─── PROFESSIONALS ──────────────────────────────────────────────────
 
   async getProfessionals(tenantId: string): Promise<Professional[]> {
@@ -335,6 +345,21 @@ class DatabaseService {
       }
     } catch (e) {
       console.error("Supabase Professional Update Error:", e);
+      throw e;
+    }
+  }
+
+  async deleteProfessional(tenantId: string, id: string): Promise<void> {
+    try {
+      const { error } = await supabase.from('professionals').delete().eq('id', id).eq('tenant_id', tenantId);
+      if (error) throw error;
+      // Remove metadata from settings JSONB
+      const s = await this.getSettings(tenantId);
+      const meta = { ...(s.professionalMeta || {}) };
+      delete meta[id];
+      await this.updateSettings(tenantId, { professionalMeta: meta });
+    } catch (e) {
+      console.error("Supabase Professional Delete Error:", e);
       throw e;
     }
   }
