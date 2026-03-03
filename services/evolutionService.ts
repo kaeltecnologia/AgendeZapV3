@@ -220,12 +220,15 @@ export const evolutionService = {
   // Enables the Edge Function webhook so Evolution API posts messages to it 24/7.
   async enableWebhook(instanceName: string, webhookUrl: string): Promise<boolean> {
     if (!instanceName || !webhookUrl) return false;
+    // Evolution API v2+ requires the payload wrapped in a "webhook" object
     const body = JSON.stringify({
-      url: webhookUrl,
-      enabled: true,
-      webhook_by_events: false,
-      webhook_base64: true,  // include audio base64 in payload
-      events: ['MESSAGES_UPSERT', 'messages.upsert']
+      webhook: {
+        url: webhookUrl,
+        enabled: true,
+        webhook_by_events: false,
+        webhook_base64: true,
+        events: ['MESSAGES_UPSERT']
+      }
     });
     try {
       await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, { method: 'POST', headers, body });
