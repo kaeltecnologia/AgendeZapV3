@@ -558,6 +558,27 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   let prefetchedSlots: string[] | undefined;
   if (session.data.professionalId && session.data.date) {
     prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId, session.data.date, session.data.serviceDuration || 60, settings);
+
+    // Empty slots = vacation or fully booked — handle immediately before calling brain
+    if (prefetchedSlots.length === 0) {
+      const isVacation = (settings.breaks || []).some((b: any) => {
+        if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+        if (b.type !== 'vacation') return false;
+        const vacStart = b.date || '';
+        const vacEnd = b.vacationEndDate || b.date || '';
+        return !!vacStart && session.data.date >= vacStart && session.data.date <= vacEnd;
+      });
+      const profName = session.data.professionalName || 'O profissional';
+      const noAvail = isVacation
+        ? `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`
+        : `Que pena! Não tem horário disponível em ${formatDate(session.data.date)} com ${profName}. 😕\n\nPara qual outro dia você prefere?`;
+      session.data.date = undefined;
+      if (isVacation) { session.data.professionalId = undefined; session.data.professionalName = undefined; }
+      session.history.push({ role: 'bot', text: noAvail });
+      await sendMsg(instanceName, phone, noAvail);
+      saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
+      return;
+    }
   }
 
   // First brain call

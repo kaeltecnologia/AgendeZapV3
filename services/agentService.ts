@@ -952,6 +952,26 @@ export async function handleMessage(
       session.data.serviceDuration || (activeServices[0]?.durationMinutes ?? 60), settings
     );
     session.data.availableSlots = prefetchedSlots;
+
+    // Empty slots = vacation or fully booked — handle immediately before calling brain
+    if (prefetchedSlots.length === 0) {
+      const isVacation = (settings.breaks || []).some((b: any) => {
+        if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+        if ((b as any).type !== 'vacation') return false;
+        const vacStart = b.date || '';
+        const vacEnd = (b as any).vacationEndDate || b.date || '';
+        return !!vacStart && session.data.date! >= vacStart && session.data.date! <= vacEnd;
+      });
+      const profName = session.data.professionalName || 'O profissional';
+      const noAvail = isVacation
+        ? `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`
+        : `Que pena! Não tem horário disponível em ${formatDate(session.data.date!)} com ${profName}. 😕\n\nPara qual outro dia você prefere?`;
+      session.data.date = undefined;
+      if (isVacation) { session.data.professionalId = undefined; session.data.professionalName = undefined; }
+      session.history.push({ role: 'bot', text: noAvail });
+      saveSession(session);
+      return noAvail;
+    }
   }
 
   // ─── First AI Brain call ────────────────────────────────────────────
