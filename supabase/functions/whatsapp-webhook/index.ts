@@ -159,9 +159,11 @@ async function getAvailableSlots(
     .gte('inicio', `${date}T00:00:00`).lte('inicio', `${date}T23:59:59`);
 
   const breaks: any[] = settings.breaks || [];
-  const now = new Date();
-  const todayLocal = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  // Use Brazil time (UTC-3) for today's date and past-slot filtering
+  const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const todayLocal = `${nowBrasilia.getUTCFullYear()}-${pad(nowBrasilia.getUTCMonth()+1)}-${pad(nowBrasilia.getUTCDate())}`;
   const isToday = date === todayLocal;
+  const nowBrasiliaMinutes = nowBrasilia.getUTCHours() * 60 + nowBrasilia.getUTCMinutes();
   const slots: string[] = [];
   let cursor = startH * 60 + startM;
   const endCursor = endH * 60 + endM;
@@ -175,7 +177,7 @@ async function getAvailableSlots(
     const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
     const slotEndLabel = `${pad(slotEnd.getHours())}:${pad(slotEnd.getMinutes())}`;
 
-    if (isToday && slotStart <= now) { cursor += 30; continue; }
+    if (isToday && (h * 60 + m) <= nowBrasiliaMinutes) { cursor += 30; continue; }
     const BUFFER_MS = 11 * 60 * 1000; // últimos 11 min do procedimento anterior são compartilháveis
     const conflict = (appts || []).some((a: any) => {
       const aStart = new Date(a.inicio), aEnd = new Date(a.fim);

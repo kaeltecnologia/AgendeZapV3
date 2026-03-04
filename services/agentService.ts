@@ -202,10 +202,12 @@ async function getAvailableSlots(
     .lte('inicio', `${date}T23:59:59`);
 
   const breaks: BreakPeriod[] = settings.breaks || [];
-  const now = new Date();
+  // Use Brazil time (UTC-3) for today's date and past-slot filtering
+  const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
-  const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const todayLocal = `${nowBrasilia.getUTCFullYear()}-${pad(nowBrasilia.getUTCMonth() + 1)}-${pad(nowBrasilia.getUTCDate())}`;
   const isToday = date === todayLocal;
+  const nowBrasiliaMinutes = nowBrasilia.getUTCHours() * 60 + nowBrasilia.getUTCMinutes();
   const INTERVAL_MIN = 30;
   const slots: string[] = [];
 
@@ -222,7 +224,7 @@ async function getAvailableSlots(
     const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
     const slotEndLabel = `${pad(slotEnd.getHours())}:${pad(slotEnd.getMinutes())}`;
 
-    if (isToday && slotStart <= now) { cursor += INTERVAL_MIN; continue; }
+    if (isToday && (h * 60 + m) <= nowBrasiliaMinutes) { cursor += INTERVAL_MIN; continue; }
 
     const BUFFER_MS = 11 * 60 * 1000; // últimos 11 min do procedimento anterior são compartilháveis
     const hasAppConflict = (appointments || []).some((a: any) => {
@@ -839,9 +841,10 @@ export async function handleMessage(
     return `Erro: chave de API não configurada. Por favor, configure em Ajustes → Agente IA.`;
   }
 
-  const now = new Date();
+  // Use Brazil time (UTC-3) for today's date
+  const _nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
-  const todayISO = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const todayISO = `${_nowBrasilia.getUTCFullYear()}-${pad(_nowBrasilia.getUTCMonth()+1)}-${pad(_nowBrasilia.getUTCDate())}`;
 
   const serviceOptions = activeServices.map((s: any) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, price: s.price }));
   const profOptions = activeProfessionals.map((p: any) => ({ id: p.id, name: p.name }));
