@@ -264,6 +264,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
 // Sends each professional a WhatsApp summary of today's appointments at the
 // configured time (agendaDiariaHora, default "00:01"). Runs once per day per pro.
 const runningAgenda = new Set<string>();
+// In-memory cache so Supabase save failures don't cause re-sends within the same session
+const agendaSentMemory = new Set<string>(); // "tenantId::profId::YYYY-MM-DD"
 
 export async function runDailyProfessionalAgenda(tenant: any): Promise<void> {
   const tenantId: string = tenant.id;
@@ -300,7 +302,8 @@ export async function runDailyProfessionalAgenda(tenant: any): Promise<void> {
       if (!prof.active || !prof.phone) continue;
 
       const sentKey = `${prof.id}::${today}`;
-      if (newSent[sentKey]) continue; // already sent today
+      const memKey  = `${tenantId}::${sentKey}`;
+      if (agendaSentMemory.has(memKey) || newSent[sentKey]) continue; // already sent today
 
       const profAppts = todayAppts
         .filter(a => a.professional_id === prof.id)
@@ -309,6 +312,7 @@ export async function runDailyProfessionalAgenda(tenant: any): Promise<void> {
       // Only notify when there are appointments
       if (profAppts.length === 0) {
         newSent[sentKey] = 'skip'; // mark as processed so we don't re-check every minute
+        agendaSentMemory.add(memKey);
         anySent = true;
         continue;
       }
@@ -333,6 +337,7 @@ export async function runDailyProfessionalAgenda(tenant: any): Promise<void> {
       try {
         await evolutionService.sendMessage(instance, prof.phone, msg);
         newSent[sentKey] = 'sent';
+        agendaSentMemory.add(memKey); // mark in-memory immediately so save failures don't re-send
         anySent = true;
         console.log(`[AgendaDiaria] Enviada para ${prof.name} (${prof.phone}) — ${profAppts.length} appts`);
       } catch (e: any) {

@@ -854,7 +854,7 @@ export async function handleMessage(
   if (customPrompt) {
     const profStr = profOptions.map(p => p.name).join(', ');
     const svcStr = activeServices.map((s: any) => `${s.name} (R$${(s.price || 0).toFixed(2)})`).join(', ');
-    const hoje = now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const hoje = _nowBrasilia.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' });
     customPrompt = customPrompt
       .replace(/\$\{tenant\.nome\}/g, tenantName)
       .replace(/\$\{hoje\}/g, hoje)
