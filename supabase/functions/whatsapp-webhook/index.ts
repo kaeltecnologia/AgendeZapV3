@@ -869,6 +869,7 @@ Deno.serve(async (req) => {
       operatingHours: settingsRow?.operating_hours || fu._operatingHours || {},
       breaks: fu._breaks || [],
       msgBufferSecs: fu._msgBufferSecs ?? 30,
+      customerData: (fu._customerData || {}) as Record<string, { aiPaused?: boolean }>,
     };
 
     if (!settings.aiActive) {
@@ -927,11 +928,17 @@ Deno.serve(async (req) => {
       if (!phone) continue;
 
       // Se aiLeadActive estiver desativado, ignora mensagens de números desconhecidos
-      if (!settings.aiLeadActive) {
+      // Também verifica se a IA foi pausada manualmente para este lead específico
+      const hasPausedCustomers = Object.values(settings.customerData).some(cd => cd?.aiPaused);
+      const needsCustomerLookup = !settings.aiLeadActive || hasPausedCustomers;
+      let resolvedCustomerId: string | null = null;
+      if (needsCustomerLookup) {
         const { data: existingCust } = await supabase.from('customers')
           .select('id').eq('tenant_id', tenant.id).eq('telefone', phone).maybeSingle();
-        if (!existingCust) continue;
+        if (!settings.aiLeadActive && !existingCust) continue;
+        resolvedCustomerId = existingCust?.id || null;
       }
+      if (resolvedCustomerId && settings.customerData[resolvedCustomerId]?.aiPaused) continue;
 
       // Fire-and-forget: responde 200 imediatamente; debounce roda em background
       EdgeRuntime.waitUntil(

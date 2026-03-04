@@ -259,3 +259,91 @@ export async function runFollowUp(tenant: any): Promise<void> {
     runningTenants.delete(tenantId);
   }
 }
+
+// ─── Daily professional agenda ─────────────────────────────────────────────
+// Sends each professional a WhatsApp summary of today's appointments at the
+// configured time (agendaDiariaHora, default "00:01"). Runs once per day per pro.
+const runningAgenda = new Set<string>();
+
+export async function runDailyProfessionalAgenda(tenant: any): Promise<void> {
+  const tenantId: string = tenant.id;
+  const instance: string = tenant.evolution_instance;
+  if (!instance) return;
+  if (runningAgenda.has(tenantId)) return;
+  runningAgenda.add(tenantId);
+
+  try {
+    const [settings, allAppts, professionals, customers, services] = await Promise.all([
+      db.getSettings(tenantId),
+      db.getAppointments(tenantId),
+      db.getProfessionals(tenantId),
+      db.getCustomers(tenantId),
+      db.getServices(tenantId),
+    ]);
+
+    const now       = new Date();
+    const today     = localDateStr(now);
+    const nowHHMM   = localHHMM(now);
+    const sendHHMM  = settings.agendaDiariaHora || '00:01';
+
+    if (nowHHMM < sendHHMM) return; // not time yet
+
+    const newSent: Record<string, string> = { ...(settings.profAgendaSent || {}) };
+    let anySent = false;
+
+    const todayAppts = allAppts.filter(a =>
+      (a.status === AppointmentStatus.PENDING || a.status === AppointmentStatus.CONFIRMED) &&
+      a.startTime.slice(0, 10) === today
+    );
+
+    for (const prof of professionals) {
+      if (!prof.active || !prof.phone) continue;
+
+      const sentKey = `${prof.id}::${today}`;
+      if (newSent[sentKey]) continue; // already sent today
+
+      const profAppts = todayAppts
+        .filter(a => a.professional_id === prof.id)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+      // Only notify when there are appointments
+      if (profAppts.length === 0) {
+        newSent[sentKey] = 'skip'; // mark as processed so we don't re-check every minute
+        anySent = true;
+        continue;
+      }
+
+      const dateFmt = now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+
+      const lines = profAppts.map(a => {
+        const cust    = customers.find(c => c.id === a.customer_id);
+        const svc     = services.find(s => s.id === a.service_id);
+        const hora    = new Date(a.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const cliente = cust?.name || 'Cliente';
+        const servico = svc?.name  || 'Procedimento';
+        return `⏰ ${hora} — ${cliente} | ${servico}`;
+      });
+
+      const msg =
+        `📅 *Agenda de hoje — ${dateFmt}*\n\n` +
+        `Olá, ${prof.name}! Aqui estão seus procedimentos de hoje:\n\n` +
+        lines.join('\n') +
+        `\n\n🔢 Total: ${profAppts.length} procedimento${profAppts.length > 1 ? 's' : ''}\n\nTenha um ótimo dia! 💪`;
+
+      try {
+        await evolutionService.sendMessage(instance, prof.phone, msg);
+        newSent[sentKey] = 'sent';
+        anySent = true;
+        console.log(`[AgendaDiaria] Enviada para ${prof.name} (${prof.phone}) — ${profAppts.length} appts`);
+      } catch (e: any) {
+        console.error(`[AgendaDiaria] Erro ao enviar para ${prof.phone}:`, e.message);
+      }
+    }
+
+    if (anySent) {
+      await db.updateSettings(tenantId, { profAgendaSent: newSent });
+    }
+  } finally {
+    runningAgenda.delete(tenantId);
+  }
+}

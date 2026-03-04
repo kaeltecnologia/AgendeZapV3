@@ -209,8 +209,11 @@ export interface TenantSettings {
     lembreteModeId?: string;
     reativacaoModeId?: string;
     recurringSchedule?: RecurringSchedule;
+    aiPaused?: boolean;                  // true = IA desativada manualmente para este lead
   }>;
   followUpSent?: Record<string, string>; // tracks sent messages e.g. "aviso::apptId" → "YYYY-MM-DD"
+  profAgendaSent?: Record<string, string>; // tracks daily agenda sent: "profId::YYYY-MM-DD" → "sent"
+  agendaDiariaHora?: string;             // HH:MM to send daily professional agenda (default "00:01")
   inventory?: InventoryItem[];           // product stock list (insumos)
   products?: Product[];                  // retail products for sale to clients
   monthlyRevenueGoal?: number;          // meta mensal de faturamento da barbearia em R$

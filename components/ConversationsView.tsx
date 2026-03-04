@@ -41,6 +41,10 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
+  // AI pause per lead
+  const [customerData, setCustomerData] = useState<Record<string, { aiPaused?: boolean }>>({});
+  const [togglingAi, setTogglingAi] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -76,12 +80,14 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setConnected(status === 'open');
       if (status !== 'open') return;
 
-      const [rawMessages, professionals, custs] = await Promise.all([
+      const [rawMessages, professionals, custs, settings] = await Promise.all([
         evolutionService.fetchRecentMessages(inst, 60),
         db.getProfessionals(tenantId),
         db.getCustomers(tenantId),
+        db.getSettings(tenantId),
       ]);
       setCustomers(custs);
+      setCustomerData(settings.customerData || {});
 
       if (!rawMessages || !Array.isArray(rawMessages)) return;
 
@@ -240,6 +246,33 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     }
   };
 
+  const phonesMatch = (a: string, b: string) => {
+    const clean = (s: string) => s.replace(/\D/g, '');
+    const ca = clean(a); const cb = clean(b);
+    if (!ca || !cb) return false;
+    return ca === cb || ca.slice(-11) === cb.slice(-11) || ca.slice(-10) === cb.slice(-10);
+  };
+
+  const findCustomerByPhone = (phone: string) =>
+    customers.find(c => phonesMatch(c.phone, phone));
+
+  const toggleAiForLead = async (phone: string) => {
+    const cust = findCustomerByPhone(phone);
+    if (!cust || togglingAi) return;
+    setTogglingAi(true);
+    try {
+      const settings = await db.getSettings(tenantId);
+      const current = settings.customerData || {};
+      const custEntry = current[cust.id] || {};
+      const newPaused = !custEntry.aiPaused;
+      const updated = { ...current, [cust.id]: { ...custEntry, aiPaused: newPaused } };
+      await db.updateSettings(tenantId, { customerData: updated });
+      setCustomerData(updated);
+    } finally {
+      setTogglingAi(false);
+    }
+  };
+
   const openContact = (phone: string, name: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
     const existing = conversations.find(c => c.phone === cleanPhone || c.phone.slice(-11) === cleanPhone.slice(-11));
@@ -267,7 +300,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-black uppercase tracking-tight">Conversas</h1>
+          <h1 className="text-3xl font-black text-black uppercase tracking-tight">WhatsApp</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
             {instanceName || '...'}
             {connected
@@ -370,6 +403,26 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       <p className="text-sm font-black text-black">{selectedConv.professionalName || selectedConv.name}</p>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{selectedConv.phone}</p>
                     </div>
+                    {/* AI pause toggle — only for known customers */}
+                    {findCustomerByPhone(selectedConv.phone) && (() => {
+                      const cust = findCustomerByPhone(selectedConv.phone)!;
+                      const isPaused = !!customerData[cust.id]?.aiPaused;
+                      return (
+                        <button
+                          onClick={() => toggleAiForLead(selectedConv.phone)}
+                          disabled={togglingAi}
+                          title={isPaused ? 'IA pausada — clique para reativar' : 'IA ativa — clique para pausar'}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 ${
+                            isPaused
+                              ? 'bg-red-50 text-red-500 border-2 border-red-200 hover:bg-red-100'
+                              : 'bg-green-50 text-green-600 border-2 border-green-200 hover:bg-green-100'
+                          }`}
+                        >
+                          <span className="text-sm">{isPaused ? '🤖❌' : '🤖✅'}</span>
+                          {isPaused ? 'IA pausada' : 'IA ativa'}
+                        </button>
+                      );
+                    })()}
                   </div>
 
                   {/* Messages */}

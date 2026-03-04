@@ -4,7 +4,7 @@ import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 import { handleMessage } from '../services/agentService';
 import { handleProfessionalMessage } from '../services/professionalAgentService';
-import { runFollowUp } from '../services/followUpService';
+import { runFollowUp, runDailyProfessionalAgenda } from '../services/followUpService';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
 
 // ── Module-level singletons — survive component remounts ──────────────
@@ -359,6 +359,7 @@ const AiPollingManager: React.FC<{
         const { data: tenants } = await supabase.from('tenants').select('*');
         const tenant = (tenants || []).find((t: any) => t.id === tenantId);
         if (tenant) await runFollowUp(tenant);
+        if (tenant) await runDailyProfessionalAgenda(tenant);
 
         // ── Trial Day 6 warning ─────────────────────────────────────
         const settings = await db.getSettings(tenantId);

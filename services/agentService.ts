@@ -812,6 +812,17 @@ export async function handleMessage(
     db.getSettings(tenantId),
   ]);
 
+  // ─── Per-lead AI pause check ────────────────────────────────────────
+  // If the admin paused IA for this specific lead, silently skip.
+  if (settings.customerData) {
+    const { data: custCheck } = await supabase
+      .from('customers').select('id')
+      .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+    if (custCheck && settings.customerData[custCheck.id]?.aiPaused) {
+      return null;
+    }
+  }
+
   const activeProfessionals = professionals.filter((p: any) => p.active).map((p: any) => ({ ...p, name: (p.name || '').trim() }));
   const activeServices = services.filter((s: any) => s.active);
 
