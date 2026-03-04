@@ -351,13 +351,21 @@ class DatabaseService {
 
   async deleteProfessional(tenantId: string, id: string): Promise<void> {
     try {
-      const { error } = await supabase.from('professionals').delete().eq('id', id).eq('tenant_id', tenantId);
-      if (error) throw error;
-      // Remove metadata from settings JSONB
+      // Remove appointments linked to this professional first (FK constraint)
+      const { error: apptErr } = await supabase.from('appointments')
+        .delete().eq('professional_id', id).eq('tenant_id', tenantId);
+      if (apptErr) throw apptErr;
+
+      // Remove breaks linked to this professional from settings JSONB
       const s = await this.getSettings(tenantId);
       const meta = { ...(s.professionalMeta || {}) };
       delete meta[id];
-      await this.updateSettings(tenantId, { professionalMeta: meta });
+      const breaks = (s.breaks || []).filter((b: any) => b.professionalId !== id);
+      await this.updateSettings(tenantId, { professionalMeta: meta, breaks });
+
+      // Now safe to delete the professional row
+      const { error } = await supabase.from('professionals').delete().eq('id', id).eq('tenant_id', tenantId);
+      if (error) throw error;
     } catch (e) {
       console.error("Supabase Professional Delete Error:", e);
       throw e;
