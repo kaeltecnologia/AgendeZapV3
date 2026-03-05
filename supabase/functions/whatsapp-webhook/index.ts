@@ -930,10 +930,23 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             await saveSession(tenantId, phone, session.data, session.history);
             await sendMsg(instanceName, phone, confirmMsg, tenantId);
             return;
+          } else {
+            // Customer found in DB but no upcoming appointment
+            const noApptIC = `Entendido! 😊 Parece que você não vai conseguir comparecer.\n\nNão encontrei nenhum agendamento ativo no seu número. Pode me confirmar o *dia e horário* que estava agendado? Verifico aqui e cancelo ou remarco pra você!`;
+            session.history.push({ role: 'user', text }, { role: 'bot', text: noApptIC });
+            await saveSession(tenantId, phone, session.data, session.history);
+            await sendMsg(instanceName, phone, noApptIC, tenantId);
+            return;
           }
+        } else {
+          // Customer not registered in DB — still handle gracefully, don't let AI say "Tudo bem!"
+          const notFoundIC = `Entendido! 😊 Parece que você não vai conseguir comparecer.\n\nPode me confirmar seu *nome completo* e o *dia e horário* do agendamento? Assim consigo verificar e cancelar ou remarcar pra você!`;
+          session.history.push({ role: 'user', text }, { role: 'bot', text: notFoundIC });
+          await saveSession(tenantId, phone, session.data, session.history);
+          await sendMsg(instanceName, phone, notFoundIC, tenantId);
+          return;
         }
       } catch (eIC) { console.error('[Agent] implicit-cancel detection error:', eIC); }
-      // Customer not found or no upcoming appointment → let AI handle with context
     }
   }
 
