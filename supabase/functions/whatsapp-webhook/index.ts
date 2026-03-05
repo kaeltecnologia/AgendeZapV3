@@ -1502,11 +1502,26 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
 
   // ─── Suppress greeting when first message already has rich context ────────
-  // If the client's first message already contained a professional name + date (resolved by TS layer),
-  // disable the "only say welcome, ask nothing else" greeting override so the AI can actually answer
-  // the question (e.g. "Tem horário com Lipe amanhã depois das 17?").
-  // We still set greetedAt so the greeting won't be triggered on the next turn.
-  const richFirstMessage = shouldGreet && !!(session.data.professionalId && session.data.date);
+  // When shouldGreet=true but the client's first message already contains booking intent
+  // (service keywords, professional name, date, or is a long contextual message),
+  // disable the "only say welcome, ask nothing else" greeting override so the AI can
+  // actually process and answer the message content.
+  // We still set greetedAt so the next turn doesn't trigger the greeting again.
+  const _normRI = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+  const SERVICE_INTENT_KW = [
+    'cortar', 'corte', 'cabelo', 'cabeca', 'barba', 'sobrancelha', 'manicure',
+    'escova', 'colorir', 'pintar', 'progressiva', 'alisar', 'procedimento',
+    'agendar', 'marcar', 'horario', 'quero', 'preciso', 'gostaria', 'queria',
+    'tem vaga', 'tem horario', 'disponivel', 'atender', 'atendimento', 'agora',
+  ];
+  const hasServiceIntent = SERVICE_INTENT_KW.some((k: string) => _normRI.includes(k));
+  // Rich = has prof+date, OR has prof+intent, OR has date+intent, OR long message with any intent
+  const richFirstMessage = shouldGreet && (
+    !!(session.data.professionalId && session.data.date) ||
+    !!(session.data.professionalId && hasServiceIntent) ||
+    !!(session.data.date && hasServiceIntent) ||
+    !!(hasServiceIntent && text.length > 80)
+  );
   const effectiveShouldGreet = shouldGreet && !richFirstMessage;
   if (richFirstMessage) session.data.greetedAt = brasiliaDate;
 
