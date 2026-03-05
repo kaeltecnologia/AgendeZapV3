@@ -1147,7 +1147,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // Captures "depois das 17", "a partir das 16", "antes das 10" etc. for slot filtering
   if (!session.data.preferredTime) {
     const normTP = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
-    const tpMatch = normTP.match(/(?:depois das?|a partir das?|apos as?|mais tarde(?:\s+das?)?)\s*(\d{1,2})(?::(\d{2}))?/);
+    const tpMatch = normTP.match(/(?:depois das?|a partir das?|apos(?:\s+as?)?\s*|mais tarde(?:\s+das?)?)\s*(\d{1,2})(?::(\d{2}))?/);
     if (tpMatch) {
       const h = parseInt(tpMatch[1], 10);
       const m = tpMatch[2] ? parseInt(tpMatch[2], 10) : 0;
@@ -1515,12 +1515,15 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     'tem vaga', 'tem horario', 'disponivel', 'atender', 'atendimento', 'agora',
   ];
   const hasServiceIntent = SERVICE_INTENT_KW.some((k: string) => _normRI.includes(k));
-  // Rich = has prof+date, OR has prof+intent, OR has date+intent, OR long message with any intent
+  // Rich = any combination of context signals OR just service intent alone.
+  // When the client's first message (or combined debounced messages) already contains
+  // a service keyword, suppress the "only greet, ask nothing" override so the AI
+  // can actually process and answer the message.
   const richFirstMessage = shouldGreet && (
     !!(session.data.professionalId && session.data.date) ||
     !!(session.data.professionalId && hasServiceIntent) ||
     !!(session.data.date && hasServiceIntent) ||
-    !!(hasServiceIntent && text.length > 80)
+    hasServiceIntent  // any service intent → process fully instead of just greeting
   );
   const effectiveShouldGreet = shouldGreet && !richFirstMessage;
   if (richFirstMessage) session.data.greetedAt = brasiliaDate;
