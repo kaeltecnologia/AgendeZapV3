@@ -362,7 +362,9 @@ async function callBrain(
   const slotsSection = availableSlots && availableSlots.length > 0
     ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
-      ? `\n(Horários para esta data ainda não verificados — NÃO sugira horários específicos ainda)`
+      ? (data.serviceId
+        ? `\n(Horários para esta data ainda não verificados — NÃO sugira horários específicos ainda)`
+        : `\n⚠️ SERVIÇO NÃO DEFINIDO — Descubra qual serviço o cliente quer ANTES de buscar horários. Pergunte o serviço agora.`)
       : (data.professionalId && !data.date
         ? `\n⛔ DIA NÃO DEFINIDO — NÃO sugira horários. Pergunte o dia de preferência primeiro.`
         : ''));
@@ -693,7 +695,7 @@ async function resolveGroupBooking(
   allProfessionals: Array<{ id: string; name: string }>,
 ): Promise<NonNullable<SessionData['groupBooking']>> {
   const gb = data.groupBooking!;
-  const duration1 = data.serviceDuration!;
+  const duration1 = data.serviceDuration || 30;
   const duration2 = gb.companionServiceDuration || duration1;
   const date = data.date!;
   const time = data.time!;
@@ -1187,14 +1189,18 @@ export async function handleMessage(
         );
         const hasBookingKw2 = BOOK_KW2.some(k => normMsg2.includes(k));
         const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
+        // Personal-contact flow only on first message OR explicit "quero falar com" intent
+        const isFirstMsg = session.history.filter((h: any) => h.role === 'bot').length === 0;
+        const PERSONAL_KW = ['quero falar com', 'preciso falar com', 'falar com o', 'falar com a', 'entrar em contato com'];
+        const hasPersonalIntent = PERSONAL_KW.some(k => normMsg2.includes(k));
 
-        if (hasBookingKw2 || hasSvcMention || isMidBooking) {
+        if (hasBookingKw2 || hasSvcMention || isMidBooking || (!isFirstMsg && !hasPersonalIntent)) {
           // Normal booking flow: pre-set the professional
           session.data.professionalId   = matchedProf.id;
           session.data.professionalName = matchedProf.name;
           console.log('[Agent] TS pre-extracted professional:', matchedProf.name);
         } else {
-          // No booking signal: lead may be calling the professional personally — ask first
+          // No booking signal on first message or explicit "falar com" — ask first
           const profWithPhone = activeProfessionals.find((p: any) => p.id === matchedProf.id);
           session.data.pendingProfContact = {
             profId:    matchedProf.id,
@@ -1260,15 +1266,10 @@ export async function handleMessage(
     }
   }
 
-  // ─── Fetch available slots if we already know professional + date ──
-  // Use the selected service duration; if no service chosen yet, use the MINIMUM
-  // duration across all services so we never block slots that actually exist.
+  // ─── Fetch available slots only when service is known (duration required for accuracy) ──
   let prefetchedSlots: string[] | undefined;
-  if (session.data.professionalId && session.data.date) {
-    const _minDuration = activeServices.length > 0
-      ? Math.min(...activeServices.map((s: any) => s.durationMinutes || 30))
-      : 30;
-    const _slotDuration = session.data.serviceDuration || _minDuration;
+  if (session.data.professionalId && session.data.date && session.data.serviceId) {
+    const _slotDuration = session.data.serviceDuration || 30;
     prefetchedSlots = await getAvailableSlots(
       tenantId, session.data.professionalId, session.data.date,
       _slotDuration, settings
@@ -1302,9 +1303,7 @@ export async function handleMessage(
         const p = (n: number) => String(n).padStart(2, '0');
         return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
       })();
-      const _nextDur = session.data.serviceDuration || (activeServices.length > 0
-        ? Math.min(...activeServices.map((s: any) => s.durationMinutes || 30))
-        : 30);
+      const _nextDur = session.data.serviceDuration || 30;
       const _nextSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate, _nextDur, settings);
       if (_nextSlots.length > 0) {
         const _isToday = _bookedDate === todayISO;
@@ -1412,12 +1411,12 @@ export async function handleMessage(
     }
   }
 
-  // ─── If we JUST extracted professional + date, fetch slots and re-run ──
-  const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date;
+  // ─── If we JUST extracted professional + date + service, fetch slots and re-run ──
+  const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date && session.data.serviceId;
   if (justGotProfAndDate) {
     const newSlots = await getAvailableSlots(
       tenantId, session.data.professionalId!, session.data.date!,
-      session.data.serviceDuration || (activeServices[0]?.durationMinutes ?? 60), settings
+      session.data.serviceDuration || 30, settings
     );
     session.data.availableSlots = newSlots;
 
@@ -1515,13 +1514,13 @@ export async function handleMessage(
       const startTimeStr = `${session.data.date}T${session.data.time}:00`;
       const { available } = await db.isSlotAvailable(
         tenantId, session.data.professionalId,
-        new Date(startTimeStr), session.data.serviceDuration!
+        new Date(startTimeStr), session.data.serviceDuration || 30
       );
 
       if (!available) {
         const freshSlots = await getAvailableSlots(
           tenantId, session.data.professionalId, session.data.date,
-          session.data.serviceDuration!, settings
+          session.data.serviceDuration || 30, settings
         );
         session.data.time = undefined;
         session.data.availableSlots = freshSlots;
@@ -1619,6 +1618,29 @@ export async function handleMessage(
     const newSession: Session = { tenantId, phone, data: { clientName }, history: h, updatedAt: Date.now() };
     saveSession(newSession);
     // Brain already generated a natural "no problem, let's try again" reply
+  }
+
+  // ─── Handle cancellation extracted by AI ────────────────────────────
+  if (brain.extracted.cancelled === true) {
+    try {
+      const { data: customer } = await supabase
+        .from('customers').select('id')
+        .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+      if (customer) {
+        const now0 = new Date();
+        const p0 = (n: number) => String(n).padStart(2, '0');
+        const nowLocal = `${now0.getFullYear()}-${p0(now0.getMonth()+1)}-${p0(now0.getDate())}T${p0(now0.getHours())}:${p0(now0.getMinutes())}:${p0(now0.getSeconds())}`;
+        const { data: appts } = await supabase.from('appointments')
+          .select('id, inicio').eq('tenant_id', tenantId).eq('customer_id', customer.id)
+          .eq('status', AppointmentStatus.CONFIRMED).gte('inicio', nowLocal)
+          .order('inicio', { ascending: true }).limit(1);
+        if (appts && appts.length > 0) {
+          await supabase.from('appointments').update({ status: AppointmentStatus.CANCELLED }).eq('id', appts[0].id);
+        }
+      }
+    } catch (e) { console.error('[Agent] cancelled extraction error:', e); }
+    clearSession(tenantId, phone);
+    return brain.reply;
   }
 
   // ─── Mark as pending confirm when summary was shown ────────────────

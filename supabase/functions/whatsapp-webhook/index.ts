@@ -225,13 +225,45 @@ async function getAvailableSlots(
   return slots;
 }
 
+// ── Token tracking helpers ────────────────────────────────────────────
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'gpt-4o-mini':      { input: 0.150 / 1_000_000, output: 0.600 / 1_000_000 },
+  'gemini-2.0-flash': { input: 0, output: 0 },
+};
+
+function estimateTokens(text: string): number {
+  return Math.ceil((text || '').length / 4);
+}
+
+async function logAIUsage(params: {
+  tenant_id: string; phone_number?: string;
+  input_tokens: number; output_tokens: number;
+  model: string; success: boolean;
+}): Promise<void> {
+  try {
+    const p = MODEL_PRICING[params.model] ?? MODEL_PRICING['gpt-4o-mini'];
+    const cost = params.input_tokens * p.input + params.output_tokens * p.output;
+    await supabase.from('ai_usage_logs').insert({
+      tenant_id: params.tenant_id,
+      phone_number: params.phone_number,
+      input_tokens: params.input_tokens,
+      output_tokens: params.output_tokens,
+      total_tokens: params.input_tokens + params.output_tokens,
+      model: params.model,
+      estimated_cost_usd: cost,
+      success: params.success,
+    });
+  } catch (_e) { /* non-critical */ }
+}
+
 // ── AI Brain ─────────────────────────────────────────────────────────
 async function callBrain(
   apiKey: string, tenantName: string, today: string,
   services: any[], professionals: any[],
   history: any[], data: any,
   availableSlots?: string[], customSystemPrompt?: string,
-  shouldGreet?: boolean, brasiliaGreeting?: string
+  shouldGreet?: boolean, brasiliaGreeting?: string,
+  tenantId?: string, phone?: string
 ): Promise<any | null> {
   const svcList = services.map(s => `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`).join('\n');
   const profList = professionals.length > 0 ? professionals.map(p => `• ${p.name} — ID:"${p.id}"`).join('\n') : '• (apenas um profissional disponível)';
@@ -245,7 +277,11 @@ async function callBrain(
 
   const slotsSection = availableSlots?.length
     ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
-    : (data.professionalId && data.date ? '\n(Horários ainda não verificados — NÃO sugira horários específicos)' : '');
+    : (data.professionalId && data.date
+      ? (data.serviceId
+        ? '\n(Horários ainda não verificados — NÃO sugira horários específicos)'
+        : '\n⚠️ SERVIÇO NÃO DEFINIDO — Descubra qual serviço o cliente quer ANTES de buscar horários. Pergunte o serviço agora.')
+      : '');
 
   const histStr = history.slice(-10).map((h: any) => `${h.role === 'user' ? 'Cliente' : 'Agente'}: ${h.text}`).join('\n');
   const isFirst = history.filter((h: any) => h.role === 'bot').length === 0;
@@ -373,7 +409,17 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
         })
       });
       if (!res.ok) { console.error('[Brain] OpenAI', res.status, await res.text().catch(() => '')); return null; }
-      return JSON.parse((await res.json()).choices?.[0]?.message?.content || 'null');
+      const d = await res.json();
+      const result = JSON.parse(d.choices?.[0]?.message?.content || 'null');
+      if (tenantId) {
+        logAIUsage({
+          tenant_id: tenantId, phone_number: phone,
+          input_tokens: d.usage?.prompt_tokens ?? estimateTokens(prompt),
+          output_tokens: d.usage?.completion_tokens ?? estimateTokens(result?.reply ?? ''),
+          model: 'gpt-4o-mini', success: !!result,
+        }).catch(() => {});
+      }
+      return result;
     } else {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
@@ -381,7 +427,18 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json' } })
       });
       if (!res.ok) { console.error('[Brain] Gemini', res.status); return null; }
-      return JSON.parse((await res.json()).candidates?.[0]?.content?.parts?.[0]?.text || 'null');
+      const gd = await res.json();
+      const gResult = JSON.parse(gd.candidates?.[0]?.content?.parts?.[0]?.text || 'null');
+      if (tenantId) {
+        const usage = gd.usageMetadata;
+        logAIUsage({
+          tenant_id: tenantId, phone_number: phone,
+          input_tokens: usage?.promptTokenCount ?? estimateTokens(prompt),
+          output_tokens: usage?.candidatesTokenCount ?? estimateTokens(gResult?.reply ?? ''),
+          model: 'gemini-2.0-flash', success: !!gResult,
+        }).catch(() => {});
+      }
+      return gResult;
     }
   } catch (e) { console.error('[Brain] error:', e); return null; }
 }
@@ -654,12 +711,16 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         );
         const hasBookingKw2 = BOOK_KW2.some((k: string) => normMsg2.includes(k));
         const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
+        // Personal-contact flow only on first message OR explicit "quero falar com" intent
+        const isFirstMsg = session.history.filter((h: any) => h.role === 'bot').length === 0;
+        const PERSONAL_KW = ['quero falar com', 'preciso falar com', 'falar com o', 'falar com a', 'entrar em contato com'];
+        const hasPersonalIntent = PERSONAL_KW.some((k: string) => normMsg2.includes(k));
 
-        if (hasBookingKw2 || hasSvcMention || isMidBooking) {
+        if (hasBookingKw2 || hasSvcMention || isMidBooking || (!isFirstMsg && !hasPersonalIntent)) {
           session.data.professionalId   = matched.id;
           session.data.professionalName = matched.name;
         } else {
-          // No booking signal: ask if they want to talk to the professional personally
+          // No booking signal on first message or explicit "falar com" — ask first
           const profPhone = (professionals as any[]).find((p: any) => p.id === matched.id)?.phone || '';
           session.data.pendingProfContact = { profId: matched.id, profName: matched.name, profPhone };
           const question = `Você gostaria de falar com o *${matched.name}* sobre algum assunto específico?`;
@@ -904,15 +965,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
-  // Prefetch slots if we know prof+date
-  // Use the selected service duration; if no service chosen yet, use the MINIMUM
-  // duration across all active services so we never block slots that actually exist.
+  // Prefetch slots only when service is known (duration required for accuracy)
   let prefetchedSlots: string[] | undefined;
-  if (session.data.professionalId && session.data.date) {
-    const _minDur = services.length > 0
-      ? Math.min(...services.map((s: any) => s.durationMinutes || 30))
-      : 30;
-    const _slotDur = session.data.serviceDuration || _minDur;
+  if (session.data.professionalId && session.data.date && session.data.serviceId) {
+    const _slotDur = session.data.serviceDuration || 30;
     prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId, session.data.date, _slotDur, settings);
 
     // Empty slots = vacation or fully booked — handle immediately before calling brain
@@ -969,7 +1025,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
 
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting, tenantId, phone);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
@@ -994,8 +1050,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (prefetchedSlots.includes(ext.time)) session.data.time = ext.time;
   }
 
-  // Re-run with real slots if we just got prof+date
-  const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date;
+  // Re-run with real slots if we just got prof+date+service
+  const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date && session.data.serviceId;
   if (justGotProfAndDate) {
     const newSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, session.data.serviceDuration || 60, settings);
     if (newSlots.length === 0) {
@@ -1028,7 +1084,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting);
+    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone);
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;
@@ -1061,9 +1117,63 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // Handle cancellation extracted by AI
+  if (brain.extracted.cancelled === true) {
+    try {
+      const { data: customer } = await supabase.from('customers').select('id')
+        .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+      if (customer) {
+        const n0 = new Date(Date.now() - 3 * 60 * 60 * 1000); // Brazil time
+        const nowLocal = `${n0.getUTCFullYear()}-${pad(n0.getUTCMonth()+1)}-${pad(n0.getUTCDate())}T${pad(n0.getUTCHours())}:${pad(n0.getUTCMinutes())}:00`;
+        const { data: appts } = await supabase.from('appointments').select('id, inicio')
+          .eq('tenant_id', tenantId).eq('customer_id', customer.id)
+          .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+          .gte('inicio', nowLocal).order('inicio', { ascending: true }).limit(1);
+        if (appts && appts.length > 0) {
+          await supabase.from('appointments').update({ status: 'CANCELLED' }).eq('id', appts[0].id);
+        }
+      }
+    } catch (e) { console.error('[Agent] cancelled extraction error:', e); }
+    await clearSession(tenantId, phone);
+    session.history.push({ role: 'bot', text: brain.reply });
+    await sendMsg(instanceName, phone, brain.reply, tenantId);
+    return;
+  }
+
   // Handle booking
   if (brain.extracted.confirmed === true && session.data.serviceId && session.data.professionalId && session.data.date && session.data.time) {
     try {
+      // Compute end time without timezone-dependent Date methods
+      const [startHH, startMM] = session.data.time.split(':').map(Number);
+      const dur = session.data.serviceDuration || 60;
+      const totalMin = startHH * 60 + startMM + dur;
+      const endH = Math.floor(totalMin / 60) % 24;
+      const endM = totalMin % 60;
+      const startTimeStr = `${session.data.date}T${session.data.time}:00`;
+      const endTimeStr   = `${session.data.date}T${pad(endH)}:${pad(endM)}:00`;
+
+      // Slot conflict check — prevent double booking (checks full duration overlap)
+      const { data: conflicting } = await supabase.from('appointments')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('professional_id', session.data.professionalId)
+        .not('status', 'in', '("cancelado","CANCELLED")')
+        .lt('inicio', endTimeStr)   // existing starts before new ends
+        .gt('fim',    startTimeStr); // existing ends after new starts
+      if (conflicting && conflicting.length > 0) {
+        const freshSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, dur, settings);
+        session.data.time = undefined;
+        session.data.availableSlots = freshSlots;
+        const takenMsg = freshSlots.length > 0
+          ? `Ops! Esse horário acabou de ser ocupado. 😕 Ainda temos:\n\n${freshSlots.slice(0, 6).map(s => `• ${s}`).join('\n')}\n\nQual você prefere?`
+          : `Ops! Esse horário foi ocupado e não há mais vagas nesse dia. Para qual outro dia você prefere?`;
+        if (freshSlots.length === 0) session.data.date = undefined;
+        session.history.push({ role: 'bot', text: takenMsg });
+        await sendMsg(instanceName, phone, takenMsg, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+        return;
+      }
+
       // Find or create customer
       let { data: customer } = await supabase.from('customers').select('id')
         .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
@@ -1073,11 +1183,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           .select('id').single();
         customer = newC;
       }
-
-      const startTimeStr = `${session.data.date}T${session.data.time}:00`;
-      const endTime = new Date(startTimeStr);
-      endTime.setMinutes(endTime.getMinutes() + (session.data.serviceDuration || 60));
-      const endTimeStr = `${session.data.date}T${pad(endTime.getHours())}:${pad(endTime.getMinutes())}:00`;
+      if (!customer) throw new Error('Failed to find or create customer');
 
       await supabase.from('appointments').insert({
         tenant_id: tenantId,
