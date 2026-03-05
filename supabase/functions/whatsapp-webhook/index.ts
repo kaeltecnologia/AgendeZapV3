@@ -883,12 +883,66 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // ── Implicit cancellation detection (TypeScript layer) ──────────────
+  // MUST run BEFORE reschedule detection — "nao vou conseguir" etc. are cancel signals,
+  // not reschedule signals. Moving this first prevents false reschedule triggers.
+  // e.g.: "não vou conseguir 9 horas", "não vou chegar a tempo", "não vai dar tempo"
+  if (!session.data.pendingReschedule && !session.data.pendingConfirm && !session.data.pendingCancelConfirm) {
+    const IMPLICIT_CANCEL_KW = [
+      'nao vou conseguir', 'nao consigo chegar', 'nao vou chegar a tempo',
+      'nao vou dar tempo', 'nao vai dar tempo', 'nao vai dar pra ir',
+      'nao vai dar pra chegar', 'nao vou chegar', 'vou perder o horario',
+      'nao vou poder aparecer', 'nao vou conseguir aparecer',
+      'nao vou a tempo', 'nao vou conseguir ir', 'nao consigo comparecer',
+      'nao vou comparecer', 'nao vou poder comparecer', 'nao consigo ir',
+    ];
+    const normIC = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const hasImplicitCancel = IMPLICIT_CANCEL_KW.some((k: string) => normIC.includes(k));
+    if (hasImplicitCancel) {
+      try {
+        const { data: custIC } = await supabase.from('customers').select('id')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        if (custIC) {
+          const n0IC = new Date(Date.now() - 3 * 60 * 60 * 1000);
+          const nowLocalIC = `${n0IC.getUTCFullYear()}-${pad(n0IC.getUTCMonth()+1)}-${pad(n0IC.getUTCDate())}T${pad(n0IC.getUTCHours())}:${pad(n0IC.getUTCMinutes())}:00`;
+          const { data: upcomingIC } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custIC.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', nowLocalIC).order('inicio', { ascending: true }).limit(1);
+          if (upcomingIC && upcomingIC.length > 0) {
+            const apptIC = upcomingIC[0];
+            const dtIC = (apptIC.inicio as string).substring(0, 10);
+            const tmIC = (apptIC.inicio as string).substring(11, 16);
+            const svcIC = services.find((s: any) => s.id === apptIC.service_id);
+            const profIC = professionals.find((p: any) => p.id === apptIC.professional_id);
+            const dtLabelIC = dtIC === todayISO ? 'hoje' : formatDate(dtIC);
+            const profNameIC = profIC?.name || 'profissional';
+            const confirmMsg = `Entendido, sem problema! 😊 Quer que eu cancele seu agendamento de *${dtLabelIC}* às *${tmIC}* com *${profNameIC}*? Se preferir, posso remarcar para outro dia também!`;
+            session.data.pendingCancelConfirm = {
+              apptId: apptIC.id, dtLabel: dtLabelIC, tmIC, profName: profNameIC,
+            };
+            session.data.pendingCancelConfirm_rescheduleData = {
+              oldApptId: apptIC.id, oldDate: dtIC, oldTime: tmIC,
+              oldProfName: profNameIC,
+            };
+            session.history.push({ role: 'user', text }, { role: 'bot', text: confirmMsg });
+            await saveSession(tenantId, phone, session.data, session.history);
+            await sendMsg(instanceName, phone, confirmMsg, tenantId);
+            return;
+          }
+        }
+      } catch (eIC) { console.error('[Agent] implicit-cancel detection error:', eIC); }
+      // Customer not found or no upcoming appointment → let AI handle with context
+    }
+  }
+
   // ── Reschedule detection (TypeScript layer) ──────────────────────────
   if (!session.data.pendingReschedule && !session.data.pendingConfirm) {
     const RESCHEDULE_KW = [
       'reagendar', 'remarcar', 'mudar meu horario', 'mudar meu agendamento',
-      'trocar meu horario', 'trocar meu agendamento', 'nao vou conseguir',
-      'nao consigo ir', 'preciso mudar', 'preciso remarcar', 'preciso reagendar',
+      'trocar meu horario', 'trocar meu agendamento',
+      'preciso mudar', 'preciso remarcar', 'preciso reagendar',
       'nao vou poder ir', 'quero remarcar', 'quero reagendar',
     ];
     const normRS = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
@@ -981,60 +1035,6 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         }
       }
     } catch (eRS2) { console.error('[Agent] reschedule retry error:', eRS2); }
-  }
-
-  // ── Implicit cancellation detection (TypeScript layer) ──────────────
-  // Catches colloquial "I can't make it" messages that don't contain "cancelar".
-  // e.g.: "não vou conseguir 9 horas", "não vou chegar a tempo", "não vai dar tempo"
-  if (!session.data.pendingReschedule && !session.data.pendingConfirm && !session.data.pendingCancelConfirm) {
-    const IMPLICIT_CANCEL_KW = [
-      'nao vou conseguir', 'nao consigo chegar', 'nao vou chegar a tempo',
-      'nao vou dar tempo', 'nao vai dar tempo', 'nao vai dar pra ir',
-      'nao vai dar pra chegar', 'nao vou chegar', 'vou perder o horario',
-      'nao vou poder aparecer', 'nao vou conseguir aparecer',
-      'nao vou a tempo', 'nao vou conseguir ir', 'nao consigo comparecer',
-      'nao vou comparecer', 'nao vou poder comparecer',
-    ];
-    const normIC = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
-    const hasImplicitCancel = IMPLICIT_CANCEL_KW.some((k: string) => normIC.includes(k));
-    if (hasImplicitCancel) {
-      try {
-        const { data: custIC } = await supabase.from('customers').select('id')
-          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
-        if (custIC) {
-          const n0IC = new Date(Date.now() - 3 * 60 * 60 * 1000);
-          const nowLocalIC = `${n0IC.getUTCFullYear()}-${pad(n0IC.getUTCMonth()+1)}-${pad(n0IC.getUTCDate())}T${pad(n0IC.getUTCHours())}:${pad(n0IC.getUTCMinutes())}:00`;
-          const { data: upcomingIC } = await supabase.from('appointments')
-            .select('id, inicio, service_id, professional_id')
-            .eq('tenant_id', tenantId).eq('customer_id', custIC.id)
-            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
-            .gte('inicio', nowLocalIC).order('inicio', { ascending: true }).limit(1);
-          if (upcomingIC && upcomingIC.length > 0) {
-            const apptIC = upcomingIC[0];
-            const dtIC = (apptIC.inicio as string).substring(0, 10);
-            const tmIC = (apptIC.inicio as string).substring(11, 16);
-            const svcIC = services.find((s: any) => s.id === apptIC.service_id);
-            const profIC = professionals.find((p: any) => p.id === apptIC.professional_id);
-            const dtLabelIC = dtIC === todayISO ? 'hoje' : formatDate(dtIC);
-            const profNameIC = profIC?.name || 'profissional';
-            const confirmMsg = `Entendido, sem problema! 😊 Quer que eu cancele seu agendamento de *${dtLabelIC}* às *${tmIC}* com *${profNameIC}*? Se preferir, posso remarcar para outro dia também!`;
-            session.data.pendingCancelConfirm = {
-              apptId: apptIC.id, dtLabel: dtLabelIC, tmIC, profName: profNameIC,
-            };
-            // Store reschedule data in case client wants to reschedule instead of cancel
-            session.data.pendingCancelConfirm_rescheduleData = {
-              oldApptId: apptIC.id, oldDate: dtIC, oldTime: tmIC,
-              oldProfName: profNameIC,
-            };
-            session.history.push({ role: 'user', text }, { role: 'bot', text: confirmMsg });
-            await saveSession(tenantId, phone, session.data, session.history);
-            await sendMsg(instanceName, phone, confirmMsg, tenantId);
-            return;
-          }
-        }
-      } catch (eIC) { console.error('[Agent] implicit-cancel detection error:', eIC); }
-      // Customer not found or no upcoming appointment → let AI handle with context
-    }
   }
 
   // ── Earlier slot detection (TypeScript layer) ────────────────────────
