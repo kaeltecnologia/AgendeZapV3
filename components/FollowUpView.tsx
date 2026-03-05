@@ -12,10 +12,10 @@ function generateId(): string {
     : Math.random().toString(36).substring(2, 11);
 }
 
-const TAB_CONFIG: Record<MainTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days' }> = {
-  aviso: { label: 'Check-in Diário', icon: '📢', tabKey: 'avisoModes', timingLabel: 'Horário de envio', timingType: 'fixed' },
-  lembrete: { label: 'Lembrete Próximo', icon: '🕒', tabKey: 'lembreteModes', timingLabel: 'Antecipar em (minutos)', timingType: 'minutes' },
-  reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days' }
+const TAB_CONFIG: Record<MainTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days'; customerModeField: 'avisoModeId' | 'lembreteModeId' | 'reativacaoModeId' }> = {
+  aviso: { label: 'Check-in Diário', icon: '📢', tabKey: 'avisoModes', timingLabel: 'Horário de envio', timingType: 'fixed', customerModeField: 'avisoModeId' },
+  lembrete: { label: 'Lembrete Próximo', icon: '🕒', tabKey: 'lembreteModes', timingLabel: 'Antecipar em (minutos)', timingType: 'minutes', customerModeField: 'lembreteModeId' },
+  reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId' }
 };
 
 const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
@@ -27,6 +27,8 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [applyingModeId, setApplyingModeId] = useState<string | null>(null);
+  const [appliedModeId, setAppliedModeId] = useState<string | null>(null);
 
   // Add-mode form
   const [showAddForm, setShowAddForm] = useState(false);
@@ -135,6 +137,27 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
     const updated = getModes(activeTab).filter(m => m.id !== id);
     await db.updateSettings(tenantId, { [getKey(activeTab)]: updated });
     setModes(activeTab, updated);
+  };
+
+  const handleApplyToAll = async (mode: FollowUpNamedMode) => {
+    const field = TAB_CONFIG[activeTab].customerModeField;
+    if (!confirm(`Aplicar o modo "${mode.name}" para TODOS os clientes? O modo atual de ${TAB_CONFIG[activeTab].label} de cada cliente será substituído.`)) return;
+    setApplyingModeId(mode.id);
+    try {
+      const [customers, settings] = await Promise.all([
+        db.getCustomers(tenantId),
+        db.getSettings(tenantId),
+      ]);
+      const customerData: Record<string, any> = { ...(settings.customerData || {}) };
+      for (const cust of customers) {
+        customerData[cust.id] = { ...(customerData[cust.id] || {}), [field]: mode.id };
+      }
+      await db.updateSettings(tenantId, { customerData });
+      setAppliedModeId(mode.id);
+      setTimeout(() => setAppliedModeId(null), 3000);
+    } finally {
+      setApplyingModeId(null);
+    }
   };
 
   if (loading) return <div className="p-20 text-center font-black animate-pulse">CARREGANDO...</div>;
@@ -336,7 +359,14 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
                         <p className="text-xs font-bold text-slate-400 mt-1 truncate">{mode.message.substring(0, 80)}{mode.message.length > 80 ? '...' : ''}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                      <button
+                        onClick={() => handleApplyToAll(mode)}
+                        disabled={applyingModeId === mode.id}
+                        title="Atribuir este modo para todos os clientes cadastrados"
+                        className={`px-4 py-2 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${appliedModeId === mode.id ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-500 hover:text-white'} disabled:opacity-40`}>
+                        {applyingModeId === mode.id ? 'Aplicando...' : appliedModeId === mode.id ? '✓ Aplicado!' : '👥 Todos'}
+                      </button>
                       <button onClick={() => handleToggleActive(mode)}
                         className={`px-4 py-2 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${mode.active ? 'bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}>
                         {mode.active ? 'Pausar' : 'Ativar'}

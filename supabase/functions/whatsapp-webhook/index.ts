@@ -341,14 +341,15 @@ async function callBrain(
 • "Tem vaga hoje?" / "Como estão os horários?" / "Tem horário?" SEM dia → mostre os horários disponíveis de HOJE + "Quer agendar? Qual serviço?" — NÃO crie agendamento ainda
 • "Para hoje" / "quero pra hoje" no meio do fluxo → mude o DIA para hoje e consulte os horários disponíveis
 
-🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — interprete termos informais como referência ao serviço correspondente:
-• "cabeça" / "cortar a cabeça" / "cabecinha" = CORTE DE CABELO (não literal) → identifique o serviço de corte na lista
-• "barba" / "fazer a barba" / "tirar a barba" = serviço de barba
-• "bigode" = serviço de bigode ou barba
-• "sobrancelha" / "sombrancelha" = design de sobrancelha
-• "franja" = corte de franja ou corte
-• "ligar" / "passar o pente" / "zerar" / "na máquina" = corte de cabelo
-• Cliente menciona parte do corpo informalmente → mapeie para o serviço mais próximo da lista
+🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — quando o cliente usa termo informal que mapeia claramente para um serviço, preencha o serviço automaticamente NO extracted.service e NÃO pergunte "qual serviço?" — prossiga direto para data/horário:
+CORTE DE CABELO → "cabeça" / "cortar a cabeça" / "cabecinha" / "cortar o cabelo" / "cortar o cabelo do meu filho/da minha filha" / "aparar" / "dar uma aparada" / "dar um trato no cabelo" / "dar um jeito no cabelo" / "fazer o cabelo" / "tirar o excesso" / "franja" / "ligar" / "passar o pente" / "zerar" / "na máquina" / "renovar o visual" / "dar uma caprichada"
+BARBA → "barba" / "fazer a barba" / "tirar a barba" / "aparar a barba" / "dar um trato na barba" / "modelar a barba" / "barba e bigode"
+BIGODE → "bigode" / "aparar o bigode"
+SOBRANCELHA → "sobrancelha" / "sombrancelha" / "fazer a sobrancelha" / "tirar a sobrancelha" / "design de sobrancelha"
+COLORAÇÃO → "pintar o cabelo" / "colorir" / "loiro" / "mechas" / "ombré" / "reflexo" / "tingir"
+ALISAMENTO → "alisar" / "relaxar" / "progressiva" / "escova progressiva" / "botox capilar"
+ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
+• REGRA GERAL: se o cliente menciona qualquer parte do corpo ou gíria de serviço que claramente identifica UM serviço da lista, assuma esse serviço — NÃO peça confirmação do serviço, peça data/horário diretamente
 
 🔀 AMBÍGUO — não assuma, pergunte com contexto:
 • Saudação simples ("oi", "tudo bem?", "boa tarde") → cumprimentar + "Como posso te ajudar?"
@@ -408,6 +409,8 @@ ${isFirst && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente
   - Nova data JÁ no contexto → mostre resumo: "Vou cancelar seu agendamento de [data_antiga] às [hora] com [prof] e marcar para [nova_data] às [hora]. Confirma?" → aguarde confirmação
   - Nova data AUSENTE → pergunte: "Para qual data você quer remarcar?"
   - Após confirmação → defina confirmed:true (sistema cancela o antigo e cria o novo automaticamente)
+  - Se cliente perguntar "qual dia está agendado?" / "qual meu horário?" / "o que tenho marcado?" → responda com os dados do contexto: "Você tem agendado para [data_antiga] às [hora] com [prof]. Para qual data quer remarcar?"
+  - Se cliente demonstrar confusão ("não entendi", "o que você falou?", "tá errado") → pare o fluxo, reconheça: "Desculpe a confusão! 😅 O que posso fazer por você?"
 • Adiantamento (horário mais cedo): se CONTEXTO ATUAL tiver "ADIANTAMENTO EM ANDAMENTO":
   - Ofereça os horários disponíveis mais cedo: "Tem sim! Teria às [X] ou [Y]. Qual você prefere?"
   - Se cliente escolher um horário → extraia o time no JSON → defina confirmed:true
@@ -746,6 +749,32 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const { greeting: brasiliaGreeting, dateStr: brasiliaDate } = getBrasiliaGreeting();
   const shouldGreet = session.data.greetedAt !== brasiliaDate;
 
+  // ── Date-change during confirmation (TypeScript layer) ───────────────
+  // Client was shown a slot (date+time set) but asks about a different day → reset and re-query
+  if (session.data.date && session.data.time && !session.data.pendingReschedule) {
+    const normDC = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const DATE_CHANGE_KW = [
+      'amanha', 'depois de amanha', 'semana que vem',
+      'proxima semana', 'proximo', 'proxima',
+      'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
+      'segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira',
+      'pra amanha', 'para amanha', 'no sabado', 'na sexta', 'na quinta',
+      'na terca', 'na quarta', 'na segunda', 'no domingo',
+      'outro dia', 'outro horario', 'outra data', 'mudar o dia', 'mudar para',
+      'nao quero hoje', 'prefiro amanha', 'prefiro outro dia',
+    ];
+    const AFFIRM_DC = ['sim', 'ok', 'pode', 'confirmo', 'isso', 'beleza', 'bora', 'ta', 'tá', 'certo', 'fechado', 'quero', 'perfeito', 'claro', 'serve', 'yes'];
+    const isAffirm = AFFIRM_DC.some(a => normDC === a || normDC.split(/\s+/).includes(a));
+    const hasDateChange = !isAffirm && DATE_CHANGE_KW.some(k => normDC.includes(k));
+    if (hasDateChange) {
+      console.log('[Agent] Date-change during confirmation — resetting date/time');
+      session.data.date = undefined;
+      session.data.time = undefined;
+      session.data.availableSlots = undefined;
+      session.data.pendingConfirm = undefined;
+    }
+  }
+
   // ── Reschedule detection (TypeScript layer) ──────────────────────────
   if (!session.data.pendingReschedule && !session.data.pendingConfirm) {
     const RESCHEDULE_KW = [
@@ -787,10 +816,63 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
               oldProfName: profRS?.name || 'Profissional',
             };
             console.log('[Agent] Reschedule detected, pre-filled session from appt', apptRS.id);
+          } else {
+            // No upcoming appointment found — ask for more info (attempt 1)
+            session.data.pendingRescheduleSearch = { attempt: 1 };
+            const noApptMsg = '😕 Não identifiquei nenhum agendamento ativo no seu número.\n\nPode me confirmar seu *nome completo* e o *dia que estava agendado*? Assim consigo verificar melhor!';
+            session.history.push({ role: 'user', text: text }, { role: 'bot', text: noApptMsg });
+            await saveSession(tenantId, phone, session);
+            await sendMsg(instanceName, phone, noApptMsg, tenantId);
+            return;
           }
         }
       } catch (eRS) { console.error('[Agent] reschedule pre-detection error:', eRS); }
     }
+  }
+
+  // ── Reschedule search retry (TypeScript layer) ────────────────────────
+  if (session.data.pendingRescheduleSearch) {
+    const attempt = session.data.pendingRescheduleSearch.attempt;
+    try {
+      const { data: custRS2 } = await supabase.from('customers').select('id')
+        .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+      if (custRS2) {
+        const { data: anyRS } = await supabase.from('appointments')
+          .select('id, inicio, service_id, professional_id')
+          .eq('tenant_id', tenantId).eq('customer_id', custRS2.id)
+          .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+          .order('inicio', { ascending: true }).limit(1);
+        if (anyRS && anyRS.length > 0) {
+          const apptRS2 = anyRS[0];
+          const oldDate2 = (apptRS2.inicio as string).substring(0, 10);
+          const oldTime2 = (apptRS2.inicio as string).substring(11, 16);
+          const svcRS2  = services.find((s: any) => s.id === apptRS2.service_id);
+          const profRS2 = professionals.find((p: any) => p.id === apptRS2.professional_id);
+          session.data.serviceId        = apptRS2.service_id;
+          session.data.serviceName      = svcRS2?.name;
+          session.data.serviceDuration  = svcRS2?.durationMinutes;
+          session.data.professionalId   = apptRS2.professional_id;
+          session.data.professionalName = profRS2?.name;
+          session.data.time             = oldTime2;
+          session.data.pendingReschedule = {
+            oldApptId: apptRS2.id,
+            oldDate: oldDate2,
+            oldTime: oldTime2,
+            oldProfName: profRS2?.name || 'Profissional',
+          };
+          session.data.pendingRescheduleSearch = undefined;
+          console.log('[Agent] Reschedule retry found appt', apptRS2.id);
+          // Fall through to AI with pendingReschedule now set
+        } else if (attempt >= 1) {
+          session.data.pendingRescheduleSearch = undefined;
+          const noAppt2Msg = '😕 Não encontrei nenhum agendamento no sistema com essas informações.\n\nQuer que eu agende um *novo horário* pra você? É só me dizer o serviço e o dia! 😊';
+          session.history.push({ role: 'user', text: text }, { role: 'bot', text: noAppt2Msg });
+          await saveSession(tenantId, phone, session);
+          await sendMsg(instanceName, phone, noAppt2Msg, tenantId);
+          return;
+        }
+      }
+    } catch (eRS2) { console.error('[Agent] reschedule retry error:', eRS2); }
   }
 
   // ── Earlier slot detection (TypeScript layer) ────────────────────────
@@ -850,6 +932,31 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           }
         }
       } catch (eEar) { console.error('[Agent] earlier slot detection error:', eEar); }
+    }
+  }
+
+  // ── Confusion / loop-break detection (TypeScript layer) ─────────────
+  if (session.data.pendingReschedule || session.data.pendingRescheduleSearch) {
+    const normConf = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const CONFUSION_KW = [
+      'nao entendi', 'nao to entendendo', 'nao estou entendendo',
+      'o que voce entendeu', 'o que vc entendeu', 'o que entendeu',
+      'ta errado', 'esta errado', 'isso nao e o que eu disse',
+      'nao foi isso', 'nao e isso', 'nao disse isso',
+      'voce nao ta entendendo', 'vc nao ta entendendo',
+    ];
+    if (CONFUSION_KW.some(k => normConf.includes(k))) {
+      session.data.pendingReschedule = undefined;
+      session.data.pendingRescheduleSearch = undefined;
+      session.data.serviceId = undefined;
+      session.data.date = undefined;
+      session.data.time = undefined;
+      session.data.professionalId = undefined;
+      const confReply = 'Desculpe a confusão! 😅 Pode me contar de novo o que você precisa que eu te ajudo certinho?';
+      session.history.push({ role: 'user', text: text }, { role: 'bot', text: confReply });
+      await saveSession(tenantId, phone, session);
+      await sendMsg(instanceName, phone, confReply, tenantId);
+      return;
     }
   }
 
