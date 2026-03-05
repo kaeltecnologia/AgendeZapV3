@@ -22,6 +22,10 @@ import { registerFollowUpContext } from './agentService';
 // Prevent concurrent runs for the same tenant
 const runningTenants = new Set<string>();
 
+// In-memory sentinel: prevents re-sends within the same browser session
+// even if DB save is slow. Keys: "aviso::custId::date", "lembrete::apptId", etc.
+const followUpSentMemory = new Set<string>();
+
 function interpolate(template: string, vars: Record<string, string>): string {
   return template
     .replace(/\{nome\}/gi, vars.nome || '')
@@ -98,8 +102,11 @@ export async function runFollowUp(tenant: any): Promise<void> {
       const mode = avisoModes.find(m => m.id === cust.avisoModeId && m.active);
       if (!mode) continue;
 
-      const sentKey = `aviso::${appt.id}`;
-      if (newSent[sentKey]) continue; // already sent
+      // Dedup by customer+day (not just apptId) so duplicate appointments don't send twice
+      const sentKey     = `aviso::${appt.id}`;
+      const custDayKey  = `aviso::cust::${cust.id}::${nowDate}`;
+      if (newSent[sentKey] || newSent[custDayKey]) continue;
+      if (followUpSentMemory.has(custDayKey)) continue; // same-session guard
 
       const fixedHHMM = mode.fixedTime || '08:00';
       if (nowHHMM < fixedHHMM) continue; // not the right time yet
@@ -114,9 +121,13 @@ export async function runFollowUp(tenant: any): Promise<void> {
         servico: svc?.name || '',
       });
 
+      // Claim before sending (prevents re-send if polling fires again before DB save)
+      followUpSentMemory.add(custDayKey);
+
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);
-        newSent[sentKey] = nowDate;
+        newSent[sentKey]    = nowDate;
+        newSent[custDayKey] = nowDate;
         anySent = true;
         console.log(`[FollowUp] Aviso enviado → ${cust.name} (${cust.phone})`);
         registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
@@ -156,6 +167,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
 
       const sentKey = `lembrete::${appt.id}`;
       if (newSent[sentKey]) continue;
+      if (followUpSentMemory.has(sentKey)) continue; // same-session guard
 
       // Send when the appointment is within mode.timing minutes
       if (minutesUntil > mode.timing) continue;
@@ -169,6 +181,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
         hora:    apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         servico: svc?.name || '',
       });
+
+      followUpSentMemory.add(sentKey); // claim before sending
 
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);
@@ -214,6 +228,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
 
       const sentKey = `reativacao::${custId}::${lastAppt.id}`;
       if (newSent[sentKey]) continue;
+      if (followUpSentMemory.has(sentKey)) continue; // same-session guard
 
       // Check enough days have elapsed
       const daysSince = (nowMs - lastDate.getTime()) / 86400000;
@@ -240,6 +255,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
         hora:    lastDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         servico: svc?.name || '',
       });
+
+      followUpSentMemory.add(sentKey); // claim before sending
 
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);

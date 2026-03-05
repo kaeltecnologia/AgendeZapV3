@@ -210,6 +210,7 @@ export interface TenantSettings {
     reativacaoModeId?: string;
     recurringSchedule?: RecurringSchedule;
     aiPaused?: boolean;                  // true = IA desativada manualmente para este lead
+    waitlistAlert?: boolean;             // true = lead pediu lista de espera (alerta para operador)
   }>;
   followUpSent?: Record<string, string>; // tracks sent messages e.g. "aviso::apptId" → "YYYY-MM-DD"
   profAgendaSent?: Record<string, string>; // tracks daily agenda sent: "profId::YYYY-MM-DD" → "sent"

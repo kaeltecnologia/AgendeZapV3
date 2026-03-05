@@ -13,6 +13,7 @@ import { sendProfessionalNotification } from './notificationService';
 import { evolutionService } from './evolutionService';
 import { nichoConfigs, isBarbearia } from '../config/nichoConfigs';
 import { logAIUsage, estimateTokens } from './usageTracker';
+import { notifyWaitlistLeads } from './waitlistService';
 
 // =====================================================================
 // TYPES
@@ -57,6 +58,14 @@ interface SessionData {
     companion2ProfId?: string;         // 2nd professional (parallel mode)
     companion2ProfName?: string;
     companion2Time?: string;           // 2nd appointment time (consecutive mode)
+  };
+  // Reschedule flow: client wants to cancel existing appt and rebook same service/prof/time on new date
+  pendingReschedule?: {
+    oldApptId: string;
+    oldDate: string;     // YYYY-MM-DD (original date — for display + waitlist notify)
+    oldTime: string;     // HH:MM
+    oldProfName: string;
+    isEarlierSlot?: boolean; // true = client wants same day but earlier time (not a date change)
   };
 }
 
@@ -308,6 +317,8 @@ interface BrainOutput {
     groupIntent?: boolean | null;       // client wants to book for 2+ people
     sameService?: boolean | null;       // both want the same service
     companionServiceId?: string | null; // companion's service if different
+    waitlist?: boolean | null;          // client wants to join waitlist / be called if slot opens
+    reschedule?: boolean | null;        // client wants to cancel existing appt and rebook on new date
   };
 }
 
@@ -344,6 +355,14 @@ async function callBrain(
   if (data.professionalName) known.push(`Profissional: ${data.professionalName}`);
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
   if (data.time) known.push(`Horário: ${data.time}`);
+  if (data.pendingReschedule) {
+    if (data.pendingReschedule.isEarlierSlot) {
+      known.push(`ADIANTAMENTO EM ANDAMENTO: cliente quer horário mais cedo do que ${data.pendingReschedule.oldTime} hoje com ${data.pendingReschedule.oldProfName} — horários disponíveis mais cedo listados abaixo`);
+    } else {
+      known.push(`REAGENDAMENTO EM ANDAMENTO: cancelar agendamento de ${formatDate(data.pendingReschedule.oldDate)} às ${data.pendingReschedule.oldTime} com ${data.pendingReschedule.oldProfName}`);
+      if (!data.date) known.push(`Nova data: ainda não informada — pergunte`);
+    }
+  }
 
   const followUpCtx = data.pendingFollowUpType === 'reativacao'
     ? `\n📩 CONTEXTO ESPECIAL — RECUPERAÇÃO DE CLIENTE INATIVO:
@@ -420,17 +439,24 @@ async function callBrain(
 1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ PERÍODO (manhã/tarde) → 5️⃣ HORÁRIO → 6️⃣ CONFIRMAÇÃO
 ⛔ REGRAS ABSOLUTAS:
 • Se DIA não estiver no CONTEXTO ATUAL → pergunte "Tem algum dia de preferência?" ANTES de qualquer horário
+• EXCEÇÃO: se o cliente perguntar sobre horários SEM mencionar dia ("tem horário?", "como estão os horários?", "horário disponível", "tem vaga?") → assuma HOJE e mostre os horários disponíveis de hoje
 • Se DIA definido mas PERÍODO não → pergunte "Prefere de manhã ou à tarde?"
-• ❌ JAMAIS mencione ou sugira horário específico (ex: "09:00", "15:00") sem ter DIA confirmado no CONTEXTO ATUAL\n`;
+• ❌ JAMAIS mencione ou sugira horário específico (ex: "09:00", "15:00") sem ter DIA confirmado no CONTEXTO ATUAL
+
+⚡ QUANDO NÃO HÁ HORÁRIO DISPONÍVEL — protocolo obrigatório (NUNCA apenas diga "que pena"):
+1. Tente MESMO DIA: "Esse horário não está disponível, mas hoje ainda tenho [lista de horários do mesmo dia]. Algum serve?"
+2. Se cliente recusar todos do mesmo dia (ou não houver mais): sugira o HORÁRIO DESEJADO no próximo dia disponível: "Amanhã às [hora desejada] está disponível. Serve?"
+3. Se o horário desejado não tiver no próximo dia: ofereça o horário mais próximo disponível nos próximos dias\n`;
 
   // ── Behavioral rules covering 30 real-world scenarios ──────────────────
   const behaviorRules = `
 ⛔ ARMADILHAS — NUNCA FAÇA:
 • "Quero cortar amanhã" → NÃO agende sem profissional + horário confirmados
-• "Tem horário hoje?" = CONSULTA, não pedido de agendamento → mostre opções disponíveis + "Quer agendar? Qual serviço?"
+• "Tem horário hoje?" / "Como estão os horários?" / "Horário disponível" / "Tem vaga?" SEM dia específico = assuma HOJE → mostre horários disponíveis de hoje + "Quer agendar? Qual serviço?"
 • "De manhã" / "de tarde" / "próxima semana" = tempo VAGO → mostre as opções daquele período/semana, nunca escolha por conta própria
 • "Mesmo de sempre" → sem memória histórica → "Pode confirmar o serviço e horário preferido?"
-• "Pode ser com o [prof]?" → faltam serviço + data + horário → pergunte antes de confirmar
+• "Pode ser com o [prof]?" com SERVIÇO já no contexto → NÃO pergunte "sobre o que você quer falar" → confirme direto: "Ótimo, com o [prof]! Qual dia prefere?"
+• Profissional já definido no contexto → NÃO pergunte de novo sobre o profissional
 
 🚫 CANCELAR — protocolo obrigatório (nesta ordem):
 1. Localizar: "Encontrei seu agendamento: [data/hora/serviço]."
@@ -451,7 +477,17 @@ async function callBrain(
 • "Vocês trabalham domingo?" / "qual o horário de vocês?" → informar funcionamento; só depois oferecer agendar
 • "Quanto tempo demora um procedimento?" → informar duração; só depois oferecer agendar
 • "O [prof] tá disponível essa semana?" / "tá de folga?" → informar disponibilidade do profissional; só depois oferecer agendar
-• "Tem vaga hoje?" → mostre os horários disponíveis + "Qual serviço você quer?" — NÃO crie agendamento ainda
+• "Tem vaga hoje?" / "Como estão os horários?" / "Tem horário?" SEM dia → mostre os horários disponíveis de HOJE + "Quer agendar? Qual serviço?" — NÃO crie agendamento ainda
+• "Para hoje" / "quero pra hoje" no meio do fluxo → mude o DIA para hoje e consulte os horários disponíveis
+
+🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — interprete termos informais como referência ao serviço correspondente:
+• "cabeça" / "cortar a cabeça" / "cabecinha" = CORTE DE CABELO (não literal) → identifique o serviço de corte na lista
+• "barba" / "fazer a barba" / "tirar a barba" = serviço de barba
+• "bigode" = serviço de bigode ou barba
+• "sobrancelha" / "sombrancelha" = design de sobrancelha
+• "franja" = corte de franja ou corte
+• "ligar" / "passar o pente" / "zerar" / "na máquina" = corte de cabelo
+• Cliente menciona parte do corpo informalmente → mapeie para o serviço mais próximo da lista
 
 🔀 AMBÍGUO — não assuma, pergunte com contexto:
 • Saudação simples ("oi", "tudo bem?", "boa tarde") → cumprimentar + "Como posso te ajudar?"
@@ -515,6 +551,15 @@ ${farewellLine}
 • 2 profissionais opcionais (cliente diz EXPLICITAMENTE "Matheus ou Felipe") → somente neste caso escolha o que tiver horário disponível
 • Preço perguntado → informe direto: "O serviço está R$40,00"
 • Agenda cheia → "Essa semana tá cheio, mas semana que vem teria. Vamos agendar?"
+• Lista de espera: se cliente pedir "se alguém cancelar me avisa", "me manda se abrir um horário antes", "lista de espera", "se tiver desistência" → responda que anotou e que irá avisar caso abra horário; defina waitlist:true no JSON.
+• Reagendamento: se CONTEXTO ATUAL tiver "REAGENDAMENTO EM ANDAMENTO":
+  - Nova data JÁ no contexto → mostre resumo: "Vou cancelar seu agendamento de [data_antiga] às [hora] com [prof] e marcar para [nova_data] às [hora]. Confirma?" → aguarde confirmação
+  - Nova data AUSENTE → pergunte: "Para qual data você quer remarcar?" (sem alterar serviceId/professionalId/time)
+  - Após confirmação do cliente → defina confirmed:true (sistema cancelará o antigo e criará o novo automaticamente)
+• Adiantamento (horário mais cedo): se CONTEXTO ATUAL tiver "ADIANTAMENTO EM ANDAMENTO":
+  - Ofereça os horários disponíveis mais cedo: "Tem sim! Teria às [X] ou [Y]. Qual você prefere?"
+  - Se cliente escolher um horário → extraia o time no JSON → defina confirmed:true
+  - Se cliente não quiser / preferir manter o original → responda "Tudo bem! Mantenho o das [hora_original] então. Te esperamos! 😊" e defina confirmed:false
 ${nichoRulesSection}
 ════════════════════════════════
 EXTRAÇÃO DE DADOS:
@@ -525,9 +570,11 @@ EXTRAÇÃO DE DADOS:
 • groupIntent: true se cliente mencionou agendar para mais de uma pessoa
 • sameService: true/false se souber se as pessoas vão fazer o mesmo procedimento
 • companionServiceId: ID do serviço do acompanhante (quando diferente do cliente)
+• waitlist: true se cliente pediu para entrar em lista de espera / ser avisado se alguém cancelar / "me manda se abrir um horário antes" / "se der um horário vago me chama"
+• reschedule: true se cliente disse que quer reagendar / remarcar horário JÁ existente ("tenho horário mas não vou conseguir ir", "preciso mudar meu horário", "não consigo chegar a tempo, quero remarcar", "reagendar meu horário")
 
 RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
-{"reply":"...","extracted":{"clientName":null,"serviceId":null,"professionalId":null,"date":null,"time":null,"confirmed":null,"cancelled":null,"groupIntent":null,"sameService":null,"companionServiceId":null}}`;
+{"reply":"...","extracted":{"clientName":null,"serviceId":null,"professionalId":null,"date":null,"time":null,"confirmed":null,"cancelled":null,"groupIntent":null,"sameService":null,"companionServiceId":null,"waitlist":null,"reschedule":null}}`;
 
   try {
     if (apiKey.startsWith('sk-')) {
@@ -798,6 +845,7 @@ export async function handleMessage(
           .order('inicio', { ascending: true }).limit(1);
         if (appts && appts.length > 0) {
           await supabase.from('appointments').update({ status: AppointmentStatus.CANCELLED }).eq('id', appts[0].id);
+          notifyWaitlistLeads(tenantId, { date: (appts[0].inicio as string).substring(0, 10) }).catch(console.error);
           const dateFormatted = new Date((appts[0].inicio as string).substring(0,10) + 'T12:00:00')
             .toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
           return `✅ Agendamento de *${dateFormatted}* cancelado com sucesso.\n\nMotivo registrado. Obrigado pelo feedback! Até a próxima. 😊`;
@@ -975,7 +1023,7 @@ export async function handleMessage(
     const { profId, profName, profPhone } = preSession.data.pendingProfContact;
     const normMsg = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
     const normWds = normMsg.split(/\s+/);
-    const BOOK_KW = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento'];
+    const BOOK_KW = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'cabeca', 'cabecinha', 'cabeça'];
     const AFFIRM  = ['sim', 'pode', 'quero', 'ok', 'claro', 'isso', 'bora', 'gostaria', 'queria', 'preciso', 'favor', 'exato'];
     const DENY    = ['nao', 'não', 'nope', 'negativo'];
     const hasBookingKw = BOOK_KW.some(k => normMsg.includes(k));
@@ -1150,6 +1198,122 @@ export async function handleMessage(
     console.log('[Agent] Group booking detected:', session.data.groupBooking.companionDesc);
   }
 
+  // ─── Reschedule detection (TypeScript layer) ─────────────────────────
+  // Detects "tenho horário mas preciso reagendar" → fetches existing appt and pre-fills session
+  if (!session.data.pendingReschedule && !session.data.pendingConfirm) {
+    const RESCHEDULE_KW = [
+      'reagendar', 'remarcar', 'mudar meu horario', 'mudar meu agendamento',
+      'trocar meu horario', 'trocar meu agendamento', 'nao vou conseguir',
+      'não vou conseguir', 'nao consigo ir', 'não consigo ir',
+      'preciso mudar', 'preciso remarcar', 'preciso reagendar',
+      'nao vou poder ir', 'não vou poder ir', 'quero remarcar', 'quero reagendar',
+    ];
+    const normRS = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const wantsReschedule = RESCHEDULE_KW.some(k => normRS.includes(k));
+    if (wantsReschedule) {
+      try {
+        const { data: custRS } = await supabase.from('customers').select('id')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        if (custRS) {
+          const now0 = new Date();
+          const p0 = (n: number) => String(n).padStart(2, '0');
+          const nowLocal = `${now0.getFullYear()}-${p0(now0.getMonth()+1)}-${p0(now0.getDate())}T${p0(now0.getHours())}:${p0(now0.getMinutes())}:00`;
+          const { data: upcomingRS } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custRS.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', nowLocal).order('inicio', { ascending: true }).limit(1);
+          if (upcomingRS && upcomingRS.length > 0) {
+            const apptRS = upcomingRS[0];
+            const oldDate = (apptRS.inicio as string).substring(0, 10);
+            const oldTime = (apptRS.inicio as string).substring(11, 16);
+            const svcRS  = services.find((s: any) => s.id === apptRS.service_id);
+            const profRS = professionals.find((p: any) => p.id === apptRS.professional_id);
+            // Pre-fill session with same service + prof + time (only new date is missing)
+            session.data.serviceId        = apptRS.service_id;
+            session.data.serviceName      = svcRS?.name;
+            session.data.serviceDuration  = svcRS?.durationMinutes;
+            session.data.servicePrice     = svcRS?.price;
+            session.data.professionalId   = apptRS.professional_id;
+            session.data.professionalName = profRS?.name;
+            session.data.time             = oldTime;
+            session.data.pendingReschedule = {
+              oldApptId: apptRS.id,
+              oldDate,
+              oldTime,
+              oldProfName: profRS?.name || 'Profissional',
+            };
+            console.log('[Agent] Reschedule detected, pre-filled session from appt', apptRS.id);
+          }
+        }
+      } catch (eRS) { console.error('[Agent] reschedule pre-detection error:', eRS); }
+    }
+  }
+
+  // ─── Earlier slot detection (TypeScript layer) ───────────────────────
+  // Detects "quero adiantar", "mais cedo", etc. — client wants an earlier time TODAY
+  if (!session.data.pendingReschedule && !session.data.pendingConfirm) {
+    const EARLIER_KW = [
+      'adiantar', 'mais cedo', 'hora mais cedo', 'horario mais cedo',
+      'antes das', 'puder ir antes', 'conseguir ir antes',
+      'um pouco antes', 'ir antes', 'chegar antes',
+    ];
+    const normEar = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const wantsEarlier = EARLIER_KW.some(k => normEar.includes(k));
+    if (wantsEarlier) {
+      try {
+        const { data: custE } = await supabase.from('customers').select('id')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        if (custE) {
+          const now0 = new Date();
+          const p0 = (n: number) => String(n).padStart(2, '0');
+          const nowLocal = `${now0.getFullYear()}-${p0(now0.getMonth()+1)}-${p0(now0.getDate())}T${p0(now0.getHours())}:${p0(now0.getMinutes())}:00`;
+          const { data: upcomingE } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custE.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', nowLocal).order('inicio', { ascending: true }).limit(1);
+          if (upcomingE && upcomingE.length > 0) {
+            const apptE = upcomingE[0];
+            const apptDate = (apptE.inicio as string).substring(0, 10);
+            const apptTime = (apptE.inicio as string).substring(11, 16);
+            const svcE  = services.find((s: any) => s.id === apptE.service_id);
+            const profE = professionals.find((p: any) => p.id === apptE.professional_id);
+            // Only consider earlier if appointment is TODAY
+            if (apptDate === todayISO) {
+              const allSlots = await getAvailableSlots(tenantId, apptE.professional_id, apptDate, svcE?.durationMinutes || 30, settings);
+              const nowHHMM = `${pad(_nowBrasilia.getUTCHours())}:${pad(_nowBrasilia.getUTCMinutes())}`;
+              const earlierSlots = allSlots.filter(s => s >= nowHHMM && s < apptTime);
+              if (earlierSlots.length === 0) {
+                const reply = `Hoje mais cedo não tem disponível com o ${profE?.name || 'profissional'}, mas fique tranquilo — seu horário das ${apptTime} está confirmado! 😊`;
+                session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+                saveSession(session);
+                return reply;
+              }
+              // Earlier slots found — set up reschedule flow for earlier time
+              session.data.serviceId        = apptE.service_id;
+              session.data.serviceName      = svcE?.name;
+              session.data.serviceDuration  = svcE?.durationMinutes;
+              session.data.servicePrice     = svcE?.price;
+              session.data.professionalId   = apptE.professional_id;
+              session.data.professionalName = profE?.name;
+              session.data.date             = apptDate;
+              session.data.availableSlots   = earlierSlots;
+              session.data.pendingReschedule = {
+                oldApptId: apptE.id,
+                oldDate: apptDate,
+                oldTime: apptTime,
+                oldProfName: profE?.name || 'Profissional',
+                isEarlierSlot: true,
+              };
+              console.log('[Agent] Earlier slot detected, earlier options:', earlierSlots);
+            }
+          }
+        }
+      } catch (eEar) { console.error('[Agent] earlier slot detection error:', eEar); }
+    }
+  }
+
   // ─── Appointment query detection (TypeScript layer) ───────────────────
   // When a client asks about their existing appointment ("meu horário", "ta agendado?"),
   // look up DB directly and respond — skipping the booking flow entirely.
@@ -1232,7 +1396,7 @@ export async function handleMessage(
       if (profOptions.length > 1) {
         // Multiple professionals: check for booking intent or personal-contact flow
         const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'quero marcar', 'quero agendar'];
+        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'quero marcar', 'quero agendar', 'cabeca', 'cabecinha', 'cabeça'];
         const hasSvcMention = activeServices.some((s: any) =>
           normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
         );
@@ -1609,6 +1773,19 @@ export async function handleMessage(
       if (isPlanAppointment) await db.incrementPlanUsage(tenantId, customer.id).catch(console.error);
       if (appointment) sendProfessionalNotification(appointment).catch(console.error);
 
+      // ─── Reschedule: cancel old appointment ──────────────────────────
+      const pendingRS = session.data.pendingReschedule;
+      if (pendingRS?.oldApptId) {
+        try {
+          await supabase.from('appointments')
+            .update({ status: AppointmentStatus.CANCELLED })
+            .eq('id', pendingRS.oldApptId).eq('tenant_id', tenantId);
+          notifyWaitlistLeads(tenantId, { date: pendingRS.oldDate }).catch(console.error);
+        } catch (eCancelOld) {
+          console.error('[Agent] reschedule: failed to cancel old appt:', eCancelOld);
+        }
+      }
+
       // ─── Group booking: create companion appointment ───────────────────
       let groupMsg = '';
       const gbConf = session.data.groupBooking;
@@ -1642,17 +1819,26 @@ export async function handleMessage(
         }
       }
 
+      const wasReschedule = !!session.data.pendingReschedule;
       clearSession(tenantId, phone);
       const planNote = isPlanAppointment ? '\n📦 _Coberto pelo seu plano._' : '';
       if (shouldGreet) _greetedToday.set(_greetKey, brasiliaDate);
-      return (
-        `Agendado! ✅\n\n` +
-        `📅 ${formatDate(session.data.date)} às ${session.data.time}\n` +
-        `✂️ ${session.data.serviceName} com ${session.data.professionalName}` +
-        groupMsg +
-        planNote +
-        `\n\nTe esperamos! 😊`
-      );
+      return wasReschedule
+        ? (
+          `Reagendado! ✅\n\n` +
+          `📅 ${formatDate(session.data.date)} às ${session.data.time}\n` +
+          `✂️ ${session.data.serviceName} com ${session.data.professionalName}` +
+          planNote +
+          `\n\nTe esperamos! 😊`
+        )
+        : (
+          `Agendado! ✅\n\n` +
+          `📅 ${formatDate(session.data.date)} às ${session.data.time}\n` +
+          `✂️ ${session.data.serviceName} com ${session.data.professionalName}` +
+          groupMsg +
+          planNote +
+          `\n\nTe esperamos! 😊`
+        );
     } catch (e: any) {
       console.error('[Agent] Booking error:', e);
       return `Ocorreu um erro ao confirmar. Por favor, tente novamente.`;
@@ -1685,11 +1871,27 @@ export async function handleMessage(
           .order('inicio', { ascending: true }).limit(1);
         if (appts && appts.length > 0) {
           await supabase.from('appointments').update({ status: AppointmentStatus.CANCELLED }).eq('id', appts[0].id);
+          notifyWaitlistLeads(tenantId, { date: (appts[0].inicio as string).substring(0, 10) }).catch(console.error);
         }
       }
     } catch (e) { console.error('[Agent] cancelled extraction error:', e); }
     clearSession(tenantId, phone);
     return brain.reply;
+  }
+
+  // ─── Handle waitlist request ─────────────────────────────────────────
+  if (brain.extracted.waitlist === true) {
+    try {
+      const { data: custWl } = await supabase
+        .from('customers').select('id')
+        .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+      if (custWl) {
+        const s = await db.getSettings(tenantId);
+        const allCData = { ...(s.customerData || {}) };
+        allCData[custWl.id] = { ...( allCData[custWl.id] || {}), waitlistAlert: true };
+        await db.updateSettings(tenantId, { customerData: allCData });
+      }
+    } catch (e) { console.error('[Agent] waitlist save error:', e); }
   }
 
   // ─── Mark as pending confirm when summary was shown ────────────────

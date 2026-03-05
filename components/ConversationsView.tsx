@@ -74,8 +74,8 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
-  // AI pause per lead
-  const [customerData, setCustomerData] = useState<Record<string, { aiPaused?: boolean }>>({});
+  // AI pause per lead + waitlist alert
+  const [customerData, setCustomerData] = useState<Record<string, { aiPaused?: boolean; waitlistAlert?: boolean }>>({});
   const [togglingAi, setTogglingAi] = useState(false);
 
   // Audio transcription
@@ -405,6 +405,19 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     }
   };
 
+  const clearWaitlistAlert = async (phone: string) => {
+    const cust = findCustomerByPhone(phone);
+    if (!cust) return;
+    try {
+      const settings = await db.getSettings(tenantId);
+      const current = settings.customerData || {};
+      const custEntry = current[cust.id] || {};
+      const updated = { ...current, [cust.id]: { ...custEntry, waitlistAlert: false } };
+      await db.updateSettings(tenantId, { customerData: updated });
+      setCustomerData(updated);
+    } catch (e) { console.error('clearWaitlistAlert error:', e); }
+  };
+
   const openContact = (phone: string, name: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
     const existing = conversations.find(c => c.phone === cleanPhone || c.phone.slice(-11) === cleanPhone.slice(-11));
@@ -501,7 +514,15 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                           <span className="text-[11px] font-black text-black truncate">
                             {conv.professionalName || conv.name}
                           </span>
-                          <span className="text-[9px] font-bold text-slate-400 flex-shrink-0">{formatDateLabel(conv.lastTimestamp)}</span>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {(() => {
+                              const cId = findCustomerByPhone(conv.phone)?.id;
+                              return cId && customerData[cId]?.waitlistAlert
+                                ? <span title="Lista de espera — aguardando horário" className="text-yellow-500 text-sm leading-none">⚠️</span>
+                                : null;
+                            })()}
+                            <span className="text-[9px] font-bold text-slate-400">{formatDateLabel(conv.lastTimestamp)}</span>
+                          </div>
                         </div>
                         {conv.isProfessional && (
                           <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Barbeiro</span>
@@ -556,6 +577,24 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       );
                     })()}
                   </div>
+
+                  {/* Waitlist alert banner */}
+                  {(() => {
+                    const cust = findCustomerByPhone(selectedConv.phone);
+                    return cust && customerData[cust.id]?.waitlistAlert ? (
+                      <div className="mx-4 mt-2 mb-1 flex items-center gap-3 bg-yellow-50 border-2 border-yellow-200 rounded-2xl px-4 py-2.5">
+                        <span className="text-lg">⚠️</span>
+                        <p className="text-[11px] font-black text-yellow-800 flex-1 uppercase tracking-wide">Lista de espera — agendar manualmente se abrir horário</p>
+                        <button
+                          onClick={() => clearWaitlistAlert(selectedConv.phone)}
+                          title="Marcar como resolvido"
+                          className="text-[10px] font-black text-yellow-600 hover:text-yellow-900 bg-yellow-100 hover:bg-yellow-200 px-3 py-1 rounded-xl transition-all uppercase tracking-widest"
+                        >
+                          Resolver
+                        </button>
+                      </div>
+                    ) : null;
+                  })()}
 
                   {/* Messages */}
                   <div ref={messagesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-2 bg-slate-50/30">

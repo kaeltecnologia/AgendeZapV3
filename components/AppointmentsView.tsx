@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
+import { supabase } from '../services/supabase';
 import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod } from '../types';
 import { sendProfessionalNotification, sendClientArrivedNotification } from '../services/notificationService';
+import { notifyWaitlistLeads } from '../services/waitlistService';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -41,6 +43,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [manualDate, setManualDate] = useState('');
   const [manualTime, setManualTime] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [bookingSlots, setBookingSlots] = useState<string[]>([]);
+  const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false);
 
   // inline new-customer creation (inside booking modal)
   const [showNewCustForm, setShowNewCustForm] = useState(false);
@@ -159,6 +163,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setProfId(''); setSvcId('');
     setManualDate(new Date().toISOString().split('T')[0]); setManualTime('');
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
+    setBookingSlots([]); setBookingSlotsLoading(false);
     setShowBookingModal(true);
   };
 
@@ -170,8 +175,19 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     if (!svc) return;
     const requestedDate = new Date(`${manualDate}T${manualTime}:00`);
     if (isNaN(requestedDate.getTime())) { setErrorMsg('Data ou hora inválida.'); return; }
-    const check = await db.isSlotAvailable(tenantId, profId, requestedDate, svc.durationMinutes);
-    if (check.available) {
+
+    // If the time was verified by the slot picker, skip the isSlotAvailable check
+    // (it already checked operating hours + conflicts). Only check conflicts for manual types.
+    const verifiedByPicker = bookingSlots.includes(manualTime);
+    if (!verifiedByPicker) {
+      const check = await db.isSlotAvailable(tenantId, profId, requestedDate, svc.durationMinutes);
+      if (!check.available) {
+        setErrorMsg(check.reason || 'Este horário não está disponível.');
+        return;
+      }
+    }
+
+    try {
       const newApp = await db.addAppointment({
         tenant_id: tenantId, customer_id: customerId, professional_id: profId,
         service_id: svcId, startTime: requestedDate.toISOString(),
@@ -180,8 +196,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       });
       sendProfessionalNotification(newApp);
       setShowBookingModal(false); setErrorMsg(''); refreshData();
-    } else {
-      setErrorMsg(check.reason || 'Este horário não está disponível.');
+    } catch (e: any) {
+      setErrorMsg(e.message || 'Erro ao criar agendamento. Tente novamente.');
     }
   };
 
@@ -274,13 +290,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       const [startRange, endRange] = dayConfig.range.split('-');
       const [sh, sm] = startRange.split(':').map(Number);
       const [eh, em] = endRange.split(':').map(Number);
-      const { data: appts } = await (db as any).supabase?.from?.('appointments') !== undefined
-        ? { data: [] } // won't use this branch
-        : { data: [] };
 
       // Use appointments from already-loaded state (fast, no extra fetch)
       const dayAppts = appointments.filter(a => {
-        if (a.status === AppointmentStatus.CANCELLED) return false;
+        if (a.status === AppointmentStatus.CANCELLED || (a.status as string) === 'cancelado') return false;
         if (a.id === editAppt?.id) return false; // exclude self
         const aDate = new Date(a.startTime).toISOString().split('T')[0];
         return aDate === date && a.professional_id === pId;
@@ -338,6 +351,99 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   useEffect(() => {
     if (editAppt) loadEditSlots(editProfId, editDate, editSvcId);
   }, [editProfId, editDate, editSvcId, editAppt, loadEditSlots]);
+
+  // Load available slots for the NEW booking modal
+  const loadBookingSlots = useCallback(async (pId: string, date: string, sId: string) => {
+    if (!pId || !date || !sId) { setBookingSlots([]); return; }
+    setBookingSlotsLoading(true);
+    setManualTime('');
+    try {
+      const svc = services.find(s => s.id === sId);
+      const dur = svc?.durationMinutes || 30;
+      const settings = await db.getSettings(tenantId);
+      const dateObj = new Date(date + 'T12:00:00');
+      const dayIndex = dateObj.getDay();
+      const dayConfig = settings.operatingHours?.[dayIndex];
+      if (!dayConfig?.active) { setBookingSlots([]); return; }
+
+      // Fetch appointments from DB for this professional/date (no state filter issues)
+      const { data: dbAppts } = await supabase
+        .from('appointments').select('inicio, fim, status')
+        .eq('tenant_id', tenantId).eq('professional_id', pId)
+        .neq('status', 'CANCELLED').neq('status', 'cancelado')
+        .gte('inicio', `${date}T00:00:00`).lte('inicio', `${date}T23:59:59`);
+
+      // If day is inactive per settings but already has appointments, allow booking
+      // (admin override — e.g., Sunday closed by default but shop is actually working)
+      const hasExistingAppts = (dbAppts || []).length > 0;
+      if (!dayConfig?.active && !hasExistingAppts) { setBookingSlots([]); return; }
+
+      // Use stored range or fall back to 08:00-20:00 for override days
+      const effectiveRange = dayConfig?.range || '08:00-20:00';
+      const [startRange, endRange] = effectiveRange.split('-');
+      const [sh, sm] = startRange.split(':').map(Number);
+      const [eh, em] = endRange.split(':').map(Number);
+
+      const breaks: BreakPeriod[] = settings.breaks || [];
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const INTERVAL = 30;
+      const BUFFER = 11 * 60 * 1000;
+      const slots: string[] = [];
+      let cursor = sh * 60 + sm;
+      const endCursor = eh * 60 + em;
+      const loopLimit = dayConfig?.acceptLastSlot ? endCursor : endCursor - dur;
+
+      while (cursor <= loopLimit) {
+        const h = Math.floor(cursor / 60);
+        const m = cursor % 60;
+        const label = `${pad(h)}:${pad(m)}`;
+        const slotStart = new Date(`${date}T${label}:00`);
+        const slotEnd = new Date(slotStart.getTime() + dur * 60000);
+        const slotEndLabel = `${pad(slotEnd.getHours())}:${pad(slotEnd.getMinutes())}`;
+
+        const conflict = (dbAppts || []).some((a: any) => {
+          const aStart = new Date(a.inicio);
+          const aEnd = new Date(a.fim);
+          // Overlap duration = max(0, min(slotEnd, aEnd) - max(slotStart, aStart))
+          const overlapMs = Math.max(0,
+            Math.min(slotEnd.getTime(), aEnd.getTime()) - Math.max(slotStart.getTime(), aStart.getTime())
+          );
+          return overlapMs > BUFFER; // conflict if overlap > 11 min
+        });
+
+        const brkConflict = breaks.some(brk => {
+          if (brk.professionalId && brk.professionalId !== pId) return false;
+          if ((brk as any).type === 'vacation') {
+            const vacStart = brk.date || '';
+            const vacEnd = (brk as any).vacationEndDate || brk.date || '';
+            return !!vacStart && date >= vacStart && date <= vacEnd;
+          }
+          const matchDate = !brk.date || brk.date === date;
+          const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
+          if (!matchDate || !matchDay) return false;
+          return label < brk.endTime && slotEndLabel > brk.startTime;
+        });
+
+        if (!conflict && !brkConflict) slots.push(label);
+        cursor += INTERVAL;
+      }
+      setBookingSlots(slots);
+    } catch (e) {
+      console.error('loadBookingSlots error:', e);
+      setBookingSlots([]);
+    } finally {
+      setBookingSlotsLoading(false);
+    }
+  }, [tenantId, services]);
+
+  useEffect(() => {
+    if (showBookingModal && profId && manualDate && svcId) {
+      loadBookingSlots(profId, manualDate, svcId);
+    } else {
+      setBookingSlots([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profId, manualDate, svcId, showBookingModal]);
 
   const handleSaveEdit = async () => {
     if (!editAppt || !editProfId || !editSvcId || !editDate || !editTime) {
@@ -634,6 +740,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                                     await db.updateAppointmentStatus(a.id, newStatus, {});
                                   } catch (err) {
                                     console.error('Erro ao atualizar status:', err);
+                                  }
+                                  if (newStatus === AppointmentStatus.CANCELLED) {
+                                    const prof = professionals.find(p => p.id === a.professional_id);
+                                    const dateStr = a.startTime ? a.startTime.substring(0, 10) : undefined;
+                                    const timeStr = a.startTime ? a.startTime.substring(11, 16) : undefined;
+                                    notifyWaitlistLeads(tenantId, { professionalName: prof?.name, date: dateStr, time: timeStr }).catch(console.error);
                                   }
                                   refreshData();
                                 }
@@ -963,15 +1075,39 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
               <ModalSelect label="Serviço" value={svcId} onChange={setSvcId} placeholder="Selecionar Serviço">
                 {services.map(s => <option key={s.id} value={s.id}>{s.name} - R${s.price}</option>)}
               </ModalSelect>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Data</label>
-                  <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs uppercase" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Hora</label>
-                  <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs" />
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Data</label>
+                <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs uppercase" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                  Horário {bookingSlotsLoading && <span className="text-orange-400">carregando...</span>}
+                </label>
+                {bookingSlots.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {bookingSlots.map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setManualTime(s)}
+                        className={`px-4 py-2 rounded-2xl text-xs font-black border-2 transition-all ${
+                          manualTime === s
+                            ? 'bg-orange-500 border-orange-500 text-white'
+                            : 'bg-white border-slate-200 text-black hover:border-orange-400'
+                        }`}
+                      >{s}</button>
+                    ))}
+                  </div>
+                ) : !bookingSlotsLoading && profId && manualDate && svcId ? (
+                  <p className="text-xs text-slate-400 font-bold ml-1">Nenhum horário disponível neste dia.</p>
+                ) : null}
+                <input
+                  type="time"
+                  value={manualTime}
+                  onChange={e => setManualTime(e.target.value)}
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs"
+                  placeholder="ou digite manualmente"
+                />
               </div>
             </div>
             <div className="flex gap-4 pt-4">

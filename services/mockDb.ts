@@ -480,8 +480,8 @@ class DatabaseService {
       if (error) throw error;
       const customerData = settings.customerData || {};
       return (data || []).map(c => this.buildCustomer(c, customerData[c.id] || {}));
-    } catch (err) {
-      console.error("Error fetching customers:", err);
+    } catch (err: any) {
+      console.error("Error fetching customers:", err?.code, err?.message, err?.details);
       return [];
     }
   }
@@ -493,11 +493,21 @@ class DatabaseService {
         nome: customer.name,
         telefone: customer.phone
       }).select().single();
-      if (error) throw error;
-      // New customer starts with no plan/mode data
+
+      // Unique constraint violation: customer with same phone already exists
+      if (error?.code === '23505') {
+        const { data: existing } = await supabase.from('customers')
+          .select('*').eq('tenant_id', customer.tenant_id).eq('telefone', customer.phone).maybeSingle();
+        if (existing) return this.buildCustomer(existing, {});
+      }
+
+      if (error) {
+        console.error("Supabase Customer Insert Error:", error.code, error.message, error.details, error.hint);
+        throw error;
+      }
       return this.buildCustomer(data, {});
-    } catch (e) {
-      console.error("Supabase Customer Insert Error:", e);
+    } catch (e: any) {
+      if (e?.code !== '23505') console.error("Supabase Customer Insert Error:", e);
       throw e;
     }
   }
@@ -644,14 +654,16 @@ class DatabaseService {
         .lte('inicio', `${dateStr}T23:59:59`);
       if (error) throw error;
 
-      // Margem de 11 min: novo agendamento pode iniciar nos últimos 11 min do procedimento anterior
+      // Margem de 11 min: permite sobreposição de até 11 min entre procedimentos
       const BUFFER_MS = 11 * 60 * 1000;
       const conflicts = (data || []).filter(a => {
         const aStart = new Date(a.inicio);
         const aEnd = new Date(a.fim);
-        if (!(aStart < endTime && aEnd > startTime)) return false; // sem sobreposição
-        // Permite se o novo horário começa nos últimos 11 min do agendamento existente
-        return startTime.getTime() < aEnd.getTime() - BUFFER_MS;
+        // Overlap duration = max(0, min(endTime, aEnd) - max(startTime, aStart))
+        const overlapMs = Math.max(0,
+          Math.min(endTime.getTime(), aEnd.getTime()) - Math.max(startTime.getTime(), aStart.getTime())
+        );
+        return overlapMs > BUFFER_MS; // conflito somente se sobreposição > 11 min
       });
       return conflicts.length > 0 ? { available: false, reason: "Horário ocupado." } : { available: true };
     } catch (err) {
