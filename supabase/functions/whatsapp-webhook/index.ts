@@ -669,6 +669,48 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   session.history.push({ role: 'user', text });
 
+  // ── Vacation guard for already-selected professional ─────────────────────
+  // Handles the case where professionalId was set in a prior turn but that
+  // professional is currently on vacation (TS pre-extraction only runs when
+  // professionalId is NOT yet set).
+  if (session.data.professionalId) {
+    const _curProfOnVacWh = (settings.breaks || []).some((b: any) => {
+      if (b.type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+      const vs: string = b.date || '';
+      const ve: string = b.vacationEndDate || b.date || '';
+      return !!vs && todayISO >= vs && todayISO <= ve;
+    });
+    if (_curProfOnVacWh) {
+      const _vacNormWh = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const VAC_KW_WH = ['ferias', 'viagem', 'disponivel', 'disponibilidade', 'certeza', 'mesmo', 'verdade', 'nao ta', 'nao esta', 'ocupado', 'retorno', 'quando volta', 'quando voltar'];
+      const isVacQuestionWh = VAC_KW_WH.some(k => _vacNormWh.includes(k));
+      const _vacProfNameWh = session.data.professionalName || 'O profissional';
+      const _othersAvailWh = professionals.filter((p: any) => p.id !== session.data.professionalId)
+        .filter((p: any) => !(settings.breaks || []).some((b: any) => {
+          if (b.type !== 'vacation') return false;
+          if (b.professionalId && b.professionalId !== p.id) return false;
+          const vs: string = b.date || '', ve: string = b.vacationEndDate || b.date || '';
+          return !!vs && todayISO >= vs && todayISO <= ve;
+        }));
+      const _othersStrWh = _othersAvailWh.map((p: any) => p.name).join(' ou ');
+      if (isVacQuestionWh) {
+        const _vacMsgWh = `*${_vacProfNameWh}* está de férias no momento! 🏖️\n\n${_othersStrWh ? `Gostaria de agendar com ${_othersStrWh}?` : 'Pode agendar quando o profissional retornar.'}`;
+        session.data.professionalId   = undefined;
+        session.data.professionalName = undefined;
+        session.data.date             = undefined;
+        session.history.push({ role: 'bot', text: _vacMsgWh });
+        await sendMsg(instanceName, phone, _vacMsgWh, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+        return;
+      }
+      // Not a vacation question but prof is on vacation: clear so AI suggests alternatives
+      session.data.professionalId   = undefined;
+      session.data.professionalName = undefined;
+      session.data.date             = undefined;
+    }
+  }
+
   // ── Follow-up context: aviso/lembrete/reativacao ──────────────────────────
   // When followUpService sends a follow-up message it persists pendingFollowUpType
   // in the session. Handle the first reply here before falling through to the AI.
@@ -898,22 +940,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
-  // Vacation note for already-selected professional (in case TS layer didn't intercept)
-  const _whBreaks: any[] = settings.breaks || [];
-  const _selProfOnVacWh = session.data.professionalId && _whBreaks.some((b: any) => {
-    if (b.type !== 'vacation') return false;
-    if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
-    const vs: string = b.date || '';
-    const ve: string = b.vacationEndDate || b.date || '';
-    return !!vs && todayISO >= vs && todayISO <= ve;
-  });
-  const _vacNoteWh = _selProfOnVacWh
-    ? `\n⚠️ ATENÇÃO CRÍTICA: ${session.data.professionalName || 'O profissional selecionado'} ESTÁ DE FÉRIAS e NÃO tem disponibilidade para nenhuma data agora. Informe isso com simpatia ao cliente e sugira outro profissional ou que aguarde o retorno das férias.\n`
-    : '';
-  const _effectiveCustomPromptWh = _vacNoteWh ? (customPrompt || '') + _vacNoteWh : (customPrompt || undefined);
-
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, _effectiveCustomPromptWh, shouldGreet, brasiliaGreeting);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
@@ -972,7 +1000,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, _effectiveCustomPromptWh, false, brasiliaGreeting);
+    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting);
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;

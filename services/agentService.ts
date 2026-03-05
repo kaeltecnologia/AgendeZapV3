@@ -1189,6 +1189,48 @@ export async function handleMessage(
   // ─── Add user message to history ───────────────────────────────────
   session.history.push({ role: 'user', text });
 
+  // ─── Vacation guard for already-selected professional ────────────────
+  // Handles the case where session.data.professionalId was set in a prior turn
+  // but that professional is currently on vacation (TS pre-extraction above only
+  // runs when professionalId is NOT yet set).
+  if (session.data.professionalId) {
+    const _curProfOnVac = (settings.breaks || []).some((b: any) => {
+      if ((b as any).type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+      const vs = b.date || '';
+      const ve = (b as any).vacationEndDate || b.date || '';
+      return !!vs && todayISO >= vs && todayISO <= ve;
+    });
+    if (_curProfOnVac) {
+      const _vacNorm = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const VAC_KW = ['ferias', 'viagem', 'disponivel', 'disponibilidade', 'certeza', 'mesmo', 'verdade', 'nao ta', 'nao esta', 'ocupado', 'retorno', 'quando volta', 'quando voltar'];
+      const isVacQuestion = VAC_KW.some(k => _vacNorm.includes(k));
+      if (isVacQuestion) {
+        const _vacProfName = session.data.professionalName || 'O profissional';
+        const _othersAvail = profOptions
+          .filter((p: any) => p.id !== session.data.professionalId)
+          .filter((p: any) => !(settings.breaks || []).some((b: any) => {
+            if ((b as any).type !== 'vacation') return false;
+            if (b.professionalId && b.professionalId !== p.id) return false;
+            const vs = b.date || '', ve = (b as any).vacationEndDate || b.date || '';
+            return !!vs && todayISO >= vs && todayISO <= ve;
+          }));
+        const _othersStr = _othersAvail.map((p: any) => p.name).join(' ou ');
+        const _vacMsg = `*${_vacProfName}* está de férias no momento! 🏖️\n\n${_othersStr ? `Gostaria de agendar com ${_othersStr}?` : 'Pode agendar quando o profissional retornar.'}`;
+        session.data.professionalId   = undefined;
+        session.data.professionalName = undefined;
+        session.data.date             = undefined;
+        session.history.push({ role: 'bot', text: _vacMsg });
+        saveSession(session);
+        return _vacMsg;
+      }
+      // Not a vacation question but prof is on vacation: clear selection so AI suggests alternatives
+      session.data.professionalId   = undefined;
+      session.data.professionalName = undefined;
+      session.data.date             = undefined;
+    }
+  }
+
   // ─── Fetch available slots if we already know professional + date ──
   // Use the selected service duration; if no service chosen yet, use the MINIMUM
   // duration across all services so we never block slots that actually exist.
@@ -1269,26 +1311,13 @@ export async function handleMessage(
     })
   );
 
-  // ─── Vacation note for already-selected professional (in case TS layer didn't intercept) ──
-  const _selProfOnVac = session.data.professionalId && _breaks.some(b => {
-    if ((b as any).type !== 'vacation') return false;
-    if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
-    const vs = b.date || '';
-    const ve = (b as any).vacationEndDate || b.date || '';
-    return !!vs && todayISO >= vs && todayISO <= ve;
-  });
-  const vacationNote = _selProfOnVac
-    ? `\n⚠️ ATENÇÃO CRÍTICA: ${session.data.professionalName || 'O profissional selecionado'} ESTÁ DE FÉRIAS e NÃO tem disponibilidade para nenhuma data agora. Informe isso com simpatia ao cliente e sugira outro profissional ou que aguarde o retorno das férias.\n`
-    : '';
-  const effectiveCustomPrompt = vacationNote ? (customPrompt || '') + vacationNote : (customPrompt || undefined);
-
   // ─── First AI Brain call ────────────────────────────────────────────
   const tenantNicho: string = (tenant.nicho as string) || 'Barbearia';
   const groupBookingCtx = buildGroupCtx(session.data);
   let brain = await callBrain(
     apiKey, tenantName, todayISO,
     serviceOptions, profOptionsVisible,
-    session.history, session.data, prefetchedSlots, effectiveCustomPrompt,
+    session.history, session.data, prefetchedSlots, customPrompt || undefined,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
     tenantNicho, tenantId, phone, options?.isAudio
   );
@@ -1413,7 +1442,7 @@ export async function handleMessage(
     const brain2 = await callBrain(
       apiKey, tenantName, todayISO,
       serviceOptions, profOptionsVisible,
-      session.history, session.data, newSlots, effectiveCustomPrompt,
+      session.history, session.data, newSlots, customPrompt || undefined,
       false, brasiliaGreeting, groupBookingCtx2 || undefined,
       tenantNicho, tenantId, phone, false
     );
