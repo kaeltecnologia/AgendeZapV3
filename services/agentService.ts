@@ -34,6 +34,7 @@ interface SessionData {
   professionalName?: string;
   date?: string;        // YYYY-MM-DD
   time?: string;        // HH:MM
+  preferredTime?: string; // HH:MM — preserved when date is reset so "next available" queries can filter by it
   availableSlots?: string[];
   pendingConfirm?: boolean;       // summary shown, waiting for yes/no
   pendingCancelReason?: boolean;  // asked for cancel reason, waiting for it
@@ -1227,6 +1228,8 @@ export async function handleMessage(
     const hasDateChange = !isAffirm && DATE_CHANGE_KW.some(k => normDC.includes(k));
     if (hasDateChange) {
       console.log('[Agent] Date-change detected during confirmation — resetting date/time');
+      // Preserve the time as preferredTime so "próximo dia disponível" queries can filter by it
+      if (session.data.time) session.data.preferredTime = session.data.time;
       session.data.date = undefined;
       session.data.time = undefined;
       session.data.availableSlots = undefined;
@@ -1400,6 +1403,58 @@ export async function handleMessage(
           }
         }
       } catch (eEar) { console.error('[Agent] earlier slot detection error:', eEar); }
+    }
+  }
+
+  // ─── Next available day detection (TypeScript layer) ─────────────────
+  // When client asks "qual o próximo dia?", "quando tem?", etc. and we know the professional,
+  // scan the next 14 days and return the first one with slots.
+  if (session.data.professionalId && !session.data.pendingReschedule) {
+    const normND = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const NEXT_KW = [
+      'proximo dia', 'proximo horario', 'proxima disponibilidade', 'quando tem',
+      'quando vai ter', 'quando tem horario', 'quando teria', 'proximo disponivel',
+      'proximo dia disponivel', 'qual dia tem', 'qual dia vai ter',
+      'quando e o proximo', 'proximo que tiver', 'me manda o proximo',
+      'horario de preferencia', 'meu horario de preferencia',
+    ];
+    if (NEXT_KW.some(k => normND.includes(k))) {
+      try {
+        const prefTime = session.data.preferredTime || session.data.time;
+        const profId = session.data.professionalId;
+        const profName = session.data.professionalName || 'profissional';
+        const duration = session.data.serviceDuration || 30;
+        let foundDate = '';
+        let foundSlots: string[] = [];
+        for (let d = 1; d <= 14; d++) {
+          const target = new Date(_nowBrasilia.getTime() + d * 86400000);
+          const dateStr = `${target.getUTCFullYear()}-${pad(target.getUTCMonth()+1)}-${pad(target.getUTCDate())}`;
+          const slots = await getAvailableSlots(tenantId, profId, dateStr, duration, settings);
+          if (slots.length > 0) {
+            // If there's a preferred time, try to find slots from that time onwards
+            const filtered = prefTime ? slots.filter(s => s >= prefTime) : slots;
+            foundSlots = filtered.length > 0 ? filtered : slots;
+            foundDate = dateStr;
+            break;
+          }
+        }
+        if (foundDate) {
+          const dateFmt = formatDate(foundDate);
+          const displaySlots = foundSlots.slice(0, 3).join(', ');
+          const prefNote = prefTime ? ` (a partir das ${prefTime})` : '';
+          const reply = `O próximo horário disponível com ${profName} é *${dateFmt}*${prefNote}! Teria: *${displaySlots}*. Qual horário você prefere?`;
+          session.data.date = foundDate;
+          session.data.availableSlots = foundSlots;
+          session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+          saveSession(session);
+          return reply;
+        } else {
+          const reply = `Não encontrei horário disponível com ${profName} nos próximos 14 dias. 😕 Quer tentar com outro profissional ou outro serviço?`;
+          session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+          saveSession(session);
+          return reply;
+        }
+      } catch (eND) { console.error('[Agent] next-day detection error:', eND); }
     }
   }
 

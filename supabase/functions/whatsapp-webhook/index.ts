@@ -768,10 +768,64 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const hasDateChange = !isAffirm && DATE_CHANGE_KW.some(k => normDC.includes(k));
     if (hasDateChange) {
       console.log('[Agent] Date-change during confirmation — resetting date/time');
+      if (session.data.time) session.data.preferredTime = session.data.time;
       session.data.date = undefined;
       session.data.time = undefined;
       session.data.availableSlots = undefined;
       session.data.pendingConfirm = undefined;
+    }
+  }
+
+  // ── Next available day detection (TypeScript layer) ───────────────────
+  if (session.data.professionalId && !session.data.pendingReschedule) {
+    const normND = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const NEXT_KW = [
+      'proximo dia', 'proximo horario', 'proxima disponibilidade', 'quando tem',
+      'quando vai ter', 'quando tem horario', 'quando teria', 'proximo disponivel',
+      'proximo dia disponivel', 'qual dia tem', 'qual dia vai ter',
+      'quando e o proximo', 'proximo que tiver', 'me manda o proximo',
+      'horario de preferencia', 'meu horario de preferencia',
+    ];
+    if (NEXT_KW.some((k: string) => normND.includes(k))) {
+      try {
+        const prefTime = session.data.preferredTime || session.data.time;
+        const profId = session.data.professionalId;
+        const profName = session.data.professionalName || 'profissional';
+        const duration = session.data.serviceDuration || 30;
+        const padN = (n: number) => String(n).padStart(2, '0');
+        const nowBrN = new Date(Date.now() - 3 * 60 * 60 * 1000);
+        let foundDate = '';
+        let foundSlots: string[] = [];
+        for (let d = 1; d <= 14; d++) {
+          const target = new Date(nowBrN.getTime() + d * 86400000);
+          const dateStr = `${target.getUTCFullYear()}-${padN(target.getUTCMonth()+1)}-${padN(target.getUTCDate())}`;
+          const slots = await getAvailableSlots(tenantId, profId, dateStr, duration, settings);
+          if (slots.length > 0) {
+            const filtered = prefTime ? slots.filter((s: string) => s >= prefTime) : slots;
+            foundSlots = filtered.length > 0 ? filtered : slots;
+            foundDate = dateStr;
+            break;
+          }
+        }
+        if (foundDate) {
+          const dateFmt = formatDate(foundDate);
+          const displaySlots = foundSlots.slice(0, 3).join(', ');
+          const prefNote = prefTime ? ` (a partir das ${prefTime})` : '';
+          const reply = `O próximo horário disponível com ${profName} é *${dateFmt}*${prefNote}! Teria: *${displaySlots}*. Qual horário você prefere?`;
+          session.data.date = foundDate;
+          session.data.availableSlots = foundSlots;
+          session.history.push({ role: 'user', text: text }, { role: 'bot', text: reply });
+          await saveSession(tenantId, phone, session);
+          await sendMsg(instanceName, phone, reply, tenantId);
+          return;
+        } else {
+          const reply = `Não encontrei horário disponível com ${profName} nos próximos 14 dias. 😕 Quer tentar com outro profissional ou outro serviço?`;
+          session.history.push({ role: 'user', text: text }, { role: 'bot', text: reply });
+          await saveSession(tenantId, phone, session);
+          await sendMsg(instanceName, phone, reply, tenantId);
+          return;
+        }
+      } catch (eND) { console.error('[Agent] next-day detection error:', eND); }
     }
   }
 
