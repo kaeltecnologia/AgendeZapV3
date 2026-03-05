@@ -21,7 +21,7 @@ const EVO_KEY = Deno.env.get('EVOLUTION_API_KEY') || '429683C4C977415CAAFCCE10F7
 const EVO_HEADERS = { 'Content-Type': 'application/json', 'apikey': EVO_KEY };
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-const SESSION_TTL_MS = 30 * 60 * 1000;
+const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours — follow-up replies can come hours after the message
 
 // ── Helpers ───────────────────────────────────────────────────────────
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -815,13 +815,13 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           session.data.date = foundDate;
           session.data.availableSlots = foundSlots;
           session.history.push({ role: 'user', text: text }, { role: 'bot', text: reply });
-          await saveSession(tenantId, phone, session);
+          await saveSession(tenantId, phone, session.data, session.history);
           await sendMsg(instanceName, phone, reply, tenantId);
           return;
         } else {
           const reply = `Não encontrei horário disponível com ${profName} nos próximos 14 dias. 😕 Quer tentar com outro profissional ou outro serviço?`;
           session.history.push({ role: 'user', text: text }, { role: 'bot', text: reply });
-          await saveSession(tenantId, phone, session);
+          await saveSession(tenantId, phone, session.data, session.history);
           await sendMsg(instanceName, phone, reply, tenantId);
           return;
         }
@@ -875,7 +875,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             session.data.pendingRescheduleSearch = { attempt: 1 };
             const noApptMsg = '😕 Não identifiquei nenhum agendamento ativo no seu número.\n\nPode me confirmar seu *nome completo* e o *dia que estava agendado*? Assim consigo verificar melhor!';
             session.history.push({ role: 'user', text: text }, { role: 'bot', text: noApptMsg });
-            await saveSession(tenantId, phone, session);
+            await saveSession(tenantId, phone, session.data, session.history);
             await sendMsg(instanceName, phone, noApptMsg, tenantId);
             return;
           }
@@ -921,7 +921,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           session.data.pendingRescheduleSearch = undefined;
           const noAppt2Msg = '😕 Não encontrei nenhum agendamento no sistema com essas informações.\n\nQuer que eu agende um *novo horário* pra você? É só me dizer o serviço e o dia! 😊';
           session.history.push({ role: 'user', text: text }, { role: 'bot', text: noAppt2Msg });
-          await saveSession(tenantId, phone, session);
+          await saveSession(tenantId, phone, session.data, session.history);
           await sendMsg(instanceName, phone, noAppt2Msg, tenantId);
           return;
         }
@@ -956,7 +956,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             const apptTime = (apptE.inicio as string).substring(11, 16);
             const svcE  = services.find((s: any) => s.id === apptE.service_id);
             const profE = professionals.find((p: any) => p.id === apptE.professional_id);
-            if (apptDate === today) {
+            if (apptDate === todayISO) {
               const allSlots = await getAvailableSlots(tenantId, apptE.professional_id, apptDate, svcE?.durationMinutes || 30, settings);
               const nowHHMM = `${pad(n0.getUTCHours())}:${pad(n0.getUTCMinutes())}`;
               const earlierSlots = allSlots.filter((s: string) => s >= nowHHMM && s < apptTime);
@@ -1008,7 +1008,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       session.data.professionalId = undefined;
       const confReply = 'Desculpe a confusão! 😅 Pode me contar de novo o que você precisa que eu te ajudo certinho?';
       session.history.push({ role: 'user', text: text }, { role: 'bot', text: confReply });
-      await saveSession(tenantId, phone, session);
+      await saveSession(tenantId, phone, session.data, session.history);
       await sendMsg(instanceName, phone, confReply, tenantId);
       return;
     }
@@ -1312,6 +1312,75 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
     // Anything else → clear flag and fall through to AI with full history context
     session.data.pendingFollowUpType = undefined;
+  }
+
+  // ─── Follow-up fallback: session may have expired but appointment exists today ──
+  // When no pendingFollowUpType (session expired) but client sends short affirmative
+  // and has an appointment today → respond as follow-up confirmation instead of greeting.
+  if (!session.data.pendingFollowUpType && shouldGreet) {
+    const normFb = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const FB_AFFIRM = ['ok', 'sim', 'pode', 'certo', 'confirmado', 'bora', 'beleza', 'ta', 'tá', 'blz', 'vlw', 'valeu', 'show', 'boa', 'obrigado', 'obrigada'];
+    const isShortAffirm = normFb.split(/\s+/).length <= 4 && FB_AFFIRM.some(a => normFb === a || normFb.split(/\s+/).includes(a));
+    if (isShortAffirm) {
+      try {
+        const { data: custFb } = await supabase.from('customers').select('id, nome')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        if (custFb) {
+          const padFb = (n: number) => String(n).padStart(2, '0');
+          const nowBrFb = new Date(Date.now() - 3 * 60 * 60 * 1000);
+          const todayFb = `${nowBrFb.getUTCFullYear()}-${padFb(nowBrFb.getUTCMonth()+1)}-${padFb(nowBrFb.getUTCDate())}`;
+          const { data: apptsFb } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custFb.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', `${todayFb}T00:00:00`)
+            .lt('inicio', `${todayFb}T23:59:59`)
+            .order('inicio', { ascending: true }).limit(1);
+          if (apptsFb && apptsFb.length > 0) {
+            const apptTime = (apptsFb[0].inicio as string).substring(11, 16);
+            const reply = `Show de bola! Aguardamos você às *${apptTime}*. 😊`;
+            session.history.push({ role: 'user', text: text }, { role: 'bot', text: reply });
+            session.data.greetedAt = brasiliaDate;
+            await saveSession(tenantId, phone, session.data, session.history);
+            await sendMsg(instanceName, phone, reply, tenantId);
+            return;
+          }
+        }
+      } catch (eFb) { console.error('[Agent] follow-up fallback error:', eFb); }
+    }
+  }
+
+  // ─── Date-in-first-message: session expired but client sends only a date → context-aware response ──
+  // When no session (shouldGreet=true) but client sends a day/date reference WITHOUT service keywords
+  // (e.g. "Pode ser" + "Sexta da semana que vem" after session expiry), preserve the date
+  // and ask what service they want instead of giving a generic greeting.
+  // If the client also mentioned a service ("Quero cortar sexta"), skip this and let the LLM handle normally.
+  if (shouldGreet && !session.data.date) {
+    const resolvedDateFm = resolveRelativeDate(lowerText, todayISO);
+    if (resolvedDateFm) {
+      const normFm = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+      const DAY_KW_FM = [
+        'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
+        'semana que vem', 'proxima semana', 'proxima', 'proximo',
+        'amanha', 'depois de amanha',
+      ];
+      // Only trigger when no service-booking keywords are present (pure date response)
+      const SVC_KW_SKIP = ['agendar', 'marcar', 'corte', 'barba', 'cabelo', 'cabeca', 'servico',
+        'procedimento', 'quero', 'preciso', 'gostaria', 'queria', 'escova', 'manicure',
+        'sobrancelha', 'colorir', 'pintar', 'alisar', 'progressiva'];
+      const hasSvcKw = SVC_KW_SKIP.some((k: string) => normFm.includes(k));
+      if (!hasSvcKw && DAY_KW_FM.some((k: string) => normFm.includes(k))) {
+        const dateLabelFm = formatDate(resolvedDateFm);
+        const { greeting: gFm, dateStr: dStrFm } = getBrasiliaGreeting();
+        session.data.date = resolvedDateFm;
+        session.data.greetedAt = dStrFm;
+        const replyFm = `${gFm.charAt(0).toUpperCase() + gFm.slice(1)}! Para *${dateLabelFm}*, qual serviço você gostaria de agendar?`;
+        session.history.push({ role: 'user', text }, { role: 'bot', text: replyFm });
+        await saveSession(tenantId, phone, session.data, session.history);
+        await sendMsg(instanceName, phone, replyFm, tenantId);
+        return;
+      }
+    }
   }
 
   // ─── Professional contact inquiry response ──────────────────────────
