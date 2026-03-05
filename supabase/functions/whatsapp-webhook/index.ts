@@ -673,6 +673,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // Handles the case where professionalId was set in a prior turn but that
   // professional is currently on vacation (TS pre-extraction only runs when
   // professionalId is NOT yet set).
+  // Always respond with vacation message — no keyword matching needed since
+  // real users ask in countless unpredictable ways ("tá atendendo?", "já voltou?", etc.)
   if (session.data.professionalId) {
     const _curProfOnVacWh = (settings.breaks || []).some((b: any) => {
       if (b.type !== 'vacation') return false;
@@ -682,9 +684,6 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       return !!vs && todayISO >= vs && todayISO <= ve;
     });
     if (_curProfOnVacWh) {
-      const _vacNormWh = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const VAC_KW_WH = ['ferias', 'viagem', 'disponivel', 'disponibilidade', 'certeza', 'mesmo', 'verdade', 'nao ta', 'nao esta', 'ocupado', 'retorno', 'quando volta', 'quando voltar'];
-      const isVacQuestionWh = VAC_KW_WH.some(k => _vacNormWh.includes(k));
       const _vacProfNameWh = session.data.professionalName || 'O profissional';
       const _othersAvailWh = professionals.filter((p: any) => p.id !== session.data.professionalId)
         .filter((p: any) => !(settings.breaks || []).some((b: any) => {
@@ -694,20 +693,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           return !!vs && todayISO >= vs && todayISO <= ve;
         }));
       const _othersStrWh = _othersAvailWh.map((p: any) => p.name).join(' ou ');
-      if (isVacQuestionWh) {
-        const _vacMsgWh = `*${_vacProfNameWh}* está de férias no momento! 🏖️\n\n${_othersStrWh ? `Gostaria de agendar com ${_othersStrWh}?` : 'Pode agendar quando o profissional retornar.'}`;
-        session.data.professionalId   = undefined;
-        session.data.professionalName = undefined;
-        session.data.date             = undefined;
-        session.history.push({ role: 'bot', text: _vacMsgWh });
-        await sendMsg(instanceName, phone, _vacMsgWh, tenantId);
-        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
-        return;
-      }
-      // Not a vacation question but prof is on vacation: clear so AI suggests alternatives
+      const _vacMsgWh = `*${_vacProfNameWh}* está de férias no momento! 🏖️\n\n${_othersStrWh ? `Gostaria de agendar com ${_othersStrWh}?` : 'Pode agendar quando o profissional retornar.'}`;
       session.data.professionalId   = undefined;
       session.data.professionalName = undefined;
       session.data.date             = undefined;
+      session.history.push({ role: 'bot', text: _vacMsgWh });
+      await sendMsg(instanceName, phone, _vacMsgWh, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
     }
   }
 
