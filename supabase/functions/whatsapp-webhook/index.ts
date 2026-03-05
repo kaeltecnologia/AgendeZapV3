@@ -275,6 +275,7 @@ async function callBrain(
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
   if (data.time) known.push(`Horário: ${data.time}`);
   if (data.preferredTime && !data.time) known.push(`Preferência de horário: a partir das ${data.preferredTime}`);
+  if ((data as any).requestedQuantity && (data as any).requestedQuantity > 1) known.push(`Quantidade de horários solicitada: ${(data as any).requestedQuantity} (o cliente quer marcar ${(data as any).requestedQuantity} horários/pessoas)`);
   if (data.pendingReschedule) {
     if (data.pendingReschedule.isEarlierSlot) {
       known.push(`ADIANTAMENTO EM ANDAMENTO: cliente quer horário mais cedo do que ${data.pendingReschedule.oldTime} hoje com ${data.pendingReschedule.oldProfName} — horários disponíveis mais cedo listados abaixo`);
@@ -392,7 +393,7 @@ COMO RESPONDER:
 📏 FORMATO:
 • Máximo 2-3 linhas • Tom informal brasileiro • Emojis: use APENAS na saudação inicial ou ao confirmar agendamento. Na grande maioria das mensagens NÃO use emoji. • Sempre termine com pergunta
 
-${isFirst && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou sem perguntar de novo.\n' : ''}
+${isFirst && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: o cliente já enviou uma solicitação com contexto — NÃO cumprimente ("Boa noite! Seja bem-vindo..."), vá direto ao ponto. Processe tudo que o cliente informou sem perguntar de novo. Se já houver Data e Preferência de horário no CONTEXTO ATUAL, confirme-os na resposta.\n' : ''}
 📅 AO OFERECER HORÁRIO (somente após profissional já definido no CONTEXTO ATUAL):
 • ❌ ERRADO: "Temos disponível às 15:00"
 • ✅ CERTO: "Com o [profissional escolhido] às 15:00 pode ser? 😊"
@@ -1264,16 +1265,27 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
 
   // Time-preference pre-extraction (TypeScript layer)
-  // Captures "depois das 17", "a partir das 16", "antes das 10" etc. for slot filtering
+  // Captures "depois das 17", "a partir das 16", "após 12:00" etc. for slot filtering
   if (!session.data.preferredTime) {
     const normTP = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
-    const tpMatch = normTP.match(/(?:depois das?|a partir das?|apos(?:\s+as?)?\s*|mais tarde(?:\s+das?)?)\s*(\d{1,2})(?::(\d{2}))?/);
+    const tpMatch = normTP.match(/(?:depois das?|a partir das?|apos(?:\s+as?)?\s*|mais tarde(?:\s+das?)?|a partir de)\s*(\d{1,2})(?::(\d{2}))?/);
     if (tpMatch) {
       const h = parseInt(tpMatch[1], 10);
       const m = tpMatch[2] ? parseInt(tpMatch[2], 10) : 0;
       if (h >= 6 && h <= 23) {
         session.data.preferredTime = `${pad(h)}:${pad(m)}`;
       }
+    }
+  }
+
+  // Quantity pre-extraction (TypeScript layer)
+  // Captures "2 horários", "3 vagas", "2 pessoas" — lead wants multiple slots at once
+  if (!(session.data as any).requestedQuantity) {
+    const normQT = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const qtMatch = normQT.match(/\b([2-9]|1[0-9])\s*(?:horarios?|vagas?|pessoas?|agendamentos?|atendimentos?|slots?)\b/);
+    if (qtMatch) {
+      const qty = parseInt(qtMatch[1], 10);
+      if (qty >= 2 && qty <= 10) (session.data as any).requestedQuantity = qty;
     }
   }
 
@@ -1485,34 +1497,38 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
-  // ─── Date-in-first-message: session expired but client sends only a date → context-aware response ──
-  // When no session (shouldGreet=true) but client sends a day/date reference WITHOUT service keywords
-  // (e.g. "Pode ser" + "Sexta da semana que vem" after session expiry), preserve the date
-  // and ask what service they want instead of giving a generic greeting.
-  // If the client also mentioned a service ("Quero cortar sexta"), skip this and let the LLM handle normally.
-  if (shouldGreet && !session.data.date) {
-    const resolvedDateFm = resolveRelativeDate(lowerText, todayISO);
-    if (resolvedDateFm) {
-      const normFm = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
-      const DAY_KW_FM = [
-        'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo',
-        'semana que vem', 'proxima semana', 'proxima', 'proximo',
-        'amanha', 'depois de amanha',
+  // ─── First-message context-aware response ───────────────────────────────────
+  // When shouldGreet=true AND the message resolves a date (either already pre-extracted
+  // or found via regex here), respond directly with context instead of a generic greeting.
+  // Skip if the message already mentions a specific service — let richFirstMessage + AI handle those.
+  if (shouldGreet) {
+    // If date wasn't pre-extracted yet, try to resolve it now (fallback path)
+    if (!session.data.date) {
+      const resolvedFm = resolveRelativeDate(lowerText, todayISO);
+      if (resolvedFm) session.data.date = resolvedFm;
+    }
+    if (session.data.date) {
+      const normFmCtx = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+      // Specific service keywords → skip this block, let richFirstMessage + AI handle
+      const SPECIFIC_SVC_KW = [
+        'cortar', 'corte', 'barba', 'cabelo', 'cabeca', 'escova', 'manicure',
+        'sobrancelha', 'colorir', 'pintar', 'progressiva', 'alisar', 'procedimento',
       ];
-      // Only trigger when no service-booking keywords are present (pure date response)
-      const SVC_KW_SKIP = ['agendar', 'marcar', 'corte', 'barba', 'cabelo', 'cabeca', 'servico',
-        'procedimento', 'quero', 'preciso', 'gostaria', 'queria', 'escova', 'manicure',
-        'sobrancelha', 'colorir', 'pintar', 'alisar', 'progressiva'];
-      const hasSvcKw = SVC_KW_SKIP.some((k: string) => normFm.includes(k));
-      if (!hasSvcKw && DAY_KW_FM.some((k: string) => normFm.includes(k))) {
-        const dateLabelFm = formatDate(resolvedDateFm);
-        const { greeting: gFm, dateStr: dStrFm } = getBrasiliaGreeting();
-        session.data.date = resolvedDateFm;
-        session.data.greetedAt = dStrFm;
-        const replyFm = `${gFm.charAt(0).toUpperCase() + gFm.slice(1)}! Para *${dateLabelFm}*, qual serviço você gostaria de agendar?`;
-        session.history.push({ role: 'user', text }, { role: 'bot', text: replyFm });
+      const hasSpecificSvcCtx = SPECIFIC_SVC_KW.some((k: string) => normFmCtx.includes(k));
+      if (!hasSpecificSvcCtx) {
+        const { greeting: gCtx, dateStr: dStrCtx } = getBrasiliaGreeting();
+        const dateLabelCtx = formatDate(session.data.date);
+        const prefTCtx  = session.data.preferredTime;
+        const timeHintCtx = prefTCtx ? ` a partir das ${prefTCtx.replace(':00', 'h')}` : '';
+        const qtyCtx = (session.data as any).requestedQuantity;
+        const qtyHintCtx = qtyCtx && qtyCtx > 1 ? ` (${qtyCtx} horários)` : '';
+        const profCtx = session.data.professionalName;
+        const profHintCtx = profCtx ? ` com *${profCtx}*` : '';
+        const replyCtx = `${gCtx.charAt(0).toUpperCase() + gCtx.slice(1)}! Para *${dateLabelCtx}${timeHintCtx}*${profHintCtx}${qtyHintCtx}, qual serviço você quer? 😊`;
+        session.data.greetedAt = dStrCtx;
+        session.history.push({ role: 'user', text }, { role: 'bot', text: replyCtx });
         await saveSession(tenantId, phone, session.data, session.history);
-        await sendMsg(instanceName, phone, replyFm, tenantId);
+        await sendMsg(instanceName, phone, replyCtx, tenantId);
         return;
       }
     }
