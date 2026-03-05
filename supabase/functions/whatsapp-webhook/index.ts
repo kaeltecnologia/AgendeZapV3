@@ -274,6 +274,7 @@ async function callBrain(
   if (data.professionalName) known.push(`Profissional: ${data.professionalName}`);
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
   if (data.time) known.push(`Horário: ${data.time}`);
+  if (data.preferredTime && !data.time) known.push(`Preferência de horário: a partir das ${data.preferredTime}`);
   if (data.pendingReschedule) {
     if (data.pendingReschedule.isEarlierSlot) {
       known.push(`ADIANTAMENTO EM ANDAMENTO: cliente quer horário mais cedo do que ${data.pendingReschedule.oldTime} hoje com ${data.pendingReschedule.oldProfName} — horários disponíveis mais cedo listados abaixo`);
@@ -1142,6 +1143,20 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (resolved) session.data.date = resolved;
   }
 
+  // Time-preference pre-extraction (TypeScript layer)
+  // Captures "depois das 17", "a partir das 16", "antes das 10" etc. for slot filtering
+  if (!session.data.preferredTime) {
+    const normTP = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const tpMatch = normTP.match(/(?:depois das?|a partir das?|apos as?|mais tarde(?:\s+das?)?)\s*(\d{1,2})(?::(\d{2}))?/);
+    if (tpMatch) {
+      const h = parseInt(tpMatch[1], 10);
+      const m = tpMatch[2] ? parseInt(tpMatch[2], 10) : 0;
+      if (h >= 6 && h <= 23) {
+        session.data.preferredTime = `${pad(h)}:${pad(m)}`;
+      }
+    }
+  }
+
   // Professionals visible to the AI: exclude anyone on vacation for the target date.
   // The full `professionals` list is still used for name matching above so the
   // slot-check can explain vacations when the client explicitly requests that prof.
@@ -1486,8 +1501,17 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // ─── Suppress greeting when first message already has rich context ────────
+  // If the client's first message already contained a professional name + date (resolved by TS layer),
+  // disable the "only say welcome, ask nothing else" greeting override so the AI can actually answer
+  // the question (e.g. "Tem horário com Lipe amanhã depois das 17?").
+  // We still set greetedAt so the greeting won't be triggered on the next turn.
+  const richFirstMessage = shouldGreet && !!(session.data.professionalId && session.data.date);
+  const effectiveShouldGreet = shouldGreet && !richFirstMessage;
+  if (richFirstMessage) session.data.greetedAt = brasiliaDate;
+
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting, tenantId, phone);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
@@ -1720,7 +1744,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     session.data.pendingConfirm = true;
   }
 
-  if (shouldGreet) session.data.greetedAt = brasiliaDate;
+  if (shouldGreet || richFirstMessage) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
   await sendMsg(instanceName, phone, brain.reply, tenantId);
   saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
