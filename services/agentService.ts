@@ -1150,6 +1150,55 @@ export async function handleMessage(
     console.log('[Agent] Group booking detected:', session.data.groupBooking.companionDesc);
   }
 
+  // ─── Appointment query detection (TypeScript layer) ───────────────────
+  // When a client asks about their existing appointment ("meu horário", "ta agendado?"),
+  // look up DB directly and respond — skipping the booking flow entirely.
+  // Must run BEFORE professional name extraction to prevent false personal-contact triggers.
+  {
+    const normAQ = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const APPT_Q = [
+      'meu horario', 'qual meu horario', 'qual o meu horario', 'qual e meu horario',
+      'meu agendamento', 'minha consulta', 'meu compromisso',
+      'esta agendado', 'ta agendado', 'esta marcado', 'ta marcado',
+      'agendado para hoje', 'marcado para hoje', 'tenho agendamento',
+      'horario de hoje', 'horario marcado', 'como esta meu agendamento',
+      'como ta meu agendamento', 'confirmar meu agendamento', 'meu horario esta',
+    ];
+    const isApptQ   = APPT_Q.some(k => normAQ.includes(k));
+    const isMidBkng = !!(session.data.serviceId || (session.data.date && session.data.time) || session.data.pendingConfirm);
+    if (isApptQ && !isMidBkng) {
+      try {
+        const { data: custAQ } = await supabase.from('customers')
+          .select('id').eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        if (custAQ) {
+          const { data: nextAppts } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custAQ.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', `${todayISO}T00:00:00`)
+            .order('inicio', { ascending: true }).limit(5);
+          if (nextAppts && nextAppts.length > 0) {
+            const lines = (nextAppts as any[]).map((a: any) => {
+              const dt   = (a.inicio as string).substring(0, 10);
+              const tm   = (a.inicio as string).substring(11, 16);
+              const svc  = serviceOptions.find(s => s.id === a.service_id);
+              const prof = profOptions.find(p => p.id === a.professional_id);
+              const dl   = dt === todayISO ? 'hoje' : formatDate(dt);
+              return `• ${dl} às *${tm}* — ${svc?.name || 'Procedimento'} com ${prof?.name || 'Profissional'}`;
+            });
+            const replyAQ = nextAppts.length === 1
+              ? `Aqui está seu agendamento:\n\n${lines[0]}\n\nPosso te ajudar com mais alguma coisa?`
+              : `Seus próximos agendamentos:\n\n${lines.join('\n')}\n\nPosso te ajudar com mais alguma coisa?`;
+            session.history.push({ role: 'user', text }, { role: 'bot', text: replyAQ });
+            saveSession(session);
+            return replyAQ;
+          }
+        }
+      } catch (eAQ) { console.error('[Agent] appt-query error:', eAQ); }
+      // No appointments found or error → fall through to normal booking flow
+    }
+  }
+
   // ─── TypeScript-layer professional name pre-extraction ─────────────
   // Runs BEFORE calling LLM. Checks vacation first (for any # of professionals),
   // then for multiple-prof setups either starts a booking flow or personal-contact flow.
