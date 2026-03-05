@@ -29,6 +29,7 @@ import AiPollingManager from './components/AiPollingManager';
 import TrialExpiredView from './components/TrialExpiredView';
 import BookingPage from './components/BookingPage';
 import { db } from './services/mockDb';
+import { evolutionService } from './services/evolutionService';
 import { TenantStatus } from './types';
 import PlanGate from './components/PlanGate';
 import PlanUpgradeModal from './components/PlanUpgradeModal';
@@ -647,6 +648,9 @@ const InvitePartnerModal: React.FC<{
   const [phone, setPhone] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [waSending, setWaSending] = React.useState(false);
+  const [waSent, setWaSent] = React.useState(false);
+  const [waError, setWaError] = React.useState('');
 
   const handleSend = async () => {
     if (!name.trim() || !phone.trim()) { setError('Preencha nome e WhatsApp.'); return; }
@@ -662,14 +666,45 @@ const InvitePartnerModal: React.FC<{
     }
   };
 
-  const waText = result
-    ? encodeURIComponent(
-        `Olá ${name}! 🎉\n\nVocê foi convidado(a) para testar o *AgendeZap* gratuitamente por 7 dias!\n\n` +
+  const handleWhatsAppSend = async () => {
+    if (!result) return;
+    setWaSending(true);
+    setWaError('');
+    try {
+      // Get the connected WhatsApp instance name from settings
+      const settings = await db.getSettings(tenantId);
+      const instanceName = settings.whatsapp;
+      if (!instanceName) {
+        setWaError('WhatsApp não conectado. Configure a integração em Configurações → WhatsApp.');
+        return;
+      }
+
+      const cleanPhone = result.phone.replace(/\D/g, '');
+      const message =
+        `Olá ${name.trim()}! 🎉\n\n` +
+        `Você foi convidado(a) para testar o *AgendeZap* gratuitamente por 7 dias!\n\n` +
         `Acesse: https://app.agendezap.com\n` +
         `Login: ${result.email}\nSenha: ${result.password}\n\n` +
-        `Qualquer dúvida, é só chamar! 😊`
-      )
-    : '';
+        `Qualquer dúvida, é só chamar! 😊`;
+
+      const sent = await evolutionService.sendToWhatsApp(instanceName, cleanPhone, message);
+      if (!sent.success) {
+        setWaError('Falha ao enviar: ' + (sent.error || 'verifique a conexão do WhatsApp.'));
+        return;
+      }
+
+      // Save contact as customer (ignore if already exists)
+      try {
+        await db.addCustomer({ tenant_id: tenantId, name: name.trim(), phone: cleanPhone });
+      } catch { /* already registered — no action needed */ }
+
+      setWaSent(true);
+    } catch (e: any) {
+      setWaError('Erro: ' + (e.message || 'tente novamente.'));
+    } finally {
+      setWaSending(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
@@ -726,14 +761,22 @@ const InvitePartnerModal: React.FC<{
                 <p className="text-[10px] text-slate-400 pt-1">Acesso gratuito por 7 dias · Registrado na caixa de suporte</p>
               </div>
             </div>
-            <a
-              href={`https://wa.me/${result.phone.replace(/\D/g, '')}?text=${waText}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-600 transition-all"
-            >
-              <IconWhatsapp2 /> Enviar pelo WhatsApp
-            </a>
+
+            {waSent ? (
+              <div className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-100 text-green-700 rounded-2xl font-black text-xs uppercase tracking-widest">
+                ✅ Mensagem enviada pelo WhatsApp!
+              </div>
+            ) : (
+              <button
+                onClick={handleWhatsAppSend}
+                disabled={waSending}
+                className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-600 transition-all disabled:opacity-60"
+              >
+                <IconWhatsapp2 /> {waSending ? 'Enviando...' : 'Enviar pelo WhatsApp'}
+              </button>
+            )}
+            {waError && <p className="text-xs font-bold text-red-500 text-center">{waError}</p>}
+
             <button onClick={onClose} className="w-full py-3 font-black text-slate-400 text-xs uppercase tracking-widest hover:text-black transition-all">Fechar</button>
           </>
         )}
