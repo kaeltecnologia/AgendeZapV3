@@ -562,7 +562,15 @@ function resolveRelativeDate(text: string, todayISO: string): string | null {
   for (const [re, dow] of dayMap) {
     if (re.test(t)) {
       let diff = dow - todayDow;
-      if (diff < 0 || (diff === 0 && isNext)) diff += 7;
+      // Normalize: if day already passed this week, go to next occurrence
+      if (diff < 0) diff += 7;
+      // "semana que vem / próxima": ensure we land in NEXT week, not this week.
+      // If the resolved day is still within this week (diff <= days until Sunday),
+      // add 7 more to push it into next week.
+      if (isNext) {
+        const daysToSunday = todayDow === 0 ? 0 : 7 - todayDow;
+        if (diff <= daysToSunday) diff += 7;
+      }
       return addDays(diff);
     }
   }
