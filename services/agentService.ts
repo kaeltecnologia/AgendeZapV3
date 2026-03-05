@@ -1126,6 +1126,30 @@ export async function handleMessage(
       const hasBookingKw2 = BOOK_KW2.some(k => normMsg2.includes(k));
       const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
 
+      // ── Vacation check: respond immediately if the mentioned professional is on vacation ──
+      const profIsOnVacation = (settings.breaks || []).some((b: any) => {
+        if (b.professionalId && b.professionalId !== matchedProf.id) return false;
+        if ((b as any).type !== 'vacation') return false;
+        const vacStart = b.date || '';
+        const vacEnd = (b as any).vacationEndDate || b.date || '';
+        return !!vacStart && todayISO >= vacStart && todayISO <= vacEnd;
+      });
+      if (profIsOnVacation) {
+        const othersAvail = profOptions
+          .filter((p: any) => p.id !== matchedProf.id)
+          .filter((p: any) => !(settings.breaks || []).some((b: any) => {
+            if (b.professionalId && b.professionalId !== p.id) return false;
+            if ((b as any).type !== 'vacation') return false;
+            const vs = b.date || '', ve = (b as any).vacationEndDate || b.date || '';
+            return !!vs && todayISO >= vs && todayISO <= ve;
+          }));
+        const othersStr = othersAvail.map((p: any) => p.name).join(' ou ');
+        const vacMsg = `*${matchedProf.name}* está de férias no momento! 🏖️\n\n${othersStr ? `Gostaria de agendar com ${othersStr}?` : 'Gostaria de agendar com outro profissional?'}`;
+        session.history.push({ role: 'user', text }, { role: 'bot', text: vacMsg });
+        saveSession(session);
+        return vacMsg;
+      }
+
       if (hasBookingKw2 || hasSvcMention || isMidBooking) {
         // Normal booking flow: pre-set the professional
         session.data.professionalId   = matchedProf.id;

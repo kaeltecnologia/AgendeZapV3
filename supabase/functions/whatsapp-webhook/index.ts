@@ -592,6 +592,32 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       const hasBookingKw2 = BOOK_KW2.some((k: string) => normMsg2.includes(k));
       const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
 
+      // ── Vacation check: respond immediately if the mentioned professional is on vacation ──
+      const profIsOnVacation = (settings.breaks || []).some((b: any) => {
+        if (b.professionalId && b.professionalId !== matched.id) return false;
+        if (b.type !== 'vacation') return false;
+        const vacStart: string = b.date || '';
+        const vacEnd: string = b.vacationEndDate || b.date || '';
+        return !!vacStart && todayISO >= vacStart && todayISO <= vacEnd;
+      });
+      if (profIsOnVacation) {
+        const othersAvail = (professionals as any[])
+          .filter((p: any) => p.id !== matched.id)
+          .filter((p: any) => !(settings.breaks || []).some((b: any) => {
+            if (b.professionalId && b.professionalId !== p.id) return false;
+            if (b.type !== 'vacation') return false;
+            const vs: string = b.date || '', ve: string = b.vacationEndDate || b.date || '';
+            return !!vs && todayISO >= vs && todayISO <= ve;
+          }));
+        const othersStr = othersAvail.map((p: any) => p.name).join(' ou ');
+        const vacMsg = `*${matched.name}* está de férias no momento! 🏖️\n\n${othersStr ? `Gostaria de agendar com ${othersStr}?` : 'Gostaria de agendar com outro profissional?'}`;
+        session.history.push({ role: 'user', text });
+        session.history.push({ role: 'bot', text: vacMsg });
+        await sendMsg(instanceName, phone, vacMsg, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+        return;
+      }
+
       if (hasBookingKw2 || hasSvcMention || isMidBooking) {
         session.data.professionalId   = matched.id;
         session.data.professionalName = matched.name;
