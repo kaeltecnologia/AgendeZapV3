@@ -286,6 +286,20 @@ export async function processarMensagem(tenant: any, msg: any) {
 
   const tenantId: string = tenant.id;
 
+  // ── Persist incoming message ──────────────────────────────────────────
+  const msgId = msg.key?.id || msg.id || `${numero}_${msg.messageTimestamp || Date.now()}`;
+  db.saveWaMessages(tenantId, [{
+    msg_id:    msgId,
+    phone:     numero,
+    direction: 'in',
+    body:      text,
+    msg_type:  msgType || 'text',
+    push_name: pushName,
+    from_me:   false,
+    ts:        msg.messageTimestamp || Math.floor(Date.now() / 1000),
+    raw:       { key: msg.key, message: msg.message, messageType: msg.messageType },
+  }]).catch(() => {});
+
   // ── Reset command ────────────────────────────────────────────────────
   const lower = text.toLowerCase();
   if (lower === 'reset' || lower === '#reset') {
@@ -448,6 +462,18 @@ Situação: cliente mudou de ideia ("na verdade quero com o felipe")
 
       await evolutionService.sendMessage(tenant.evolution_instance, numero, result.replyText);
       log('ENVIADO', `Resposta para ${pushName} (${numero})`);
+      // Persist outgoing bot reply
+      db.saveWaMessages(tenantId, [{
+        msg_id:    `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        phone:     numero,
+        direction: 'out',
+        body:      result.replyText,
+        msg_type:  'text',
+        push_name: 'Bot',
+        from_me:   true,
+        ts:        Math.floor(Date.now() / 1000),
+        raw:       {},
+      }]).catch(() => {});
     } else {
       log('INFO', `Mensagem ignorada (intent: ${result.intent})`);
     }

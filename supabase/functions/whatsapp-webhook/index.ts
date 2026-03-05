@@ -73,6 +73,27 @@ async function clearSession(tenantId: string, phone: string) {
   await supabase.from('agent_sessions').delete().eq('tenant_id', tenantId).eq('phone', phone);
 }
 
+// ── Persistent WhatsApp message history ──────────────────────────────
+async function saveWaMsg(
+  tenantId: string, msgId: string, phone: string,
+  body: string, ts: number, pushName: string, msgType: string, fromMe: boolean, raw: any = {}
+) {
+  try {
+    await supabase.from('whatsapp_messages').upsert({
+      msg_id:    msgId || `${phone}_${ts}`,
+      tenant_id: tenantId,
+      phone,
+      direction: fromMe ? 'out' : 'in',
+      body:      body      || '',
+      msg_type:  msgType   || 'text',
+      push_name: pushName  || phone,
+      from_me:   fromMe,
+      ts,
+      raw,
+    }, { onConflict: 'tenant_id,msg_id', ignoreDuplicates: true });
+  } catch { /* non-fatal */ }
+}
+
 // ── Dedup (shares msg_dedup table with browser polling) ──────────────
 async function claimMsg(key: string): Promise<boolean> {
   try {
@@ -241,11 +262,12 @@ async function callBrain(
 1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ HORÁRIO → 5️⃣ CONFIRMAÇÃO\n`;
 
   const profSelectionRule = professionals.length > 1 && !data.professionalId
-    ? `\n⚠️ PROFISSIONAL — ainda não definido. Profissionais disponíveis: ${professionals.map(p => `${p.name} (ID:"${p.id}")`).join(', ')}
+    ? `\n⚠️ PROFISSIONAL — ainda não definido. Profissionais disponíveis: ${professionals.map((p: any) => `${p.name} (ID:"${p.id}")`).join(', ')}
 • Se o cliente mencionou um nome NESTA MENSAGEM → extraia o professionalId e confirme.
-• Se NÃO mencionou → pergunte: "Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}"
-• NUNCA escolha sozinho. NUNCA repita a pergunta se o cliente já disse um nome.
-• Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
+• Se o cliente disser "qualquer um", "tanto faz", "quem estiver disponível", "pode ser qualquer", "quem tiver" ou similar → ESCOLHA AUTOMATICAMENTE ${professionals[0]?.name}. Diga: "Pode ser com ${professionals[0]?.name} então! 😊 Tem algum dia de preferência?" e defina o professionalId.
+• Se NÃO mencionou e NÃO disse "qualquer" → pergunte: "Com qual profissional prefere? Temos: ${professionals.map((p: any) => p.name).join(', ')}"
+• NUNCA repita a pergunta se o cliente já disse um nome ou já aceitou qualquer profissional.
+• Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map((p: any) => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
     : '';
 
   const [ty, tm, td] = today.split('-').map(Number);
@@ -269,7 +291,7 @@ COMO RESPONDER:
 ════════════════════════════════
 
 📏 FORMATO:
-• Máximo 2-3 linhas • Tom informal brasileiro • 1 emoji no máximo • Sempre termine com pergunta
+• Máximo 2-3 linhas • Tom informal brasileiro • Emojis: use APENAS na saudação inicial ou ao confirmar agendamento. Na grande maioria das mensagens NÃO use emoji. • Sempre termine com pergunta
 
 ${isFirst && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou sem perguntar de novo.\n' : ''}
 📅 AO OFERECER HORÁRIO (somente após profissional já definido no CONTEXTO ATUAL):
@@ -330,11 +352,19 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
 }
 
 // ── Send WhatsApp message ─────────────────────────────────────────────
-async function sendMsg(instanceName: string, phone: string, text: string) {
+async function sendMsg(instanceName: string, phone: string, text: string, tenantId?: string) {
   await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
     method: 'POST', headers: EVO_HEADERS,
     body: JSON.stringify({ number: phone, text, linkPreview: false }),
   }).catch(e => console.error('[sendMsg] error:', e));
+  // Persist outgoing message so ConversationsView shows full history
+  if (tenantId) {
+    saveWaMsg(
+      tenantId,
+      `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      phone, text, Math.floor(Date.now() / 1000), 'Bot', 'text', true
+    ).catch(() => {});
+  }
 }
 
 // ── Relative date resolver (TypeScript layer — before LLM call) ───────
@@ -475,25 +505,25 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           await supabase.from('appointments').update({ status: 'CANCELLED' }).eq('id', appts[0].id);
           const dateFmt = new Date(appts[0].inicio.substring(0, 10) + 'T12:00:00')
             .toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
-          await sendMsg(instanceName, phone, `✅ Agendamento de *${dateFmt}* cancelado!\n\nMotivo registrado. Obrigado pelo feedback! 😊`);
+          await sendMsg(instanceName, phone, `✅ Agendamento de *${dateFmt}* cancelado!\n\nMotivo registrado. Obrigado pelo feedback! 😊`, tenantId);
           return;
         }
       }
     } catch (e) { console.error('[Agent] cancel-reason error:', e); }
-    await sendMsg(instanceName, phone, `Cancelamento registrado! Obrigado por nos avisar. 😊`);
+    await sendMsg(instanceName, phone, `Cancelamento registrado! Obrigado por nos avisar. 😊`, tenantId);
     return;
   }
 
   if (isReset) {
     await clearSession(tenantId, phone);
-    await sendMsg(instanceName, phone, `Tudo bem! Quando quiser agendar, é só me chamar. 😊`);
+    await sendMsg(instanceName, phone, `Tudo bem! Quando quiser agendar, é só me chamar. 😊`, tenantId);
     return;
   }
 
   if (isCancellation) {
     const sess = preSession || { data: {}, history: [] };
     sess.data.pendingCancelReason = true;
-    await sendMsg(instanceName, phone, `Que pena que precisou cancelar! 😕\n\nPode nos contar o motivo? Isso nos ajuda a melhorar o atendimento. 🙏`);
+    await sendMsg(instanceName, phone, `Que pena que precisou cancelar! 😕\n\nPode nos contar o motivo? Isso nos ajuda a melhorar o atendimento. 🙏`, tenantId);
     saveSession(tenantId, phone, sess.data, sess.history).catch(e => console.error('[Agent] saveSession err:', e));
     return;
   }
@@ -505,14 +535,16 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   ]);
 
   const profsRaw = profsRes.data || [];
+  // Full list: used for name matching (client can request a prof on vacation → slot-check explains why)
   const professionals = profsRaw.map((p: any) => ({ id: p.id, name: (p.nome || '').trim() }));
-  const services = (svcsRes.data || []).map((s: any) => ({
-    id: s.id, name: s.nome, durationMinutes: s.duracao_minutos, price: Number(s.preco || 0)
-  }));
 
   // Use Brasília time for "today" (UTC-3)
   const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
   const todayISO = `${nowBrasilia.getUTCFullYear()}-${pad(nowBrasilia.getUTCMonth()+1)}-${pad(nowBrasilia.getUTCDate())}`;
+
+  const services = (svcsRes.data || []).map((s: any) => ({
+    id: s.id, name: s.nome, durationMinutes: s.duracao_minutos, price: Number(s.preco || 0)
+  }));
 
   // Build custom system prompt with variable substitution
   let customPrompt = (settings.systemPrompt || '').trim();
@@ -554,12 +586,153 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (resolved) session.data.date = resolved;
   }
 
+  // Professionals visible to the AI: exclude anyone on vacation for the target date.
+  // The full `professionals` list is still used for name matching above so the
+  // slot-check can explain vacations when the client explicitly requests that prof.
+  const _targetDateWh = session.data.date || todayISO;
+  const professionalsVisible = professionals.filter((p: { id: string; name: string }) =>
+    !(settings.breaks || []).some((b: any) => {
+      if (b.type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== p.id) return false;
+      const vs: string = b.date || '';
+      const ve: string = b.vacationEndDate || b.date || '';
+      return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
+    })
+  );
+
   session.history.push({ role: 'user', text });
 
+  // ── Follow-up context: aviso/lembrete/reativacao ──────────────────────────
+  // When followUpService sends a follow-up message it persists pendingFollowUpType
+  // in the session. Handle the first reply here before falling through to the AI.
+  if (session.data.pendingFollowUpType) {
+    const fType = session.data.pendingFollowUpType as string;
+    const fNorm = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const fWds  = fNorm.split(/\s+/);
+
+    const RESCHEDULE_WORDS = [
+      'remarcar', 'remarcacao', 'reagendar', 'mudar horario', 'trocar horario',
+      'outro horario', 'possivel remarcar', 'consigo remarcar', 'consegue remarcar',
+      'remarcar para', 'mudar para', 'trocar para', 'inicio da tarde', 'inicio da manha',
+      'comeco da tarde', 'começo da tarde', 'final da tarde', 'meio da tarde',
+    ];
+    const AFFIRM_WORDS = [
+      'sim', 'ok', 'pode', 'certo', 'confirmado', 'quero', 'bora', 'beleza',
+      'combinado', 'claro', 'perfeito', 'otimo', 'obrigado', 'obrigada', 'vlw',
+      'valeu', 'vou', 'estarei', 'ta', 'yes', 'blz', 'show', 'tenho', 'posso',
+      'afirmativo', 'ate la', 'to la', 'boa',
+    ];
+    const DENY_WORDS = [
+      'nao', 'nope', 'negativo', 'impossivel', 'nao vou', 'nao consigo', 'nao quero',
+      'cancela', 'cancelar',
+    ];
+
+    const wantsReschedule = RESCHEDULE_WORDS.some(k => fNorm.includes(k));
+    const hasBookingKw    = wantsReschedule || ['agendar', 'marcar', 'horario', 'mudar', 'trocar', 'reagendar'].some(k => fNorm.includes(k));
+    const isAffirm        = !hasBookingKw && AFFIRM_WORDS.some(a => fWds.includes(a) || fNorm === a) && fWds.length <= 8;
+    const isDeny          = DENY_WORDS.some(d => fWds.includes(d)) && fWds.length <= 6;
+    // Brazilian "Não, [affirmative]" filler: "nao" used as emphasis before affirming
+    // e.g. "Não, tá confirmado, mais que confirmado, preciso cortar o cabelo"
+    const denyAsFiller    = DENY_WORDS.some(d => fWds.includes(d)) && AFFIRM_WORDS.filter(a => fWds.includes(a)).length >= 2;
+
+    // Helper: detect time-of-day preference
+    const getTimePref = (n: string): { from: string; to: string } | null => {
+      if (n.includes('inicio da manha') || n.includes('cedo'))                                return { from: '07:00', to: '10:00' };
+      if (n.includes('manha'))                                                                 return { from: '07:00', to: '12:00' };
+      if (n.includes('inicio da tarde') || n.includes('comeco da tarde'))                    return { from: '12:00', to: '14:30' };
+      if (n.includes('meio da tarde'))                                                         return { from: '13:00', to: '16:00' };
+      if (n.includes('final da tarde') || n.includes('fim da tarde'))                         return { from: '16:00', to: '19:00' };
+      if (n.includes('tarde'))                                                                  return { from: '12:00', to: '18:00' };
+      if (n.includes('noite'))                                                                  return { from: '18:00', to: '22:00' };
+      return null;
+    };
+
+    // aviso/lembrete: rescheduling → find and offer slots
+    if ((fType === 'aviso' || fType === 'lembrete') && wantsReschedule) {
+      const prefRange   = getTimePref(fNorm);
+      const ANY_PROF    = ['qualquer', 'quem estiver', 'tanto faz', 'quem tiver', 'qualquer um', 'pode ser qualquer'];
+      const wantsAnyProf = ANY_PROF.some(k => fNorm.includes(k));
+
+      const profIdKnown  = session.data.followUpProfessionalId as string | undefined;
+      const svcDuration  =
+        services.find((s: any) => s.id === session.data.followUpServiceId)?.durationMinutes ??
+        services.find((s: any) => s.name === session.data.followUpServiceName)?.durationMinutes ?? 30;
+
+      let slots: string[] = [];
+      let chosenProf: { id: string; name: string } | undefined = professionals.find((p: any) => p.id === profIdKnown);
+
+      // Try same professional first
+      if (!wantsAnyProf && chosenProf) {
+        const raw = await getAvailableSlots(tenantId, chosenProf.id, todayISO, svcDuration, settings);
+        slots = prefRange ? raw.filter((s: string) => s >= prefRange.from && s <= prefRange.to) : raw;
+      }
+
+      // Fallback: any professional
+      if (slots.length === 0) {
+        for (const p of professionals as { id: string; name: string }[]) {
+          const raw = await getAvailableSlots(tenantId, p.id, todayISO, svcDuration, settings);
+          const filtered = prefRange ? raw.filter((s: string) => s >= prefRange.from && s <= prefRange.to) : raw;
+          if (filtered.length > 0) { slots = filtered; chosenProf = p; break; }
+        }
+      }
+
+      session.data.pendingFollowUpType = undefined;
+      let reply: string;
+      if (slots.length > 0 && chosenProf) {
+        const slotList  = slots.slice(0, 6).map((s: string) => `• ${s}`).join('\n');
+        const rangeNote = prefRange ? ' nesse período' : '';
+        reply = `Claro! Posso remarcar com *${chosenProf.name}*${rangeNote}:\n\n${slotList}\n\nQual horário fica bom?`;
+        session.data.professionalId   = chosenProf.id;
+        session.data.professionalName = chosenProf.name;
+        session.data.date             = todayISO;
+        if (session.data.followUpServiceId)   session.data.serviceId       = session.data.followUpServiceId;
+        if (session.data.followUpServiceName) session.data.serviceName     = session.data.followUpServiceName;
+        session.data.availableSlots = slots;
+      } else {
+        const periodMsg = prefRange ? ' nesse horário' : '';
+        reply = `Que pena! Infelizmente não temos mais horários disponíveis para hoje${periodMsg}. 😕 Quer marcar para outro dia?`;
+      }
+      session.history.push({ role: 'bot', text: reply });
+      await sendMsg(instanceName, phone, reply, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] followUp saveSession err:', e));
+      return;
+    }
+
+    // aviso/lembrete: affirmative (or "Não, [affirmative]" filler) → confirm presence
+    if ((fType === 'aviso' || fType === 'lembrete') && (isAffirm || denyAsFiller)) {
+      const apptTime = session.data.followUpApptTime as string | undefined;
+      const reply = apptTime ? `Show de bola! Aguardamos você às *${apptTime}*.` : `Show de bola! Aguardamos você.`;
+      session.data.pendingFollowUpType = undefined;
+      session.history.push({ role: 'bot', text: reply });
+      await sendMsg(instanceName, phone, reply, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] followUp saveSession err:', e));
+      return;
+    }
+
+    // reativacao: short denial → polite dismissal
+    if (fType === 'reativacao' && isDeny) {
+      const reply = `Tudo bem! Quando precisar, é só chamar. 😊`;
+      session.data.pendingFollowUpType = undefined;
+      session.history.push({ role: 'bot', text: reply });
+      await sendMsg(instanceName, phone, reply, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] followUp saveSession err:', e));
+      return;
+    }
+
+    // Anything else → clear flag and fall through to AI with full history context
+    session.data.pendingFollowUpType = undefined;
+  }
+
   // Prefetch slots if we know prof+date
+  // Use the selected service duration; if no service chosen yet, use the MINIMUM
+  // duration across all active services so we never block slots that actually exist.
   let prefetchedSlots: string[] | undefined;
   if (session.data.professionalId && session.data.date) {
-    prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId, session.data.date, session.data.serviceDuration || 60, settings);
+    const _minDur = services.length > 0
+      ? Math.min(...services.map((s: any) => s.durationMinutes || 30))
+      : 30;
+    const _slotDur = session.data.serviceDuration || _minDur;
+    prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId, session.data.date, _slotDur, settings);
 
     // Empty slots = vacation or fully booked — handle immediately before calling brain
     if (prefetchedSlots.length === 0) {
@@ -571,24 +744,55 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         return !!vacStart && session.data.date >= vacStart && session.data.date <= vacEnd;
       });
       const profName = session.data.professionalName || 'O profissional';
-      const noAvail = isVacation
-        ? `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`
-        : `Que pena! Não tem horário disponível em ${formatDate(session.data.date)} com ${profName}. 😕\n\nPara qual outro dia você prefere?`;
+      if (isVacation) {
+        const noAvail = `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`;
+        session.data.date = undefined;
+        session.data.professionalId = undefined;
+        session.data.professionalName = undefined;
+        session.history.push({ role: 'bot', text: noAvail });
+        await sendMsg(instanceName, phone, noAvail, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
+        return;
+      }
+      // Fully booked — proactively check the next day
+      const _bookedDate = session.data.date;
+      const _nextDate = (() => {
+        const d = new Date(_bookedDate + 'T12:00:00');
+        d.setDate(d.getDate() + 1);
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      })();
+      const _nextDur = session.data.serviceDuration || (services.length > 0
+        ? Math.min(...services.map((s: any) => s.durationMinutes || 30))
+        : 30);
+      const _nextSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate, _nextDur, settings);
+      if (_nextSlots.length > 0) {
+        const _isToday = _bookedDate === todayISO;
+        const _fullLabel = _isToday ? 'Hoje' : `Em ${formatDate(_bookedDate)}`;
+        const _nextLabel = _isToday ? 'amanhã' : `em ${formatDate(_nextDate)}`;
+        const noAvail = `${_fullLabel} o ${profName} está com a agenda cheia 😕 Mas ${_nextLabel} tem horário! Quer marcar?`;
+        session.data.date = _nextDate;
+        session.data.availableSlots = _nextSlots;
+        session.history.push({ role: 'bot', text: noAvail });
+        await sendMsg(instanceName, phone, noAvail, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
+        return;
+      }
+      const noAvail = `Que pena! Não tem horário disponível em ${formatDate(_bookedDate)} com ${profName}. 😕\n\nPara qual outro dia você prefere?`;
       session.data.date = undefined;
-      if (isVacation) { session.data.professionalId = undefined; session.data.professionalName = undefined; }
       session.history.push({ role: 'bot', text: noAvail });
-      await sendMsg(instanceName, phone, noAvail);
+      await sendMsg(instanceName, phone, noAvail, tenantId);
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
   }
 
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionals, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
-    await sendMsg(instanceName, phone, fallback);
+    await sendMsg(instanceName, phone, fallback, tenantId);
     saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
     return;
   }
@@ -614,14 +818,36 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (justGotProfAndDate) {
     const newSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, session.data.serviceDuration || 60, settings);
     if (newSlots.length === 0) {
-      const msg = `Que pena! Não tem horário disponível em ${formatDate(session.data.date!)} com ${session.data.professionalName}. 😕\n\nPara qual outro dia você prefere?`;
+      const _profName2 = session.data.professionalName || 'O profissional';
+      const _bookedDate2 = session.data.date!;
+      const _nextDate2 = (() => {
+        const d = new Date(_bookedDate2 + 'T12:00:00');
+        d.setDate(d.getDate() + 1);
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      })();
+      const _nextSlots2 = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate2,
+        session.data.serviceDuration || (services[0]?.durationMinutes ?? 30), settings);
+      if (_nextSlots2.length > 0) {
+        const _isToday2 = _bookedDate2 === todayISO;
+        const _fullLabel2 = _isToday2 ? 'Hoje' : `Em ${formatDate(_bookedDate2)}`;
+        const _nextLabel2 = _isToday2 ? 'amanhã' : `em ${formatDate(_nextDate2)}`;
+        const msg2 = `${_fullLabel2} o ${_profName2} está com a agenda cheia 😕 Mas ${_nextLabel2} tem horário! Quer marcar?`;
+        session.data.date = _nextDate2;
+        session.data.availableSlots = _nextSlots2;
+        session.history.push({ role: 'bot', text: msg2 });
+        await sendMsg(instanceName, phone, msg2, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
+        return;
+      }
+      const msg = `Que pena! Não tem horário disponível em ${formatDate(_bookedDate2)} com ${_profName2}. 😕\n\nPara qual outro dia você prefere?`;
       session.data.date = undefined;
       session.history.push({ role: 'bot', text: msg });
-      await sendMsg(instanceName, phone, msg);
+      await sendMsg(instanceName, phone, msg, tenantId);
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionals, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting);
+    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting);
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;
@@ -692,26 +918,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         `⏰ *Horário:* ${session.data.time}\n` +
         `✂️ *Procedimento:* ${session.data.serviceName}\n` +
         `💈 *Profissional:* ${session.data.professionalName}\n\nTe esperamos! 😊`;
-      await sendMsg(instanceName, phone, confirmMsg);
+      await sendMsg(instanceName, phone, confirmMsg, tenantId);
 
-      // Notify professional via WhatsApp
-      const bookedProf = profsRaw.find((p: any) => p.id === session.data.professionalId);
-      if (bookedProf?.phone) {
-        const clientName = session.data.clientName || pushName || 'Cliente';
-        sendMsg(instanceName, bookedProf.phone,
-          `📋 *Novo Agendamento (via WhatsApp)!*\n\n` +
-          `👤 *Cliente:* ${clientName}\n` +
-          `📱 *Telefone:* ${phone}\n` +
-          `📅 *Dia:* ${formatDate(session.data.date)}\n` +
-          `⏰ *Horário:* ${session.data.time}\n` +
-          `✂️ *Serviço:* ${session.data.serviceName}`
-        ).catch(() => {});
-      }
+      // Individual appointment notifications disabled — daily agenda summary sent at 00:01 instead.
 
       return;
     } catch (e) {
       console.error('[Agent] booking error:', e);
-      await sendMsg(instanceName, phone, `Ocorreu um erro ao confirmar. Por favor, tente novamente.`);
+      await sendMsg(instanceName, phone, `Ocorreu um erro ao confirmar. Por favor, tente novamente.`, tenantId);
       return;
     }
   }
@@ -723,7 +937,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   if (shouldGreet) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
-  await sendMsg(instanceName, phone, brain.reply);
+  await sendMsg(instanceName, phone, brain.reply, tenantId);
   saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
 }
 
@@ -940,7 +1154,7 @@ Deno.serve(async (req) => {
           }
           if (!text) {
             const phone = extractPhone(msg);
-            if (phone) await sendMsg(instanceName, phone, `Recebi seu áudio! 🎵 Pode digitar sua mensagem? 😊`);
+            if (phone) await sendMsg(instanceName, phone, `Recebi seu áudio! 🎵 Pode digitar sua mensagem? 😊`, tenant.id);
             continue;
           }
         }
@@ -949,6 +1163,18 @@ Deno.serve(async (req) => {
       if (!text) continue;
       const phone = extractPhone(msg);
       if (!phone) continue;
+
+      // Persist incoming message to whatsapp_messages (fire-and-forget)
+      EdgeRuntime.waitUntil(
+        saveWaMsg(
+          tenant.id,
+          msgId || `${phone}_${msg.messageTimestamp || Date.now()}`,
+          phone, text,
+          msg.messageTimestamp || Math.floor(Date.now() / 1000),
+          msg.pushName || '', msg.messageType || 'text', false,
+          { key: msg.key, message: msg.message, messageType: msg.messageType }
+        )
+      );
 
       // Se aiLeadActive estiver desativado, ignora mensagens de números desconhecidos
       // Também verifica se a IA foi pausada manualmente para este lead específico

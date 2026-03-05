@@ -123,6 +123,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
           apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
           serviceName: svc?.name || '',
           clientName: cust.name,
+          professionalId: appt.professional_id,
+          serviceId: appt.service_id,
         });
       } catch (e: any) {
         console.error(`[FollowUp] Erro ao enviar aviso para ${cust.phone}:`, e.message);
@@ -177,6 +179,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
           apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
           serviceName: svc?.name || '',
           clientName: cust.name,
+          professionalId: appt.professional_id,
+          serviceId: appt.service_id,
         });
       } catch (e: any) {
         console.error(`[FollowUp] Erro ao enviar lembrete para ${cust.phone}:`, e.message);

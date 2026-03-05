@@ -273,6 +273,23 @@ class DatabaseService {
     }
   }
 
+  async updateAppointmentSchedule(
+    id: string,
+    professionalId: string,
+    serviceId: string,
+    startTime: Date,
+    durationMinutes: number
+  ): Promise<void> {
+    const fim = new Date(startTime.getTime() + durationMinutes * 60000);
+    const { error } = await supabase.from('appointments').update({
+      professional_id: professionalId,
+      service_id: serviceId,
+      inicio: startTime.toISOString(),
+      fim: fim.toISOString(),
+    }).eq('id', id);
+    if (error) throw error;
+  }
+
   async deleteAppointment(id: string): Promise<void> {
     try {
       const { error } = await supabase.from('appointments').delete().eq('id', id);
@@ -1462,6 +1479,52 @@ class DatabaseService {
       const current = await this.getGlobalConfig();
       localStorage.setItem(this.GLOBAL_LS_KEY, JSON.stringify({ ...current, ...updates }));
     } catch {}
+  }
+
+  // ─── WHATSAPP MESSAGES — PERSISTENT HISTORY ──────────────────────────
+  // Table: whatsapp_messages (see supabase/migrations/whatsapp_messages.sql)
+
+  async saveWaMessages(tenantId: string, messages: Array<{
+    msg_id: string; phone: string; direction: 'in' | 'out';
+    body: string; msg_type: string; push_name: string;
+    from_me: boolean; ts: number; raw?: any;
+  }>): Promise<void> {
+    if (!messages.length) return;
+    try {
+      const rows = messages.map(m => ({
+        msg_id:    m.msg_id,
+        tenant_id: tenantId,
+        phone:     m.phone,
+        direction: m.direction,
+        body:      m.body      || '',
+        msg_type:  m.msg_type  || 'text',
+        push_name: m.push_name || '',
+        from_me:   m.from_me,
+        ts:        m.ts,
+        raw:       m.raw || {},
+      }));
+      await supabase
+        .from('whatsapp_messages')
+        .upsert(rows, { onConflict: 'tenant_id,msg_id', ignoreDuplicates: true });
+    } catch (e) { console.error('[mockDb] saveWaMessages error:', e); }
+  }
+
+  async getWaMessages(tenantId: string, sinceDays = 365): Promise<any[]> {
+    try {
+      const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
+      const { data } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .gte('ts', since)
+        .order('ts', { ascending: false })
+        .limit(10000);
+      // Reverse so messages are in chronological order (oldest → newest)
+      return (data || []).reverse();
+    } catch (e) {
+      console.error('[mockDb] getWaMessages error:', e);
+      return [];
+    }
   }
 }
 

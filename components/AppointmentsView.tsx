@@ -64,6 +64,17 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [deleteApptId, setDeleteApptId] = useState<string | null>(null);
   const [deletingAppt, setDeletingAppt] = useState(false);
 
+  // edit appointment (reschedule)
+  const [editAppt, setEditAppt] = useState<Appointment | null>(null);
+  const [editProfId, setEditProfId] = useState('');
+  const [editSvcId, setEditSvcId] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editSlots, setEditSlots] = useState<string[]>([]);
+  const [editSlotsLoading, setEditSlotsLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
   // break modal form
   const [brkLabel, setBrkLabel] = useState('');
   const [brkProfId, setBrkProfId] = useState('');
@@ -231,6 +242,121 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       console.error('Erro ao excluir agendamento:', e);
     } finally {
       setDeletingAppt(false);
+    }
+  };
+
+  const openEditModal = (a: Appointment) => {
+    const d = new Date(a.startTime);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    setEditAppt(a);
+    setEditProfId(a.professional_id);
+    setEditSvcId(a.service_id);
+    setEditDate(a.startTime.split('T')[0]);
+    setEditTime(`${hh}:${mm}`);
+    setEditSlots([]);
+    setEditError('');
+  };
+
+  // Fetch available slots for the edit modal (called when prof+date change)
+  const loadEditSlots = useCallback(async (pId: string, date: string, sId: string) => {
+    if (!pId || !date) { setEditSlots([]); return; }
+    setEditSlotsLoading(true);
+    try {
+      const svc = services.find(s => s.id === sId);
+      const dur = svc?.durationMinutes || 30;
+      const settings = await db.getSettings(tenantId);
+      const dateObj = new Date(date + 'T12:00:00');
+      const dayIndex = dateObj.getDay();
+      const dayConfig = settings.operatingHours?.[dayIndex];
+      if (!dayConfig?.active) { setEditSlots([]); return; }
+
+      const [startRange, endRange] = dayConfig.range.split('-');
+      const [sh, sm] = startRange.split(':').map(Number);
+      const [eh, em] = endRange.split(':').map(Number);
+      const { data: appts } = await (db as any).supabase?.from?.('appointments') !== undefined
+        ? { data: [] } // won't use this branch
+        : { data: [] };
+
+      // Use appointments from already-loaded state (fast, no extra fetch)
+      const dayAppts = appointments.filter(a => {
+        if (a.status === AppointmentStatus.CANCELLED) return false;
+        if (a.id === editAppt?.id) return false; // exclude self
+        const aDate = new Date(a.startTime).toISOString().split('T')[0];
+        return aDate === date && a.professional_id === pId;
+      });
+
+      const breaks: BreakPeriod[] = settings.breaks || [];
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const INTERVAL = 30;
+      const slots: string[] = [];
+      let cursor = sh * 60 + sm;
+      const endCursor = eh * 60 + em;
+      const loopLimit = dayConfig.acceptLastSlot ? endCursor : endCursor - dur;
+
+      while (cursor <= loopLimit) {
+        const h = Math.floor(cursor / 60);
+        const m = cursor % 60;
+        const label = `${pad(h)}:${pad(m)}`;
+        const slotStart = new Date(`${date}T${label}:00`);
+        const slotEnd = new Date(slotStart.getTime() + dur * 60000);
+        const slotEndLabel = `${pad(slotEnd.getHours())}:${pad(slotEnd.getMinutes())}`;
+
+        const BUFFER = 11 * 60 * 1000;
+        const conflict = dayAppts.some(a => {
+          const aStart = new Date(a.startTime);
+          const aEnd = new Date(aStart.getTime() + a.durationMinutes * 60000);
+          if (!(aStart < slotEnd && aEnd > slotStart)) return false;
+          return slotStart.getTime() < aEnd.getTime() - BUFFER;
+        });
+
+        const brkConflict = breaks.some(brk => {
+          if (brk.professionalId && brk.professionalId !== pId) return false;
+          if ((brk as any).type === 'vacation') {
+            const vacStart = brk.date || '';
+            const vacEnd = (brk as any).vacationEndDate || brk.date || '';
+            return !!vacStart && date >= vacStart && date <= vacEnd;
+          }
+          const matchDate = !brk.date || brk.date === date;
+          const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
+          if (!matchDate || !matchDay) return false;
+          return label < brk.endTime && slotEndLabel > brk.startTime;
+        });
+
+        if (!conflict && !brkConflict) slots.push(label);
+        cursor += INTERVAL;
+      }
+      setEditSlots(slots);
+    } catch (e) {
+      console.error('loadEditSlots error:', e);
+      setEditSlots([]);
+    } finally {
+      setEditSlotsLoading(false);
+    }
+  }, [tenantId, services, appointments, editAppt]);
+
+  useEffect(() => {
+    if (editAppt) loadEditSlots(editProfId, editDate, editSvcId);
+  }, [editProfId, editDate, editSvcId, editAppt, loadEditSlots]);
+
+  const handleSaveEdit = async () => {
+    if (!editAppt || !editProfId || !editSvcId || !editDate || !editTime) {
+      setEditError('Preencha todos os campos.'); return;
+    }
+    const svc = services.find(s => s.id === editSvcId);
+    if (!svc) return;
+    const startTime = new Date(`${editDate}T${editTime}:00`);
+    if (isNaN(startTime.getTime())) { setEditError('Data ou hora inválida.'); return; }
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      await db.updateAppointmentSchedule(editAppt.id, editProfId, editSvcId, startTime, svc.durationMinutes);
+      setEditAppt(null);
+      refreshData();
+    } catch (e: any) {
+      setEditError(e.message || 'Erro ao salvar. Tente novamente.');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -557,6 +683,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                               </button>
                             )}
                             <button
+                              onClick={() => openEditModal(a)}
+                              title="Editar horário"
+                              className="text-slate-400 hover:text-orange-500 dark:text-slate-500 dark:hover:text-orange-400 transition-colors"
+                            >
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                            </button>
+                            <button
                               onClick={() => setDeleteApptId(a.id)}
                               title="Excluir agendamento"
                               className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 transition-colors"
@@ -577,6 +712,101 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           </div>
         </div>
       </div>
+
+      {/* ─── Edit Appointment Modal ─────────────────── */}
+      {editAppt && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
+          <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
+            <div className="bg-white dark:bg-slate-900 rounded-[40px] w-full max-w-md p-10 space-y-6 animate-scaleUp border-4 border-black dark:border-slate-700">
+              <h2 className="text-2xl font-black text-black dark:text-white uppercase tracking-tight">Editar Agendamento</h2>
+              {editError && (
+                <div className="bg-red-50 border-2 border-red-200 p-3 rounded-2xl text-red-600 text-xs font-black uppercase tracking-widest">⚠️ {editError}</div>
+              )}
+              <div className="space-y-4">
+                {/* Professional */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Profissional</label>
+                  <select
+                    value={editProfId}
+                    onChange={e => { setEditProfId(e.target.value); setEditTime(''); }}
+                    className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold text-black dark:text-white outline-none focus:border-orange-500 transition-colors"
+                  >
+                    <option value="">Selecione...</option>
+                    {professionals.filter(p => p.active).map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* Service */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviço</label>
+                  <select
+                    value={editSvcId}
+                    onChange={e => { setEditSvcId(e.target.value); setEditTime(''); }}
+                    className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold text-black dark:text-white outline-none focus:border-orange-500 transition-colors"
+                  >
+                    <option value="">Selecione...</option>
+                    {services.filter(s => s.active).map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.durationMinutes}min)</option>
+                    ))}
+                  </select>
+                </div>
+                {/* Date */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data</label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={e => { setEditDate(e.target.value); setEditTime(''); }}
+                    className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold text-black dark:text-white outline-none focus:border-orange-500 transition-colors"
+                  />
+                </div>
+                {/* Time */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Horário {editSlotsLoading && <span className="text-orange-400">carregando...</span>}
+                  </label>
+                  {editSlots.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {editSlots.map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setEditTime(s)}
+                          className={`px-4 py-2 rounded-2xl text-xs font-black border-2 transition-all ${
+                            editTime === s
+                              ? 'bg-orange-500 border-orange-500 text-white'
+                              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-black dark:text-white hover:border-orange-400'
+                          }`}
+                        >{s}</button>
+                      ))}
+                    </div>
+                  ) : !editSlotsLoading && editProfId && editDate ? (
+                    <p className="text-xs text-slate-400 font-bold ml-1">Nenhum horário disponível neste dia.</p>
+                  ) : null}
+                  {/* Manual time fallback */}
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={e => setEditTime(e.target.value)}
+                    className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold text-black dark:text-white outline-none focus:border-orange-500 transition-colors mt-2"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setEditAppt(null)}
+                  className="flex-1 py-3 rounded-2xl border-2 border-slate-200 dark:border-slate-700 text-sm font-black text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >CANCELAR</button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit || !editTime}
+                  className="flex-1 py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black uppercase tracking-widest transition-colors disabled:opacity-50"
+                >{savingEdit ? '...' : 'SALVAR'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Delete Appointment Confirm Modal ──────── */}
       {deleteApptId && (

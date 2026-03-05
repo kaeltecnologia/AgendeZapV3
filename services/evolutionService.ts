@@ -53,6 +53,7 @@ export const evolutionService = {
         headers,
         body: JSON.stringify({
           where: {},
+          orderBy: { messageTimestamp: 'desc' },
           limit: count
         })
       });
@@ -62,6 +63,63 @@ export const evolutionService = {
     } catch (error) {
       return null;
     }
+  },
+
+  // Fetch message history for a specific contact — tries strategies in order
+  async fetchContactMessages(instanceName: string, phone: string, limit = 150): Promise<any[]> {
+    if (!instanceName || !phone) return [];
+    const cleanPhone = phone.replace(/\D/g, '');
+    const jidFull   = `${cleanPhone}@s.whatsapp.net`;
+    const jidLegacy = `${cleanPhone}@c.us`;
+
+    const filterByPhone = (msgs: any[]) =>
+      msgs.filter((m: any) => {
+        const jid: string = m.key?.remoteJid || '';
+        return jid.replace(/@.*/, '').replace(/\D/g, '').slice(-11) === cleanPhone.slice(-11);
+      });
+
+    const query = async (where: object, lim: number) => {
+      try {
+        const r = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${instanceName}`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ where, orderBy: { messageTimestamp: 'desc' }, limit: lim })
+        });
+        if (!r.ok) return null;
+        const d = await r.json();
+        return d.messages?.records || d.records || (Array.isArray(d) ? d : null);
+      } catch { return null; }
+    };
+
+    // 0. fetchMessages — pulls directly from WhatsApp servers (full cross-session history)
+    // Try plain number, then with JID suffixes (API varies by version)
+    for (const numArg of [cleanPhone, jidFull, jidLegacy]) {
+      try {
+        const r0 = await fetch(`${EVOLUTION_API_URL}/chat/fetchMessages/${instanceName}`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ number: numArg, msgCount: limit })
+        });
+        if (r0.ok) {
+          const d0 = await r0.json();
+          const msgs0: any[] = Array.isArray(d0) ? d0 : (d0.messages || d0.records || []);
+          const f = filterByPhone(msgs0);
+          if (f.length > 0) return f;
+        }
+      } catch { /* try next format */ }
+    }
+
+    // 1. Top-level remoteJid filter (standard Evolution API v2+)
+    const r1 = await query({ remoteJid: jidFull }, limit);
+    if (r1?.length) { const f = filterByPhone(r1); if (f.length) return f; }
+
+    // 2. Legacy JID format
+    const r2 = await query({ remoteJid: jidLegacy }, limit);
+    if (r2?.length) { const f = filterByPhone(r2); if (f.length) return f; }
+
+    // 3. No filter — fetch large batch, filter client-side (fallback for all versions)
+    const r3 = await query({}, limit * 6);
+    if (r3?.length) return filterByPhone(r3);
+
+    return [];
   },
 
   async sendToWhatsApp(instanceName: string, to: string, text: string): Promise<SendMessageResponse> {

@@ -300,17 +300,8 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         `_Em caso de imprevisto entre em contato. Aguardamos você! ✂️_`
       );
 
-      // Notification to professional
-      if (selectedBarber.phone) {
-        await evolutionService.sendMessage(instanceName, selectedBarber.phone,
-          `📋 *Novo Agendamento Online!*\n\n` +
-          `👤 *Cliente:* ${customerName.trim()}\n` +
-          `📱 *WhatsApp:* +${phone}\n` +
-          `📅 *Dia:* ${dateLabel}\n` +
-          `⏰ *Horário:* ${selectedTime}\n` +
-          `✂️ *Serviço:* ${selectedService.name}`
-        );
-      }
+      // Individual appointment notifications are disabled.
+      // Professionals receive a daily agenda summary at 00:01 instead.
 
       goTo('SUCCESS');
     } catch (e: any) {

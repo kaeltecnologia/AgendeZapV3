@@ -3,6 +3,7 @@ import { db } from '../services/mockDb';
 import { evolutionService } from '../services/evolutionService';
 import { supabase } from '../services/supabase';
 import { Customer } from '../types';
+import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
 
 interface ConvMessage {
   id: string;
@@ -12,6 +13,7 @@ interface ConvMessage {
   timestamp: number;
   fromMe: boolean;
   isAudio?: boolean;
+  rawMsg?: any; // raw Evolution API message (kept for audio transcription)
 }
 
 interface Conversation {
@@ -24,6 +26,34 @@ interface Conversation {
   messages: ConvMessage[];
 }
 
+// Normalize a raw Evolution API message into the DB row format
+function normalizeEvoMsg(msg: any, extrairNumero: (m: any) => string | null) {
+  const remoteJid = msg.key?.remoteJid || '';
+  if (remoteJid.includes('@g.us')) return null;
+  const phone = extrairNumero(msg);
+  if (!phone) return null;
+  const text =
+    msg.message?.conversation ||
+    msg.message?.extendedTextMessage?.text ||
+    msg.body || msg.text || '';
+  const msgType = msg.messageType || msg.type || '';
+  const isAudio =
+    ['audioMessage', 'pttMessage'].includes(msgType) ||
+    !!msg.message?.audioMessage ||
+    !!msg.message?.pttMessage;
+  return {
+    msg_id:    msg.key?.id || `${phone}_${msg.messageTimestamp || Date.now()}`,
+    phone,
+    direction: (msg.key?.fromMe ? 'out' : 'in') as 'in' | 'out',
+    body:      text || (isAudio ? '[áudio]' : ''),
+    msg_type:  msgType || 'text',
+    push_name: msg.pushName || phone,
+    from_me:   !!msg.key?.fromMe,
+    ts:        msg.messageTimestamp || 0,
+    raw:       msg,
+  };
+}
+
 const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
@@ -31,6 +61,9 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [instanceName, setInstanceName] = useState('');
   const [connected, setConnected] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Track whether the initial 10-day bulk import from Evolution API has been done
+  const importedRef = useRef(false);
 
   // Reply
   const [replyText, setReplyText] = useState('');
@@ -45,8 +78,16 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [customerData, setCustomerData] = useState<Record<string, { aiPaused?: boolean }>>({});
   const [togglingAi, setTogglingAi] = useState(false);
 
+  // Audio transcription
+  const [transcriptions, setTranscriptions] = useState<Record<string, string>>({});
+  const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
+  const [apiKey, setApiKey] = useState('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Track message count per phone to detect only genuine new messages
+  const prevMsgCountRef = useRef<Record<string, number>>({});
 
   const extrairNumero = (msg: any): string | null => {
     const candidatos = [
@@ -78,94 +119,118 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
       const status = await evolutionService.checkStatus(inst);
       setConnected(status === 'open');
-      if (status !== 'open') return;
 
-      const [rawMessages, professionals, custs, settings] = await Promise.all([
-        evolutionService.fetchRecentMessages(inst, 60),
+      const [professionals, custs, settings] = await Promise.all([
         db.getProfessionals(tenantId),
         db.getCustomers(tenantId),
         db.getSettings(tenantId),
       ]);
       setCustomers(custs);
       setCustomerData(settings.customerData || {});
+      const key = (settings.openaiApiKey || '').trim() || (tenant.gemini_api_key || '').trim();
+      setApiKey(key);
 
-      if (!rawMessages || !Array.isArray(rawMessages)) return;
+      // ── Sync from Evolution API → save to DB ──────────────────────────
+      let evoNormalized: any[] = [];
 
-      const phonesMatch = (stored: string, incoming: string) => {
-        const a = stored.replace(/\D/g, '');
-        const b = incoming.replace(/\D/g, '');
-        if (!a || !b) return false;
-        if (a === b) return true;
-        if (a.slice(-11) === b.slice(-11) && b.slice(-11).length >= 10) return true;
-        if (a.slice(-10) === b.slice(-10) && b.slice(-10).length >= 10) return true;
+      if (status === 'open') {
+        if (!importedRef.current) {
+          // FIRST load: full sync (up to 2000 msgs, no date filter) — AWAITED
+          // This is the only time we do a heavy sync; subsequent loads only fetch 200.
+          importedRef.current = true;
+          const rawMsgs = await evolutionService.fetchRecentMessages(inst, 5000);
+          if (rawMsgs?.length) {
+            evoNormalized = rawMsgs
+              .map((m: any) => normalizeEvoMsg(m, extrairNumero))
+              .filter(Boolean) as any[];
+            if (evoNormalized.length) await db.saveWaMessages(tenantId, evoNormalized);
+          }
+        } else {
+          // Regular refresh: fetch only the last 200 messages (fast, for new arrivals)
+          const recent = await evolutionService.fetchRecentMessages(inst, 200);
+          if (recent?.length) {
+            evoNormalized = recent
+              .map((m: any) => normalizeEvoMsg(m, extrairNumero))
+              .filter(Boolean) as any[];
+            if (evoNormalized.length) await db.saveWaMessages(tenantId, evoNormalized);
+          }
+        }
+      }
+
+      // ── Load from DB (primary) — always merge evoNormalized so sort order is fresh ─
+      let dbRows = await db.getWaMessages(tenantId, 365);
+      if (evoNormalized.length > 0) {
+        // Merge fresh Evolution API messages in case DB save failed or was partial
+        const dbIds = new Set(dbRows.map((r: any) => r.msg_id));
+        const newFromEvo = evoNormalized.filter((r: any) => !dbIds.has(r.msg_id));
+        if (newFromEvo.length > 0) dbRows = [...dbRows, ...newFromEvo];
+      } else if (dbRows.length === 0) {
+        dbRows = evoNormalized;
+      }
+
+      const phonesMatch = (a: string, b: string) => {
+        const ca = a.replace(/\D/g, '');
+        const cb = b.replace(/\D/g, '');
+        if (!ca || !cb) return false;
+        if (ca === cb) return true;
+        if (ca.slice(-11) === cb.slice(-11) && cb.slice(-11).length >= 10) return true;
+        if (ca.slice(-10) === cb.slice(-10) && cb.slice(-10).length >= 10) return true;
         return false;
       };
 
       const convMap = new Map<string, Conversation>();
-      const sorted = [...rawMessages].sort((a, b) => (a.messageTimestamp || 0) - (b.messageTimestamp || 0));
 
-      for (const msg of sorted) {
-        const remoteJid = msg.key?.remoteJid || '';
-        if (remoteJid.includes('@g.us')) continue;
+      for (const row of dbRows) {
+        const { msg_id, phone, body, msg_type, push_name, from_me, ts, raw } = row;
+        if (!body.trim() && body !== '[áudio]') continue;
 
-        const phone = extrairNumero(msg);
-        if (!phone) continue;
-
-        const text =
-          msg.message?.conversation ||
-          msg.message?.extendedTextMessage?.text ||
-          msg.body || msg.text || '';
-
-        const msgType = msg.messageType || msg.type || '';
         const isAudio =
-          ['audioMessage', 'pttMessage'].includes(msgType) ||
-          !!msg.message?.audioMessage ||
-          !!msg.message?.pttMessage;
-
-        if (!text.trim() && !isAudio) continue;
-
-        const ts = msg.messageTimestamp || 0;
-        const fromMe = !!msg.key?.fromMe;
-        const pushName = msg.pushName || phone;
+          body === '[áudio]' ||
+          ['audioMessage', 'pttMessage'].includes(msg_type || '');
 
         const matchedProf = professionals.find((p: any) => phonesMatch(p.phone || '', phone));
-        const matchedCust = custs.find(c => phonesMatch(c.phone, phone));
+        const matchedCust = custs.find((c: any) => phonesMatch(c.phone, phone));
 
-        const displayText = text.trim() || (isAudio ? '🎵 Áudio' : '');
-
-        const newMsg: ConvMessage = {
-          id: msg.key?.id || `${phone}-${ts}`,
-          phone, pushName, text: displayText, timestamp: ts, fromMe, isAudio: isAudio && !text.trim(),
+        const convMsg: ConvMessage = {
+          id:        msg_id,
+          phone,
+          pushName:  push_name || phone,
+          text:      isAudio && !body.startsWith('[') ? body : (isAudio ? '🎵 Áudio' : body),
+          timestamp: ts,
+          fromMe:    from_me,
+          isAudio:   isAudio,
+          rawMsg:    isAudio ? (raw || undefined) : undefined,
         };
 
         const existing = convMap.get(phone);
         if (existing) {
-          existing.messages.push(newMsg);
-          existing.lastMessage = text;
-          existing.lastTimestamp = ts;
-          if (!fromMe) existing.name = pushName || existing.name;
+          existing.messages.push(convMsg);
+          if (ts >= existing.lastTimestamp) {
+            existing.lastMessage = body;
+            existing.lastTimestamp = ts;
+          }
+          if (!from_me) existing.name = push_name || existing.name;
         } else {
           convMap.set(phone, {
             phone,
-            name: matchedCust?.name || matchedProf?.name || pushName || phone,
-            lastMessage: text,
+            name: matchedCust?.name || matchedProf?.name || push_name || phone,
+            lastMessage: body,
             lastTimestamp: ts,
             isProfessional: !!matchedProf,
             professionalName: matchedProf?.name,
-            messages: [newMsg],
+            messages: [convMsg],
           });
         }
       }
 
       setConversations(prev => {
         const next = Array.from(convMap.values()).sort((a, b) => b.lastTimestamp - a.lastTimestamp);
-        // Preserve any locally-sent messages in the existing conversations
+        // Preserve locally-sent messages that haven't been saved to DB yet
         return next.map(conv => {
           const old = prev.find(c => c.phone === conv.phone);
           if (!old) return conv;
-          // Merge: keep messages from API + any locally added ones not in the API set
-          const apiIds = new Set(conv.messages.map(m => m.id));
-          const localOnly = old.messages.filter(m => !apiIds.has(m.id));
+          const dbIds = new Set(conv.messages.map(m => m.id));
+          const localOnly = old.messages.filter(m => !dbIds.has(m.id));
           return { ...conv, messages: [...conv.messages, ...localOnly].sort((a, b) => a.timestamp - b.timestamp) };
         });
       });
@@ -184,11 +249,53 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     return () => clearInterval(interval);
   }, [load]);
 
+  // When opening a conversation: fetch that contact's full history from Evolution API.
+  // Only runs when the contact has few messages in the current state (avoids redundant calls).
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (!selectedPhone || !instanceName || !connected || !tenantId) return;
+    const existingCount = conversations.find(c => c.phone === selectedPhone)?.messages.length ?? 0;
+    // Skip if we already have extensive history for this contact
+    if (existingCount >= 200) return;
+
+    let cancelled = false;
+    evolutionService.fetchContactMessages(instanceName, selectedPhone, 500)
+      .then(async (msgs) => {
+        if (cancelled || !msgs.length) return;
+        const toSave = msgs
+          .map((m: any) => normalizeEvoMsg(m, extrairNumero))
+          .filter(Boolean) as any[];
+        if (!toSave.length) return;
+        await db.saveWaMessages(tenantId, toSave);
+        if (!cancelled) load();
+      })
+      .catch(console.error);
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhone, instanceName, connected, tenantId]);
+
+  // 1. Scroll to bottom immediately when switching conversations
+  useEffect(() => {
+    if (!messagesEndRef.current) return;
+    messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+    // Reset message count baseline for the new phone
+    const conv = conversations.find(c => c.phone === selectedPhone);
+    prevMsgCountRef.current[selectedPhone ?? ''] = conv?.messages.length ?? 0;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhone]);
+
+  // 2. When conversations update: only scroll if a NEW message arrived AND user is near bottom
+  useEffect(() => {
+    if (!selectedPhone || !messagesContainerRef.current || !messagesEndRef.current) return;
+    const conv = conversations.find(c => c.phone === selectedPhone);
+    const count = conv?.messages.length ?? 0;
+    const prev = prevMsgCountRef.current[selectedPhone] ?? count;
+    if (count > prev) {
+      prevMsgCountRef.current[selectedPhone] = count;
+      const el = messagesContainerRef.current;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+      if (nearBottom) messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [selectedPhone, conversations]);
+  }, [conversations, selectedPhone]);
 
   const selectedConv = conversations.find(c => c.phone === selectedPhone);
 
@@ -201,6 +308,22 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
     c.phone.includes(contactSearch)
   );
+
+  const transcribeMsg = useCallback(async (msg: ConvMessage) => {
+    if (!msg.rawMsg || !apiKey || !instanceName) return;
+    if (transcriptions[msg.id] || transcribing.has(msg.id)) return;
+    setTranscribing(prev => new Set(prev).add(msg.id));
+    try {
+      const audio = await fetchAudioBase64(instanceName, msg.rawMsg);
+      if (!audio) return;
+      const text = await transcribeAudio(apiKey, audio.base64, audio.mimeType);
+      if (text) setTranscriptions(prev => ({ ...prev, [msg.id]: text }));
+    } catch (e) {
+      console.error('[ConversationsView] transcribeMsg error:', e);
+    } finally {
+      setTranscribing(prev => { const s = new Set(prev); s.delete(msg.id); return s; });
+    }
+  }, [apiKey, instanceName, transcriptions, transcribing]);
 
   const formatTime = (ts: number) => {
     if (!ts) return '';
@@ -224,19 +347,27 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setReplyText('');
     try {
       await evolutionService.sendMessage(instanceName, selectedPhone, msgText);
+      const ts = Math.floor(Date.now() / 1000);
+      const msgId = `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const newMsg: ConvMessage = {
-        id: `local-${Date.now()}`,
+        id: msgId,
         phone: selectedPhone,
         pushName: 'Você',
         text: msgText,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: ts,
         fromMe: true,
       };
       setConversations(prev => prev.map(c =>
         c.phone === selectedPhone
-          ? { ...c, messages: [...c.messages, newMsg], lastMessage: msgText, lastTimestamp: newMsg.timestamp }
+          ? { ...c, messages: [...c.messages, newMsg], lastMessage: msgText, lastTimestamp: ts }
           : c
       ));
+      // Persist outgoing message to DB so it survives page reload
+      db.saveWaMessages(tenantId, [{
+        msg_id: msgId, phone: selectedPhone, direction: 'out',
+        body: msgText, msg_type: 'text', push_name: 'Você',
+        from_me: true, ts, raw: {},
+      }]).catch(console.error);
     } catch (e) {
       console.error('Send error:', e);
       setReplyText(msgText); // restore on error
@@ -426,7 +557,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </div>
 
                   {/* Messages */}
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-2 bg-slate-50/30">
+                  <div ref={messagesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-2 bg-slate-50/30">
                     {selectedConv.messages.length === 0 && (
                       <div className="h-full flex items-center justify-center">
                         <p className="text-xs font-black text-slate-200 uppercase">Nenhuma mensagem ainda. Envie a primeira!</p>
@@ -457,9 +588,20 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                 : 'bg-white text-black border border-slate-100 rounded-bl-sm'
                             }`}>
                               {msg.isAudio ? (
-                                <div className="flex items-center gap-2 py-0.5">
-                                  <span className="text-base">🎵</span>
-                                  <span className={`text-[10px] font-black uppercase tracking-widest ${msg.fromMe ? 'text-orange-100' : 'text-slate-400'}`}>Áudio</span>
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 py-0.5">
+                                    <span className="text-base">🎵</span>
+                                    {transcriptions[msg.id] ? (
+                                      <p className="whitespace-pre-wrap leading-relaxed break-words text-xs">{transcriptions[msg.id]}</p>
+                                    ) : transcribing.has(msg.id) ? (
+                                      <span className={`text-[10px] font-black italic ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`}>transcrevendo...</span>
+                                    ) : (
+                                      <button
+                                        onClick={() => transcribeMsg(msg)}
+                                        className={`text-[10px] font-black uppercase tracking-widest underline ${msg.fromMe ? 'text-orange-100 hover:text-white' : 'text-slate-400 hover:text-orange-500'}`}
+                                      >Transcrever</button>
+                                    )}
+                                  </div>
                                 </div>
                               ) : (
                                 <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.text}</p>

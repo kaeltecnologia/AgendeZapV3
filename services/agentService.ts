@@ -38,8 +38,10 @@ interface SessionData {
   greetedAt?: string;             // brasiliaDate when last greeted — persisted so Edge Function cold-starts don't duplicate
   // Follow-up context: set when system sends aviso/lembrete/reativacao to this phone
   pendingFollowUpType?: 'aviso' | 'lembrete' | 'reativacao';
-  followUpApptTime?: string;     // HH:MM of the booked appointment (for reply context)
-  followUpServiceName?: string;  // service name (for reply context)
+  followUpApptTime?: string;         // HH:MM of the booked appointment (for reply context)
+  followUpServiceName?: string;      // service name (for reply context)
+  followUpProfessionalId?: string;   // professional of the appointment (for reschedule flow)
+  followUpServiceId?: string;        // service id (for reschedule duration lookup)
   // Group booking (client + companion)
   groupBooking?: {
     active: boolean;
@@ -114,7 +116,13 @@ export function registerFollowUpContext(
   phone: string,
   type: 'aviso' | 'lembrete' | 'reativacao',
   sentMessage: string,
-  ctx?: { apptTime?: string; serviceName?: string; clientName?: string }
+  ctx?: {
+    apptTime?: string;
+    serviceName?: string;
+    clientName?: string;
+    professionalId?: string;
+    serviceId?: string;
+  }
 ): void {
   const key = sessionKey(tenantId, phone);
   let sess = sessions.get(key);
@@ -122,14 +130,18 @@ export function registerFollowUpContext(
     sess = { tenantId, phone, data: {} as SessionData, history: [], updatedAt: Date.now() };
   }
   sess.data.pendingFollowUpType = type;
-  if (ctx?.apptTime)     sess.data.followUpApptTime    = ctx.apptTime;
-  if (ctx?.serviceName)  sess.data.followUpServiceName = ctx.serviceName;
+  if (ctx?.apptTime)        sess.data.followUpApptTime       = ctx.apptTime;
+  if (ctx?.serviceName)     sess.data.followUpServiceName    = ctx.serviceName;
+  if (ctx?.professionalId)  sess.data.followUpProfessionalId = ctx.professionalId;
+  if (ctx?.serviceId)       sess.data.followUpServiceId      = ctx.serviceId;
   if (ctx?.clientName && !sess.data.clientName) sess.data.clientName = ctx.clientName;
   // Add the system message to history so the AI has full context if needed
   sess.history.push({ role: 'bot', text: sentMessage });
   if (sess.history.length > 20) sess.history = sess.history.slice(-20);
   sess.updatedAt = Date.now();
   sessions.set(key, sess);
+  // Persist to Supabase so the Edge Function webhook also sees this context
+  saveSession(sess as Session);
   console.log(`[Agent] Follow-up context registered: ${type} → ${phone}`);
 }
 
@@ -149,6 +161,25 @@ function formatDate(dateStr: string): string {
 
 function formatSlots(slots: string[]): string {
   return slots.map(s => `• ${s}`).join('\n');
+}
+
+// Detect time-of-day preference from normalised text
+function getTimePref(norm: string): { from: string; to: string } | null {
+  if (norm.includes('inicio da manha') || norm.includes('começo da manha') || norm.includes('cedo'))
+    return { from: '07:00', to: '10:00' };
+  if (norm.includes('manha'))
+    return { from: '07:00', to: '12:00' };
+  if (norm.includes('inicio da tarde') || norm.includes('comeco da tarde') || norm.includes('começo da tarde'))
+    return { from: '12:00', to: '14:30' };
+  if (norm.includes('meio da tarde'))
+    return { from: '13:00', to: '16:00' };
+  if (norm.includes('final da tarde') || norm.includes('fim da tarde') || norm.includes('fimzinho da tarde'))
+    return { from: '16:00', to: '19:00' };
+  if (norm.includes('tarde'))
+    return { from: '12:00', to: '18:00' };
+  if (norm.includes('noite') || norm.includes('a noite'))
+    return { from: '18:00', to: '22:00' };
+  return null;
 }
 
 // Try to extract a time from free text against a list of available slots
@@ -390,8 +421,9 @@ async function callBrain(
   const profSelectionRule = professionals.length > 1 && !data.professionalId
     ? `\n⚠️ PROFISSIONAL — ainda não definido. Profissionais: ${professionals.map(p => `${p.name} (ID:"${p.id}")`).join(', ')}
 • Se o cliente mencionou um nome NESTA MENSAGEM → extraia o professionalId correspondente e confirme a escolha (ex: "Ótimo, com o ${professionals[0].name}! Tem algum dia de preferência?").
-• Se o cliente NÃO mencionou nenhum profissional → pergunte: "Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}"
-• NUNCA escolha sozinho. NUNCA repita a pergunta se o cliente já disse um nome.
+• Se o cliente disser "qualquer um", "tanto faz", "quem estiver disponível", "pode ser qualquer", "quem tiver" ou similar → ESCOLHA AUTOMATICAMENTE o primeiro profissional da lista. Diga: "Pode ser com ${professionals[0]?.name} então! 😊 Tem algum dia de preferência?" e defina o professionalId correspondente.
+• Se o cliente NÃO mencionou nenhum profissional e NÃO disse "qualquer" → pergunte: "Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}"
+• NUNCA repita a pergunta se o cliente já disse um nome ou já aceitou qualquer profissional.
 • Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
     : '';
 
@@ -414,7 +446,7 @@ COMO RESPONDER — APRENDA COM HUMANOS:
 📏 FORMATO OBRIGATÓRIO:
 • Máximo 2-3 linhas por mensagem
 ${tomLine}
-• 1 emoji no máximo ${emojisHint}
+• Emojis: use APENAS na saudação inicial ou ao confirmar agendamento. Na grande maioria das mensagens NÃO use emoji.
 • SEMPRE termine com pergunta curta ou confirmação
 
 ${isFirstMessage && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou (nome, serviço, profissional, etc.) sem perguntar de novo.\n' : ''}
@@ -765,19 +797,104 @@ export async function handleMessage(
       'nao quero', 'não quero', 'cancela', 'cancelar',
     ];
     // Extra guard: don't intercept if client clearly wants to reschedule/book
-    const hasBookingIntent = ['agendar', 'marcar', 'horario', 'horário', 'mudar', 'trocar', 'reagendar'].some(k => norm.includes(k));
+    const RESCHEDULE_WORDS = [
+      'remarcar', 'remarcacao', 'reagendar', 'mudar horario', 'trocar horario',
+      'outro horario', 'possivel remarcar', 'consigo remarcar', 'consegue remarcar',
+      'remarcar para', 'mudar para', 'trocar para', 'inicio da tarde', 'inicio da manha',
+      'começo da tarde', 'comeco da tarde', 'final da tarde', 'meio da tarde',
+    ];
+    const wantsReschedule = RESCHEDULE_WORDS.some(k => norm.includes(k));
+    const hasBookingIntent = wantsReschedule ||
+      ['agendar', 'marcar', 'horario', 'horário', 'mudar', 'trocar', 'reagendar'].some(k => norm.includes(k));
 
     const isAffirm = !hasBookingIntent && AFFIRM.some(a => wds.includes(a) || norm === a);
     const isDeny   = DENY.some(d => wds.includes(d));
+    // Brazilian "Não, [affirmative]" filler: "nao" used as emphasis before affirming
+    // e.g. "Não, tá confirmado, mais que confirmado, preciso cortar o cabelo"
+    const denyAsFiller = isDeny && AFFIRM.filter(a => wds.includes(a)).length >= 2;
 
-    // ── aviso / lembrete: short affirmative → just confirm presence ───
-    if ((fType === 'aviso' || fType === 'lembrete') && isAffirm && wds.length <= 8) {
+    // ── aviso / lembrete: rescheduling request → offer slots directly ───────
+    if ((fType === 'aviso' || fType === 'lembrete') && wantsReschedule) {
+      const fp0 = makeFingerprint(tenantId, phone, text);
+      if (isLocalDuplicate(fp0)) return null;
+
+      const ANY_PROF = ['qualquer', 'quem estiver', 'tanto faz', 'quem tiver', 'qualquer um', 'pode ser qualquer'];
+      const wantsAnyProf = ANY_PROF.some(k => norm.includes(k));
+      const prefRange = getTimePref(norm);
+
+      const [professionals, services, settings] = await Promise.all([
+        db.getProfessionals(tenantId),
+        db.getServices(tenantId),
+        db.getSettings(tenantId),
+      ]);
+
+      const profIdKnown = preSession.data.followUpProfessionalId;
+      const svcDuration =
+        services.find(s => s.id === preSession.data.followUpServiceId)?.durationMinutes ??
+        services.find(s => s.name === preSession.data.followUpServiceName)?.durationMinutes ?? 30;
+
+      // Brasilia date today
+      const nowBr = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      const padZ  = (n: number) => String(n).padStart(2, '0');
+      const todayBr = `${nowBr.getUTCFullYear()}-${padZ(nowBr.getUTCMonth() + 1)}-${padZ(nowBr.getUTCDate())}`;
+
+      let slots: string[] = [];
+      let chosenProf = professionals.find(p => p.id === profIdKnown && p.active);
+
+      // Try same professional first (unless client explicitly wants any)
+      if (!wantsAnyProf && chosenProf) {
+        const raw = await getAvailableSlots(tenantId, chosenProf.id, todayBr, svcDuration, settings);
+        slots = prefRange ? raw.filter(s => s >= prefRange.from && s <= prefRange.to) : raw;
+      }
+
+      // Fallback: find any professional with available slots
+      if (slots.length === 0) {
+        for (const p of professionals.filter(pp => pp.active)) {
+          const raw = await getAvailableSlots(tenantId, p.id, todayBr, svcDuration, settings);
+          const filtered = prefRange ? raw.filter(s => s >= prefRange.from && s <= prefRange.to) : raw;
+          if (filtered.length > 0) {
+            slots = filtered;
+            chosenProf = p;
+            break;
+          }
+        }
+      }
+
+      preSession.data.pendingFollowUpType = undefined;
+
+      let reply: string;
+      if (slots.length > 0 && chosenProf) {
+        const slotList = slots.slice(0, 6).map(s => `• ${s}`).join('\n');
+        const profNote = chosenProf.id !== profIdKnown
+          ? `com *${chosenProf.name}*`
+          : `com *${chosenProf.name}*`;
+        const rangeNote = prefRange ? ' nesse período' : '';
+        reply = `Claro! Posso remarcar ${profNote}${rangeNote}:\n\n${slotList}\n\nQual horário fica bom?`;
+        // Prime session for time selection
+        preSession.data.professionalId   = chosenProf.id;
+        preSession.data.professionalName = chosenProf.name;
+        preSession.data.date             = todayBr;
+        preSession.data.availableSlots   = slots;
+        if (preSession.data.followUpServiceId)   preSession.data.serviceId   = preSession.data.followUpServiceId;
+        if (preSession.data.followUpServiceName) preSession.data.serviceName = preSession.data.followUpServiceName;
+      } else {
+        const periodMsg = prefRange ? ' nesse horário' : '';
+        reply = `Que pena! Infelizmente não temos mais horários disponíveis para hoje${periodMsg}. 😕 Quer marcar para outro dia?`;
+      }
+
+      preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+      saveSession(preSession);
+      return reply;
+    }
+
+    // ── aviso / lembrete: affirmative (or "Não, [affirmative]" filler) → confirm presence ───
+    if ((fType === 'aviso' || fType === 'lembrete') && ((isAffirm && wds.length <= 8) || denyAsFiller)) {
       const fp0 = makeFingerprint(tenantId, phone, text);
       if (isLocalDuplicate(fp0)) return null;
       const apptTime = preSession.data.followUpApptTime;
       const reply = apptTime
-        ? `Perfeito! Aguardamos você às *${apptTime}*! 😊`
-        : `Perfeito! Aguardamos você! 😊`;
+        ? `Show de bola! Aguardamos você às *${apptTime}*.`
+        : `Show de bola! Aguardamos você.`;
       preSession.data.pendingFollowUpType = undefined;
       preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
       saveSession(preSession);
@@ -847,6 +964,7 @@ export async function handleMessage(
   const todayISO = `${_nowBrasilia.getUTCFullYear()}-${pad(_nowBrasilia.getUTCMonth()+1)}-${pad(_nowBrasilia.getUTCDate())}`;
 
   const serviceOptions = activeServices.map((s: any) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, price: s.price }));
+
   const profOptions = activeProfessionals.map((p: any) => ({ id: p.id, name: p.name }));
 
   // ─── Build custom system prompt with variable substitution ──────────
@@ -948,15 +1066,21 @@ export async function handleMessage(
   session.history.push({ role: 'user', text });
 
   // ─── Fetch available slots if we already know professional + date ──
+  // Use the selected service duration; if no service chosen yet, use the MINIMUM
+  // duration across all services so we never block slots that actually exist.
   let prefetchedSlots: string[] | undefined;
   if (session.data.professionalId && session.data.date) {
+    const _minDuration = activeServices.length > 0
+      ? Math.min(...activeServices.map((s: any) => s.durationMinutes || 30))
+      : 30;
+    const _slotDuration = session.data.serviceDuration || _minDuration;
     prefetchedSlots = await getAvailableSlots(
       tenantId, session.data.professionalId, session.data.date,
-      session.data.serviceDuration || (activeServices[0]?.durationMinutes ?? 60), settings
+      _slotDuration, settings
     );
     session.data.availableSlots = prefetchedSlots;
 
-    // Empty slots = vacation or fully booked — handle immediately before calling brain
+    // Empty slots = vacation or truly fully booked — handle before calling brain
     if (prefetchedSlots.length === 0) {
       const isVacation = (settings.breaks || []).some((b: any) => {
         if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
@@ -966,23 +1090,67 @@ export async function handleMessage(
         return !!vacStart && session.data.date! >= vacStart && session.data.date! <= vacEnd;
       });
       const profName = session.data.professionalName || 'O profissional';
-      const noAvail = isVacation
-        ? `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`
-        : `Que pena! Não tem horário disponível em ${formatDate(session.data.date!)} com ${profName}. 😕\n\nPara qual outro dia você prefere?`;
+      if (isVacation) {
+        const noAvail = `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`;
+        session.data.date = undefined;
+        session.data.professionalId = undefined;
+        session.data.professionalName = undefined;
+        session.history.push({ role: 'bot', text: noAvail });
+        saveSession(session);
+        return noAvail;
+      }
+      // Fully booked — proactively check the next day
+      const _bookedDate = session.data.date!;
+      const _nextDate = (() => {
+        const d = new Date(_bookedDate + 'T12:00:00');
+        d.setDate(d.getDate() + 1);
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      })();
+      const _nextDur = session.data.serviceDuration || (activeServices.length > 0
+        ? Math.min(...activeServices.map((s: any) => s.durationMinutes || 30))
+        : 30);
+      const _nextSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate, _nextDur, settings);
+      if (_nextSlots.length > 0) {
+        const _isToday = _bookedDate === todayISO;
+        const _fullLabel = _isToday ? 'Hoje' : `Em ${formatDate(_bookedDate)}`;
+        const _nextLabel = _isToday ? 'amanhã' : `em ${formatDate(_nextDate)}`;
+        const noAvail = `${_fullLabel} o ${profName} está com a agenda cheia 😕 Mas ${_nextLabel} tem horário! Quer marcar?`;
+        session.data.date = _nextDate;
+        session.data.availableSlots = _nextSlots;
+        session.history.push({ role: 'bot', text: noAvail });
+        saveSession(session);
+        return noAvail;
+      }
+      const noAvail = `Que pena! Não tem horário disponível em ${formatDate(_bookedDate)} com ${profName}. 😕\n\nPara qual outro dia você prefere?`;
       session.data.date = undefined;
-      if (isVacation) { session.data.professionalId = undefined; session.data.professionalName = undefined; }
       session.history.push({ role: 'bot', text: noAvail });
       saveSession(session);
       return noAvail;
     }
   }
 
+  // ─── Professionals visible to the AI (excludes anyone on vacation for the target date) ──
+  // profOptions (full list) is kept for name-matching above so the slot-check can explain
+  // vacations when the client explicitly requests a prof who is currently on vacation.
+  const _targetDate = session.data.date || todayISO;
+  const _breaks: BreakPeriod[] = settings.breaks || [];
+  const profOptionsVisible = profOptions.filter((p: { id: string; name: string }) =>
+    !_breaks.some(b => {
+      if ((b as any).type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== p.id) return false;
+      const vacStart = b.date || '';
+      const vacEnd = (b as any).vacationEndDate || b.date || '';
+      return !!vacStart && _targetDate >= vacStart && _targetDate <= vacEnd;
+    })
+  );
+
   // ─── First AI Brain call ────────────────────────────────────────────
   const tenantNicho: string = (tenant.nicho as string) || 'Barbearia';
   const groupBookingCtx = buildGroupCtx(session.data);
   let brain = await callBrain(
     apiKey, tenantName, todayISO,
-    serviceOptions, profOptions,
+    serviceOptions, profOptionsVisible,
     session.history, session.data, prefetchedSlots, customPrompt || undefined,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
     tenantNicho, tenantId, phone, options?.isAudio
@@ -1059,7 +1227,28 @@ export async function handleMessage(
     session.data.availableSlots = newSlots;
 
     if (newSlots.length === 0) {
-      const noAvail = `Que pena! Não tem horário disponível em ${formatDate(session.data.date!)} com ${session.data.professionalName}. 😕\n\nPara qual outro dia você prefere?`;
+      const _profName2 = session.data.professionalName || 'O profissional';
+      const _bookedDate2 = session.data.date!;
+      const _nextDate2 = (() => {
+        const d = new Date(_bookedDate2 + 'T12:00:00');
+        d.setDate(d.getDate() + 1);
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      })();
+      const _nextSlots2 = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate2,
+        session.data.serviceDuration || (activeServices[0]?.durationMinutes ?? 30), settings);
+      if (_nextSlots2.length > 0) {
+        const _isToday2 = _bookedDate2 === todayISO;
+        const _fullLabel2 = _isToday2 ? 'Hoje' : `Em ${formatDate(_bookedDate2)}`;
+        const _nextLabel2 = _isToday2 ? 'amanhã' : `em ${formatDate(_nextDate2)}`;
+        const noAvail2 = `${_fullLabel2} o ${_profName2} está com a agenda cheia 😕 Mas ${_nextLabel2} tem horário! Quer marcar?`;
+        session.data.date = _nextDate2;
+        session.data.availableSlots = _nextSlots2;
+        session.history.push({ role: 'bot', text: noAvail2 });
+        saveSession(session);
+        return noAvail2;
+      }
+      const noAvail = `Que pena! Não tem horário disponível em ${formatDate(_bookedDate2)} com ${_profName2}. 😕\n\nPara qual outro dia você prefere?`;
       session.data.date = undefined;
       session.history.push({ role: 'bot', text: noAvail });
       saveSession(session);
@@ -1086,7 +1275,7 @@ export async function handleMessage(
     const groupBookingCtx2 = buildGroupCtx(session.data);
     const brain2 = await callBrain(
       apiKey, tenantName, todayISO,
-      serviceOptions, profOptions,
+      serviceOptions, profOptionsVisible,
       session.history, session.data, newSlots, customPrompt || undefined,
       false, brasiliaGreeting, groupBookingCtx2 || undefined,
       tenantNicho, tenantId, phone, false
