@@ -1113,20 +1113,12 @@ export async function handleMessage(
   }
 
   // ─── TypeScript-layer professional name pre-extraction ─────────────
-  // Runs BEFORE calling LLM. If there is no booking intent, instead of immediately setting
-  // the professional, we ask the lead if they want to speak with them personally.
-  if (!session.data.professionalId && !session.data.pendingProfContact && profOptions.length > 1) {
+  // Runs BEFORE calling LLM. Checks vacation first (for any # of professionals),
+  // then for multiple-prof setups either starts a booking flow or personal-contact flow.
+  if (!session.data.professionalId && !session.data.pendingProfContact) {
     const matchedProf = matchProfessionalName(lowerText, profOptions);
     if (matchedProf) {
-      const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-      const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'quero marcar', 'quero agendar'];
-      const hasSvcMention = activeServices.some((s: any) =>
-        normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
-      );
-      const hasBookingKw2 = BOOK_KW2.some(k => normMsg2.includes(k));
-      const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
-
-      // ── Vacation check: respond immediately if the mentioned professional is on vacation ──
+      // ── Vacation check: always runs regardless of professional count ──
       const profIsOnVacation = (settings.breaks || []).some((b: any) => {
         if (b.professionalId && b.professionalId !== matchedProf.id) return false;
         if ((b as any).type !== 'vacation') return false;
@@ -1150,30 +1142,46 @@ export async function handleMessage(
         return vacMsg;
       }
 
-      if (hasBookingKw2 || hasSvcMention || isMidBooking) {
-        // Normal booking flow: pre-set the professional
+      if (profOptions.length > 1) {
+        // Multiple professionals: check for booking intent or personal-contact flow
+        const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'quero marcar', 'quero agendar'];
+        const hasSvcMention = activeServices.some((s: any) =>
+          normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
+        );
+        const hasBookingKw2 = BOOK_KW2.some(k => normMsg2.includes(k));
+        const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
+
+        if (hasBookingKw2 || hasSvcMention || isMidBooking) {
+          // Normal booking flow: pre-set the professional
+          session.data.professionalId   = matchedProf.id;
+          session.data.professionalName = matchedProf.name;
+          console.log('[Agent] TS pre-extracted professional:', matchedProf.name);
+        } else {
+          // No booking signal: lead may be calling the professional personally — ask first
+          const profWithPhone = activeProfessionals.find((p: any) => p.id === matchedProf.id);
+          session.data.pendingProfContact = {
+            profId:    matchedProf.id,
+            profName:  matchedProf.name,
+            profPhone: (profWithPhone as any)?.phone || '',
+          };
+          const question = `Você gostaria de falar com o *${matchedProf.name}* sobre algum assunto específico?`;
+          const reply = shouldGreet
+            ? `${brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1)}! ${question}`
+            : question;
+          if (shouldGreet) {
+            session.data.greetedAt = brasiliaDate;
+            _greetedToday.set(`${tenantId}::${phone}`, brasiliaDate);
+          }
+          session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+          saveSession(session);
+          return reply;
+        }
+      } else {
+        // Single professional: pre-set them directly (no personal-contact-flow question needed)
         session.data.professionalId   = matchedProf.id;
         session.data.professionalName = matchedProf.name;
-        console.log('[Agent] TS pre-extracted professional:', matchedProf.name);
-      } else {
-        // No booking signal: lead may be calling the professional personally — ask first
-        const profWithPhone = activeProfessionals.find((p: any) => p.id === matchedProf.id);
-        session.data.pendingProfContact = {
-          profId:    matchedProf.id,
-          profName:  matchedProf.name,
-          profPhone: (profWithPhone as any)?.phone || '',
-        };
-        const question = `Você gostaria de falar com o *${matchedProf.name}* sobre algum assunto específico?`;
-        const reply = shouldGreet
-          ? `${brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1)}! ${question}`
-          : question;
-        if (shouldGreet) {
-          session.data.greetedAt = brasiliaDate;
-          _greetedToday.set(`${tenantId}::${phone}`, brasiliaDate);
-        }
-        session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
-        saveSession(session);
-        return reply;
+        console.log('[Agent] TS pre-extracted single professional:', matchedProf.name);
       }
     }
   }
@@ -1261,13 +1269,26 @@ export async function handleMessage(
     })
   );
 
+  // ─── Vacation note for already-selected professional (in case TS layer didn't intercept) ──
+  const _selProfOnVac = session.data.professionalId && _breaks.some(b => {
+    if ((b as any).type !== 'vacation') return false;
+    if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+    const vs = b.date || '';
+    const ve = (b as any).vacationEndDate || b.date || '';
+    return !!vs && todayISO >= vs && todayISO <= ve;
+  });
+  const vacationNote = _selProfOnVac
+    ? `\n⚠️ ATENÇÃO CRÍTICA: ${session.data.professionalName || 'O profissional selecionado'} ESTÁ DE FÉRIAS e NÃO tem disponibilidade para nenhuma data agora. Informe isso com simpatia ao cliente e sugira outro profissional ou que aguarde o retorno das férias.\n`
+    : '';
+  const effectiveCustomPrompt = vacationNote ? (customPrompt || '') + vacationNote : (customPrompt || undefined);
+
   // ─── First AI Brain call ────────────────────────────────────────────
   const tenantNicho: string = (tenant.nicho as string) || 'Barbearia';
   const groupBookingCtx = buildGroupCtx(session.data);
   let brain = await callBrain(
     apiKey, tenantName, todayISO,
     serviceOptions, profOptionsVisible,
-    session.history, session.data, prefetchedSlots, customPrompt || undefined,
+    session.history, session.data, prefetchedSlots, effectiveCustomPrompt,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
     tenantNicho, tenantId, phone, options?.isAudio
   );
@@ -1392,7 +1413,7 @@ export async function handleMessage(
     const brain2 = await callBrain(
       apiKey, tenantName, todayISO,
       serviceOptions, profOptionsVisible,
-      session.history, session.data, newSlots, customPrompt || undefined,
+      session.history, session.data, newSlots, effectiveCustomPrompt,
       false, brasiliaGreeting, groupBookingCtx2 || undefined,
       tenantNicho, tenantId, phone, false
     );

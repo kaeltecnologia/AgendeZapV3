@@ -580,19 +580,11 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const shouldGreet = session.data.greetedAt !== brasiliaDate;
 
   // Professional name pre-extraction (TypeScript layer — more reliable than LLM)
-  // When no booking intent is detected, ask the lead if they want personal contact first.
-  if (!session.data.professionalId && !session.data.pendingProfContact && professionals.length > 1) {
+  // Vacation check runs for any # of professionals. Personal-contact-flow only for multi-prof.
+  if (!session.data.professionalId && !session.data.pendingProfContact) {
     const matched = matchProfessionalName(lowerText, professionals);
     if (matched) {
-      const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-      const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento'];
-      const hasSvcMention = services.some((s: any) =>
-        normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
-      );
-      const hasBookingKw2 = BOOK_KW2.some((k: string) => normMsg2.includes(k));
-      const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
-
-      // ── Vacation check: respond immediately if the mentioned professional is on vacation ──
+      // ── Vacation check: always runs regardless of professional count ──
       const profIsOnVacation = (settings.breaks || []).some((b: any) => {
         if (b.professionalId && b.professionalId !== matched.id) return false;
         if (b.type !== 'vacation') return false;
@@ -618,24 +610,39 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         return;
       }
 
-      if (hasBookingKw2 || hasSvcMention || isMidBooking) {
+      if (professionals.length > 1) {
+        // Multiple professionals: check for booking intent or personal-contact flow
+        const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento'];
+        const hasSvcMention = services.some((s: any) =>
+          normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
+        );
+        const hasBookingKw2 = BOOK_KW2.some((k: string) => normMsg2.includes(k));
+        const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
+
+        if (hasBookingKw2 || hasSvcMention || isMidBooking) {
+          session.data.professionalId   = matched.id;
+          session.data.professionalName = matched.name;
+        } else {
+          // No booking signal: ask if they want to talk to the professional personally
+          const profPhone = (professionals as any[]).find((p: any) => p.id === matched.id)?.phone || '';
+          session.data.pendingProfContact = { profId: matched.id, profName: matched.name, profPhone };
+          const question = `Você gostaria de falar com o *${matched.name}* sobre algum assunto específico?`;
+          const { greeting: brasiliaGreetingPc, dateStr: brasiliaDatePc } = getBrasiliaGreeting();
+          const reply = shouldGreet
+            ? `${brasiliaGreetingPc.charAt(0).toUpperCase() + brasiliaGreetingPc.slice(1)}! ${question}`
+            : question;
+          if (shouldGreet) session.data.greetedAt = brasiliaDatePc;
+          session.history.push({ role: 'user', text });
+          session.history.push({ role: 'bot', text: reply });
+          await sendMsg(instanceName, phone, reply, tenantId);
+          saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+          return;
+        }
+      } else {
+        // Single professional: pre-set them directly (no personal-contact-flow question needed)
         session.data.professionalId   = matched.id;
         session.data.professionalName = matched.name;
-      } else {
-        // No booking signal: ask if they want to talk to the professional personally
-        const profPhone = (professionals as any[]).find((p: any) => p.id === matched.id)?.phone || '';
-        session.data.pendingProfContact = { profId: matched.id, profName: matched.name, profPhone };
-        const question = `Você gostaria de falar com o *${matched.name}* sobre algum assunto específico?`;
-        const { greeting: brasiliaGreetingPc, dateStr: brasiliaDatePc } = getBrasiliaGreeting();
-        const reply = shouldGreet
-          ? `${brasiliaGreetingPc.charAt(0).toUpperCase() + brasiliaGreetingPc.slice(1)}! ${question}`
-          : question;
-        if (shouldGreet) session.data.greetedAt = brasiliaDatePc;
-        session.history.push({ role: 'user', text });
-        session.history.push({ role: 'bot', text: reply });
-        await sendMsg(instanceName, phone, reply, tenantId);
-        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
-        return;
       }
     }
   }
@@ -891,8 +898,22 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // Vacation note for already-selected professional (in case TS layer didn't intercept)
+  const _whBreaks: any[] = settings.breaks || [];
+  const _selProfOnVacWh = session.data.professionalId && _whBreaks.some((b: any) => {
+    if (b.type !== 'vacation') return false;
+    if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+    const vs: string = b.date || '';
+    const ve: string = b.vacationEndDate || b.date || '';
+    return !!vs && todayISO >= vs && todayISO <= ve;
+  });
+  const _vacNoteWh = _selProfOnVacWh
+    ? `\n⚠️ ATENÇÃO CRÍTICA: ${session.data.professionalName || 'O profissional selecionado'} ESTÁ DE FÉRIAS e NÃO tem disponibilidade para nenhuma data agora. Informe isso com simpatia ao cliente e sugira outro profissional ou que aguarde o retorno das férias.\n`
+    : '';
+  const _effectiveCustomPromptWh = _vacNoteWh ? (customPrompt || '') + _vacNoteWh : (customPrompt || undefined);
+
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, shouldGreet, brasiliaGreeting);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, _effectiveCustomPromptWh, shouldGreet, brasiliaGreeting);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
@@ -951,7 +972,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting);
+    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, _effectiveCustomPromptWh, false, brasiliaGreeting);
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;
