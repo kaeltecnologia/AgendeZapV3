@@ -421,6 +421,42 @@ async function callBrain(
 • Se DIA definido mas PERÍODO não → pergunte "Prefere de manhã ou à tarde?"
 • ❌ JAMAIS mencione ou sugira horário específico (ex: "09:00", "15:00") sem ter DIA confirmado no CONTEXTO ATUAL\n`;
 
+  // ── Behavioral rules covering 30 real-world scenarios ──────────────────
+  const behaviorRules = `
+⛔ ARMADILHAS — NUNCA FAÇA:
+• "Quero cortar amanhã" → NÃO agende sem profissional + horário confirmados
+• "Tem horário hoje?" = CONSULTA, não pedido de agendamento → mostre opções disponíveis + "Quer agendar? Qual serviço?"
+• "De manhã" / "de tarde" / "próxima semana" = tempo VAGO → mostre as opções daquele período/semana, nunca escolha por conta própria
+• "Mesmo de sempre" → sem memória histórica → "Pode confirmar o serviço e horário preferido?"
+• "Pode ser com o [prof]?" → faltam serviço + data + horário → pergunte antes de confirmar
+
+🚫 CANCELAR — protocolo obrigatório (nesta ordem):
+1. Localizar: "Encontrei seu agendamento: [data/hora/serviço]."
+2. Confirmar: "Confirmo o cancelamento?"
+3. Só então: "cancelled":true
+• "Não vou poder ir amanhã" / "não consigo ir" = intenção implícita → perguntar: "Quer que eu cancele seu agendamento de amanhã às [hora]?"
+• Cliente com múltiplos agendamentos futuros → listar todos e perguntar qual(is) cancelar
+• Linguagem informal ("desisti", "tira meu nome", "me tira da agenda de sexta") → identificar agendamento + confirmar antes de cancelar
+
+🔄 REAGENDAR — protocolo obrigatório:
+• "Mais cedo" / "mais tarde" = vago → clarificar: "Mais cedo no mesmo dia ou em outra data?"
+• "Semana que vem mesmo horário" → VERIFICAR disponibilidade ANTES de confirmar (não assume que tem vaga)
+• "Atrasou" / "Chego X min depois" / "Vou atrasar" / "Estou atrasado" = AVISO DE ATRASO, NÃO reagendamento → responder: "Entendido! Vou avisar ao [profissional]. Te esperamos! 😊" — NÃO altere data/hora/cancelled
+• "Trocar de barbeiro, manter horário" → verificar disponibilidade do novo prof naquele slot ANTES de confirmar
+• "Primeiro horário do [prof]" = duas ações → cancelar atual + agendar novo → confirmar as duas juntas: "O primeiro horário do [prof] é [data/hora]. Confirmo o reagendamento e cancelo o seu atual ([data/hora])?"
+
+📋 CONSULTAS — responder a pergunta ≠ agendar automaticamente:
+• "Vocês trabalham domingo?" / "qual o horário de vocês?" → informar funcionamento; só depois oferecer agendar
+• "Quanto tempo demora um procedimento?" → informar duração; só depois oferecer agendar
+• "O [prof] tá disponível essa semana?" / "tá de folga?" → informar disponibilidade do profissional; só depois oferecer agendar
+• "Tem vaga hoje?" → mostre os horários disponíveis + "Qual serviço você quer?" — NÃO crie agendamento ainda
+
+🔀 AMBÍGUO — não assuma, pergunte com contexto:
+• Saudação simples ("oi", "tudo bem?", "boa tarde") → cumprimentar + "Como posso te ajudar?"
+• "Acabei de sair do trabalho" = intenção implícita de horário tardio → "Que horas você chega? Nosso último horário hoje é às [hora]."
+• "Fala com minha esposa, ela que organiza" → "Claro! Pode passar o contato dela ou ela pode me chamar diretamente por aqui."
+• Mensagem com dois pedidos ("me manda o endereço e já agendo") → atender os dois na mesma resposta\n`;
+
   const profSelectionRule = professionals.length > 1 && !data.professionalId
     ? `\n⚠️ PROFISSIONAL — ainda não definido. Profissionais: ${professionals.map(p => `${p.name} (ID:"${p.id}")`).join(', ')}
 • Se o cliente mencionou um nome NESTA MENSAGEM → extraia o professionalId correspondente e confirme a escolha (ex: "Ótimo, com o ${professionals[0].name}! Tem algum dia de preferência?").
@@ -441,7 +477,7 @@ ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("s
 
 HISTÓRICO (mais recente no final):
 ${histStr}
-${flowSection}${profSelectionRule}
+${flowSection}${profSelectionRule}${behaviorRules}
 ════════════════════════════════
 COMO RESPONDER — APRENDA COM HUMANOS:
 ════════════════════════════════
