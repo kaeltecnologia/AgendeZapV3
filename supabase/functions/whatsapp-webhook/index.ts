@@ -412,6 +412,14 @@ function matchProfessionalName(text: string, professionals: Array<{ id: string; 
     const first = norm(p.name).split(' ')[0];
     if (first.length >= 3 && new RegExp(`\\b${first}\\b`).test(normText)) return p;
   }
+  // Nickname/abbreviation: any word (4+ chars) in the message is a substring of a name part
+  // e.g. "Lipe" inside "Felipe", "Beto" inside "Roberto"
+  for (const p of professionals) {
+    const nameParts = norm(p.name).split(' ');
+    for (const word of normText.split(/\s+/).filter((w: string) => w.length >= 4)) {
+      if (nameParts.some((part: string) => part.includes(word))) return p;
+    }
+  }
   return null;
 }
 
@@ -536,7 +544,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   const profsRaw = profsRes.data || [];
   // Full list: used for name matching (client can request a prof on vacation → slot-check explains why)
-  const professionals = profsRaw.map((p: any) => ({ id: p.id, name: (p.nome || '').trim() }));
+  const professionals = profsRaw.map((p: any) => ({ id: p.id, name: (p.nome || '').trim(), phone: (p.phone || '').trim() }));
 
   // Use Brasília time for "today" (UTC-3)
   const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
@@ -572,11 +580,37 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const shouldGreet = session.data.greetedAt !== brasiliaDate;
 
   // Professional name pre-extraction (TypeScript layer — more reliable than LLM)
-  if (!session.data.professionalId && professionals.length > 1) {
+  // When no booking intent is detected, ask the lead if they want personal contact first.
+  if (!session.data.professionalId && !session.data.pendingProfContact && professionals.length > 1) {
     const matched = matchProfessionalName(lowerText, professionals);
     if (matched) {
-      session.data.professionalId = matched.id;
-      session.data.professionalName = matched.name;
+      const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+      const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento'];
+      const hasSvcMention = services.some((s: any) =>
+        normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
+      );
+      const hasBookingKw2 = BOOK_KW2.some((k: string) => normMsg2.includes(k));
+      const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
+
+      if (hasBookingKw2 || hasSvcMention || isMidBooking) {
+        session.data.professionalId   = matched.id;
+        session.data.professionalName = matched.name;
+      } else {
+        // No booking signal: ask if they want to talk to the professional personally
+        const profPhone = (professionals as any[]).find((p: any) => p.id === matched.id)?.phone || '';
+        session.data.pendingProfContact = { profId: matched.id, profName: matched.name, profPhone };
+        const question = `Você gostaria de falar com o *${matched.name}* sobre algum assunto específico?`;
+        const { greeting: brasiliaGreetingPc, dateStr: brasiliaDatePc } = getBrasiliaGreeting();
+        const reply = shouldGreet
+          ? `${brasiliaGreetingPc.charAt(0).toUpperCase() + brasiliaGreetingPc.slice(1)}! ${question}`
+          : question;
+        if (shouldGreet) session.data.greetedAt = brasiliaDatePc;
+        session.history.push({ role: 'user', text });
+        session.history.push({ role: 'bot', text: reply });
+        await sendMsg(instanceName, phone, reply, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+        return;
+      }
     }
   }
 
@@ -721,6 +755,50 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
     // Anything else → clear flag and fall through to AI with full history context
     session.data.pendingFollowUpType = undefined;
+  }
+
+  // ─── Professional contact inquiry response ──────────────────────────
+  if (session.data.pendingProfContact) {
+    const { profId, profName, profPhone } = session.data.pendingProfContact as { profId: string; profName: string; profPhone: string };
+    const normMsgPc = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+    const normWdsPc = normMsgPc.split(/\s+/);
+    const BOOK_KW_PC = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento'];
+    const AFFIRM_PC  = ['sim', 'pode', 'quero', 'ok', 'claro', 'isso', 'bora', 'gostaria', 'queria', 'preciso', 'favor', 'exato'];
+    const DENY_PC    = ['nao', 'não', 'nope', 'negativo'];
+    const hasBookingKwPc = BOOK_KW_PC.some((k: string) => normMsgPc.includes(k));
+    const isAffirmPc     = AFFIRM_PC.some((a: string) => normWdsPc.includes(a));
+    const isDenyPc       = DENY_PC.some((d: string) => normWdsPc.includes(d)) && !isAffirmPc;
+
+    if (hasBookingKwPc) {
+      // Lead wants to book WITH this professional → set prof and fall through to normal flow
+      session.data.professionalId   = profId;
+      session.data.professionalName = profName;
+      session.data.pendingProfContact = undefined;
+    } else if (isAffirmPc) {
+      if (profPhone) {
+        const leadLabel = (pushName && pushName !== 'Cliente') ? `*${pushName}* (${phone})` : `*${phone}*`;
+        const notif = `📩 *Olá, ${profName}!*\n\nO contato ${leadLabel} quer falar com você pelo WhatsApp. Verifique quando puder!\n\n— ${tenantName}`;
+        await sendMsg(instanceName, profPhone, notif, tenantId);
+      }
+      const replyPc = profPhone
+        ? `Certo! Notifiquei o *${profName}* e ele entrará em contato com você em breve. 😊`
+        : `Vou passar seu contato para o *${profName}*! Em breve ele entra em contato. 😊`;
+      session.data.pendingProfContact = undefined;
+      session.history.push({ role: 'bot', text: replyPc });
+      await sendMsg(instanceName, phone, replyPc, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
+    } else if (isDenyPc) {
+      const replyPc = `Sem problema! Posso te ajudar com algo mais? Se quiser agendar um serviço é só falar. 😊`;
+      session.data.pendingProfContact = undefined;
+      session.history.push({ role: 'bot', text: replyPc });
+      await sendMsg(instanceName, phone, replyPc, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
+    } else {
+      // Ambiguous — let AI handle with full context
+      session.data.pendingProfContact = undefined;
+    }
   }
 
   // Prefetch slots if we know prof+date

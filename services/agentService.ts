@@ -10,6 +10,7 @@ import { supabase } from './supabase';
 import { db } from './mockDb';
 import { AppointmentStatus, BookingSource, BreakPeriod } from '../types';
 import { sendProfessionalNotification } from './notificationService';
+import { evolutionService } from './evolutionService';
 import { nichoConfigs, isBarbearia } from '../config/nichoConfigs';
 import { logAIUsage, estimateTokens } from './usageTracker';
 
@@ -36,6 +37,8 @@ interface SessionData {
   pendingConfirm?: boolean;       // summary shown, waiting for yes/no
   pendingCancelReason?: boolean;  // asked for cancel reason, waiting for it
   greetedAt?: string;             // brasiliaDate when last greeted — persisted so Edge Function cold-starts don't duplicate
+  // Professional personal-contact flow: set when lead mentions a prof's name without booking intent
+  pendingProfContact?: { profId: string; profName: string; profPhone: string };
   // Follow-up context: set when system sends aviso/lembrete/reativacao to this phone
   pendingFollowUpType?: 'aviso' | 'lembrete' | 'reativacao';
   followUpApptTime?: string;         // HH:MM of the booked appointment (for reply context)
@@ -583,10 +586,18 @@ function matchProfessionalName(
   for (const p of professionals) {
     if (normText.includes(norm(p.name))) return p;
   }
-  // First name match (min 3 chars to avoid false positives)
+  // First name match (min 3 chars, word boundary)
   for (const p of professionals) {
     const firstName = norm(p.name).split(' ')[0];
     if (firstName.length >= 3 && new RegExp(`\\b${firstName}\\b`).test(normText)) return p;
+  }
+  // Nickname/abbreviation: any word (4+ chars) in the message is a substring of a name part
+  // e.g. "Lipe" inside "Felipe", "Beto" inside "Roberto"
+  for (const p of professionals) {
+    const nameParts = norm(p.name).split(' ');
+    for (const word of normText.split(/\s+/).filter(w => w.length >= 4)) {
+      if (nameParts.some(part => part.includes(word))) return p;
+    }
   }
   return null;
 }
@@ -918,6 +929,56 @@ export async function handleMessage(
     saveSession(preSession);
   }
 
+  // ─── Professional contact inquiry response ──────────────────────────
+  // Lead previously received "Você gostaria de falar com [prof]?" — handle their reply.
+  if (preSession?.data?.pendingProfContact) {
+    const fp0 = makeFingerprint(tenantId, phone, text);
+    if (isLocalDuplicate(fp0)) return null;
+    const { profId, profName, profPhone } = preSession.data.pendingProfContact;
+    const normMsg = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+    const normWds = normMsg.split(/\s+/);
+    const BOOK_KW = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento'];
+    const AFFIRM  = ['sim', 'pode', 'quero', 'ok', 'claro', 'isso', 'bora', 'gostaria', 'queria', 'preciso', 'favor', 'exato'];
+    const DENY    = ['nao', 'não', 'nope', 'negativo'];
+    const hasBookingKw = BOOK_KW.some(k => normMsg.includes(k));
+    const isAffirm     = AFFIRM.some(a => normWds.includes(a));
+    const isDeny       = DENY.some(d => normWds.includes(d)) && !isAffirm;
+
+    if (hasBookingKw) {
+      // Lead wants to book WITH this professional → set prof and fall through to normal flow
+      preSession.data.professionalId   = profId;
+      preSession.data.professionalName = profName;
+      preSession.data.pendingProfContact = undefined;
+      saveSession(preSession);
+      // Fall through — normal AI booking flow will pick up from here
+    } else if (isAffirm) {
+      // Lead wants personal contact → notify the professional via WhatsApp
+      if (profPhone) {
+        const inst = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug || '');
+        const leadLabel = (pushName && pushName !== 'Cliente') ? `*${pushName}* (${phone})` : `*${phone}*`;
+        const notif = `📩 *Olá, ${profName}!*\n\nO contato ${leadLabel} quer falar com você pelo WhatsApp. Verifique quando puder!\n\n— ${tenantName}`;
+        evolutionService.sendMessage(inst, profPhone, notif).catch(console.error);
+      }
+      const reply = profPhone
+        ? `Certo! Notifiquei o *${profName}* e ele entrará em contato com você em breve. 😊`
+        : `Vou passar seu contato para o *${profName}*! Em breve ele entra em contato. 😊`;
+      preSession.data.pendingProfContact = undefined;
+      preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+      saveSession(preSession);
+      return reply;
+    } else if (isDeny) {
+      const reply = `Sem problema! Posso te ajudar com algo mais? Se quiser agendar um serviço é só falar. 😊`;
+      preSession.data.pendingProfContact = undefined;
+      preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+      saveSession(preSession);
+      return reply;
+    } else {
+      // Ambiguous — let AI handle with full context
+      preSession.data.pendingProfContact = undefined;
+      saveSession(preSession);
+    }
+  }
+
   // ─── Dedup ─────────────────────────────────────────────────────────
   const fp = makeFingerprint(tenantId, phone, text);
   if (isLocalDuplicate(fp)) return null;
@@ -1052,13 +1113,44 @@ export async function handleMessage(
   }
 
   // ─── TypeScript-layer professional name pre-extraction ─────────────
-  // Runs BEFORE calling LLM so "profSelectionRule" is not injected when user already said a name.
-  if (!session.data.professionalId && profOptions.length > 1) {
+  // Runs BEFORE calling LLM. If there is no booking intent, instead of immediately setting
+  // the professional, we ask the lead if they want to speak with them personally.
+  if (!session.data.professionalId && !session.data.pendingProfContact && profOptions.length > 1) {
     const matchedProf = matchProfessionalName(lowerText, profOptions);
     if (matchedProf) {
-      session.data.professionalId = matchedProf.id;
-      session.data.professionalName = matchedProf.name;
-      console.log('[Agent] TS pre-extracted professional:', matchedProf.name);
+      const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+      const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'quero marcar', 'quero agendar'];
+      const hasSvcMention = activeServices.some((s: any) =>
+        normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
+      );
+      const hasBookingKw2 = BOOK_KW2.some(k => normMsg2.includes(k));
+      const isMidBooking  = !!(session.data.serviceId || session.data.pendingConfirm);
+
+      if (hasBookingKw2 || hasSvcMention || isMidBooking) {
+        // Normal booking flow: pre-set the professional
+        session.data.professionalId   = matchedProf.id;
+        session.data.professionalName = matchedProf.name;
+        console.log('[Agent] TS pre-extracted professional:', matchedProf.name);
+      } else {
+        // No booking signal: lead may be calling the professional personally — ask first
+        const profWithPhone = activeProfessionals.find((p: any) => p.id === matchedProf.id);
+        session.data.pendingProfContact = {
+          profId:    matchedProf.id,
+          profName:  matchedProf.name,
+          profPhone: (profWithPhone as any)?.phone || '',
+        };
+        const question = `Você gostaria de falar com o *${matchedProf.name}* sobre algum assunto específico?`;
+        const reply = shouldGreet
+          ? `${brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1)}! ${question}`
+          : question;
+        if (shouldGreet) {
+          session.data.greetedAt = brasiliaDate;
+          _greetedToday.set(`${tenantId}::${phone}`, brasiliaDate);
+        }
+        session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+        saveSession(session);
+        return reply;
+      }
     }
   }
 
