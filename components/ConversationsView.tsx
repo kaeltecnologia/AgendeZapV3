@@ -108,7 +108,8 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const load = useCallback(async () => {
     if (!tenantId) return;
-    setLoading(true);
+    // Only show the loading indicator on the very first load (no conversations yet)
+    if (!importedRef.current) setLoading(true);
     try {
       const { data: tenants } = await supabase.from('tenants').select('*');
       const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
