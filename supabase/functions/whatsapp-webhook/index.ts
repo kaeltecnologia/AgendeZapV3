@@ -1960,6 +1960,25 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     session.data.pendingConfirm = true;
   }
 
+  // ── Duplicate / loop guard ────────────────────────────────────────────────
+  // When the AI would repeat a generic greeting/question that was already sent last turn,
+  // replace with a clear "I didn't understand" message instead of looping.
+  {
+    const lastBotMsg = (session.history.filter((h: any) => h.role === 'bot').slice(-1)[0]?.text || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const newReplyNorm = brain.reply.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const GENERIC_PAT = [
+      'como posso te ajudar', 'seja bem-vindo', 'seja bem vindo',
+      'tudo bem?', 'tudo bem!', 'qual procedimento voce gostaria',
+      'o que voce gostaria de agendar', 'como posso ajudar',
+    ];
+    const isGeneric = (s: string) => GENERIC_PAT.some(p => s.includes(p));
+    if (isGeneric(newReplyNorm) && isGeneric(lastBotMsg)) {
+      brain.reply = 'Desculpa, não entendi bem. Como posso te ajudar hoje? 😊';
+      console.log('[Agent] Loop guard triggered — replaced generic repeat with fallback');
+    }
+  }
+
   if (shouldGreet || richFirstMessage) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
   await sendMsg(instanceName, phone, brain.reply, tenantId);
