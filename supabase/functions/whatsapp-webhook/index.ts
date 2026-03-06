@@ -600,16 +600,33 @@ function resolveRelativeDate(text: string, todayISO: string): string | null {
   for (const [re, dow] of dayMap) {
     if (re.test(t)) {
       let diff = dow - todayDow;
-      // Normalize: if day already passed this week, go to next occurrence
       if (diff < 0) diff += 7;
-      // "semana que vem / próxima": ensure we land in NEXT week, not this week.
-      // If the resolved day is still within this week (diff <= days until Sunday),
-      // add 7 more to push it into next week.
       if (isNext) {
         const daysToSunday = todayDow === 0 ? 0 : 7 - todayDow;
         if (diff <= daysToSunday) diff += 7;
       }
       return addDays(diff);
+    }
+  }
+  // Absolute date: "10/03", "10/03/2026", "dia 10/03", "dia 10"
+  const absMatch = t.match(/(?:dia\s+)?(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (absMatch) {
+    const dd = parseInt(absMatch[1], 10);
+    const mm = parseInt(absMatch[2], 10);
+    const yyyy = absMatch[3] ? (absMatch[3].length === 2 ? 2000 + parseInt(absMatch[3], 10) : parseInt(absMatch[3], 10)) : y;
+    if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) {
+      return `${yyyy}-${p2(mm)}-${p2(dd)}`;
+    }
+  }
+  // "dia 10" (only day, no month) → assume current or next month
+  const dayOnly = t.match(/\bdia\s+(\d{1,2})\b/);
+  if (dayOnly && !absMatch) {
+    const dd = parseInt(dayOnly[1], 10);
+    if (dd >= 1 && dd <= 31) {
+      // If the day already passed this month, use next month
+      let mm2 = mo, yy2 = y;
+      if (dd < dy) { mm2++; if (mm2 > 12) { mm2 = 1; yy2++; } }
+      return `${yy2}-${p2(mm2)}-${p2(dd)}`;
     }
   }
   return null;
@@ -1431,9 +1448,16 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
 
   // Date pre-extraction (TypeScript layer — resolves day names to YYYY-MM-DD)
-  if (!session.data.date) {
+  // Always try to resolve — if client mentions a NEW date, update the session
+  {
     const resolved = resolveRelativeDate(lowerText, todayISO);
-    if (resolved) session.data.date = resolved;
+    if (resolved && resolved !== session.data.date) {
+      session.data.date = resolved;
+      // New date → clear time and slots so they are re-fetched
+      session.data.time = undefined;
+      session.data.availableSlots = undefined;
+      console.log('[Agent] TS date updated to:', resolved);
+    }
   }
 
   // Time-preference pre-extraction (TypeScript layer)
