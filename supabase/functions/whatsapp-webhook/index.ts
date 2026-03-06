@@ -2235,6 +2235,55 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       }
       if (!customer) throw new Error('Failed to find or create customer');
 
+      // ── Plan quota check ────────────────────────────────────────────
+      let isPlanAppt = false;
+      let planBalanceMsg = '';
+      try {
+        const cData = settings.customerData[customer.id] || {};
+        if (cData.planId && cData.planStatus === 'ativo') {
+          const plan = settings.plans.find(p => p.id === cData.planId && p.active);
+          if (plan) {
+            // Migrate legacy plan format
+            const quotas = plan.quotas && plan.quotas.length > 0
+              ? plan.quotas
+              : (plan.serviceId ? [{ serviceId: plan.serviceId, quantity: plan.proceduresPerMonth || 0 }] : []);
+
+            const svcId = session.data.serviceId;
+            const quota = quotas.find(q => q.serviceId === svcId);
+            if (quota) {
+              const usageKey = `${customer.id}::${svcId}`;
+              const used = settings.planUsage[usageKey] || 0;
+              if (used < quota.quantity) {
+                isPlanAppt = true;
+                // Increment usage in JSONB
+                const newUsage = { ...settings.planUsage, [usageKey]: used + 1 };
+                const { data: curSettings } = await supabase.from('tenant_settings')
+                  .select('follow_up').eq('tenant_id', tenantId).maybeSingle();
+                const curFu = curSettings?.follow_up || {};
+                await supabase.from('tenant_settings').upsert({
+                  tenant_id: tenantId,
+                  follow_up: { ...curFu, _planUsage: newUsage }
+                }, { onConflict: 'tenant_id' });
+                settings.planUsage[usageKey] = used + 1; // update local copy too
+
+                // Build balance message for all quotas
+                const balParts: string[] = [];
+                for (const q of quotas) {
+                  const uKey = `${customer.id}::${q.serviceId}`;
+                  const u = settings.planUsage[uKey] || 0;
+                  const svcName = session.data.serviceName || q.serviceId;
+                  // Try to look up real service name for other quotas
+                  balParts.push(`${svcName}: ${u}/${q.quantity}`);
+                }
+                planBalanceMsg = `\n\n📦 *Saldo do plano:* ${balParts.join(' | ')}`;
+              }
+            }
+          }
+        }
+      } catch (ePlan) {
+        console.error('[Agent] plan quota check error:', ePlan);
+      }
+
       await supabase.from('appointments').insert({
         tenant_id: tenantId,
         customer_id: customer.id,
@@ -2244,7 +2293,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         fim: endTimeStr,
         status: 'CONFIRMED',
         origem: 'AI',
-        is_plan: false,
+        is_plan: isPlanAppt,
       });
 
       // ── Reschedule: cancel old appointment ───────────────────────────
@@ -2268,12 +2317,16 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           `📅 *Dia:* ${formatDate(session.data.date)}\n` +
           `⏰ *Horário:* ${session.data.time}\n` +
           `✂️ *Procedimento:* ${session.data.serviceName}\n` +
-          `💈 *Profissional:* ${session.data.professionalName}\n\nTe esperamos! 😊`
+          `💈 *Profissional:* ${session.data.professionalName}` +
+          (isPlanAppt ? planBalanceMsg : '') +
+          `\n\nTe esperamos! 😊`
         : `✅ *Agendamento confirmado!*\n\n` +
           `📅 *Dia:* ${formatDate(session.data.date)}\n` +
           `⏰ *Horário:* ${session.data.time}\n` +
           `✂️ *Procedimento:* ${session.data.serviceName}\n` +
-          `💈 *Profissional:* ${session.data.professionalName}\n\nTe esperamos! 😊`;
+          `💈 *Profissional:* ${session.data.professionalName}` +
+          (isPlanAppt ? planBalanceMsg : '') +
+          `\n\nTe esperamos! 😊`;
       await sendMsg(instanceName, phone, confirmMsg, tenantId);
 
       // Individual appointment notifications disabled — daily agenda summary sent at 00:01 instead.
@@ -2481,7 +2534,9 @@ Deno.serve(async (req) => {
       operatingHours: settingsRow?.operating_hours || fu._operatingHours || {},
       breaks: fu._breaks || [],
       msgBufferSecs: fu._msgBufferSecs ?? 30,
-      customerData: (fu._customerData || {}) as Record<string, { aiPaused?: boolean }>,
+      customerData: (fu._customerData || {}) as Record<string, { aiPaused?: boolean; planId?: string; planStatus?: string }>,
+      plans: (fu._plans || []) as Array<{ id: string; active: boolean; quotas?: Array<{ serviceId: string; quantity: number }>; serviceId?: string; proceduresPerMonth?: number; price?: number }>,
+      planUsage: (fu._planUsage || {}) as Record<string, number>,
     };
 
     if (!settings.aiActive) {

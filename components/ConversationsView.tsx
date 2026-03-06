@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { evolutionService, EVOLUTION_API_URL, EVOLUTION_API_KEY } from '../services/evolutionService';
 import { supabase } from '../services/supabase';
-import { Customer, Service, Professional, AppointmentStatus, BookingSource } from '../types';
+import { Customer, Service, Professional, AppointmentStatus, BookingSource, encodeServiceIds } from '../types';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
 
 interface ConvMessage {
@@ -114,7 +114,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [bookingServices, setBookingServices] = useState<Service[]>([]);
   const [bookingCustomerId, setBookingCustomerId] = useState('');
   const [bookingProfId, setBookingProfId] = useState('');
-  const [bookingServiceId, setBookingServiceId] = useState('');
+  const [bookingSvcIds, setBookingSvcIds] = useState<string[]>([]);
   const [bookingDate, setBookingDate] = useState('');
   const [bookingTime, setBookingTime] = useState('');
   const [bookingSaving, setBookingSaving] = useState(false);
@@ -529,7 +529,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   // Recompute available slots whenever prof / date / service changes while modal is open
   useEffect(() => {
-    if (!showBooking || !bookingProfId || !bookingDate || !bookingServiceId) {
+    if (!showBooking || !bookingProfId || !bookingDate || bookingSvcIds.length === 0) {
       setBookingSlots([]);
       setDayClosed(false);
       return;
@@ -552,8 +552,8 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
         const openMin = toMin(openStr);
         const closeMin = toMin(closeStr);
-        const svc = bookingServices.find(s => s.id === bookingServiceId);
-        const dur = svc?.durationMinutes || 30;
+        const selectedSvcs = bookingServices.filter(s => bookingSvcIds.includes(s.id));
+        const dur = selectedSvcs.reduce((sum, s) => sum + s.durationMinutes, 0) || 30;
 
         // Generate all possible start slots
         const allSlots: string[] = [];
@@ -591,7 +591,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       finally { setSlotsLoading(false); }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showBooking, bookingProfId, bookingDate, bookingServiceId]);
+  }, [showBooking, bookingProfId, bookingDate, bookingSvcIds]);
 
   const openBookingModal = async () => {
     setBookingSuccess(false);
@@ -608,7 +608,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setBookingCustomerId('');
     }
     setBookingProfId('');
-    setBookingServiceId('');
+    setBookingSvcIds([]);
     // Load profs + services if not yet loaded
     if (bookingProfs.length === 0 || bookingServices.length === 0) {
       const [profs, svcs] = await Promise.all([
@@ -618,16 +618,14 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setBookingProfs(profs.filter((p: Professional) => p.active !== false));
       setBookingServices(svcs.filter((s: Service) => s.active !== false));
       if (profs.length > 0) setBookingProfId(profs[0].id);
-      if (svcs.length > 0) setBookingServiceId(svcs[0].id);
     } else {
       if (bookingProfId === '' && bookingProfs.length > 0) setBookingProfId(bookingProfs[0].id);
-      if (bookingServiceId === '' && bookingServices.length > 0) setBookingServiceId(bookingServices[0].id);
     }
     setShowBooking(true);
   };
 
   const saveBooking = async () => {
-    if (!bookingCustomerId || !bookingProfId || !bookingServiceId || !bookingDate) {
+    if (!bookingCustomerId || !bookingProfId || bookingSvcIds.length === 0 || !bookingDate) {
       setBookingError('Preencha todos os campos.');
       return;
     }
@@ -638,18 +636,34 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setBookingSaving(true);
     setBookingError('');
     try {
-      const svc = bookingServices.find(s => s.id === bookingServiceId);
+      const selectedSvcs = bookingServices.filter(s => bookingSvcIds.includes(s.id));
+      const dur = selectedSvcs.reduce((sum, s) => sum + s.durationMinutes, 0) || 30;
       // Pass local time string directly — never go through Date/toISOString (avoids UTC+3h shift)
       const startTime = `${bookingDate}T${bookingTime}:00`;
+
+      // Check plan coverage
+      let isPlanAppt = false;
+      const cust = customers.find(c => c.id === bookingCustomerId);
+      if (cust?.planId && cust.planStatus === 'ativo') {
+        const balance = await db.getPlanBalance(tenantId, bookingCustomerId);
+        const allCovered = bookingSvcIds.every(id => (balance[id]?.remaining || 0) > 0);
+        if (allCovered) {
+          isPlanAppt = true;
+          await db.incrementPlanUsageMulti(tenantId, bookingCustomerId, bookingSvcIds);
+        }
+      }
+
       await db.addAppointment({
         tenant_id: tenantId,
         customer_id: bookingCustomerId,
         professional_id: bookingProfId,
-        service_id: bookingServiceId,
+        service_id: encodeServiceIds(bookingSvcIds),
+        serviceIds: bookingSvcIds,
         startTime,
-        durationMinutes: svc?.durationMinutes || 30,
+        durationMinutes: dur,
         status: AppointmentStatus.CONFIRMED,
-        source: BookingSource.WEB,
+        source: isPlanAppt ? BookingSource.PLAN : BookingSource.WEB,
+        isPlan: isPlanAppt,
       });
       setBookingSuccess(true);
       setTimeout(() => setShowBooking(false), 1500);
@@ -1043,34 +1057,47 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </select>
                 </div>
 
-                {/* Profissional + Serviço */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Profissional</label>
-                    <select
-                      value={bookingProfId}
-                      onChange={e => setBookingProfId(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
-                    >
-                      <option value="">Selecione...</option>
-                      {bookingProfs.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                {/* Profissional */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Profissional</label>
+                  <select
+                    value={bookingProfId}
+                    onChange={e => setBookingProfId(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
+                  >
+                    <option value="">Selecione...</option>
+                    {bookingProfs.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Serviço(s) — multi-select */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Serviço(s)</label>
+                  <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-3 max-h-40 overflow-y-auto space-y-1">
+                    {bookingServices.map(s => (
+                      <label key={s.id} className="flex items-center gap-2 cursor-pointer hover:bg-white rounded-lg px-2 py-1.5 transition-all">
+                        <input
+                          type="checkbox"
+                          checked={bookingSvcIds.includes(s.id)}
+                          onChange={() => setBookingSvcIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id])}
+                          className="w-3.5 h-3.5 accent-orange-500"
+                        />
+                        <span className="text-xs font-bold text-black">{s.name}</span>
+                        <span className="text-[9px] font-bold text-slate-400 ml-auto">{s.durationMinutes}min</span>
+                      </label>
+                    ))}
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Serviço</label>
-                    <select
-                      value={bookingServiceId}
-                      onChange={e => setBookingServiceId(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
-                    >
-                      <option value="">Selecione...</option>
-                      {bookingServices.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.durationMinutes}min)</option>
-                      ))}
-                    </select>
-                  </div>
+                  {bookingSvcIds.length > 0 && (() => {
+                    const selSvcs = bookingServices.filter(s => bookingSvcIds.includes(s.id));
+                    const totDur = selSvcs.reduce((sum, s) => sum + s.durationMinutes, 0);
+                    return (
+                      <p className="text-[9px] font-black text-orange-500 mt-1 ml-1">
+                        {selSvcs.map(s => s.name).join(' + ')} = {totDur}min
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 {/* Data */}
@@ -1085,7 +1112,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 </div>
 
                 {/* Horários disponíveis */}
-                {bookingProfId && bookingDate && bookingServiceId && (
+                {bookingProfId && bookingDate && bookingSvcIds.length > 0 && (
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
                       Horários disponíveis

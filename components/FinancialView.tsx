@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
-import { PaymentMethod, AppointmentStatus, Professional, Expense, Appointment, Service, Comanda, ComandaItem } from '../types';
+import { PaymentMethod, AppointmentStatus, Professional, Expense, Appointment, Service, Comanda, ComandaItem, Plan, Customer } from '../types';
 import { hasFeature } from '../config/planConfig';
 
 const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -48,10 +48,12 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [cfgGoal, setCfgGoal] = useState(0);
   const [cfgCommissions, setCfgCommissions] = useState<Record<string, number>>({});
   const [cfgSaving, setCfgSaving] = useState(false);
+  const [planRevenue, setPlanRevenue] = useState(0);
+  const [activePlanCount, setActivePlanCount] = useState(0);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [pros, svcs, summ, exps, apps, st, allComandas] = await Promise.all([
+    const [pros, svcs, summ, exps, apps, st, allComandas, allPlans, allCustomers] = await Promise.all([
       db.getProfessionals(tenantId),
       db.getServices(tenantId),
       db.getFinancialSummary(tenantId, period, selectedProfId),
@@ -59,7 +61,22 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       db.getAppointments(tenantId),
       db.getSettings(tenantId),
       db.getComandas(tenantId),
+      db.getPlans(tenantId),
+      db.getCustomers(tenantId),
     ]);
+
+    // Calculate active plan revenue: sum of plan.price for customers with active plans
+    const planMap = new Map(allPlans.map((p: Plan) => [p.id, p]));
+    let pRev = 0;
+    let pCount = 0;
+    allCustomers.forEach((c: Customer) => {
+      if (c.planId && c.planStatus === 'ativo') {
+        const plan = planMap.get(c.planId);
+        if (plan) { pRev += plan.price; pCount++; }
+      }
+    });
+    setPlanRevenue(pRev);
+    setActivePlanCount(pCount);
     setProfessionals(pros);
     setServices(svcs);
     setSummary(summ);
@@ -281,6 +298,20 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
             <FinCard title="Em Dinheiro / PIX" val={`R$ ${fmtBRL(summary[PaymentMethod.MONEY] + summary[PaymentMethod.PIX])}`} icon="💵" />
             <FinCard title="Cartões" val={`R$ ${fmtBRL(summary[PaymentMethod.DEBIT] + summary[PaymentMethod.CREDIT])}`} icon="💳" />
           </div>
+
+          {/* Plan Revenue */}
+          {planRevenue > 0 && (
+            <div className="bg-blue-50 border-2 border-blue-100 rounded-[30px] p-6 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-2xl">📦</span>
+                <div>
+                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Receita de Planos Ativos</p>
+                  <p className="text-xs font-bold text-blue-400">{activePlanCount} {activePlanCount === 1 ? 'cliente' : 'clientes'} com plano ativo</p>
+                </div>
+              </div>
+              <p className="text-2xl font-black text-blue-600">R$ {fmtBRL(planRevenue)}<span className="text-[10px] font-bold text-blue-400">/mês</span></p>
+            </div>
+          )}
 
           {/* Tables */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
-import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod } from '../types';
+import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod, parseServiceIds, encodeServiceIds } from '../types';
 import { sendProfessionalNotification, sendClientArrivedNotification } from '../services/notificationService';
 import { notifyWaitlistLeads } from '../services/waitlistService';
 
@@ -157,7 +157,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [profId, setProfId] = useState('');
-  const [svcId, setSvcId] = useState('');
+  const [svcIds, setSvcIds] = useState<string[]>([]);
   const [manualDate, setManualDate] = useState('');
   const [manualTime, setManualTime] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -278,27 +278,30 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   };
 
   const openBookingModal = () => {
-    setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setProfId(''); setSvcId('');
+    setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setProfId(''); setSvcIds([]);
     setManualDate(new Date().toISOString().split('T')[0]); setManualTime('');
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
     setBookingSlots([]); setBookingSlotsLoading(false);
     setShowBookingModal(true);
   };
 
+  // Compute total duration from selected services
+  const selectedServices = services.filter(s => svcIds.includes(s.id));
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMinutes, 0);
+  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+
   const handleCreateBooking = async () => {
-    if (!customerId || !profId || !svcId || !manualDate || !manualTime) {
+    if (!customerId || !profId || svcIds.length === 0 || !manualDate || !manualTime) {
       setErrorMsg('Por favor, preencha todos os campos.'); return;
     }
-    const svc = services.find(s => s.id === svcId);
-    if (!svc) return;
+    if (totalDuration === 0) return;
     const requestedDate = new Date(`${manualDate}T${manualTime}:00`);
     if (isNaN(requestedDate.getTime())) { setErrorMsg('Data ou hora inválida.'); return; }
 
     // If the time was verified by the slot picker, skip the isSlotAvailable check
-    // (it already checked operating hours + conflicts). Only check conflicts for manual types.
     const verifiedByPicker = bookingSlots.includes(manualTime);
     if (!verifiedByPicker) {
-      const check = await db.isSlotAvailable(tenantId, profId, requestedDate, svc.durationMinutes);
+      const check = await db.isSlotAvailable(tenantId, profId, requestedDate, totalDuration);
       if (!check.available) {
         setErrorMsg(check.reason || 'Este horário não está disponível.');
         return;
@@ -306,12 +309,26 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     }
 
     try {
+      // Check if customer has active plan — cover services from quota
+      const customer = customers.find(cu => cu.id === customerId);
+      let isPlanAppt = false;
+      if (customer?.planId && customer.planStatus === 'ativo') {
+        const balance = await db.getPlanBalance(tenantId, customerId);
+        const allCovered = svcIds.every(id => (balance[id]?.remaining || 0) > 0);
+        if (allCovered) {
+          isPlanAppt = true;
+          await db.incrementPlanUsageMulti(tenantId, customerId, svcIds);
+        }
+      }
+
       // Pass local time string directly — never go through toISOString (avoids UTC+3h shift)
       const newApp = await db.addAppointment({
         tenant_id: tenantId, customer_id: customerId, professional_id: profId,
-        service_id: svcId, startTime: `${manualDate}T${manualTime}:00`,
-        durationMinutes: svc.durationMinutes, status: AppointmentStatus.CONFIRMED,
-        source: BookingSource.MANUAL
+        service_id: encodeServiceIds(svcIds), serviceIds: svcIds,
+        startTime: `${manualDate}T${manualTime}:00`,
+        durationMinutes: totalDuration, status: AppointmentStatus.CONFIRMED,
+        source: isPlanAppt ? BookingSource.PLAN : BookingSource.MANUAL,
+        isPlan: isPlanAppt
       });
       sendProfessionalNotification(newApp);
       setShowBookingModal(false); setErrorMsg(''); refreshData();
@@ -472,13 +489,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   }, [editProfId, editDate, editSvcId, editAppt, loadEditSlots]);
 
   // Load available slots for the NEW booking modal
-  const loadBookingSlots = useCallback(async (pId: string, date: string, sId: string) => {
-    if (!pId || !date || !sId) { setBookingSlots([]); return; }
+  const loadBookingSlots = useCallback(async (pId: string, date: string, durOverride: number) => {
+    if (!pId || !date || !durOverride) { setBookingSlots([]); return; }
     setBookingSlotsLoading(true);
     setManualTime('');
     try {
-      const svc = services.find(s => s.id === sId);
-      const dur = svc?.durationMinutes || 30;
+      const dur = durOverride;
       const settings = await db.getSettings(tenantId);
       const dateObj = new Date(date + 'T12:00:00');
       const dayIndex = dateObj.getDay();
@@ -556,13 +572,13 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   }, [tenantId, services]);
 
   useEffect(() => {
-    if (showBookingModal && profId && manualDate && svcId) {
-      loadBookingSlots(profId, manualDate, svcId);
+    if (showBookingModal && profId && manualDate && totalDuration > 0) {
+      loadBookingSlots(profId, manualDate, totalDuration);
     } else {
       setBookingSlots([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profId, manualDate, svcId, showBookingModal]);
+  }, [profId, manualDate, totalDuration, showBookingModal]);
 
   const handleSaveEdit = async () => {
     if (!editAppt || !editProfId || !editSvcId || !editDate || !editTime) {
@@ -772,7 +788,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                   filteredForDisplay.map(a => {
                     const c = customers.find(cu => cu.id === a.customer_id);
                     const p = professionals.find(pr => pr.id === a.professional_id);
-                    const svc = services.find(s => s.id === a.service_id);
+                    const svcIdsParsed = a.serviceIds || parseServiceIds(a.service_id);
+                    const svcs = svcIdsParsed.map(id => services.find(s => s.id === id)).filter(Boolean) as Service[];
+                    const svc = svcs[0]; // primary for backward compat
+                    const svcLabel = svcs.length > 1 ? svcs.map(s => s.name).join(' + ') : (svc?.name || '—');
                     const appDate = new Date(a.startTime);
                     const isAI = a.source === BookingSource.AI;
                     const isPlan = a.isPlan || a.source === BookingSource.PLAN;
@@ -791,9 +810,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                           <span className="font-black text-black group-hover:text-slate-700 dark:text-slate-100 dark:group-hover:text-slate-200 uppercase tracking-tight text-sm transition-colors">{c?.name || '—'}</span>
                         </td>
                         <td className="px-8 py-6">
-                          <span className="font-black text-black group-hover:text-slate-700 dark:text-slate-100 dark:group-hover:text-slate-200 text-sm transition-colors">{svc?.name || '—'}</span>
-                          {svc && !isPlan && <p className="text-[10px] text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 font-bold uppercase transition-colors">R$ {svc.price.toFixed(2)} · {svc.durationMinutes}min</p>}
-                          {svc && isPlan && <p className="text-[10px] text-blue-500 font-bold uppercase">Plano · {svc.durationMinutes}min</p>}
+                          <span className="font-black text-black group-hover:text-slate-700 dark:text-slate-100 dark:group-hover:text-slate-200 text-sm transition-colors">{svcLabel}</span>
+                          {svcs.length > 0 && !isPlan && <p className="text-[10px] text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 font-bold uppercase transition-colors">R$ {svcs.reduce((s, sv) => s + sv.price, 0).toFixed(2)} · {a.durationMinutes}min</p>}
+                          {svcs.length > 0 && isPlan && <p className="text-[10px] text-blue-500 font-bold uppercase">Plano · {a.durationMinutes}min</p>}
                         </td>
                         <td className="px-8 py-6 font-bold text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200 uppercase text-xs tracking-wider transition-colors">{p?.name || '—'}</td>
                         <td className="px-8 py-6">
@@ -1183,9 +1202,32 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
               <ModalSelect label="Profissional" value={profId} onChange={setProfId} placeholder="Selecionar Profissional">
                 {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </ModalSelect>
-              <ModalSelect label="Serviço" value={svcId} onChange={setSvcId} placeholder="Selecionar Serviço">
-                {services.map(s => <option key={s.id} value={s.id}>{s.name} - R${s.price}</option>)}
-              </ModalSelect>
+              {/* Multi-service selection with checkboxes */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Serviço(s)</label>
+                <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 max-h-48 overflow-y-auto space-y-2">
+                  {services.map(s => (
+                    <label key={s.id} className="flex items-center gap-3 cursor-pointer hover:bg-white rounded-xl px-3 py-2 transition-all">
+                      <input
+                        type="checkbox"
+                        checked={svcIds.includes(s.id)}
+                        onChange={() => setSvcIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id])}
+                        className="w-4 h-4 accent-orange-500"
+                      />
+                      <span className="text-xs font-bold text-black">{s.name}</span>
+                      <span className="text-[10px] font-bold text-slate-400 ml-auto">{s.durationMinutes}min · R${s.price.toFixed(2)}</span>
+                    </label>
+                  ))}
+                </div>
+                {svcIds.length > 0 && (
+                  <div className="bg-orange-50 rounded-xl px-4 py-2 flex items-center justify-between">
+                    <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">
+                      {selectedServices.map(s => s.name).join(' + ')}
+                    </span>
+                    <span className="text-xs font-black text-orange-600">{totalDuration}min · R${totalPrice.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Data</label>
                 <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs uppercase" />
@@ -1209,7 +1251,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                       >{s}</button>
                     ))}
                   </div>
-                ) : !bookingSlotsLoading && profId && manualDate && svcId ? (
+                ) : !bookingSlotsLoading && profId && manualDate && svcIds.length > 0 ? (
                   <p className="text-xs text-slate-400 font-bold ml-1">Nenhum horário disponível neste dia.</p>
                 ) : null}
                 <input

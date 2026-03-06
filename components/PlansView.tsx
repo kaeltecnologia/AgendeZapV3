@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
-import { Plan, Customer, Service } from '../types';
+import { Plan, PlanQuota, Customer, Service } from '../types';
 
 const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -17,8 +17,7 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [formName, setFormName] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formPrice, setFormPrice] = useState('');
-  const [formProcedures, setFormProcedures] = useState('4');
-  const [formServiceId, setFormServiceId] = useState('');
+  const [formQuotas, setFormQuotas] = useState<PlanQuota[]>([]);
   const [formFeature, setFormFeature] = useState('');
   const [formFeatures, setFormFeatures] = useState<string[]>([]);
 
@@ -39,8 +38,8 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const openCreate = () => {
     setEditingPlan(null);
-    setFormName(''); setFormDesc(''); setFormPrice(''); setFormProcedures('4');
-    setFormServiceId(''); setFormFeatures([]);
+    setFormName(''); setFormDesc(''); setFormPrice('');
+    setFormQuotas([]); setFormFeatures([]);
     setShowModal(true);
   };
 
@@ -49,8 +48,7 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setFormName(plan.name);
     setFormDesc(plan.description);
     setFormPrice(String(plan.price));
-    setFormProcedures(String(plan.proceduresPerMonth ?? 4));
-    setFormServiceId(plan.serviceId || '');
+    setFormQuotas(plan.quotas.length > 0 ? [...plan.quotas] : []);
     setFormFeatures([...plan.features]);
     setShowModal(true);
   };
@@ -67,16 +65,39 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setFormFeatures(prev => prev.filter((_, i) => i !== idx));
   };
 
+  // ─── Quota management ────────────────────────────────
+  const addQuota = () => {
+    // Find first service not yet in quotas
+    const usedIds = new Set(formQuotas.map(q => q.serviceId));
+    const available = services.find(s => !usedIds.has(s.id));
+    if (available) {
+      setFormQuotas(prev => [...prev, { serviceId: available.id, quantity: 1 }]);
+    }
+  };
+
+  const updateQuota = (idx: number, field: 'serviceId' | 'quantity', value: string | number) => {
+    setFormQuotas(prev => prev.map((q, i) => i === idx ? { ...q, [field]: value } : q));
+  };
+
+  const removeQuota = (idx: number) => {
+    setFormQuotas(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const usedServiceIds = new Set(formQuotas.map(q => q.serviceId));
+
   const handleSave = async () => {
     if (!formName.trim()) { alert('Informe o nome do plano.'); return; }
+    if (formQuotas.length === 0) { alert('Adicione pelo menos um serviço ao plano.'); return; }
     setSaving(true);
     try {
-      const planData = {
+      const planData: Partial<Plan> = {
         name: formName.trim(),
         description: formDesc.trim(),
         price: parseFloat(formPrice) || 0,
-        proceduresPerMonth: parseInt(formProcedures) || 0,
-        serviceId: formServiceId || undefined,
+        quotas: formQuotas.map(q => ({ serviceId: q.serviceId, quantity: Number(q.quantity) || 0 })),
+        // Keep legacy fields in sync for backward compat
+        proceduresPerMonth: formQuotas.reduce((sum, q) => sum + (Number(q.quantity) || 0), 0),
+        serviceId: formQuotas.length === 1 ? formQuotas[0].serviceId : undefined,
         features: formFeatures
       };
       if (editingPlan) {
@@ -84,7 +105,7 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       } else {
         await db.addPlan({
           tenant_id: tenantId,
-          ...planData,
+          ...planData as any,
           active: true
         });
       }
@@ -106,8 +127,12 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const subscriberCount = (planId: string) =>
     customers.filter(c => c.planId === planId).length;
 
-  const getServiceName = (serviceId?: string) =>
-    serviceId ? (services.find(s => s.id === serviceId)?.name || null) : null;
+  const getServiceName = (serviceId: string) =>
+    services.find(s => s.id === serviceId)?.name || serviceId;
+
+  /** Format quotas as readable text: "2x Barba, 4x Corte de Cabelo" */
+  const formatQuotas = (quotas: PlanQuota[]) =>
+    quotas.map(q => `${q.quantity}x ${getServiceName(q.serviceId)}`).join(', ');
 
   if (loading) return <div className="p-20 text-center font-black animate-pulse">CARREGANDO PLANOS...</div>;
 
@@ -129,8 +154,8 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <div>
           <p className="font-black text-blue-700 text-sm uppercase tracking-wider mb-1">Como funcionam os planos?</p>
           <p className="text-xs font-bold text-blue-500 leading-relaxed">
-            Crie pacotes mensais (ex.: R$ 150/mês = 4 cortes). Defina a <strong>quantidade de procedimentos</strong> cobertos.
-            O sistema conta os atendimentos do mês e, ao atingir o limite, os próximos são cobrados normalmente.
+            Crie pacotes mensais com <strong>quotas por serviço</strong> (ex.: 2x Barba + 4x Corte = R$ 150/mês).
+            O sistema controla o saldo de cada serviço separadamente. Ao atingir o limite, os próximos são cobrados normalmente.
             Atribua o plano ao cliente no cadastro — agendamentos cobertos são marcados como <strong>"Plano"</strong> e
             <strong> não geram cobrança</strong> no financeiro.
           </p>
@@ -149,7 +174,6 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {plans.map(plan => {
             const subs = subscriberCount(plan.id);
-            const svcName = getServiceName(plan.serviceId);
             return (
               <div key={plan.id} className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 p-10 space-y-6 hover:border-black transition-all group">
                 <div className="flex justify-between items-start">
@@ -163,15 +187,25 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </div>
                 </div>
 
-                {/* Procedure quota */}
-                <div className="bg-orange-50 rounded-2xl px-6 py-3 flex items-center gap-4">
-                  <span className="text-2xl">✂️</span>
-                  <div>
-                    <p className="font-black text-orange-600 text-sm">
-                      {plan.proceduresPerMonth > 0 ? `${plan.proceduresPerMonth} procedimento${plan.proceduresPerMonth !== 1 ? 's' : ''}/mês` : 'Ilimitado'}
-                    </p>
-                    {svcName && <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">{svcName}</p>}
-                  </div>
+                {/* Quotas display */}
+                <div className="bg-orange-50 rounded-2xl px-6 py-4 space-y-2">
+                  {plan.quotas.length > 0 ? (
+                    plan.quotas.map((q, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <span className="text-lg">✂️</span>
+                        <p className="font-black text-orange-600 text-sm">
+                          {q.quantity}x {getServiceName(q.serviceId)}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">✂️</span>
+                      <p className="font-black text-orange-600 text-sm">
+                        {plan.proceduresPerMonth > 0 ? `${plan.proceduresPerMonth} procedimento${plan.proceduresPerMonth !== 1 ? 's' : ''}/mês` : 'Ilimitado'}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {plan.features.length > 0 && (
@@ -221,27 +255,57 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 <textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} rows={2} placeholder="Descreva o que está incluso no plano..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold resize-none focus:border-orange-500" />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Valor Mensal (R$)</label>
-                  <input type="number" value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="150.00" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-xl focus:border-orange-500" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Procedimentos/mês</label>
-                  <input type="number" min="0" value={formProcedures} onChange={e => setFormProcedures(e.target.value)} placeholder="4" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-xl focus:border-orange-500" />
-                  <p className="text-[9px] font-bold text-slate-300 ml-4">0 = ilimitado</p>
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Valor Mensal (R$)</label>
+                <input type="number" value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="150.00" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-xl focus:border-orange-500" />
               </div>
 
-              {services.length > 0 && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Serviço Coberto (opcional)</label>
-                  <select value={formServiceId} onChange={e => setFormServiceId(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
-                    <option value="">Qualquer serviço</option>
-                    {services.map(s => <option key={s.id} value={s.id}>{s.name} — R$ {s.price.toFixed(2)}</option>)}
-                  </select>
-                </div>
-              )}
+              {/* ─── Quotas editor ─────────────────── */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Serviços Inclusos (Quotas)</label>
+
+                {formQuotas.map((q, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <select
+                      value={q.serviceId}
+                      onChange={e => updateQuota(idx, 'serviceId', e.target.value)}
+                      className="flex-1 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500 text-sm"
+                    >
+                      {services.map(s => (
+                        <option key={s.id} value={s.id} disabled={usedServiceIds.has(s.id) && q.serviceId !== s.id}>
+                          {s.name} — R$ {s.price.toFixed(2)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      value={q.quantity}
+                      onChange={e => updateQuota(idx, 'quantity', parseInt(e.target.value) || 1)}
+                      className="w-20 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-center focus:border-orange-500"
+                    />
+                    <span className="text-[9px] font-black text-slate-400 whitespace-nowrap">/ mês</span>
+                    <button onClick={() => removeQuota(idx)} className="p-2 text-slate-300 hover:text-red-500 font-black text-lg transition-colors">✕</button>
+                  </div>
+                ))}
+
+                {formQuotas.length < services.length && (
+                  <button
+                    onClick={addQuota}
+                    className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-xs font-black text-slate-400 uppercase tracking-widest hover:border-orange-500 hover:text-orange-500 transition-all"
+                  >
+                    + Adicionar Serviço
+                  </button>
+                )}
+
+                {formQuotas.length > 0 && (
+                  <div className="bg-orange-50 rounded-xl px-4 py-2">
+                    <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">
+                      Total: {formQuotas.map(q => `${q.quantity}x ${getServiceName(q.serviceId)}`).join(' + ')}
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <div className="space-y-3">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Benefícios do Plano</label>
@@ -250,7 +314,7 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     value={formFeature}
                     onChange={e => setFormFeature(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addFeature())}
-                    placeholder="Ex: Cortes ilimitados"
+                    placeholder="Ex: Desconto em produtos"
                     className="flex-1 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500"
                   />
                   <button onClick={addFeature} className="px-5 py-4 bg-orange-500 text-white rounded-2xl font-black text-xs uppercase hover:bg-black transition-all">

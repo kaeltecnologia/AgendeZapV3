@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
-import { Customer, Plan, Service, FollowUpNamedMode, Professional, RecurringSchedule, AppointmentStatus } from '../types';
+import { Customer, Plan, PlanStatus, Service, FollowUpNamedMode, Professional, RecurringSchedule, AppointmentStatus } from '../types';
 
 const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [activeTab, setActiveTab] = useState<'lista' | 'retencao'>('lista');
@@ -26,6 +26,8 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [addSlotTime, setAddSlotTime] = useState<string>('09:00');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ ok: number; fail: number } | null>(null);
+  const [planBalance, setPlanBalance] = useState<Record<string, { total: number; used: number; remaining: number }>>({});
+  const [renewingPlan, setRenewingPlan] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +56,15 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }, [tenantId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load plan balance when editing a customer with a plan
+  useEffect(() => {
+    if (editingCustomer?.planId) {
+      db.getPlanBalance(tenantId, editingCustomer.id).then(setPlanBalance).catch(() => setPlanBalance({}));
+    } else {
+      setPlanBalance({});
+    }
+  }, [editingCustomer?.id, editingCustomer?.planId, tenantId]);
 
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -86,6 +97,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         lembreteModeId: editingCustomer.lembreteModeId,
         reativacaoModeId: editingCustomer.reativacaoModeId,
         planId: editingCustomer.planId,
+        planStatus: editingCustomer.planStatus as PlanStatus | undefined,
         planServiceId: editingCustomer.planServiceId,
         recurringSchedule: editingCustomer.recurringSchedule
       });
@@ -283,11 +295,15 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   <h3 className="text-xl font-black text-black mb-1 pr-16 leading-tight uppercase tracking-tight">{c.name}</h3>
                   <p className="text-xs font-black text-orange-500 mb-4">{c.phone}</p>
                   <div className="flex flex-wrap gap-2">
-                    {planName && (
-                      <span className="text-[8px] font-black px-3 py-1 rounded-full bg-blue-100 text-blue-700 uppercase tracking-widest">
-                        📦 {planName}
-                      </span>
-                    )}
+                    {planName && (() => {
+                      const st = c.planStatus || 'ativo';
+                      const colors = st === 'ativo' ? 'bg-green-100 text-green-700' : st === 'pendente' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
+                      return (
+                        <span className={`text-[8px] font-black px-3 py-1 rounded-full ${colors} uppercase tracking-widest`}>
+                          📦 {planName} ({st})
+                        </span>
+                      );
+                    })()}
                     {avisoName && (
                       <span className="text-[8px] font-black px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 uppercase tracking-widest">
                         📢 {avisoName}
@@ -303,6 +319,15 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         ♻️ {reativacaoName}
                       </span>
                     )}
+                    {c.recurringSchedule?.enabled && (() => {
+                      const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+                      const slotsText = (c.recurringSchedule?.slots || []).map(s => `${dayNames[s.dayOfWeek]} ${s.time}`).join(', ');
+                      return (
+                        <span className="text-[8px] font-black px-3 py-1 rounded-full bg-blue-100 text-blue-700 uppercase tracking-widest">
+                          🔄 Recorrente {slotsText ? `(${slotsText})` : ''}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -444,32 +469,104 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               {/* ─── Plano ─── */}
               {plans.length > 0 && (
                 <div className="bg-blue-50 rounded-2xl p-5 space-y-3">
-                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">📦 Plano Ativo</p>
+                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">📦 Plano</p>
                   <select
                     value={editingCustomer.planId || ''}
-                    onChange={e => setEditingCustomer({ ...editingCustomer, planId: e.target.value || null })}
+                    onChange={e => {
+                      const newPlanId = e.target.value || null;
+                      setEditingCustomer({
+                        ...editingCustomer,
+                        planId: newPlanId,
+                        planStatus: newPlanId ? (editingCustomer.planStatus || 'ativo') : undefined
+                      });
+                    }}
                     className="w-full p-4 bg-white border-2 border-blue-100 rounded-2xl font-bold outline-none focus:border-blue-500"
                   >
                     <option value="">Sem plano</option>
-                    {plans.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — R$ {p.price.toFixed(2)}/mês ({p.proceduresPerMonth > 0 ? `${p.proceduresPerMonth} proc.` : 'ilimitado'})
-                      </option>
-                    ))}
+                    {plans.map(p => {
+                      const quotaText = p.quotas.length > 0
+                        ? p.quotas.map(q => `${q.quantity}x ${services.find(s => s.id === q.serviceId)?.name || '?'}`).join(', ')
+                        : (p.proceduresPerMonth > 0 ? `${p.proceduresPerMonth} proc.` : 'ilimitado');
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {p.name} — R$ {p.price.toFixed(2)}/mês ({quotaText})
+                        </option>
+                      );
+                    })}
                   </select>
 
-                  {/* Service selection for plan */}
-                  {editingCustomer.planId && services.length > 0 && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-1">Procedimento do Plano</label>
-                      <select
-                        value={editingCustomer.planServiceId || ''}
-                        onChange={e => setEditingCustomer({ ...editingCustomer, planServiceId: e.target.value || null })}
-                        className="w-full p-4 bg-white border-2 border-blue-100 rounded-2xl font-bold outline-none focus:border-blue-500"
+                  {/* Plan status + balance + renew */}
+                  {editingCustomer.planId && (
+                    <div className="space-y-3">
+                      {/* Status dropdown */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-1">Status do Plano</label>
+                        <div className="flex gap-2">
+                          <select
+                            value={editingCustomer.planStatus || 'ativo'}
+                            onChange={e => setEditingCustomer({ ...editingCustomer, planStatus: e.target.value as PlanStatus })}
+                            className="flex-1 p-4 bg-white border-2 border-blue-100 rounded-2xl font-bold outline-none focus:border-blue-500"
+                          >
+                            <option value="ativo">Ativo</option>
+                            <option value="pendente">Pendente</option>
+                            <option value="cancelado">Cancelado</option>
+                          </select>
+                          {(() => {
+                            const st = editingCustomer.planStatus || 'ativo';
+                            const colors = st === 'ativo' ? 'bg-green-500' : st === 'pendente' ? 'bg-yellow-500' : 'bg-red-500';
+                            return <span className={`w-4 h-4 rounded-full self-center ${colors}`} />;
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Balance per service */}
+                      {Object.keys(planBalance).length > 0 && (
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-1">Saldo do Plano</label>
+                          <div className="grid gap-2">
+                            {Object.entries(planBalance).map(([svcId, b]: [string, { total: number; used: number; remaining: number }]) => {
+                              const svcName = services.find(s => s.id === svcId)?.name || svcId;
+                              const pct = b.total > 0 ? (b.used / b.total) * 100 : 0;
+                              return (
+                                <div key={svcId} className="bg-white rounded-xl px-4 py-3 border border-blue-100">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-xs font-black text-blue-700">{svcName}</span>
+                                    <span className="text-xs font-black text-blue-500">{b.used}/{b.total}</span>
+                                  </div>
+                                  <div className="w-full bg-blue-100 rounded-full h-2">
+                                    <div className={`h-2 rounded-full transition-all ${pct >= 100 ? 'bg-red-500' : pct >= 75 ? 'bg-yellow-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                                  </div>
+                                  <p className="text-[9px] font-bold text-blue-400 mt-1">{b.remaining} restante{b.remaining !== 1 ? 's' : ''}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Renew button */}
+                      <button
+                        type="button"
+                        disabled={renewingPlan}
+                        onClick={async () => {
+                          if (!confirm('Renovar plano? Isso zera o saldo de uso do cliente.')) return;
+                          setRenewingPlan(true);
+                          try {
+                            await db.resetPlanUsage(tenantId, editingCustomer.id);
+                            await db.updateCustomer(tenantId, editingCustomer.id, { planStatus: 'ativo' as PlanStatus });
+                            setEditingCustomer({ ...editingCustomer, planStatus: 'ativo' });
+                            const bal = await db.getPlanBalance(tenantId, editingCustomer.id);
+                            setPlanBalance(bal);
+                          } catch (err: any) {
+                            alert('Erro ao renovar: ' + (err.message || ''));
+                          } finally {
+                            setRenewingPlan(false);
+                          }
+                        }}
+                        className="w-full py-3 bg-blue-500 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-50"
                       >
-                        <option value="">Qualquer serviço</option>
-                        {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
+                        {renewingPlan ? 'Renovando...' : '🔄 Renovar Plano (Zerar Saldo)'}
+                      </button>
                     </div>
                   )}
 

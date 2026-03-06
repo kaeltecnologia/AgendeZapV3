@@ -96,6 +96,15 @@ export interface InventoryItem {
   lastUpdated: string;   // ISO datetime
 }
 
+// Quota por serviço dentro de um plano
+export interface PlanQuota {
+  serviceId: string;
+  quantity: number;    // total incluído no plano
+}
+
+// Status de pagamento do plano no cliente
+export type PlanStatus = 'ativo' | 'pendente' | 'cancelado';
+
 // Monthly / recurring service plan (package)
 export interface Plan {
   id: string;
@@ -103,10 +112,26 @@ export interface Plan {
   name: string;
   description: string;
   price: number;             // monthly fee
-  proceduresPerMonth: number;// how many procedures are covered per month
-  serviceId?: string;        // specific service covered (optional)
+  proceduresPerMonth: number;// LEGACY — kept for backward compat, use quotas instead
+  serviceId?: string;        // LEGACY — kept for backward compat, use quotas instead
+  quotas: PlanQuota[];       // per-service quotas (e.g. [{serviceId: "barba", quantity: 2}])
   features: string[];        // list of included services / notes
   active: boolean;
+}
+
+// Helpers for multi-service appointment encoding (DB stores service_id as string)
+export function parseServiceIds(val: string | null | undefined): string[] {
+  if (!val) return [];
+  const trimmed = val.trim();
+  if (trimmed.startsWith('[')) {
+    try { return JSON.parse(trimmed); } catch { return [trimmed]; }
+  }
+  return [trimmed];
+}
+
+export function encodeServiceIds(ids: string[]): string {
+  if (ids.length <= 1) return ids[0] || '';
+  return JSON.stringify(ids);
 }
 
 // Custom follow-up mode (created by admin, assigned per customer)
@@ -204,6 +229,7 @@ export interface TenantSettings {
   }>;
   customerData?: Record<string, {       // per-customer plan/mode data (stored in JSONB)
     planId?: string | null;
+    planStatus?: PlanStatus;             // 'ativo' | 'pendente' | 'cancelado'
     planServiceId?: string | null;
     avisoModeId?: string;
     lembreteModeId?: string;
@@ -244,7 +270,8 @@ export interface Appointment {
   tenant_id: string;
   customer_id: string;
   professional_id: string;
-  service_id: string;
+  service_id: string;          // DB column — may contain JSON array for multi-service
+  serviceIds?: string[];       // computed: parsed from service_id (always array)
   startTime: string;
   durationMinutes: number;
   status: AppointmentStatus;
@@ -324,7 +351,8 @@ export interface Customer {
   lembreteModeId?: string;    // named lembrete mode id (or 'standard')
   reativacaoModeId?: string;  // named reativacao mode id (or 'standard')
   planId?: string | null;     // active plan id
-  planServiceId?: string | null; // specific service covered by plan
+  planStatus?: PlanStatus;    // 'ativo' | 'pendente' | 'cancelado'
+  planServiceId?: string | null; // LEGACY — specific service covered by plan
   recurringSchedule?: RecurringSchedule; // auto-scheduling config for plan customers
 }
 

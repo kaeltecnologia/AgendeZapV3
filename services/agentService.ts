@@ -2179,15 +2179,29 @@ async function _handleMessage(
         return takenMsg;
       }
 
-      // Check plan coverage
+      // Check plan coverage (per-service quotas)
       const customer = await db.findOrCreateCustomer(tenantId, phone, session.data.clientName || pushName || 'Cliente');
       let isPlanAppointment = false;
-      if (customer.planId) {
-        const plans = await db.getPlans(tenantId);
-        const activePlan = plans.find((p: any) => p.id === customer.planId);
-        if (activePlan) {
-          isPlanAppointment = activePlan.proceduresPerMonth === 0 ||
-            (await db.getPlanUsageCount(tenantId, customer.id)) < activePlan.proceduresPerMonth;
+      let planBalanceNote = '';
+      if (customer.planId && customer.planStatus === 'ativo') {
+        try {
+          const balance = await db.getPlanBalance(tenantId, customer.id);
+          const svcId = session.data.serviceId;
+          const svcBalance = balance[svcId];
+          if (svcBalance && svcBalance.remaining > 0) {
+            isPlanAppointment = true;
+            // Increment per-service usage
+            await db.incrementPlanUsageMulti(tenantId, customer.id, [svcId]);
+            // Refresh balance after increment for message
+            const newBalance = await db.getPlanBalance(tenantId, customer.id);
+            const balParts = Object.entries(newBalance).map(([id, b]) => {
+              const sName = (id === svcId) ? (session.data.serviceName || id) : id;
+              return `${sName}: ${b.used}/${b.total}`;
+            });
+            planBalanceNote = `\n📦 *Saldo do plano:* ${balParts.join(' | ')}`;
+          }
+        } catch (ePlan) {
+          console.error('[Agent] plan quota check error:', ePlan);
         }
       }
 
@@ -2202,8 +2216,6 @@ async function _handleMessage(
         source: isPlanAppointment ? BookingSource.PLAN : BookingSource.AI,
         isPlan: isPlanAppointment,
       });
-
-      if (isPlanAppointment) await db.incrementPlanUsage(tenantId, customer.id).catch(console.error);
       if (appointment) sendProfessionalNotification(appointment).catch(console.error);
 
       // ─── Reschedule: cancel old appointment ──────────────────────────
@@ -2255,7 +2267,7 @@ async function _handleMessage(
       const wasReschedule = !!session.data.pendingReschedule;
       logConv(tenantId, phone, 'booked', session.history);
       clearSession(tenantId, phone);
-      const planNote = isPlanAppointment ? '\n📦 _Coberto pelo seu plano._' : '';
+      const planNote = isPlanAppointment ? (planBalanceNote || '\n📦 _Coberto pelo seu plano._') : '';
       if (shouldGreet) _greetedToday.set(_greetKey, brasiliaDate);
       return wasReschedule
         ? (

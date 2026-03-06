@@ -20,9 +20,10 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import {
   Tenant, Professional, Service, Appointment,
   Customer, AppointmentStatus, PaymentMethod, TenantSettings,
-  TenantStatus, BookingSource, Expense, BreakPeriod, Plan,
+  TenantStatus, BookingSource, Expense, BreakPeriod, Plan, PlanQuota,
   FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product,
-  NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog
+  NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog,
+  parseServiceIds, encodeServiceIds
 } from '../types';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -202,6 +203,7 @@ class DatabaseService {
           customer_id: a.customer_id,
           professional_id: a.professional_id,
           service_id: a.service_id,
+          serviceIds: parseServiceIds(a.service_id),
           startTime: a.inicio,
           durationMinutes: duration,
           status: a.status as AppointmentStatus,
@@ -239,11 +241,16 @@ class DatabaseService {
         inicio = toLocalISO(start);
         fim = toLocalISO(end);
       }
+      // Multi-service: encode serviceIds array into service_id column
+      const serviceIdValue = app.serviceIds && app.serviceIds.length > 0
+        ? encodeServiceIds(app.serviceIds)
+        : app.service_id;
+
       const payload: any = {
         tenant_id: app.tenant_id,
         customer_id: app.customer_id,
         professional_id: app.professional_id,
-        service_id: app.service_id,
+        service_id: serviceIdValue,
         inicio,
         fim,
         status: app.status || AppointmentStatus.PENDING,
@@ -493,6 +500,7 @@ class DatabaseService {
       lembreteModeId: cData.lembreteModeId || 'standard',
       reativacaoModeId: cData.reativacaoModeId || 'standard',
       planId: cData.planId || null,
+      planStatus: cData.planStatus || (cData.planId ? 'ativo' : undefined),
       planServiceId: cData.planServiceId || null,
       recurringSchedule: cData.recurringSchedule
     };
@@ -554,6 +562,7 @@ class DatabaseService {
       // Write plan/mode assignments to settings JSONB (_customerData)
       const hasCData =
         'planId' in updates ||
+        'planStatus' in updates ||
         'planServiceId' in updates ||
         'recurringSchedule' in updates ||
         updates.avisoModeId !== undefined ||
@@ -567,6 +576,7 @@ class DatabaseService {
         allCData[id] = {
           ...prev,
           planId: 'planId' in updates ? (updates.planId ?? null) : prev.planId,
+          planStatus: 'planStatus' in updates ? (updates.planStatus ?? undefined) : prev.planStatus,
           planServiceId: 'planServiceId' in updates ? (updates.planServiceId ?? null) : prev.planServiceId,
           avisoModeId: updates.avisoModeId !== undefined ? updates.avisoModeId : prev.avisoModeId,
           lembreteModeId: updates.lembreteModeId !== undefined ? updates.lembreteModeId : prev.lembreteModeId,
@@ -938,14 +948,32 @@ class DatabaseService {
 
   // ─── PLANS (stored inside settings JSONB — no separate table needed) ─
 
+  /** Auto-migrate legacy plans (serviceId+proceduresPerMonth → quotas[]) */
+  private migratePlanQuotas(plan: any): Plan {
+    if (!plan.quotas || plan.quotas.length === 0) {
+      if (plan.serviceId) {
+        plan.quotas = [{ serviceId: plan.serviceId, quantity: plan.proceduresPerMonth || 0 }];
+      } else {
+        plan.quotas = [];
+      }
+    }
+    return plan as Plan;
+  }
+
   async getPlans(tenantId: string): Promise<Plan[]> {
     const s = await this.getSettings(tenantId);
-    return (s.plans || []).filter(p => p.active);
+    return (s.plans || []).filter(p => p.active).map(p => this.migratePlanQuotas(p));
+  }
+
+  /** Get ALL plans (including inactive) — for admin listing */
+  async getAllPlans(tenantId: string): Promise<Plan[]> {
+    const s = await this.getSettings(tenantId);
+    return (s.plans || []).map(p => this.migratePlanQuotas(p));
   }
 
   async addPlan(plan: Omit<Plan, 'id'>): Promise<Plan> {
     const s = await this.getSettings(plan.tenant_id);
-    const newPlan: Plan = { ...plan, id: generateId() };
+    const newPlan: Plan = { ...plan, id: generateId(), quotas: plan.quotas || [] };
     await this.updateSettings(plan.tenant_id, { plans: [...(s.plans || []), newPlan] });
     return newPlan;
   }
@@ -962,8 +990,64 @@ class DatabaseService {
     await this.updateSettings(tenantId, { plans: updated });
   }
 
-  // ─── PLAN USAGE TRACKING ────────────────────────────────────────────
+  // ─── PLAN USAGE TRACKING (per-service quotas) ────────────────────────
+  //
+  // New format: _planUsage["customerId::serviceId"] = count
+  // Legacy format: _planUsage["customerId::YYYY-MM"] = count (kept for backward compat reads)
 
+  /** Get remaining balance per service for a customer's active plan */
+  async getPlanBalance(tenantId: string, customerId: string): Promise<Record<string, { total: number; used: number; remaining: number }>> {
+    const [settings, customers] = await Promise.all([
+      this.getSettings(tenantId),
+      this.getCustomers(tenantId)
+    ]);
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer?.planId) return {};
+
+    const plans = (settings.plans || []).map(p => this.migratePlanQuotas(p));
+    const plan = plans.find(p => p.id === customer.planId && p.active);
+    if (!plan) return {};
+
+    const usage = settings.planUsage || {};
+    const result: Record<string, { total: number; used: number; remaining: number }> = {};
+
+    for (const quota of plan.quotas) {
+      const key = `${customerId}::${quota.serviceId}`;
+      const used = usage[key] || 0;
+      result[quota.serviceId] = {
+        total: quota.quantity,
+        used,
+        remaining: Math.max(0, quota.quantity - used)
+      };
+    }
+    return result;
+  }
+
+  /** Increment usage for multiple services at once (multi-service appointment) */
+  async incrementPlanUsageMulti(tenantId: string, customerId: string, serviceIds: string[]): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const usage = { ...(s.planUsage || {}) };
+    for (const svcId of serviceIds) {
+      const key = `${customerId}::${svcId}`;
+      usage[key] = (usage[key] || 0) + 1;
+    }
+    await this.updateSettings(tenantId, { planUsage: usage });
+  }
+
+  /** Reset all usage entries for a customer (called when admin renews plan) */
+  async resetPlanUsage(tenantId: string, customerId: string): Promise<void> {
+    const s = await this.getSettings(tenantId);
+    const usage = { ...(s.planUsage || {}) };
+    // Remove all keys starting with "customerId::"
+    for (const key of Object.keys(usage)) {
+      if (key.startsWith(`${customerId}::`)) {
+        delete usage[key];
+      }
+    }
+    await this.updateSettings(tenantId, { planUsage: usage });
+  }
+
+  // Legacy compat — still used by older webhook code
   async getPlanUsageCount(tenantId: string, customerId: string): Promise<number> {
     const s = await this.getSettings(tenantId);
     const d = new Date();
@@ -1001,10 +1085,11 @@ class DatabaseService {
 
   async generateRecurringAppointments(tenantId: string): Promise<number> {
     try {
-      const [customers, appointments, services] = await Promise.all([
+      const [customers, appointments, services, plans] = await Promise.all([
         this.getCustomers(tenantId),
         this.getAppointments(tenantId),
         this.getServices(tenantId),
+        this.getPlans(tenantId),
       ]);
 
       const now = new Date();
@@ -1016,10 +1101,19 @@ class DatabaseService {
         `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
       for (const customer of customers) {
+        // Only generate for customers with active plans
+        if (customer.planStatus && customer.planStatus !== 'ativo') continue;
+
         const sched = customer.recurringSchedule;
         if (!sched?.enabled || !sched.professionalId || !sched.slots?.length) continue;
 
-        const serviceId = sched.serviceId || customer.planServiceId || '';
+        // Resolve serviceId: explicit override → legacy planServiceId → first plan quota service
+        let serviceId = sched.serviceId || customer.planServiceId || '';
+        if (!serviceId && customer.planId) {
+          const plan = plans.find(p => p.id === customer.planId);
+          if (plan?.quotas?.length) serviceId = plan.quotas[0].serviceId;
+          else if (plan?.serviceId) serviceId = plan.serviceId;
+        }
         if (!serviceId) continue;
 
         const service = services.find(s => s.id === serviceId && s.active);
