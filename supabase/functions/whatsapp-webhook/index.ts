@@ -1573,13 +1573,19 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       'cancela', 'cancelar',
     ];
 
+    const EARLIER_FU_KW = [
+      'adiantar', 'adiantada', 'mais cedo', 'hora mais cedo', 'horario mais cedo',
+      'antes das', 'puder ir antes', 'conseguir ir antes', 'antecipar',
+      'um pouco antes', 'ir antes', 'chegar antes',
+    ];
+    const wantsEarlierFu = EARLIER_FU_KW.some(k => fNorm.includes(k));
     const wantsReschedule = RESCHEDULE_WORDS.some(k => fNorm.includes(k));
-    const hasBookingKw    = wantsReschedule || ['agendar', 'marcar', 'horario', 'mudar', 'trocar', 'reagendar'].some(k => fNorm.includes(k));
+    const hasBookingKw    = wantsEarlierFu || wantsReschedule || ['agendar', 'marcar', 'horario', 'mudar', 'trocar', 'reagendar'].some(k => fNorm.includes(k));
     const isAffirm        = isEmojiAffirm || (!hasBookingKw && AFFIRM_WORDS.some(a => fWds.includes(a) || fNorm === a) && fWds.length <= 8);
     const isDeny          = DENY_WORDS.some(d => fWds.includes(d)) && fWds.length <= 6;
-    // Brazilian "Não, [affirmative]" filler: "nao" used as emphasis before affirming
-    // e.g. "Não, tá confirmado, mais que confirmado, preciso cortar o cabelo"
     const denyAsFiller    = DENY_WORDS.some(d => fWds.includes(d)) && AFFIRM_WORDS.filter(a => fWds.includes(a)).length >= 2;
+    // Resolve date from follow-up reply ("amanhã", "10/03", "semana que vem")
+    const fuResolvedDate  = resolveRelativeDate(fNorm, todayISO);
 
     // Helper: detect time-of-day preference
     const getTimePref = (n: string): { from: string; to: string } | null => {
@@ -1593,7 +1599,110 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       return null;
     };
 
-    // aviso/lembrete: rescheduling → find and offer slots
+    // aviso/lembrete: wants EARLIER slot ("adiantar", "mais cedo")
+    if ((fType === 'aviso' || fType === 'lembrete') && wantsEarlierFu) {
+      const profIdKnown = session.data.followUpProfessionalId as string | undefined;
+      const svcDuration =
+        services.find((s: any) => s.id === session.data.followUpServiceId)?.durationMinutes ??
+        services.find((s: any) => s.name === session.data.followUpServiceName)?.durationMinutes ?? 30;
+      const profE = professionals.find((p: any) => p.id === profIdKnown);
+      const apptTime = session.data.followUpApptTime as string || '23:59';
+
+      if (profE) {
+        const allSlots = await getAvailableSlots(tenantId, profE.id, todayISO, svcDuration, settings);
+        const n0 = new Date(Date.now() - 3 * 60 * 60 * 1000);
+        const nowHHMM = `${pad(n0.getUTCHours())}:${pad(n0.getUTCMinutes())}`;
+        const earlierSlots = allSlots.filter((s: string) => s >= nowHHMM && s < apptTime);
+
+        session.data.pendingFollowUpType = undefined;
+        let reply: string;
+        if (earlierSlots.length > 0) {
+          const slotList = earlierSlots.slice(0, 6).map((s: string) => `• ${s}`).join('\n');
+          reply = `Vou verificar! Horários mais cedo com *${profE.name}* hoje:\n\n${slotList}\n\nQual prefere?`;
+          session.data.professionalId   = profE.id;
+          session.data.professionalName = profE.name;
+          session.data.date             = todayISO;
+          session.data.availableSlots   = earlierSlots;
+          if (session.data.followUpServiceId)   session.data.serviceId       = session.data.followUpServiceId;
+          if (session.data.followUpServiceName) session.data.serviceName     = session.data.followUpServiceName;
+          if (session.data.followUpServiceId)   session.data.serviceDuration = svcDuration;
+          // Set up pendingReschedule so the old appointment gets cancelled on confirm
+          try {
+            const { data: custEar } = await supabase.from('customers').select('id')
+              .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+            if (custEar) {
+              const { data: apptEar } = await supabase.from('appointments')
+                .select('id').eq('tenant_id', tenantId).eq('customer_id', custEar.id)
+                .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+                .gte('inicio', `${todayISO}T${apptTime}:00`).lt('inicio', `${todayISO}T${apptTime}:59`)
+                .limit(1);
+              if (apptEar?.[0]) {
+                session.data.pendingReschedule = {
+                  oldApptId: apptEar[0].id, oldDate: todayISO, oldTime: apptTime,
+                  oldProfName: profE.name, isEarlierSlot: true,
+                };
+              }
+            }
+          } catch (e) { console.error('[Agent] earlier fu appt lookup error:', e); }
+        } else {
+          reply = `O *${profE.name}* está cheio até o seu horário, não consigo adiantar. Te esperamos às *${apptTime}*! 😊`;
+        }
+        session.history.push({ role: 'bot', text: reply });
+        await sendMsg(instanceName, phone, reply, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] followUp earlier err:', e));
+        return;
+      }
+    }
+
+    // aviso/lembrete: wants to reschedule to a DIFFERENT day ("amanhã", "10/03", "semana que vem")
+    if ((fType === 'aviso' || fType === 'lembrete') && fuResolvedDate && fuResolvedDate !== todayISO) {
+      const profIdKnown = session.data.followUpProfessionalId as string | undefined;
+      const svcDuration =
+        services.find((s: any) => s.id === session.data.followUpServiceId)?.durationMinutes ??
+        services.find((s: any) => s.name === session.data.followUpServiceName)?.durationMinutes ?? 30;
+      const profD = professionals.find((p: any) => p.id === profIdKnown);
+      const targetDate = fuResolvedDate;
+      const prefRange = getTimePref(fNorm);
+
+      let slots: string[] = [];
+      let chosenProf: { id: string; name: string } | undefined = profD;
+
+      if (chosenProf) {
+        const raw = await getAvailableSlots(tenantId, chosenProf.id, targetDate, svcDuration, settings);
+        slots = prefRange ? raw.filter((s: string) => s >= prefRange.from && s <= prefRange.to) : raw;
+      }
+      // Fallback: any professional
+      if (slots.length === 0) {
+        for (const p of professionals as { id: string; name: string }[]) {
+          const raw = await getAvailableSlots(tenantId, p.id, targetDate, svcDuration, settings);
+          const filtered = prefRange ? raw.filter((s: string) => s >= prefRange.from && s <= prefRange.to) : raw;
+          if (filtered.length > 0) { slots = filtered; chosenProf = p; break; }
+        }
+      }
+
+      session.data.pendingFollowUpType = undefined;
+      const dateLbl = formatDate(targetDate);
+      let reply: string;
+      if (slots.length > 0 && chosenProf) {
+        const slotList = slots.slice(0, 6).map((s: string) => `• ${s}`).join('\n');
+        reply = `Para *${dateLbl}* com *${chosenProf.name}* temos:\n\n${slotList}\n\nQual horário fica bom?`;
+        session.data.professionalId   = chosenProf.id;
+        session.data.professionalName = chosenProf.name;
+        session.data.date             = targetDate;
+        session.data.availableSlots   = slots;
+        if (session.data.followUpServiceId)   session.data.serviceId       = session.data.followUpServiceId;
+        if (session.data.followUpServiceName) session.data.serviceName     = session.data.followUpServiceName;
+        if (session.data.followUpServiceId)   session.data.serviceDuration = svcDuration;
+      } else {
+        reply = `O *${chosenProf?.name || 'profissional'}* está com a agenda cheia em *${dateLbl}*. 😕 Quer verificar outro dia ou outro profissional?`;
+      }
+      session.history.push({ role: 'bot', text: reply });
+      await sendMsg(instanceName, phone, reply, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] followUp reschedule day err:', e));
+      return;
+    }
+
+    // aviso/lembrete: rescheduling (same day) → find and offer slots
     if ((fType === 'aviso' || fType === 'lembrete') && wantsReschedule) {
       const prefRange   = getTimePref(fNorm);
       const ANY_PROF    = ['qualquer', 'quem estiver', 'tanto faz', 'quem tiver', 'qualquer um', 'pode ser qualquer'];
