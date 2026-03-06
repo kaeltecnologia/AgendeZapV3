@@ -621,27 +621,35 @@ const DOW_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'qui
 // ── Professional name matcher ─────────────────────────────────────────
 function matchProfessionalName(text: string, professionals: Array<{ id: string; name: string }>): { id: string; name: string } | null {
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
-  // Brazilian Portuguese spelling normalization: handles common name variations
-  // e.g. Matheus↔Mateus, Philipe↔Felipe, Thiago↔Tiago, Raphael↔Rafael
   const brNorm = (s: string) =>
     s.replace(/th/g, 't').replace(/ph/g, 'f').replace(/([a-z])\1/g, '$1').replace(/y/g, 'i').replace(/ck/g, 'c').replace(/w/g, 'v');
   const normText = norm(text);
+  const textWords = normText.split(/\s+/);
+
+  // 1. Full name exact word match (e.g. "com Gil Santos" matches "Gil Santos")
   for (const p of professionals) {
-    if (normText.includes(norm(p.name))) return p;
+    const pNorm = norm(p.name);
+    if (new RegExp(`\\b${pNorm.replace(/\s+/g, '\\s+')}\\b`).test(normText)) return p;
   }
+
+  // 2. First name exact word match — must be a whole word in the message
+  //    "Gil" matches " gil " but NOT "gilson" (word boundary prevents substring match)
   for (const p of professionals) {
     const first = norm(p.name).split(' ')[0];
     if (first.length >= 3 && new RegExp(`\\b${first}\\b`).test(normText)) return p;
   }
-  // Nickname/abbreviation: any word (4+ chars) in the message is a substring of a name part
-  // e.g. "Lipe" inside "Felipe", "Beto" inside "Roberto"
+
+  // 3. Nickname/abbreviation: message word (4+ chars) matches inside a name part
+  //    e.g. "Lipe" inside "Felipe", "Beto" inside "Roberto"
+  //    BUT skip if the message word is longer than the name part (prevents "gilson" matching "gil")
   for (const p of professionals) {
     const nameParts = norm(p.name).split(' ');
-    for (const word of normText.split(/\s+/).filter((w: string) => w.length >= 4)) {
-      if (nameParts.some((part: string) => part.includes(word))) return p;
+    for (const word of textWords.filter((w: string) => w.length >= 4)) {
+      if (nameParts.some((part: string) => part.length >= word.length && part.includes(word))) return p;
     }
   }
-  // Brazilian spelling variation match (Matheus↔Mateus, Thiago↔Tiago, etc.)
+
+  // 4. Brazilian spelling variation (Matheus↔Mateus, Thiago↔Tiago, Philipe↔Felipe)
   const brText = brNorm(normText);
   for (const p of professionals) {
     const brFirst = brNorm(norm(p.name).split(' ')[0]);
