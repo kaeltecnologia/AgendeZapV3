@@ -884,6 +884,68 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // ── "On the way / running late" detection (TypeScript layer) ──────────
+  // Lead is heading to their appointment (possibly late).
+  // Must run BEFORE implicit-cancel so "vou atrasar mas tô indo" doesn't cancel.
+  // e.g.: "tô indo embora", "saindo agora", "acho que vou atrasar", "logo chego"
+  if (!session.data.pendingConfirm && !session.data.pendingReschedule && !session.data.pendingCancelConfirm) {
+    const IM_COMING_KW = [
+      'indo embora', 'saindo agora', 'to saindo', 'to vindo', 'a caminho',
+      'logo chego', 'indo para ai', 'indo pra ai', 'estou indo', 'indo ja',
+      'saindo de casa', 'ja saio', 'ja estou saindo', 'chego ja',
+      'chego em breve', 'indo agora', 'saindo logo', 'indo embora agora',
+      'estou saindo', 'sai agora', 'to chegando', 'estou chegando',
+    ];
+    const RUNNING_LATE_KW = [
+      'vou atrasar', 'to atrasado', 'to atrasada', 'posso atrasar',
+      'talvez atrase', 'atraso um pouco', 'chegar atrasado', 'chegar atrasada',
+      'vai atrasar', 'acho que atraso', 'uns minutos atrasado', 'atraso uns',
+      'chegando atrasado', 'talvez eu atraso', 'talvez nao atraso',
+    ];
+    const normOW = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const isOnWay = IM_COMING_KW.some((k: string) => normOW.includes(k));
+    const isRunningLate = RUNNING_LATE_KW.some((k: string) => normOW.includes(k));
+    if (isOnWay || isRunningLate) {
+      try {
+        // Try to find appointment for a personalized response
+        const { data: custOW } = await supabase.from('customers').select('id')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        let owReply = '';
+        if (custOW) {
+          // Look up appointment within the last 2h (might already be late) up to next 4h
+          const n0OW = new Date(Date.now() - 3 * 60 * 60 * 1000);
+          const windowStart = new Date(n0OW.getTime() - 2 * 60 * 60 * 1000);
+          const windowEnd   = new Date(n0OW.getTime() + 4 * 60 * 60 * 1000);
+          const fmt = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:00`;
+          const { data: apptOW } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custOW.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', fmt(windowStart)).lte('inicio', fmt(windowEnd))
+            .order('inicio', { ascending: true }).limit(1);
+          if (apptOW && apptOW.length > 0) {
+            const profOW = professionals.find((p: any) => p.id === apptOW[0].professional_id);
+            const profNameOW = profOW?.name || 'profissional';
+            const tmOW = (apptOW[0].inicio as string).substring(11, 16);
+            owReply = isRunningLate
+              ? `Sem problema! 😊 Pode vir, ${profNameOW} vai te aguardar. Agendamento às ${tmOW}!`
+              : `Ótimo! 😊 ${profNameOW} está te aguardando às ${tmOW}. Pode vir!`;
+          }
+        }
+        if (!owReply) {
+          owReply = isRunningLate
+            ? 'Sem problema! 😊 Pode vir no seu tempo, te esperamos aqui!'
+            : 'Ótimo! 😊 Te esperamos aqui!';
+        }
+        session.data.greetedAt = brasiliaDate;
+        session.history.push({ role: 'user', text }, { role: 'bot', text: owReply });
+        await saveSession(tenantId, phone, session.data, session.history);
+        await sendMsg(instanceName, phone, owReply, tenantId);
+        return;
+      } catch (eOW) { console.error('[Agent] on-the-way detection error:', eOW); }
+    }
+  }
+
   // ── Implicit cancellation detection (TypeScript layer) ──────────────
   // MUST run BEFORE reschedule detection — "nao vou conseguir" etc. are cancel signals,
   // not reschedule signals. Moving this first prevents false reschedule triggers.
