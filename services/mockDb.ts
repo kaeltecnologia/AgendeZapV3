@@ -22,7 +22,7 @@ import {
   Customer, AppointmentStatus, PaymentMethod, TenantSettings,
   TenantStatus, BookingSource, Expense, BreakPeriod, Plan,
   FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product,
-  NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig
+  NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog
 } from '../types';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -750,7 +750,9 @@ class DatabaseService {
           focusNfeConfig: fu._focusNfeConfig ?? null,
           adiantamentos: fu._adiantamentos ?? [],
           pagamentosPro: fu._pagamentosPro ?? [],
-          notasFiscais: fu._notasFiscais ?? []
+          notasFiscais: fu._notasFiscais ?? [],
+          lastOptimizedAt: fu._lastOptimizedAt ?? undefined,
+          lastOptimizationSummary: fu._lastOptimizationSummary ?? undefined,
         };
       }
     } catch (e) {
@@ -794,7 +796,9 @@ class DatabaseService {
         _focusNfeConfig: newS.focusNfeConfig !== undefined ? newS.focusNfeConfig : (curr.focusNfeConfig ?? null),
         _adiantamentos: newS.adiantamentos ?? curr.adiantamentos ?? [],
         _pagamentosPro: newS.pagamentosPro ?? curr.pagamentosPro ?? [],
-        _notasFiscais: newS.notasFiscais ?? curr.notasFiscais ?? []
+        _notasFiscais: newS.notasFiscais ?? curr.notasFiscais ?? [],
+        _lastOptimizedAt: newS.lastOptimizedAt !== undefined ? newS.lastOptimizedAt : (curr.lastOptimizedAt ?? null),
+        _lastOptimizationSummary: newS.lastOptimizationSummary !== undefined ? newS.lastOptimizationSummary : (curr.lastOptimizationSummary ?? null),
       };
 
       const { error } = await supabase.from('tenant_settings').upsert(
@@ -1537,6 +1541,165 @@ class DatabaseService {
       console.error('[mockDb] getWaMessages error:', e);
       return [];
     }
+  }
+
+  // ─── SUPPORT CHAT (bidirectional) ────────────────────────────────────
+
+  async getSupportMessages(tenantId: string): Promise<SupportMessage[]> {
+    try {
+      const { data, error } = await supabase
+        .from('support_messages')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data || []).map(r => ({
+        id: r.id,
+        tenantId: r.tenant_id,
+        sender: r.sender as 'tenant' | 'support',
+        content: r.content ?? undefined,
+        imageUrl: r.image_url ?? undefined,
+        read: r.read,
+        createdAt: r.created_at,
+      }));
+    } catch (e) {
+      console.error('[mockDb] getSupportMessages error:', e);
+      return [];
+    }
+  }
+
+  async sendTenantSupportMessage(tenantId: string, content: string, imageUrl?: string): Promise<void> {
+    try {
+      const { error } = await supabase.from('support_messages').insert({
+        tenant_id: tenantId,
+        sender: 'tenant',
+        content: content || null,
+        image_url: imageUrl || null,
+        read: false,
+      });
+      if (error) throw error;
+    } catch (e) {
+      console.error('[mockDb] sendTenantSupportMessage error:', e);
+      throw e;
+    }
+  }
+
+  async sendSupportReply(tenantId: string, content: string, imageUrl?: string): Promise<void> {
+    try {
+      const { error } = await supabase.from('support_messages').insert({
+        tenant_id: tenantId,
+        sender: 'support',
+        content: content || null,
+        image_url: imageUrl || null,
+        read: false,
+      });
+      if (error) throw error;
+    } catch (e) {
+      console.error('[mockDb] sendSupportReply error:', e);
+      throw e;
+    }
+  }
+
+  async markSupportRead(tenantId: string, sender: 'tenant' | 'support'): Promise<void> {
+    try {
+      await supabase
+        .from('support_messages')
+        .update({ read: true })
+        .eq('tenant_id', tenantId)
+        .eq('sender', sender)
+        .eq('read', false);
+    } catch (e) {
+      console.error('[mockDb] markSupportRead error:', e);
+    }
+  }
+
+  async getAllSupportChats(): Promise<Array<{
+    tenantId: string; tenantName: string; lastMessage: string;
+    lastAt: string; unreadCount: number;
+  }>> {
+    try {
+      const [{ data: messages }, { data: tenants }] = await Promise.all([
+        supabase.from('support_messages').select('tenant_id, sender, content, image_url, read, created_at').order('created_at', { ascending: false }),
+        supabase.from('tenants').select('id, nome'),
+      ]);
+      const tenantMap: Record<string, string> = Object.fromEntries((tenants || []).map(t => [t.id, t.nome || 'Desconhecido']));
+      const grouped: Record<string, { lastMessage: string; lastAt: string; unreadCount: number }> = {};
+      for (const m of (messages || [])) {
+        if (!grouped[m.tenant_id]) {
+          grouped[m.tenant_id] = {
+            lastMessage: m.content || (m.image_url ? '📷 Imagem' : ''),
+            lastAt: m.created_at,
+            unreadCount: 0,
+          };
+        }
+        if (!m.read && m.sender === 'tenant') grouped[m.tenant_id].unreadCount++;
+      }
+      return Object.entries(grouped).map(([tenantId, v]) => ({
+        tenantId,
+        tenantName: tenantMap[tenantId] || 'Desconhecido',
+        ...v,
+      })).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+    } catch (e) {
+      console.error('[mockDb] getAllSupportChats error:', e);
+      return [];
+    }
+  }
+
+  // ─── CONVERSATION LOGS (auto-training) ──────────────────────────────
+
+  async logConversation(
+    tenantId: string,
+    phone: string,
+    outcome: 'booked' | 'abandoned' | 'info',
+    history: Array<{ role: string; text: string }>,
+    startedAt?: string
+  ): Promise<void> {
+    try {
+      await supabase.from('conversation_logs').insert({
+        tenant_id: tenantId,
+        phone,
+        outcome,
+        turns: history.filter(h => h.role === 'user').length,
+        history,
+        started_at: startedAt || new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('[mockDb] logConversation error:', e);
+    }
+  }
+
+  async getConversationLogs(tenantId: string, sinceDays = 7): Promise<ConversationLog[]> {
+    try {
+      const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+      const { data, error } = await supabase
+        .from('conversation_logs')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(r => ({
+        id: r.id,
+        tenantId: r.tenant_id,
+        phone: r.phone,
+        outcome: r.outcome as 'booked' | 'abandoned' | 'info',
+        turns: r.turns,
+        history: r.history || [],
+        startedAt: r.started_at ?? undefined,
+        createdAt: r.created_at,
+      }));
+    } catch (e) {
+      console.error('[mockDb] getConversationLogs error:', e);
+      return [];
+    }
+  }
+
+  async uploadSupportImage(tenantId: string, file: File): Promise<string> {
+    const path = `${tenantId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const { error } = await supabase.storage.from('support-images').upload(path, file, { upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from('support-images').getPublicUrl(path);
+    return data.publicUrl;
   }
 }
 

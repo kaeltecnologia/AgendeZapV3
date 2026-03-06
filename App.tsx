@@ -24,6 +24,8 @@ import NotasFiscaisView from './components/NotasFiscaisView';
 import FolhaPagamentoView from './components/FolhaPagamentoView';
 import EstoqueProdutosView from './components/EstoqueProdutosView';
 import SuperAdminView from './components/SuperAdminView';
+import SupportChat from './components/SupportChat';
+import OtimizacaoView from './components/OtimizacaoView';
 import Login from './components/Login';
 import AiPollingManager from './components/AiPollingManager';
 import TrialExpiredView from './components/TrialExpiredView';
@@ -58,7 +60,8 @@ enum View {
   FOLHA_PAGAMENTO = 'FOLHA_PAGAMENTO',
   MARKETING = 'MARKETING',
   ESTOQUE_PRODUTOS = 'ESTOQUE_PRODUTOS',
-  SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD'
+  SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD',
+  OTIMIZACAO = 'OTIMIZACAO',
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
@@ -365,6 +368,7 @@ const App: React.FC = () => {
       case View.NOTAS_FISCAIS: return <NotasFiscaisView tenantId={tenantId} />;
       case View.FOLHA_PAGAMENTO: return <FolhaPagamentoView tenantId={tenantId} />;
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
+      case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
   };
@@ -490,6 +494,7 @@ const App: React.FC = () => {
                 <NavItem active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
                 <NavItem active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
                 <NavItem active={currentView === View.TEST_WA} onClick={navTo(() => handleGatedNav(View.TEST_WA, 'assistenteAdmin'))} icon={<IconTerminal />} label="Terminal IA" />
+                <NavItem active={currentView === View.OTIMIZACAO} onClick={navTo(() => setCurrentView(View.OTIMIZACAO))} icon={<IconTerminal />} label="IA Otimização" />
               </div>
             </>
           )}
@@ -631,6 +636,10 @@ const App: React.FC = () => {
           result={inviteResult}
           onResult={setInviteResult}
         />
+      )}
+
+      {isAuthenticated && role === 'TENANT' && tenantId && (
+        <SupportChat tenantId={tenantId} tenantName={tenantName} />
       )}
     </div>
   );

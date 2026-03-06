@@ -233,6 +233,29 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
         </div>
       )}
 
+      {/* IA Otimização card */}
+      {settings?.lastOptimizedAt && (
+        <div
+          onClick={() => onNavigate?.('OTIMIZACAO')}
+          className="cursor-pointer bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-100 rounded-2xl px-5 py-3 flex items-center justify-between hover:border-violet-300 transition-all"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🤖</span>
+            <div>
+              <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">IA Otimizada</p>
+              <p className="text-xs font-bold text-violet-500 truncate max-w-xs">
+                {settings.lastOptimizationSummary
+                  ? settings.lastOptimizationSummary.slice(0, 80) + (settings.lastOptimizationSummary.length > 80 ? '…' : '')
+                  : 'Otimização aplicada com sucesso.'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[9px] font-black text-violet-400 shrink-0 ml-4">
+            {new Date(settings.lastOptimizedAt).toLocaleDateString('pt-BR')}
+          </span>
+        </div>
+      )}
+
       {/* KPIs estratégicos — linha 1 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Meta Mensal */}

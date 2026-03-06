@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { TenantStatus, Tenant } from '../types';
+import { TenantStatus, Tenant, SupportMessage, ConversationLog } from '../types';
+import { runWeeklyOptimization, OptimizationResult } from '../services/optimizerService';
 import { evolutionService } from '../services/evolutionService';
 import { fetchUsageStats, UsageSummary } from '../services/usageTracker';
 import { NICHOS } from '../config/nichoConfigs';
@@ -158,10 +159,31 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [prospectCampaigns, setProspectCampaigns] = useState<ProspectCampaign[]>(() => loadCampaigns());
   const [disparoCampaignId, setDisparoCampaignId] = useState<string | undefined>(undefined);
 
-  // Support inbox
+  // Support inbox (legacy upgrade requests)
   type SupportRequest = { tenantId: string; tenantName: string; plan: string; request: { message: string; currentPlan: string; feature: string; ts: string; status: string } };
   const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
   const [supportLoading, setSupportLoading] = useState(false);
+
+  // IA Optimizer (superadmin only)
+  const [optimizerTenantId, setOptimizerTenantId] = useState('');
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizerResult, setOptimizerResult] = useState<OptimizationResult | null>(null);
+  const [optimizerError, setOptimizerError] = useState<string | null>(null);
+  const [optimizerLogs, setOptimizerLogs] = useState<ConversationLog[]>([]);
+  const [optimizerLogsLoading, setOptimizerLogsLoading] = useState(false);
+  const [optimizerSettings, setOptimizerSettings] = useState<import('../types').TenantSettings | null>(null);
+  const [optimizerSinceDays, setOptimizerSinceDays] = useState(7);
+  const [optimizerExpandedId, setOptimizerExpandedId] = useState<string | null>(null);
+
+  // Bidirectional support chat
+  type SupportChatSummary = { tenantId: string; tenantName: string; lastMessage: string; lastAt: string; unreadCount: number };
+  const [supportChats, setSupportChats] = useState<SupportChatSummary[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
+  const [chatText, setChatText] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatsLoading, setChatsLoading] = useState(false);
+  const chatBottomRef = React.useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -203,6 +225,99 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const handleDismissSupport = async (tenantId: string) => {
     await (db as any).dismissSupportRequest(tenantId);
     setSupportRequests(prev => prev.filter(r => r.tenantId !== tenantId));
+  };
+
+  // IA Optimizer handlers
+  const loadOptimizerData = useCallback(async (tenantId: string, sinceDays: number) => {
+    if (!tenantId) return;
+    setOptimizerLogsLoading(true);
+    try {
+      const [logs, s] = await Promise.all([
+        db.getConversationLogs(tenantId, sinceDays),
+        db.getSettings(tenantId),
+      ]);
+      setOptimizerLogs(logs);
+      setOptimizerSettings(s);
+    } finally {
+      setOptimizerLogsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (optimizerTenantId) loadOptimizerData(optimizerTenantId, optimizerSinceDays);
+  }, [optimizerTenantId, optimizerSinceDays, loadOptimizerData]);
+
+  const handleRunOptimizer = async () => {
+    if (!optimizerTenantId || !optimizerSettings) return;
+    setOptimizing(true);
+    setOptimizerError(null);
+    setOptimizerResult(null);
+    try {
+      const tenant = tenants.find(t => t.id === optimizerTenantId);
+      const cfg = await db.getGlobalConfig();
+      const key = optimizerSettings.openaiApiKey || cfg['shared_openai_key'] || '';
+      if (!key) throw new Error('Nenhuma chave OpenAI configurada (nem do tenant nem compartilhada)');
+      const result = await runWeeklyOptimization(
+        optimizerTenantId,
+        tenant?.name || 'Tenant',
+        optimizerSettings,
+        key
+      );
+      setOptimizerResult(result);
+      await loadOptimizerData(optimizerTenantId, optimizerSinceDays);
+    } catch (e: any) {
+      setOptimizerError(e.message || 'Erro ao otimizar');
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  // Bidirectional support chat handlers
+  const loadSupportChats = useCallback(async () => {
+    setChatsLoading(true);
+    try {
+      const chats = await db.getAllSupportChats();
+      setSupportChats(chats);
+    } catch (e) { console.error(e); }
+    finally { setChatsLoading(false); }
+  }, []);
+
+  const loadChatMessages = useCallback(async (tenantId: string) => {
+    const msgs = await db.getSupportMessages(tenantId);
+    setChatMessages(msgs);
+    await db.markSupportRead(tenantId, 'tenant');
+    setSupportChats(prev => prev.map(c => c.tenantId === tenantId ? { ...c, unreadCount: 0 } : c));
+    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'suporte') {
+      loadSupportRequests();
+      loadSupportChats();
+    }
+  }, [tab, loadSupportRequests, loadSupportChats]);
+
+  useEffect(() => {
+    if (selectedChatId) loadChatMessages(selectedChatId);
+  }, [selectedChatId, loadChatMessages]);
+
+  const handleSelectChat = (tenantId: string) => {
+    setSelectedChatId(tenantId);
+    setChatText('');
+  };
+
+  const handleSendSupportReply = async () => {
+    if (!selectedChatId || !chatText.trim() || chatSending) return;
+    setChatSending(true);
+    const content = chatText.trim();
+    setChatText('');
+    try {
+      await db.sendSupportReply(selectedChatId, content);
+      await loadChatMessages(selectedChatId);
+      await loadSupportChats();
+    } finally {
+      setChatSending(false);
+    }
   };
 
   const handleCampaignsChange = (updated: ProspectCampaign[]) => {
@@ -984,6 +1099,180 @@ END $$;`.trim();
             <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">ℹ️ Preços de referência</p>
             <p className="text-xs text-blue-600 mt-1">GPT-4o Mini: $0,150/1M tokens entrada · $0,600/1M tokens saída &nbsp;|&nbsp; Gemini 2.0 Flash: gratuito (tier free)</p>
           </div>
+
+          {/* ── Otimização de IA por Tenant ── */}
+          <div className="bg-white rounded-3xl border-2 border-violet-100 p-8 space-y-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest">🔧 Otimização de IA por Tenant</p>
+                <p className="text-xs text-slate-400 mt-1">Analisa conversas com GPT-4o Mini, melhora o prompt e envia relatório no chat de Suporte do tenant.</p>
+              </div>
+            </div>
+
+            {/* Tenant selector + period + optimize button */}
+            <div className="flex flex-wrap gap-3 items-end">
+              <select
+                value={optimizerTenantId}
+                onChange={e => { setOptimizerTenantId(e.target.value); setOptimizerResult(null); setOptimizerError(null); }}
+                className="flex-1 min-w-48 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:border-violet-400 transition-all"
+              >
+                <option value="">Selecionar tenant...</option>
+                {tenants.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <div className="flex items-center gap-1.5">
+                {[7, 14, 30].map(d => (
+                  <button key={d} onClick={() => setOptimizerSinceDays(d)}
+                    className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      optimizerSinceDays === d ? 'bg-black text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}>{d}d</button>
+                ))}
+              </div>
+              <button
+                onClick={handleRunOptimizer}
+                disabled={!optimizerTenantId || optimizing}
+                className="px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition-all flex items-center gap-2 shrink-0"
+              >
+                {optimizing ? (
+                  <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Otimizando...</>
+                ) : '🔧 Otimizar Agora'}
+              </button>
+            </div>
+
+            {/* Errors / Result */}
+            {optimizerError && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
+                <p className="text-sm font-bold text-red-700">⚠️ {optimizerError}</p>
+              </div>
+            )}
+            {optimizerResult && (
+              <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 space-y-2">
+                <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">✅ Otimização concluída — relatório enviado no Suporte do tenant</p>
+                <p className="text-sm font-bold text-green-800">{optimizerResult.summary}</p>
+                <p className="text-[10px] font-bold text-green-600">
+                  ✅ {optimizerResult.booked} agendados · ❌ {optimizerResult.abandoned} abandonados · 💬 {optimizerResult.total} conversas analisadas
+                </p>
+              </div>
+            )}
+
+            {/* Stats cards (only when tenant selected) */}
+            {optimizerTenantId && (() => {
+              const booked = optimizerLogs.filter(l => l.outcome === 'booked').length;
+              const abandoned = optimizerLogs.filter(l => l.outcome === 'abandoned').length;
+              const total = optimizerLogs.length;
+              const rate = total > 0 ? Math.round(booked / total * 100) : 0;
+              return (
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { label: 'Conversas', value: total,     color: 'text-slate-800',  bg: 'bg-slate-50',  emoji: '💬' },
+                    { label: 'Agendados', value: booked,    color: 'text-green-700',  bg: 'bg-green-50',  emoji: '✅' },
+                    { label: 'Abandonados', value: abandoned, color: 'text-red-600',  bg: 'bg-red-50',    emoji: '❌' },
+                    { label: 'Conversão',  value: `${rate}%`, color: 'text-orange-600', bg: 'bg-orange-50', emoji: '🎯' },
+                  ].map(c => (
+                    <div key={c.label} className={`${c.bg} rounded-2xl p-4 space-y-1 border border-slate-100`}>
+                      <p className="text-xl">{c.emoji}</p>
+                      <p className={`text-2xl font-black ${c.color}`}>{optimizerLogsLoading ? '—' : c.value}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.label}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Last optimization info */}
+            {optimizerTenantId && optimizerSettings && (
+              <div className="bg-violet-50 border border-violet-100 rounded-2xl px-5 py-4 space-y-1">
+                <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest">Última Otimização Aplicada</p>
+                {optimizerSettings.lastOptimizedAt ? (
+                  <>
+                    <p className="text-xs font-bold text-slate-600">
+                      {(() => { try { return new Date(optimizerSettings.lastOptimizedAt!).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+                    </p>
+                    {optimizerSettings.lastOptimizationSummary && (
+                      <p className="text-xs text-slate-700 leading-relaxed">{optimizerSettings.lastOptimizationSummary}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs font-bold text-slate-400">Nenhuma otimização realizada ainda para este tenant.</p>
+                )}
+              </div>
+            )}
+
+            {/* Current prompt */}
+            {optimizerTenantId && optimizerSettings && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Prompt Atual do Agente</p>
+                <textarea
+                  readOnly
+                  value={optimizerSettings.systemPrompt || '(sem prompt personalizado)'}
+                  className="w-full h-28 resize-none rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs font-mono text-slate-700 focus:outline-none"
+                />
+              </div>
+            )}
+
+            {/* Conversation logs */}
+            {optimizerTenantId && (
+              <div className="border border-slate-100 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Conversas do Tenant</p>
+                  <p className="text-[10px] font-black text-slate-400">{optimizerLogs.length} registros</p>
+                </div>
+                {optimizerLogsLoading ? (
+                  <div className="flex items-center gap-3 p-8">
+                    <div className="w-4 h-4 border-2 border-slate-100 border-t-violet-500 rounded-full animate-spin" />
+                    <p className="text-xs font-black text-slate-400 uppercase">Carregando...</p>
+                  </div>
+                ) : optimizerLogs.length === 0 ? (
+                  <div className="p-10 text-center">
+                    <p className="text-3xl mb-2">💬</p>
+                    <p className="text-xs font-black text-slate-300 uppercase tracking-wider">Nenhuma conversa registrada no período</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                    {optimizerLogs.map(log => {
+                      const LABELS: Record<string, { label: string; color: string; emoji: string }> = {
+                        booked:    { label: 'Agendado',   color: 'bg-green-100 text-green-700', emoji: '✅' },
+                        abandoned: { label: 'Abandonado', color: 'bg-red-100 text-red-600',     emoji: '❌' },
+                        info:      { label: 'Informação', color: 'bg-slate-100 text-slate-600', emoji: 'ℹ️' },
+                      };
+                      const info = LABELS[log.outcome] || LABELS.info;
+                      const isExp = optimizerExpandedId === log.id;
+                      return (
+                        <div key={log.id}>
+                          <button
+                            onClick={() => setOptimizerExpandedId(isExp ? null : log.id)}
+                            className="w-full flex items-center gap-4 px-5 py-2.5 hover:bg-slate-50 transition-all text-left"
+                          >
+                            <span className="text-sm shrink-0">{info.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-slate-800">
+                                {(() => { try { return new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-400">{log.turns} turnos</p>
+                            </div>
+                            <span className={`shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full ${info.color}`}>{info.label}</span>
+                            <span className={`text-[10px] text-slate-300 font-black transition-transform ${isExp ? 'rotate-90' : ''}`}>▶</span>
+                          </button>
+                          {isExp && (
+                            <div className="px-5 pb-3 space-y-1.5 bg-slate-50">
+                              {(log.history || []).map((msg, i) => (
+                                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                  <div className={`max-w-[80%] px-3 py-1.5 rounded-[12px] text-xs font-medium ${
+                                    msg.role === 'user' ? 'bg-black text-white' : 'bg-orange-50 border border-orange-100 text-slate-700'
+                                  }`}>{msg.text}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1023,121 +1312,143 @@ END $$;`.trim();
       {tab === 'campanhas' && <CampaignsStatusView />}
 
       {/* ══════════════════════ SUPORTE ══════════════════════ */}
-      {tab === 'suporte' && (() => {
-        const SUPPORT_FEATURE_LABELS: Record<string, string> = {
-          financeiro: 'Financeiro e Estoque',
-          relatorios: 'Relatórios básicos',
-          relatoriosAvancados: 'Relatórios avançados',
-          reativacao: 'Reativação automática',
-          disparo: 'Disparador segmentado',
-          assistenteAdmin: 'Assistente Admin via IA',
-          convite_parceiro: '🎁 Convite de Parceiro',
-        };
-        const invites = supportRequests.filter(r => r.request.feature === 'convite_parceiro');
-        const upgrades = supportRequests.filter(r => r.request.feature !== 'convite_parceiro');
-        return (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Caixa de Entrada · {supportRequests.length} pendente{supportRequests.length !== 1 ? 's' : ''}
-              </p>
+      {tab === 'suporte' && (
+        <div className="flex gap-0 h-[calc(100vh-180px)] bg-white rounded-[24px] border-2 border-slate-100 overflow-hidden">
+          {/* Left column — tenant chat list */}
+          <div className="w-72 shrink-0 border-r border-slate-100 flex flex-col">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Conversas</p>
               <button
-                onClick={loadSupportRequests}
+                onClick={loadSupportChats}
                 className="text-[10px] font-black text-orange-500 uppercase tracking-widest hover:underline"
               >
-                ↻ Atualizar
+                ↻
               </button>
             </div>
+            <div className="flex-1 overflow-y-auto">
+              {chatsLoading ? (
+                <div className="flex items-center justify-center h-24">
+                  <div className="w-5 h-5 border-2 border-slate-100 border-t-orange-500 rounded-full animate-spin" />
+                </div>
+              ) : supportChats.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full py-12 text-center px-4">
+                  <p className="text-3xl mb-2">💬</p>
+                  <p className="text-xs font-black text-slate-300 uppercase tracking-wider">Nenhuma conversa</p>
+                </div>
+              ) : (
+                supportChats.map(chat => (
+                  <button
+                    key={chat.tenantId}
+                    onClick={() => handleSelectChat(chat.tenantId)}
+                    className={`w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-all flex items-center gap-3 ${selectedChatId === chat.tenantId ? 'bg-orange-50 border-l-2 border-l-orange-500' : ''}`}
+                  >
+                    <div className="w-9 h-9 shrink-0 rounded-full bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm uppercase">
+                      {chat.tenantName.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="font-black text-slate-800 text-xs truncate">{chat.tenantName}</p>
+                        {chat.unreadCount > 0 && (
+                          <span className="shrink-0 bg-orange-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
+                            {chat.unreadCount}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 truncate font-medium">{chat.lastMessage || '—'}</p>
+                      <p className="text-[9px] text-slate-300 font-bold">
+                        {chat.lastAt ? new Date(chat.lastAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
 
-            {supportLoading ? (
-              <div className="flex items-center gap-4 p-12">
-                <div className="w-6 h-6 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" />
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Carregando solicitações...</p>
-              </div>
-            ) : supportRequests.length === 0 ? (
-              <div className="bg-white rounded-[32px] border-2 border-slate-100 p-16 text-center space-y-3">
-                <p className="text-5xl">📭</p>
-                <p className="font-black text-slate-400 text-sm uppercase tracking-wider">Nenhuma solicitação pendente</p>
-                <p className="text-xs text-slate-300 font-bold">Solicitações de upgrade e convites de parceiros aparecerão aqui.</p>
+          {/* Right column — messages */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {!selectedChatId ? (
+              <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
+                <p className="text-4xl">👈</p>
+                <p className="text-sm font-black text-slate-300 uppercase tracking-wider">Selecione uma conversa</p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* ── Convites de parceiros ── */}
-                {invites.length > 0 && (
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest px-1">🎁 Convites de Parceiros ({invites.length})</p>
-                    {invites.map(({ tenantId, tenantName, request }) => (
-                      <div key={tenantId} className="bg-orange-50 rounded-[20px] border border-orange-200 p-5 space-y-3">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="space-y-2 flex-1 min-w-0">
-                            <p className="font-black text-black text-sm">{tenantName}</p>
-                            <pre className="text-xs font-bold text-slate-700 bg-white rounded-xl p-3 border border-orange-100 whitespace-pre-wrap leading-relaxed">
-                              {request.message}
-                            </pre>
-                            <p className="text-[9px] font-bold text-slate-400">
-                              {new Date(request.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                            </p>
+              <>
+                {/* Chat header */}
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center font-black text-orange-600 text-sm uppercase">
+                    {(supportChats.find(c => c.tenantId === selectedChatId)?.tenantName || '?').charAt(0)}
+                  </div>
+                  <div>
+                    <p className="font-black text-slate-800 text-sm">{supportChats.find(c => c.tenantId === selectedChatId)?.tenantName || selectedChatId}</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Chat de Suporte</p>
+                  </div>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                  {chatMessages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                      <p className="text-3xl mb-2">💬</p>
+                      <p className="text-xs font-bold text-slate-300">Nenhuma mensagem ainda.</p>
+                    </div>
+                  ) : (
+                    chatMessages.map(msg => (
+                      <div key={msg.id} className={`flex ${msg.sender === 'tenant' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[70%] space-y-1 ${msg.sender === 'tenant' ? 'items-end' : 'items-start'} flex flex-col`}>
+                          <div className={`px-4 py-2.5 rounded-[18px] text-sm font-medium leading-relaxed ${
+                            msg.sender === 'tenant'
+                              ? 'bg-slate-100 text-slate-800 rounded-br-sm'
+                              : 'bg-orange-50 border border-orange-100 text-slate-800 rounded-bl-sm'
+                          }`}>
+                            {msg.imageUrl && (
+                              <img
+                                src={msg.imageUrl}
+                                alt="imagem"
+                                className="max-w-full rounded-xl mb-1"
+                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            )}
+                            {msg.content && <span>{msg.content}</span>}
                           </div>
-                          <button
-                            onClick={() => handleDismissSupport(tenantId)}
-                            className="shrink-0 px-4 py-2 bg-orange-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all"
-                          >
-                            ✓ Ok
-                          </button>
+                          <span className="text-[9px] text-slate-300 font-bold px-1">
+                            {msg.sender === 'support' ? '🎧 Suporte · ' : ''}
+                            {(() => { try { return new Date(msg.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+                          </span>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ))
+                  )}
+                  <div ref={chatBottomRef} />
+                </div>
 
-                {/* ── Upgrades de plano ── */}
-                {upgrades.length > 0 && (
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Solicitações de Upgrade ({upgrades.length})</p>
-                    {upgrades.map(({ tenantId, tenantName, plan, request }) => {
-                      const planCfg = getPlanConfig(plan);
-                      return (
-                        <div key={tenantId} className="bg-white rounded-[24px] border-2 border-slate-100 p-6 space-y-3 hover:border-orange-200 transition-all">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-1.5 flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="font-black text-black text-sm">{tenantName}</p>
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${planCfg.bgClass} ${planCfg.textClass}`}>
-                                  {planCfg.emoji} {planCfg.name}
-                                </span>
-                              </div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                Recurso solicitado:{' '}
-                                <strong className="text-slate-600">
-                                  {SUPPORT_FEATURE_LABELS[request.feature] || request.feature}
-                                </strong>
-                              </p>
-                              {request.message && request.message !== 'Solicitar upgrade de plano' && (
-                                <p className="text-sm font-bold text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-100 italic">
-                                  "{request.message}"
-                                </p>
-                              )}
-                              <p className="text-[9px] font-bold text-slate-300">
-                                {new Date(request.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => handleDismissSupport(tenantId)}
-                              className="shrink-0 px-4 py-2 bg-green-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-green-600 transition-all"
-                            >
-                              ✓ Resolver
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                {/* Reply footer */}
+                <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex items-end gap-2">
+                  <textarea
+                    value={chatText}
+                    onChange={e => setChatText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendSupportReply(); } }}
+                    placeholder="Digite sua resposta..."
+                    rows={1}
+                    className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-300 transition-all leading-snug"
+                    style={{ maxHeight: 80, overflowY: 'auto' }}
+                  />
+                  <button
+                    onClick={handleSendSupportReply}
+                    disabled={chatSending || !chatText.trim()}
+                    className="w-10 h-10 shrink-0 rounded-xl bg-orange-500 flex items-center justify-center hover:bg-orange-600 transition-all disabled:opacity-40"
+                  >
+                    {chatSending
+                      ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      : <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                    }
+                  </button>
+                </div>
+              </>
             )}
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* ══════════════════════ MODALS ══════════════════════ */}
 

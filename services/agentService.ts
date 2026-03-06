@@ -126,6 +126,22 @@ function clearSession(tenantId: string, phone: string): void {
     .catch(() => {});
 }
 
+function logConv(
+  tenantId: string, phone: string,
+  outcome: 'booked' | 'abandoned' | 'info',
+  history: Array<{ role: string; text: string }>
+): void {
+  if (history.length === 0) return;
+  supabase.from('conversation_logs').insert({
+    tenant_id: tenantId,
+    phone,
+    outcome,
+    turns: history.filter(h => h.role === 'user').length,
+    history,
+    started_at: new Date().toISOString(),
+  }).then(() => {}).catch(() => {});
+}
+
 // ── Called by followUpService after each successful send ─────────────
 // Registers context so the next client reply is handled in the right tone.
 export function registerFollowUpContext(
@@ -865,6 +881,9 @@ export async function handleMessage(
 
   // ─── Reset — clears session immediately ────────────────────────────
   if (isReset) {
+    if (preSession && preSession.history.length > 0) {
+      logConv(tenantId, phone, 'abandoned', preSession.history);
+    }
     clearSession(tenantId, phone);
     return `Tudo bem! Quando quiser agendar, é só me chamar. 😊`;
   }
@@ -1989,6 +2008,7 @@ export async function handleMessage(
       }
 
       const wasReschedule = !!session.data.pendingReschedule;
+      logConv(tenantId, phone, 'booked', session.history);
       clearSession(tenantId, phone);
       const planNote = isPlanAppointment ? '\n📦 _Coberto pelo seu plano._' : '';
       if (shouldGreet) _greetedToday.set(_greetKey, brasiliaDate);

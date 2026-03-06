@@ -235,6 +235,8 @@ export interface TenantSettings {
   adiantamentos?: Adiantamento[];       // professional advance payments
   pagamentosPro?: PagamentoPro[];       // professional payroll records
   notasFiscais?: NotaFiscal[];          // NFS-e history
+  lastOptimizedAt?: string;             // ISO datetime of last IA optimization
+  lastOptimizationSummary?: string;     // summary of last IA optimization
 }
 
 export interface Appointment {
@@ -353,4 +355,25 @@ export interface Comanda {
   createdAt: string;
   closedAt?: string;
   number?: number;  // sequential comanda number per tenant (#001, #002…)
+}
+
+export interface SupportMessage {
+  id: string;
+  tenantId: string;
+  sender: 'tenant' | 'support';
+  content?: string;
+  imageUrl?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface ConversationLog {
+  id: string;
+  tenantId: string;
+  phone: string;
+  outcome: 'booked' | 'abandoned' | 'info';
+  turns: number;
+  history: Array<{ role: 'user' | 'bot'; text: string }>;
+  startedAt?: string;
+  createdAt: string;
 }
