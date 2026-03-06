@@ -1566,6 +1566,60 @@ async function _handleMessage(
     }
   }
 
+  // ─── Arrival notice detection (TypeScript layer) ──────────────────
+  // Detects "11,30 estou ai", "to indo", "estou a caminho", "chego às 11h", etc.
+  // Customer is announcing arrival — NOT requesting a new booking.
+  if (!session.data.pendingConfirm && !session.data.pendingReschedule) {
+    const normArr = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, ' ').trim();
+    const ARRIVAL_KW = [
+      'estou ai', 'to ai', 'tô ai', 'tô aí', 'to aí',
+      'estou la', 'to la', 'tô lá', 'tô la', 'to lá',
+      'estou aqui', 'to aqui', 'tô aqui',
+      'ja cheguei', 'já cheguei', 'cheguei',
+      'estou chegando', 'to chegando', 'tô chegando',
+      'ja to chegando', 'já to chegando', 'já tô chegando',
+      'a caminho', 'no caminho', 'to indo', 'tô indo', 'estou indo',
+      'ja sai de casa', 'já saí de casa', 'ja sai', 'já saí',
+      'em x minutos chego', 'minutos chego', 'minutinhos chego',
+      'estou a caminho', 'to a caminho',
+      'ja ja estou ai', 'já já estou aí',
+      'saindo de casa', 'saindo agora',
+    ];
+    // Also detect "<time> estou ai" patterns like "11,30 estou ai", "11:30 estou ai", "11h estou ai"
+    const timeArrivalPattern = /\b\d{1,2}[\s:.,hH]\s*\d{0,2}\s*(estou|to|tô|chego|estarei)\s*(ai|aí|la|lá)/;
+    const isArrivalNotice = ARRIVAL_KW.some(k => normArr.includes(k)) || timeArrivalPattern.test(normArr);
+    // Avoid false positives: don't match if it's clearly a booking intent
+    const BOOKING_INTENT = ['agendar', 'marcar', 'reservar', 'quero horario', 'quero um horario'];
+    const hasBooking = BOOKING_INTENT.some(k => normArr.includes(k));
+
+    if (isArrivalNotice && !hasBooking) {
+      try {
+        const { data: custArrival } = await supabase.from('customers').select('id')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        if (custArrival) {
+          const { data: todayAppts } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custArrival.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', `${todayISO}T00:00:00`)
+            .lte('inicio', `${todayISO}T23:59:59`)
+            .order('inicio', { ascending: true }).limit(1);
+          if (todayAppts && todayAppts.length > 0) {
+            const apptArr = todayAppts[0];
+            const apptTime = (apptArr.inicio as string).substring(11, 16);
+            const profArr = profOptions.find(p => p.id === apptArr.professional_id);
+            const profName = profArr?.name || 'profissional';
+            const reply = `Beleza! Te esperamos às *${apptTime}* com ${profName}. Até já! 😊`;
+            session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+            saveSession(session);
+            return reply;
+          }
+        }
+      } catch (eArr) { console.error('[Agent] arrival notice detection error:', eArr); }
+      // No appointment found for today → fall through to normal AI flow
+    }
+  }
+
   // ─── TypeScript-layer professional name pre-extraction ─────────────
   // Runs BEFORE calling LLM. Checks vacation first (for any # of professionals),
   // then for multiple-prof setups either starts a booking flow or personal-contact flow.
@@ -1759,7 +1813,7 @@ async function _handleMessage(
   const tenantNicho: string = (tenant.nicho as string) || 'Barbearia';
   const groupBookingCtx = buildGroupCtx(session.data);
   let brain = await callBrain(
-    apiKey, tenantName, todayISO,
+    apiKey, tenantName, formatDate(todayISO),
     serviceOptions, profOptionsVisible,
     session.history, session.data, prefetchedSlots, customPrompt || undefined,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
@@ -1884,7 +1938,7 @@ async function _handleMessage(
     // Re-run brain with real slots so it can show a natural response with slot options
     const groupBookingCtx2 = buildGroupCtx(session.data);
     const brain2 = await callBrain(
-      apiKey, tenantName, todayISO,
+      apiKey, tenantName, formatDate(todayISO),
       serviceOptions, profOptionsVisible,
       session.history, session.data, newSlots, customPrompt || undefined,
       false, brasiliaGreeting, groupBookingCtx2 || undefined,
