@@ -1546,6 +1546,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // ── Follow-up context: aviso/lembrete/reativacao ──────────────────────────
   // When followUpService sends a follow-up message it persists pendingFollowUpType
   // in the session. Handle the first reply here before falling through to the AI.
+  // Affirmative emoji detection (👍👊✅🤙🙏💪👏🔥) — used in follow-up and fallback
+  const AFFIRM_EMOJI_RE = /[\u{1F44D}\u{1F44A}\u{2705}\u{1F919}\u{1F64F}\u{1F4AA}\u{1F44F}\u{1F525}\u{1F91D}\u{1F60A}\u{1F609}\u{1F601}\u{1F973}]/u;
+  const isEmojiAffirm = AFFIRM_EMOJI_RE.test(text) && text.replace(/[\s\u{FE0F}\u{200D}\u{20E3}]/gu, '').replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '').length === 0;
+
   if (session.data.pendingFollowUpType) {
     const fType = session.data.pendingFollowUpType as string;
     const fNorm = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
@@ -1571,7 +1575,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
     const wantsReschedule = RESCHEDULE_WORDS.some(k => fNorm.includes(k));
     const hasBookingKw    = wantsReschedule || ['agendar', 'marcar', 'horario', 'mudar', 'trocar', 'reagendar'].some(k => fNorm.includes(k));
-    const isAffirm        = !hasBookingKw && AFFIRM_WORDS.some(a => fWds.includes(a) || fNorm === a) && fWds.length <= 8;
+    const isAffirm        = isEmojiAffirm || (!hasBookingKw && AFFIRM_WORDS.some(a => fWds.includes(a) || fNorm === a) && fWds.length <= 8);
     const isDeny          = DENY_WORDS.some(d => fWds.includes(d)) && fWds.length <= 6;
     // Brazilian "Não, [affirmative]" filler: "nao" used as emphasis before affirming
     // e.g. "Não, tá confirmado, mais que confirmado, preciso cortar o cabelo"
@@ -1678,10 +1682,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     ];
     const FB_PHRASES = ['bom dia', 'boa tarde', 'boa noite', 'pode confirmar', 'pode sim', 'to la', 'la estarei', 'vou sim'];
     const fbWords = normFb.split(/\s+/);
-    const isShortAffirm = fbWords.length <= 8 && (
+    const isShortAffirm = isEmojiAffirm || (fbWords.length <= 8 && (
       FB_AFFIRM.some(a => fbWords.includes(a)) ||
       FB_PHRASES.some(p => normFb.includes(p))
-    );
+    ));
     if (isShortAffirm) {
       try {
         const { data: custFb } = await supabase.from('customers').select('id, nome')
