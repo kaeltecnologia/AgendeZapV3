@@ -31,8 +31,9 @@ function capitalizeName(s: string): string {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', {
+  return new Date(dateStr + 'T12:00:00Z').toLocaleDateString('pt-BR', {
     weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+    timeZone: 'UTC',
   });
 }
 
@@ -1460,6 +1461,55 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // ── Closed-day guard (TypeScript layer) ──────────────────────────────
+  // If the resolved date falls on a day the business is closed, find the
+  // next open day and respond immediately — never let the AI guess day names.
+  if (session.data.date) {
+    const _cdDate = session.data.date;
+    const _cdDow = new Date(_cdDate + 'T12:00:00Z').getUTCDay();
+    const _cdConfig = settings.operatingHours?.[_cdDow];
+    if (!_cdConfig?.active) {
+      // Find next open day (scan up to 14 days ahead)
+      const _cdBaseDate = new Date(_cdDate + 'T12:00:00Z');
+      let _nextOpenISO: string | null = null;
+      let _nextOpenDow = -1;
+      for (let i = 1; i <= 14; i++) {
+        const _nd = new Date(_cdBaseDate.getTime() + i * 86400000);
+        const _ndDow = _nd.getUTCDay();
+        if (settings.operatingHours?.[_ndDow]?.active) {
+          _nextOpenISO = `${_nd.getUTCFullYear()}-${pad(_nd.getUTCMonth()+1)}-${pad(_nd.getUTCDate())}`;
+          _nextOpenDow = _ndDow;
+          break;
+        }
+      }
+      const _closedDowName = DOW_PT[_cdDow]; // correct day name from code
+      // Compute tomorrow label inline (tomorrowISO is only available inside callBrain)
+      const _isTomorrow = (() => {
+        const td = new Date(todayISO + 'T12:00:00Z');
+        return _cdBaseDate.getTime() - td.getTime() === 86400000;
+      })();
+      const _closedLabel = _cdDate === todayISO ? 'Hoje' : _isTomorrow ? 'Amanhã' : formatDate(_cdDate);
+      if (_nextOpenISO) {
+        const _nextDowName = DOW_PT[_nextOpenDow];
+        const _nextDD = _nextOpenISO.slice(8, 10);
+        const _nextMM = _nextOpenISO.slice(5, 7);
+        const _cdMsg = `${_closedLabel} (${_closedDowName}) a gente não abre 😕 Mas na ${_nextDowName}, dia ${_nextDD}/${_nextMM}, estamos abertos! Quer agendar pra esse dia?`;
+        session.data.date = _nextOpenISO;
+        session.history.push({ role: 'bot', text: _cdMsg });
+        await sendMsg(instanceName, phone, _cdMsg, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+        return;
+      } else {
+        const _cdMsg = `Desculpe, não temos dias abertos nos próximos 14 dias 😕 Entre em contato novamente mais tarde!`;
+        session.data.date = undefined;
+        session.history.push({ role: 'bot', text: _cdMsg });
+        await sendMsg(instanceName, phone, _cdMsg, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+        return;
+      }
+    }
+  }
+
   // Time-preference pre-extraction (TypeScript layer)
   // Captures "depois das 17", "a partir das 16", "após 12:00" etc. for slot filtering
   if (!session.data.preferredTime) {
@@ -1956,25 +2006,31 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
         return;
       }
-      // Fully booked — proactively check the next day
+      // Fully booked — proactively check the next open days (up to 7 days ahead, skip closed days)
       const _bookedDate = session.data.date;
-      const _nextDate = (() => {
-        const d = new Date(_bookedDate + 'T12:00:00');
-        d.setDate(d.getDate() + 1);
-        const p = (n: number) => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-      })();
       const _nextDur = session.data.serviceDuration || (services.length > 0
         ? Math.min(...services.map((s: any) => s.durationMinutes || 30))
         : 30);
-      const _nextSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate, _nextDur, settings);
-      if (_nextSlots.length > 0) {
+      let _foundNextDate: string | null = null;
+      let _foundNextSlots: string[] = [];
+      const _bookedBase = new Date(_bookedDate + 'T12:00:00Z');
+      for (let _di = 1; _di <= 7; _di++) {
+        const _nd = new Date(_bookedBase.getTime() + _di * 86400000);
+        const _ndDow = _nd.getUTCDay();
+        if (!settings.operatingHours?.[_ndDow]?.active) continue; // skip closed days
+        const _ndISO = `${_nd.getUTCFullYear()}-${pad(_nd.getUTCMonth()+1)}-${pad(_nd.getUTCDate())}`;
+        const _ndSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _ndISO, _nextDur, settings);
+        if (_ndSlots.length > 0) { _foundNextDate = _ndISO; _foundNextSlots = _ndSlots; break; }
+      }
+      if (_foundNextDate) {
         const _isToday = _bookedDate === todayISO;
         const _fullLabel = _isToday ? 'Hoje' : `Em ${formatDate(_bookedDate)}`;
-        const _nextLabel = _isToday ? 'amanhã' : `em ${formatDate(_nextDate)}`;
-        const noAvail = `${_fullLabel} o ${profName} está com a agenda cheia 😕 Mas ${_nextLabel} tem horário! Quer marcar?`;
-        session.data.date = _nextDate;
-        session.data.availableSlots = _nextSlots;
+        const _ndDow2 = DOW_PT[new Date(_foundNextDate + 'T12:00:00Z').getUTCDay()];
+        const _ndDD = _foundNextDate.slice(8, 10);
+        const _ndMM = _foundNextDate.slice(5, 7);
+        const noAvail = `${_fullLabel} o ${profName} está com a agenda cheia 😕 Mas na ${_ndDow2}, dia ${_ndDD}/${_ndMM}, tem horário! Quer marcar?`;
+        session.data.date = _foundNextDate;
+        session.data.availableSlots = _foundNextSlots;
         session.history.push({ role: 'bot', text: noAvail });
         await sendMsg(instanceName, phone, noAvail, tenantId);
         saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));

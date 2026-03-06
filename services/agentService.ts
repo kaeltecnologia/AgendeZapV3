@@ -202,10 +202,13 @@ function capitalizeName(s: string): string {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', {
+  return new Date(dateStr + 'T12:00:00Z').toLocaleDateString('pt-BR', {
     weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
+    timeZone: 'UTC',
   });
 }
+
+const DOW_PT_SPA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 
 function formatSlots(slots: string[]): string {
   return slots.map(s => `• ${s}`).join('\n');
@@ -1901,23 +1904,30 @@ async function _handleMessage(
         saveSession(session);
         return noAvail;
       }
-      // Fully booked — proactively check the next day
+      // Fully booked — proactively check next open days (up to 7 days, skip closed)
       const _bookedDate = session.data.date!;
-      const _nextDate = (() => {
-        const d = new Date(_bookedDate + 'T12:00:00');
-        d.setDate(d.getDate() + 1);
-        const p = (n: number) => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-      })();
       const _nextDur = session.data.serviceDuration || 30;
-      const _nextSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate, _nextDur, settings);
-      if (_nextSlots.length > 0) {
+      const _pad2 = (n: number) => String(n).padStart(2, '0');
+      let _foundNext: string | null = null;
+      let _foundSlots: string[] = [];
+      const _baseD = new Date(_bookedDate + 'T12:00:00Z');
+      for (let _di = 1; _di <= 7; _di++) {
+        const _nd = new Date(_baseD.getTime() + _di * 86400000);
+        const _ndDow = _nd.getUTCDay();
+        if (!settings.operatingHours?.[_ndDow]?.active) continue;
+        const _ndISO = `${_nd.getUTCFullYear()}-${_pad2(_nd.getUTCMonth()+1)}-${_pad2(_nd.getUTCDate())}`;
+        const _ndSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _ndISO, _nextDur, settings);
+        if (_ndSlots.length > 0) { _foundNext = _ndISO; _foundSlots = _ndSlots; break; }
+      }
+      if (_foundNext) {
         const _isToday = _bookedDate === todayISO;
         const _fullLabel = _isToday ? 'Hoje' : `Em ${formatDate(_bookedDate)}`;
-        const _nextLabel = _isToday ? 'amanhã' : `em ${formatDate(_nextDate)}`;
-        const noAvail = `${_fullLabel} o ${profName} está com a agenda cheia 😕 Mas ${_nextLabel} tem horário! Quer marcar?`;
-        session.data.date = _nextDate;
-        session.data.availableSlots = _nextSlots;
+        const _ndDow2 = DOW_PT_SPA[new Date(_foundNext + 'T12:00:00Z').getUTCDay()];
+        const _ndDD = _foundNext.slice(8, 10);
+        const _ndMM = _foundNext.slice(5, 7);
+        const noAvail = `${_fullLabel} o ${profName} está com a agenda cheia 😕 Mas na ${_ndDow2}, dia ${_ndDD}/${_ndMM}, tem horário! Quer marcar?`;
+        session.data.date = _foundNext;
+        session.data.availableSlots = _foundSlots;
         session.history.push({ role: 'bot', text: noAvail });
         saveSession(session);
         return noAvail;
@@ -2012,6 +2022,47 @@ async function _handleMessage(
   // Only apply date/time if not already set
   if (ext.date && !session.data.date) session.data.date = ext.date;
 
+  // ── Closed-day guard (TypeScript layer) ─────────────────────────────
+  // If the AI extracted a date on a closed day, find next open day and respond from code.
+  if (session.data.date) {
+    const _cdDateSPA = session.data.date;
+    const _cdDowSPA = new Date(_cdDateSPA + 'T12:00:00Z').getUTCDay();
+    const _cdConfigSPA = settings.operatingHours?.[_cdDowSPA];
+    if (!_cdConfigSPA?.active) {
+      const _cdBaseSPA = new Date(_cdDateSPA + 'T12:00:00Z');
+      let _nextOpenSPA: string | null = null;
+      let _nextOpenDowSPA = -1;
+      const _p2 = (n: number) => String(n).padStart(2, '0');
+      for (let i = 1; i <= 14; i++) {
+        const _nd = new Date(_cdBaseSPA.getTime() + i * 86400000);
+        const _ndDow = _nd.getUTCDay();
+        if (settings.operatingHours?.[_ndDow]?.active) {
+          _nextOpenSPA = `${_nd.getUTCFullYear()}-${_p2(_nd.getUTCMonth()+1)}-${_p2(_nd.getUTCDate())}`;
+          _nextOpenDowSPA = _ndDow;
+          break;
+        }
+      }
+      const _closedDowName = DOW_PT_SPA[_cdDowSPA];
+      const _closedLabel = _cdDateSPA === todayISO ? 'Hoje' : formatDate(_cdDateSPA);
+      if (_nextOpenSPA) {
+        const _nextDowName = DOW_PT_SPA[_nextOpenDowSPA];
+        const _nextDD = _nextOpenSPA.slice(8, 10);
+        const _nextMM = _nextOpenSPA.slice(5, 7);
+        const _cdMsg = `${_closedLabel} (${_closedDowName}) a gente não abre 😕 Mas na ${_nextDowName}, dia ${_nextDD}/${_nextMM}, estamos abertos! Quer agendar pra esse dia?`;
+        session.data.date = _nextOpenSPA;
+        session.history.push({ role: 'bot', text: _cdMsg });
+        saveSession(session);
+        return _cdMsg;
+      } else {
+        const _cdMsg = `Desculpe, não temos dias abertos nos próximos 14 dias 😕`;
+        session.data.date = undefined;
+        session.history.push({ role: 'bot', text: _cdMsg });
+        saveSession(session);
+        return _cdMsg;
+      }
+    }
+  }
+
   // Validate time against available slots
   const currentSlots = prefetchedSlots || [];
   if (ext.time && !session.data.time && currentSlots.length > 0) {
@@ -2068,21 +2119,28 @@ async function _handleMessage(
     if (newSlots.length === 0) {
       const _profName2 = session.data.professionalName || 'O profissional';
       const _bookedDate2 = session.data.date!;
-      const _nextDate2 = (() => {
-        const d = new Date(_bookedDate2 + 'T12:00:00');
-        d.setDate(d.getDate() + 1);
-        const p = (n: number) => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-      })();
-      const _nextSlots2 = await getAvailableSlots(tenantId, session.data.professionalId!, _nextDate2,
-        session.data.serviceDuration || (activeServices[0]?.durationMinutes ?? 30), settings);
-      if (_nextSlots2.length > 0) {
+      const _nextDur2 = session.data.serviceDuration || (activeServices[0]?.durationMinutes ?? 30);
+      const _p2b = (n: number) => String(n).padStart(2, '0');
+      let _foundNext2: string | null = null;
+      let _foundSlots2: string[] = [];
+      const _baseD2 = new Date(_bookedDate2 + 'T12:00:00Z');
+      for (let _di = 1; _di <= 7; _di++) {
+        const _nd = new Date(_baseD2.getTime() + _di * 86400000);
+        const _ndDow = _nd.getUTCDay();
+        if (!settings.operatingHours?.[_ndDow]?.active) continue;
+        const _ndISO = `${_nd.getUTCFullYear()}-${_p2b(_nd.getUTCMonth()+1)}-${_p2b(_nd.getUTCDate())}`;
+        const _ndSlots = await getAvailableSlots(tenantId, session.data.professionalId!, _ndISO, _nextDur2, settings);
+        if (_ndSlots.length > 0) { _foundNext2 = _ndISO; _foundSlots2 = _ndSlots; break; }
+      }
+      if (_foundNext2) {
         const _isToday2 = _bookedDate2 === todayISO;
         const _fullLabel2 = _isToday2 ? 'Hoje' : `Em ${formatDate(_bookedDate2)}`;
-        const _nextLabel2 = _isToday2 ? 'amanhã' : `em ${formatDate(_nextDate2)}`;
-        const noAvail2 = `${_fullLabel2} o ${_profName2} está com a agenda cheia 😕 Mas ${_nextLabel2} tem horário! Quer marcar?`;
-        session.data.date = _nextDate2;
-        session.data.availableSlots = _nextSlots2;
+        const _ndDow2b = DOW_PT_SPA[new Date(_foundNext2 + 'T12:00:00Z').getUTCDay()];
+        const _ndDD2 = _foundNext2.slice(8, 10);
+        const _ndMM2 = _foundNext2.slice(5, 7);
+        const noAvail2 = `${_fullLabel2} o ${_profName2} está com a agenda cheia 😕 Mas na ${_ndDow2b}, dia ${_ndDD2}/${_ndMM2}, tem horário! Quer marcar?`;
+        session.data.date = _foundNext2;
+        session.data.availableSlots = _foundSlots2;
         session.history.push({ role: 'bot', text: noAvail2 });
         saveSession(session);
         return noAvail2;
