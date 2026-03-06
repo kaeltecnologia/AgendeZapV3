@@ -675,7 +675,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   const lowerText = text.toLowerCase();
   const isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
-  const isReset = ['sair', 'reiniciar', 'recomeçar', 'recomecar', 'esquece', 'esquecer'].some(k => lowerText.includes(k));
+  // isReset: only trigger on very short messages (≤40 chars) to prevent false positives.
+  // e.g. "vou sair cedinho" is NOT a reset command — the lead is just saying they're leaving.
+  const isReset = lowerText.trim().length <= 40 &&
+    ['sair', 'reiniciar', 'recomeçar', 'recomecar', 'esquece', 'esquecer'].some(k => lowerText.includes(k));
 
   // Pre-check: pending implicit-cancel confirmation (user previously asked to cancel)
   const preSession = await getSession(tenantId, phone);
