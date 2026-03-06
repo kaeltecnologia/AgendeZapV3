@@ -101,6 +101,7 @@ function clearProfSession(tenantId: string, phone: string) {
 
 type ProfIntentType =
   | 'LIST_APPOINTMENTS'  // agenda (colab: própria; admin: qualquer)
+  | 'AVAILABLE_SLOTS'    // horários livres/disponíveis (colab: própria; admin: qualquer)
   | 'COUNT_PROCEDURES'   // contagem de atendimentos + receita própria (colab: própria; admin: qualquer)
   | 'BOOK'               // agendar cliente
   | 'CONFIRM_BOOK'       // confirmar agendamento pendente
@@ -195,7 +196,8 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
         contents:
           `Hoje é ${today}. Um profissional de barbearia enviou: "${text}"\n` +
           `Classifique a intenção. Intents disponíveis:\n` +
-          `- LIST_APPOINTMENTS: agenda/horários (ex: "quem atendo hoje?", "minha agenda amanhã", "horários do Gil amanhã", "agenda da Maria hoje")\n` +
+          `- LIST_APPOINTMENTS: agenda/horários ocupados (ex: "quem atendo hoje?", "minha agenda amanhã", "horários do Gil amanhã", "agenda da Maria hoje")\n` +
+          `- AVAILABLE_SLOTS: horários LIVRES/disponíveis (ex: "horários disponíveis do Gil", "que horas tem livre hoje?", "vagas do Carlos amanhã", "horários vagos")\n` +
           `- COUNT_PROCEDURES: contagem de procedimentos/faturamento próprio (ex: "quantos cortes fiz?", "quanto eu faturei?")\n` +
           `- BOOK: agendar cliente (ex: "marca João sexta às 10h")\n` +
           `- FINANCIAL: faturamento total da barbearia (ex: "faturamento do mês", "quanto faturamos?")\n` +
@@ -212,7 +214,7 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              intent: { type: Type.STRING, enum: ['LIST_APPOINTMENTS', 'COUNT_PROCEDURES', 'BOOK', 'FINANCIAL', 'COMMISSION', 'EXPENSES', 'PROFIT', 'RANKING', 'GOALS', 'HELP'] },
+              intent: { type: Type.STRING, enum: ['LIST_APPOINTMENTS', 'AVAILABLE_SLOTS', 'COUNT_PROCEDURES', 'BOOK', 'FINANCIAL', 'COMMISSION', 'EXPENSES', 'PROFIT', 'RANKING', 'GOALS', 'HELP'] },
               dateRef: { type: Type.STRING },
               clientName: { type: Type.STRING },
               time: { type: Type.STRING },
@@ -263,7 +265,12 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
     return { ...fallback, intent: 'COMMISSION', dateRef, targetProfName: extractedProfName };
   }
 
-  // Agenda/appointments
+  // Available slots (must come BEFORE list appointments — "disponível/livre/vago" = free slots)
+  if (/dispon[ií]ve[il]|livre[s]?|\bvago[s]?\b|\bvaga[s]?\b|\baberto[s]?\b|tem hora|tem hor[aá]rio/.test(lower)) {
+    return { ...fallback, intent: 'AVAILABLE_SLOTS', dateRef, targetProfName: extractedProfName };
+  }
+
+  // Agenda/appointments (booked)
   if (/atend|agenda|horari|horári|quem vou|minha agenda|tenho hora|meus clien|meu dia|quais agend|para hoje|pra hoje|para amanha|pra amanha/.test(lower)) {
     return { ...fallback, intent: 'LIST_APPOINTMENTS', dateRef, targetProfName: extractedProfName };
   }
@@ -467,6 +474,48 @@ async function handleListAppointments(
 
   const header = byDate.size === 1 ? `Agendamentos ${range.label}:` : `Agendamentos — ${range.label}:`;
   return `${header}\n${lines.join('\n')}`;
+}
+
+async function handleAvailableSlots(
+  tenantId: string, profId: string | null, range: DateRange, settings: any, professionals: any[]
+): Promise<string> {
+  // Determine which professionals to show slots for
+  const targetProfs = profId
+    ? professionals.filter(p => p.id === profId && p.active)
+    : professionals.filter(p => p.active);
+
+  if (targetProfs.length === 0) return 'Profissional não encontrado.';
+
+  // For ranges spanning multiple days, iterate each day
+  const startDate = new Date(range.start + 'T12:00:00');
+  const endDate = new Date(range.end + 'T12:00:00');
+  const allLines: string[] = [];
+  const days: string[] = [];
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    days.push(`${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`);
+  }
+  // Cap at 7 days to avoid huge responses
+  const daysToShow = days.slice(0, 7);
+
+  for (const day of daysToShow) {
+    const dayLines: string[] = [];
+    for (const p of targetProfs) {
+      const slots = await getAvailableSlots(tenantId, p.id, day, 30, settings);
+      if (slots.length === 0) continue;
+      const profTag = targetProfs.length > 1 ? ` [${p.name}]` : '';
+      dayLines.push(`${profTag ? `*${p.name}*: ` : ''}${slots.join(', ')}`);
+    }
+    if (dayLines.length > 0) {
+      if (daysToShow.length > 1) allLines.push(`\n*${datePT(day)}*`);
+      allLines.push(...dayLines);
+    }
+  }
+
+  if (allLines.length === 0) return `Nenhum horário disponível ${range.label}.`;
+
+  const profName = targetProfs.length === 1 ? ` do ${targetProfs[0].name}` : '';
+  const header = `Horários disponíveis${profName} ${range.label}:`;
+  return `${header}\n${allLines.join('\n')}`;
 }
 
 async function handleCountProcedures(
@@ -925,6 +974,9 @@ export async function handleProfessionalMessage(
 
     case 'LIST_APPOINTMENTS':
       return handleListAppointments(tenantId, targetProfId, range, customers, services, professionals);
+
+    case 'AVAILABLE_SLOTS':
+      return handleAvailableSlots(tenantId, targetProfId, range, settings, professionals);
 
     case 'COUNT_PROCEDURES':
       return handleCountProcedures(tenantId, targetProfId, range);
