@@ -1587,7 +1587,18 @@ async function _handleMessage(
     ];
     const isPaymentRequest = PIX_KW.some(k => normPay.includes(k));
     if (isPaymentRequest) {
-      const reply = `Sobre pagamento, é melhor tratar diretamente com o estabelecimento, tá? Aqui eu cuido só dos agendamentos! 😊`;
+      // Notify admin via WhatsApp
+      try {
+        const adminProf = professionals.find((p: any) => p.role === 'admin' && p.phone);
+        if (adminProf?.phone) {
+          const inst = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug || '');
+          const leadLabel = (pushName && pushName !== 'Cliente') ? `*${pushName}* (${phone})` : `*${phone}*`;
+          const notif = `💰 *Solicitação de PIX*\n\nO cliente ${leadLabel} pediu a chave PIX/dados de pagamento.\n\nMensagem: "${text}"\n\n— ${tenantName} (automático)`;
+          evolutionService.sendMessage(inst, adminProf.phone, notif).catch(console.error);
+        }
+      } catch (eNotif) { console.error('[Agent] PIX admin notification error:', eNotif); }
+
+      const reply = `Vou encaminhar sua solicitação para o responsável, tá? Em breve ele te retorna com as informações de pagamento! 😊`;
       session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
       saveSession(session);
       return reply;
