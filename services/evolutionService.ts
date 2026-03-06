@@ -15,7 +15,7 @@ export interface SendMessageResponse {
 // ── Send-side dedup: prevents the exact same message from being sent twice
 // to the same phone within a short window (regardless of which system triggers it)
 const _sentDedup = new Map<string, number>();
-const _SEND_DEDUP_TTL = 30_000; // 30 seconds
+const _SEND_DEDUP_TTL = 180_000; // 3 minutes — prevents duplicates across tab reloads/scheduler ticks
 
 function _isSendDuplicate(phone: string, text: string): boolean {
   const key = `${phone.replace(/\D/g, '')}::${text.trim().slice(0, 150)}`;

@@ -1457,9 +1457,9 @@ class DatabaseService {
       const { error } = await supabase.from('msg_dedup').insert({ fp });
       if (error?.code === '23505') return false; // unique violation — already claimed
       if (error) return true; // table missing or other error — fail open
-      // Fire-and-forget: prune entries older than 2 minutes to keep the table small
+      // Fire-and-forget: prune entries older than 24 hours to keep the table small
       void Promise.resolve(
-        supabase.from('msg_dedup').delete().lt('ts', new Date(Date.now() - 120_000).toISOString())
+        supabase.from('msg_dedup').delete().lt('ts', new Date(Date.now() - 86_400_000).toISOString())
       ).catch(() => {});
       return true;
     } catch {

@@ -100,8 +100,8 @@ async function claimMsg(key: string): Promise<boolean> {
     const { error } = await supabase.from('msg_dedup').insert({ fp: key });
     if (error?.code === '23505') return false; // already processed
     if (error) return true;  // table missing → fail open
-    // prune old entries (fire-and-forget)
-    (async () => { try { await supabase.from('msg_dedup').delete().lt('ts', new Date(Date.now() - 120_000).toISOString()); } catch {} })();
+    // prune old entries older than 24h (fire-and-forget)
+    (async () => { try { await supabase.from('msg_dedup').delete().lt('ts', new Date(Date.now() - 86_400_000).toISOString()); } catch {} })();
     return true;
   } catch { return true; }
 }
@@ -500,8 +500,28 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
   } catch (e) { console.error('[Brain] error:', e); return null; }
 }
 
+// ── Send-side dedup: blocks exact same message to same phone within 3 min ──
+const _wSentDedup = new Map<string, number>();
+const _W_DEDUP_TTL = 180_000; // 3 minutes
+
+function _isWDuplicate(phone: string, text: string): boolean {
+  const key = `${phone.replace(/\D/g, '')}::${text.trim().slice(0, 120)}`;
+  const now = Date.now();
+  const last = _wSentDedup.get(key);
+  if (last !== undefined && now - last < _W_DEDUP_TTL) return true;
+  _wSentDedup.set(key, now);
+  if (_wSentDedup.size > 500) {
+    for (const [k, t] of _wSentDedup) { if (now - t > _W_DEDUP_TTL) _wSentDedup.delete(k); }
+  }
+  return false;
+}
+
 // ── Send WhatsApp message ─────────────────────────────────────────────
 async function sendMsg(instanceName: string, phone: string, text: string, tenantId?: string) {
+  if (_isWDuplicate(phone, text)) {
+    console.log(`[sendMsg] Dedup: blocked duplicate → ${phone}`);
+    return;
+  }
   await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
     method: 'POST', headers: EVO_HEADERS,
     body: JSON.stringify({ number: phone, text, linkPreview: false }),
@@ -1506,10 +1526,11 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       'comeco da tarde', 'começo da tarde', 'final da tarde', 'meio da tarde',
     ];
     const AFFIRM_WORDS = [
-      'sim', 'ok', 'pode', 'certo', 'confirmado', 'quero', 'bora', 'beleza',
-      'combinado', 'claro', 'perfeito', 'otimo', 'obrigado', 'obrigada', 'vlw',
-      'valeu', 'vou', 'estarei', 'ta', 'yes', 'blz', 'show', 'tenho', 'posso',
-      'afirmativo', 'ate la', 'to la', 'boa',
+      'sim', 'ok', 'pode', 'certo', 'confirmado', 'confirmar', 'confirma', 'confirmo',
+      'quero', 'bora', 'beleza', 'combinado', 'claro', 'perfeito', 'otimo',
+      'obrigado', 'obrigada', 'vlw', 'valeu', 'vou', 'estarei', 'ta', 'yes',
+      'blz', 'show', 'tenho', 'posso', 'afirmativo', 'ate la', 'to la', 'boa',
+      'bom', 'tmj', 'fechado', 'isso',
     ];
     const DENY_WORDS = [
       'nao', 'nope', 'negativo', 'impossivel', 'nao vou', 'nao consigo', 'nao quero',
@@ -1616,9 +1637,19 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // When no pendingFollowUpType (session expired) but client sends short affirmative
   // and has an appointment today → respond as follow-up confirmation instead of greeting.
   if (!session.data.pendingFollowUpType && shouldGreet) {
-    const normFb = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
-    const FB_AFFIRM = ['ok', 'sim', 'pode', 'certo', 'confirmado', 'bora', 'beleza', 'ta', 'tá', 'blz', 'vlw', 'valeu', 'show', 'boa', 'obrigado', 'obrigada'];
-    const isShortAffirm = normFb.split(/\s+/).length <= 4 && FB_AFFIRM.some(a => normFb === a || normFb.split(/\s+/).includes(a));
+    const normFb = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?\u{1F4AA}\u{1F44D}\u{2705}\u{1F64F}]/gu, '').trim();
+    const FB_AFFIRM = [
+      'ok', 'sim', 'pode', 'certo', 'confirmado', 'confirmar', 'confirma', 'confirmo',
+      'bora', 'beleza', 'ta', 'tá', 'blz', 'vlw', 'valeu', 'show', 'boa', 'bom',
+      'obrigado', 'obrigada', 'tmj', 'combinado', 'fechado', 'vou', 'estarei',
+      'la', 'claro', 'otimo', 'perfeito', 'isso',
+    ];
+    const FB_PHRASES = ['bom dia', 'boa tarde', 'boa noite', 'pode confirmar', 'pode sim', 'to la', 'la estarei', 'vou sim'];
+    const fbWords = normFb.split(/\s+/);
+    const isShortAffirm = fbWords.length <= 8 && (
+      FB_AFFIRM.some(a => fbWords.includes(a)) ||
+      FB_PHRASES.some(p => normFb.includes(p))
+    );
     if (isShortAffirm) {
       try {
         const { data: custFb } = await supabase.from('customers').select('id, nome')

@@ -983,12 +983,13 @@ async function _handleMessage(
     const wds   = norm.split(/\s+/);
 
     const AFFIRM = [
-      'sim', 'ok', 'pode', 'certo', 'fechado', 'confirmado', 'confirmar', 'quero',
-      'bora', 'beleza', 'combinado', 'claro', 'exato', 'correto', 'perfeito',
-      'otimo', 'obrigado', 'obrigada', 'vlw', 'valeu', 'vou', 'estarei',
+      'sim', 'ok', 'pode', 'certo', 'fechado', 'confirmado', 'confirmar', 'confirma',
+      'confirmo', 'quero', 'bora', 'beleza', 'combinado', 'claro', 'exato', 'correto',
+      'perfeito', 'otimo', 'obrigado', 'obrigada', 'vlw', 'valeu', 'vou', 'estarei',
       'ta', 'tá', 'yes', 'vamos', 'sure', 'blz', 'ótimo', 'show', 'certo',
       'tenho', 'consigo', 'posso', 'afirmativo', 'certeza', 'com certeza',
-      'até lá', 'ate la', 'estarei lá', 'estarei la', 'boa', 'tô lá', 'to la',
+      'até lá', 'ate la', 'estarei lá', 'estarei la', 'boa', 'bom', 'tô lá', 'to la',
+      'tmj', 'isso',
     ];
     const DENY = [
       'nao', 'não', 'nao posso', 'não posso', 'nope', 'negativo', 'impossivel',
