@@ -195,7 +195,7 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
         contents:
           `Hoje é ${today}. Um profissional de barbearia enviou: "${text}"\n` +
           `Classifique a intenção. Intents disponíveis:\n` +
-          `- LIST_APPOINTMENTS: agenda/horários (ex: "quem atendo hoje?", "minha agenda amanhã")\n` +
+          `- LIST_APPOINTMENTS: agenda/horários (ex: "quem atendo hoje?", "minha agenda amanhã", "horários do Gil amanhã", "agenda da Maria hoje")\n` +
           `- COUNT_PROCEDURES: contagem de procedimentos/faturamento próprio (ex: "quantos cortes fiz?", "quanto eu faturei?")\n` +
           `- BOOK: agendar cliente (ex: "marca João sexta às 10h")\n` +
           `- FINANCIAL: faturamento total da barbearia (ex: "faturamento do mês", "quanto faturamos?")\n` +
@@ -206,7 +206,7 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
           `- GOALS: metas de desempenho (ex: "como estão as metas?", "qual minha meta?", "atingimos a meta?")\n` +
           `- HELP: quando não identificar claramente\n` +
           `dateRef: 'today','tomorrow','this_week','last_week','this_month','last_month' ou YYYY-MM-DD.\n` +
-          `targetProfName: nome do profissional alvo (vazio se for consulta própria, '__ALL__' se for todos).`,
+          `targetProfName: nome do profissional alvo extraído da mensagem (ex: "do Gil"→"Gil", "da Maria"→"Maria", "do Carlos"→"Carlos"). Vazio se for consulta própria, '__ALL__' se for todos/geral.`,
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -234,7 +234,9 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
 
   // 5. Rule-based fallback
   const profNameMatch = lower.match(/(?:\bo\b|\ba\b)\s+([a-záéíóúàèìòùâêîôûãõçäëïöü]+)\s+(?:fez|atendeu|teve|realizou|tem|agendou)/);
-  const extractedProfName = profNameMatch ? profNameMatch[1] : '';
+  // Also extract "do Gil", "da Maria", "do Carlos" patterns
+  const profNameMatchDo = lower.match(/(?:\bdo\b|\bda\b)\s+([a-záéíóúàèìòùâêîôûãõçäëïöü]+)/);
+  const extractedProfName = profNameMatch ? profNameMatch[1] : (profNameMatchDo ? profNameMatchDo[1] : '');
 
   // Ranking / comparison detection (must come before COUNT_PROCEDURES to avoid misclassification)
   if (/ranking|quem mais|quem menos|quem foi o melhor|compar(ar|e|a)|melhor profissional|melhor barbeiro/.test(lower)) {
