@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { TenantStatus, Tenant, SupportMessage, ConversationLog } from '../types';
-import { runWeeklyOptimization, OptimizationResult } from '../services/optimizerService';
+import { runWeeklyOptimization, OptimizationResult, runAllTenantsOptimization, AllTenantsResult, EvolutionSnapshot, loadEvolutionHistory } from '../services/optimizerService';
 import { evolutionService } from '../services/evolutionService';
 import { fetchUsageStats, UsageSummary } from '../services/usageTracker';
 import { NICHOS } from '../config/nichoConfigs';
@@ -40,7 +40,7 @@ interface AdminLog {
   detail: string;
 }
 
-type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas';
+type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config';
 
 const STATUS_COLORS: Record<string, string> = {
   [TenantStatus.ACTIVE]: '#22c55e',
@@ -138,12 +138,45 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [usagePeriod, setUsagePeriod] = useState<'today' | 'week' | 'month'>('week');
   const [usageStats, setUsageStats] = useState<UsageSummary | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [usdToBrl, setUsdToBrl] = useState<number | null>(null);
+
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const cached = localStorage.getItem('agz_usd_brl');
+    if (cached) {
+      try {
+        const { date, rate } = JSON.parse(cached);
+        if (date === today) { setUsdToBrl(rate); return; }
+      } catch { /* ignore */ }
+    }
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then(r => r.json())
+      .then(d => {
+        const rate = d?.rates?.BRL;
+        if (rate) {
+          setUsdToBrl(rate);
+          localStorage.setItem('agz_usd_brl', JSON.stringify({ date: today, rate }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Shared OpenAI key
   const [sharedOpenAiKey, setSharedOpenAiKey] = useState('');
   const [showSharedKey, setShowSharedKey] = useState(false);
   const [savingSharedKey, setSavingSharedKey] = useState(false);
   const [sharedKeySaved, setSharedKeySaved] = useState(false);
+
+  // System config
+  const [cfgEmail, setCfgEmail] = useState('');
+  const [cfgPass, setCfgPass] = useState('');
+  const [cfgPassConfirm, setCfgPassConfirm] = useState('');
+  const [cfgPlatformName, setCfgPlatformName] = useState('AgendeZap');
+  const [cfgSupportEmail, setCfgSupportEmail] = useState('');
+  const [cfgSaving, setCfgSaving] = useState(false);
+  const [cfgSaved, setCfgSaved] = useState(false);
+  const [cfgError, setCfgError] = useState('');
+  const [showCfgPass, setShowCfgPass] = useState(false);
 
   // Billing
   const [billingReminders, setBillingReminders] = useState<BillingReminder[]>(loadBillingConfig);
@@ -174,6 +207,16 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [optimizerSettings, setOptimizerSettings] = useState<import('../types').TenantSettings | null>(null);
   const [optimizerSinceDays, setOptimizerSinceDays] = useState(7);
   const [optimizerExpandedId, setOptimizerExpandedId] = useState<string | null>(null);
+  const [optimizerOutcomeFilter, setOptimizerOutcomeFilter] = useState<string | null>(null);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editingOutcome, setEditingOutcome] = useState<ConversationLog['outcome']>('abandoned');
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+
+  // "Otimizar Todos" — global cross-tenant optimization
+  const [optimizingAll, setOptimizingAll] = useState(false);
+  const [allProgress, setAllProgress] = useState<Array<{ tenantId: string; tenantName: string; status: 'pending' | 'running' | 'ok' | 'skipped' | 'error'; message?: string }>>([]);
+  const [allResults, setAllResults] = useState<AllTenantsResult[] | null>(null);
+  const [evolutionHistory, setEvolutionHistory] = useState<EvolutionSnapshot[]>([]);
 
   // Bidirectional support chat
   type SupportChatSummary = { tenantId: string; tenantName: string; lastMessage: string; lastAt: string; unreadCount: number };
@@ -208,6 +251,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     if (tab === 'ia') {
       loadUsage();
       db.getGlobalConfig().then(cfg => setSharedOpenAiKey(cfg['shared_openai_key'] || ''));
+      setEvolutionHistory(loadEvolutionHistory());
     }
   }, [tab, loadUsage]);
 
@@ -221,6 +265,16 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   }, []);
 
   useEffect(() => { if (tab === 'suporte') loadSupportRequests(); }, [tab, loadSupportRequests]);
+
+  useEffect(() => {
+    if (tab === 'config') {
+      db.getGlobalConfig().then(cfg => {
+        setCfgEmail(cfg['admin_email'] || '');
+        setCfgPlatformName(cfg['platform_name'] || 'AgendeZap');
+        setCfgSupportEmail(cfg['support_email'] || '');
+      });
+    }
+  }, [tab]);
 
   const handleDismissSupport = async (tenantId: string) => {
     await (db as any).dismissSupportRequest(tenantId);
@@ -270,6 +324,51 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     } finally {
       setOptimizing(false);
     }
+  };
+
+  const handleRunAllOptimizer = async () => {
+    if (optimizingAll || tenants.length === 0) return;
+    setOptimizingAll(true);
+    setAllResults(null);
+    setAllProgress(tenants.map(t => ({ tenantId: t.id, tenantName: t.name, status: 'pending' })));
+    try {
+      const cfg = await db.getGlobalConfig();
+      const key = cfg['shared_openai_key'] || '';
+      if (!key) {
+        setAllProgress([]);
+        setOptimizingAll(false);
+        alert('Configure uma chave OpenAI compartilhada em Configurações antes de otimizar todos.');
+        return;
+      }
+      const { results } = await runAllTenantsOptimization(
+        tenants.map(t => ({ id: t.id, name: t.name })),
+        key,
+        (tenantId, tenantName, status, message) => {
+          setAllProgress(prev => prev.map(p =>
+            p.tenantId === tenantId ? { ...p, status, message } : p
+          ));
+        }
+      );
+      setAllResults(results);
+      setEvolutionHistory(loadEvolutionHistory());
+    } catch (e: any) {
+      console.error('Erro ao otimizar todos:', e);
+    } finally {
+      setOptimizingAll(false);
+    }
+  };
+
+  const handleDeleteLog = async (id: string) => {
+    await db.deleteConversationLog(id);
+    setOptimizerLogs(prev => prev.filter(l => l.id !== id));
+    setDeletingLogId(null);
+    setOptimizerExpandedId(null);
+  };
+
+  const handleSaveLogEdit = async (id: string) => {
+    await db.updateConversationLog(id, { outcome: editingOutcome });
+    setOptimizerLogs(prev => prev.map(l => l.id === id ? { ...l, outcome: editingOutcome } : l));
+    setEditingLogId(null);
   };
 
   // Bidirectional support chat handlers
@@ -992,46 +1091,6 @@ END $$;`.trim();
       {tab === 'ia' && (
         <div className="space-y-6">
 
-          {/* ── Chave OpenAI Compartilhada ── */}
-          <div className="bg-white rounded-3xl border-2 border-orange-100 p-8 space-y-5">
-            <div>
-              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">🔑 Chave OpenAI Compartilhada</p>
-              <p className="text-xs text-slate-400 mt-1">Ao salvar, a chave é propagada para todos os tenants que não configuraram a própria. Funciona no servidor (Edge Function) e no browser. Não visível para usuários.</p>
-            </div>
-            <div className="flex gap-3">
-              <div className="flex-1 relative">
-                <input
-                  type={showSharedKey ? 'text' : 'password'}
-                  value={sharedOpenAiKey}
-                  onChange={e => setSharedOpenAiKey(e.target.value)}
-                  placeholder="sk-proj-..."
-                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-mono text-sm outline-none focus:border-orange-500 transition-all pr-12"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSharedKey(v => !v)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-black transition-colors text-xs font-black uppercase"
-                >
-                  {showSharedKey ? 'Ocultar' : 'Ver'}
-                </button>
-              </div>
-              <button
-                onClick={handleSaveSharedKey}
-                disabled={savingSharedKey}
-                className={`px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all disabled:opacity-50 ${
-                  sharedKeySaved ? 'bg-green-500 text-white' : 'bg-black text-white hover:bg-orange-500'
-                }`}
-              >
-                {savingSharedKey ? 'Propagando...' : sharedKeySaved ? '✓ Aplicado' : 'Salvar & Aplicar'}
-              </button>
-            </div>
-            {sharedOpenAiKey && (
-              <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">
-                ✓ Chave configurada — {sharedOpenAiKey.length} caracteres
-              </p>
-            )}
-          </div>
-
           {/* Period selector + refresh */}
           <div className="flex items-center gap-4 flex-wrap">
             {(['today', 'week', 'month'] as const).map(p => (
@@ -1050,7 +1109,12 @@ END $$;`.trim();
           {usageStats && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
               <StatCard label="Total de Tokens" value={usageStats.total_tokens.toLocaleString()} icon="🧠" />
-              <StatCard label="Custo Estimado" value={`$${usageStats.total_cost_usd.toFixed(4)}`} icon="💵" color="text-green-600" />
+              <StatCard
+                label="Custo Estimado"
+                value={`$${usageStats.total_cost_usd.toFixed(4)}${usdToBrl ? ` · R$${(usageStats.total_cost_usd * usdToBrl).toFixed(2)}` : ''}`}
+                icon="💵"
+                color="text-green-600"
+              />
               <StatCard label="Chamadas IA" value={usageStats.total_calls.toLocaleString()} icon="📡" />
             </div>
           )}
@@ -1083,7 +1147,12 @@ END $$;`.trim();
                       <td className="px-5 py-4 text-[11px] font-bold text-slate-600 text-right">{row.input_tokens.toLocaleString()}</td>
                       <td className="px-5 py-4 text-[11px] font-bold text-slate-600 text-right">{row.output_tokens.toLocaleString()}</td>
                       <td className="px-5 py-4 font-black text-sm text-black text-right">{row.total_tokens.toLocaleString()}</td>
-                      <td className="px-5 py-4 font-black text-sm text-green-600 text-right">${row.estimated_cost_usd.toFixed(4)}</td>
+                      <td className="px-5 py-4 text-right">
+                        <span className="font-black text-sm text-green-600">${row.estimated_cost_usd.toFixed(4)}</span>
+                        {usdToBrl && (
+                          <span className="block text-[10px] font-bold text-slate-400">R${(row.estimated_cost_usd * usdToBrl).toFixed(2)}</span>
+                        )}
+                      </td>
                       <td className="px-5 py-4 text-[11px] font-bold text-slate-600 text-right">{row.calls.toLocaleString()}</td>
                       <td className="px-5 py-4 text-[10px] font-bold text-slate-400 whitespace-nowrap">
                         {row.last_activity ? new Date(row.last_activity).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
@@ -1099,6 +1168,177 @@ END $$;`.trim();
             <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">ℹ️ Preços de referência</p>
             <p className="text-xs text-blue-600 mt-1">GPT-4o Mini: $0,150/1M tokens entrada · $0,600/1M tokens saída &nbsp;|&nbsp; Gemini 2.0 Flash: gratuito (tier free)</p>
           </div>
+
+          {/* ── Motor Global de IA — Otimizar Todos ── */}
+          <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-3xl border-2 border-violet-200 p-8 space-y-5">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">🌐 Motor Global de IA</p>
+                <p className="font-black text-xl text-violet-900 mt-1">Otimizar Todos os Tenants</p>
+                <p className="text-xs text-violet-600 mt-1 max-w-lg">
+                  Analisa as conversas de <strong>todos os tenants simultaneamente</strong>, extrai padrões globais de sucesso/falha com GPT-4o Mini e aplica aprendizados cruzados — o que funciona em um negócio melhora os outros.
+                </p>
+              </div>
+              <button
+                onClick={handleRunAllOptimizer}
+                disabled={optimizingAll || tenants.length === 0}
+                className="px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-widest bg-violet-700 text-white hover:bg-violet-800 disabled:opacity-40 transition-all flex items-center gap-3 shrink-0 shadow-lg shadow-violet-200"
+              >
+                {optimizingAll ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Otimizando {allProgress.filter(p => p.status === 'ok').length}/{tenants.length}...</>
+                ) : '🚀 Otimizar Todos'}
+              </button>
+            </div>
+
+            {/* Progress list */}
+            {allProgress.length > 0 && (
+              <div className="bg-white/70 backdrop-blur rounded-2xl border border-violet-100 divide-y divide-violet-50 overflow-hidden">
+                {allProgress.map(p => {
+                  const icon = p.status === 'pending' ? '⏳' : p.status === 'running' ? '⚙️' : p.status === 'ok' ? '✅' : p.status === 'skipped' ? '⏭️' : '❌';
+                  const color = p.status === 'ok' ? 'text-green-700' : p.status === 'error' ? 'text-red-600' : p.status === 'skipped' ? 'text-slate-400' : p.status === 'running' ? 'text-violet-700' : 'text-slate-300';
+                  return (
+                    <div key={p.tenantId} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className={`text-base shrink-0 ${p.status === 'running' ? 'animate-spin' : ''}`}>{p.status === 'running' ? '⚙️' : icon}</span>
+                      <p className={`text-xs font-black flex-1 ${color}`}>{p.tenantName}</p>
+                      {p.message && <p className="text-[10px] font-bold text-slate-400 truncate max-w-48">{p.message}</p>}
+                      {p.status === 'running' && <div className="w-3 h-3 border-2 border-violet-300 border-t-violet-700 rounded-full animate-spin shrink-0" />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Summary after all done */}
+            {allResults && (
+              <div className="bg-white rounded-2xl border border-violet-100 p-5 space-y-3">
+                <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest">Resultado Global</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-green-50 rounded-xl p-3 text-center">
+                    <p className="text-2xl font-black text-green-700">{allResults.filter(r => r.status === 'ok').length}</p>
+                    <p className="text-[9px] font-black text-green-600 uppercase tracking-widest mt-0.5">Otimizados</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <p className="text-2xl font-black text-slate-400">{allResults.filter(r => r.status === 'skipped').length}</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Sem dados</p>
+                  </div>
+                  <div className="bg-red-50 rounded-xl p-3 text-center">
+                    <p className="text-2xl font-black text-red-600">{allResults.filter(r => r.status === 'error').length}</p>
+                    <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mt-0.5">Erros</p>
+                  </div>
+                </div>
+                {allResults.filter(r => r.status === 'ok').length > 0 && (
+                  <p className="text-[10px] font-bold text-violet-600">
+                    ✅ Acertos, falhas e bugs coletados de todos os tenants — padrões de comportamento humano aplicados em cada agente.
+                  </p>
+                )}
+                {/* Insights discovered this cycle */}
+                {(() => {
+                  const allInsights = allResults.flatMap(r => r.result?.insights || []).filter(Boolean);
+                  if (allInsights.length === 0) return null;
+                  return (
+                    <div className="bg-violet-50 rounded-xl p-4 space-y-2">
+                      <p className="text-[9px] font-black text-violet-600 uppercase tracking-widest">🧠 Padrões de comportamento humano descobertos neste ciclo</p>
+                      <ul className="space-y-1.5">
+                        {allInsights.slice(0, 8).map((insight, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-violet-400 font-black text-xs shrink-0 mt-0.5">•</span>
+                            <p className="text-xs text-slate-700 leading-relaxed">{insight}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* ── Evolução Global do Agente ── */}
+          {evolutionHistory.length > 0 && (
+            <div className="bg-white rounded-3xl border-2 border-slate-100 p-8 space-y-5">
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">📈 Evolução do Agente Global</p>
+                <p className="font-black text-lg text-black mt-1">Nível de Capacidade da IA</p>
+                <p className="text-xs text-slate-400">Score composto: taxa de conversão + otimizações realizadas. Aumenta conforme mais ciclos são executados.</p>
+              </div>
+
+              {/* Score gauge */}
+              <div className="flex items-center gap-6">
+                <div className="relative w-28 h-28 shrink-0">
+                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="12" />
+                    <circle
+                      cx="50" cy="50" r="40" fill="none"
+                      stroke={evolutionHistory[0].globalScore >= 70 ? '#7c3aed' : evolutionHistory[0].globalScore >= 40 ? '#f97316' : '#ef4444'}
+                      strokeWidth="12"
+                      strokeDasharray={`${evolutionHistory[0].globalScore * 2.51} 251`}
+                      strokeLinecap="round"
+                      className="transition-all duration-700"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <p className="text-2xl font-black text-black leading-none">{evolutionHistory[0].globalScore}</p>
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">/ 100</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Taxa média de conversão</p>
+                    <p className="text-2xl font-black text-orange-600">{evolutionHistory[0].avgConversionRate}%</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Conversas</p>
+                      <p className="text-sm font-black text-slate-700">{evolutionHistory[0].totalConversations.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Agendados</p>
+                      <p className="text-sm font-black text-green-700">{evolutionHistory[0].totalBooked.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tenants opt.</p>
+                      <p className="text-sm font-black text-violet-700">{evolutionHistory[0].tenantsOptimized}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* History timeline */}
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Histórico de Ciclos</p>
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {evolutionHistory.map((snap, i) => {
+                    const prev = evolutionHistory[i + 1];
+                    const delta = prev ? snap.globalScore - prev.globalScore : 0;
+                    return (
+                      <div key={snap.date} className="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-2.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />
+                        <p className="text-[10px] font-black text-slate-500 shrink-0 w-24">
+                          {(() => { try { return new Date(snap.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }); } catch { return ''; } })()}
+                        </p>
+                        <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${snap.globalScore}%`,
+                              backgroundColor: snap.globalScore >= 70 ? '#7c3aed' : snap.globalScore >= 40 ? '#f97316' : '#ef4444'
+                            }}
+                          />
+                        </div>
+                        <p className="font-black text-sm text-black w-8 text-right">{snap.globalScore}</p>
+                        {delta !== 0 && (
+                          <p className={`text-[9px] font-black w-10 text-right ${delta > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {delta > 0 ? '+' : ''}{delta}
+                          </p>
+                        )}
+                        <p className="text-[9px] font-bold text-slate-400 shrink-0">{snap.tenantsOptimized}/{snap.totalTenants} tenants · {snap.avgConversionRate}% conv.</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Otimização de IA por Tenant ── */}
           <div className="bg-white rounded-3xl border-2 border-violet-100 p-8 space-y-6">
@@ -1147,12 +1387,23 @@ END $$;`.trim();
               </div>
             )}
             {optimizerResult && (
-              <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 space-y-2">
+              <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 space-y-3">
                 <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">✅ Otimização concluída — relatório enviado no Suporte do tenant</p>
                 <p className="text-sm font-bold text-green-800">{optimizerResult.summary}</p>
                 <p className="text-[10px] font-bold text-green-600">
                   ✅ {optimizerResult.booked} agendados · ❌ {optimizerResult.abandoned} abandonados · 💬 {optimizerResult.total} conversas analisadas
                 </p>
+                {optimizerResult.insights && optimizerResult.insights.length > 0 && (
+                  <div className="border-t border-green-200 pt-3 space-y-1.5">
+                    <p className="text-[9px] font-black text-green-700 uppercase tracking-widest">🧠 Padrões de comportamento humano identificados</p>
+                    {optimizerResult.insights.map((ins, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="text-green-500 font-black text-xs shrink-0 mt-0.5">•</span>
+                        <p className="text-xs text-green-800 leading-relaxed">{ins}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1160,22 +1411,42 @@ END $$;`.trim();
             {optimizerTenantId && (() => {
               const booked = optimizerLogs.filter(l => l.outcome === 'booked').length;
               const abandoned = optimizerLogs.filter(l => l.outcome === 'abandoned').length;
-              const total = optimizerLogs.length;
+              const duplicates = optimizerLogs.filter(l => l.outcome === 'duplicate').length;
+              const total = optimizerLogs.filter(l => l.outcome !== 'duplicate').length;
               const rate = total > 0 ? Math.round(booked / total * 100) : 0;
               return (
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-5 gap-3">
                   {[
-                    { label: 'Conversas', value: total,     color: 'text-slate-800',  bg: 'bg-slate-50',  emoji: '💬' },
-                    { label: 'Agendados', value: booked,    color: 'text-green-700',  bg: 'bg-green-50',  emoji: '✅' },
-                    { label: 'Abandonados', value: abandoned, color: 'text-red-600',  bg: 'bg-red-50',    emoji: '❌' },
-                    { label: 'Conversão',  value: `${rate}%`, color: 'text-orange-600', bg: 'bg-orange-50', emoji: '🎯' },
-                  ].map(c => (
-                    <div key={c.label} className={`${c.bg} rounded-2xl p-4 space-y-1 border border-slate-100`}>
-                      <p className="text-xl">{c.emoji}</p>
-                      <p className={`text-2xl font-black ${c.color}`}>{optimizerLogsLoading ? '—' : c.value}</p>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.label}</p>
-                    </div>
-                  ))}
+                    { label: 'Conversas',   value: total,      color: 'text-slate-800',  bg: 'bg-slate-50',    emoji: '💬',  filter: 'all' },
+                    { label: 'Agendados',   value: booked,     color: 'text-green-700',  bg: 'bg-green-50',    emoji: '✅',  filter: 'booked' },
+                    { label: 'Abandonados', value: abandoned,  color: 'text-red-600',    bg: 'bg-red-50',      emoji: '❌',  filter: 'abandoned' },
+                    { label: 'Conversão',   value: `${rate}%`, color: 'text-orange-600', bg: 'bg-orange-50',   emoji: '🎯',  filter: null },
+                    { label: 'Duplicatas',  value: duplicates, color: duplicates > 0 ? 'text-yellow-600' : 'text-slate-400', bg: duplicates > 0 ? 'bg-yellow-50' : 'bg-slate-50', emoji: duplicates > 0 ? '⚠️' : '✔️', filter: 'duplicate' },
+                  ].map(c => {
+                    const isActive = c.filter === 'all'
+                      ? optimizerOutcomeFilter === null
+                      : optimizerOutcomeFilter === c.filter;
+                    const handleClick = () => {
+                      if (c.filter === null) return;
+                      if (c.filter === 'all') { setOptimizerOutcomeFilter(null); return; }
+                      setOptimizerOutcomeFilter(prev => prev === c.filter ? null : c.filter);
+                    };
+                    return (
+                      <div
+                        key={c.label}
+                        onClick={handleClick}
+                        title={c.filter && c.filter !== null ? `Filtrar por: ${c.label}` : undefined}
+                        className={`${c.bg} rounded-2xl p-4 space-y-1 border transition-all select-none ${c.filter ? 'cursor-pointer hover:shadow-md hover:scale-[1.02]' : ''} ${isActive ? 'ring-2 ring-black shadow-md' : 'border-slate-100'}`}
+                      >
+                        <p className="text-xl">{c.emoji}</p>
+                        <p className={`text-2xl font-black ${c.color}`}>{optimizerLogsLoading ? '—' : c.value}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.label}</p>
+                        {isActive && c.filter && (
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">● filtro ativo</p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}
@@ -1212,66 +1483,179 @@ END $$;`.trim();
             )}
 
             {/* Conversation logs */}
-            {optimizerTenantId && (
-              <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Conversas do Tenant</p>
-                  <p className="text-[10px] font-black text-slate-400">{optimizerLogs.length} registros</p>
-                </div>
-                {optimizerLogsLoading ? (
-                  <div className="flex items-center gap-3 p-8">
-                    <div className="w-4 h-4 border-2 border-slate-100 border-t-violet-500 rounded-full animate-spin" />
-                    <p className="text-xs font-black text-slate-400 uppercase">Carregando...</p>
+            {optimizerTenantId && (() => {
+              const LABELS: Record<string, { label: string; color: string; emoji: string }> = {
+                booked:    { label: 'Agendado',   color: 'bg-green-100 text-green-700',   emoji: '✅' },
+                abandoned: { label: 'Abandonado', color: 'bg-red-100 text-red-600',       emoji: '❌' },
+                info:      { label: 'Informação', color: 'bg-slate-100 text-slate-600',   emoji: 'ℹ️' },
+                duplicate: { label: 'Duplicata',  color: 'bg-yellow-100 text-yellow-700', emoji: '⚠️' },
+              };
+              const visibleLogs = optimizerOutcomeFilter
+                ? optimizerLogs.filter(l => l.outcome === optimizerOutcomeFilter)
+                : optimizerLogs;
+              return (
+                <div className="border border-slate-100 rounded-2xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Conversas do Tenant</p>
+                      {optimizerOutcomeFilter && (
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${LABELS[optimizerOutcomeFilter]?.color}`}>
+                          {LABELS[optimizerOutcomeFilter]?.label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[10px] font-black text-slate-400">{visibleLogs.length} registros</p>
+                      {optimizerOutcomeFilter && (
+                        <button onClick={() => setOptimizerOutcomeFilter(null)}
+                          className="text-[9px] font-black text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors">
+                          ✕ limpar filtro
+                        </button>
+                      )}
+                    </div>
                   </div>
-                ) : optimizerLogs.length === 0 ? (
-                  <div className="p-10 text-center">
-                    <p className="text-3xl mb-2">💬</p>
-                    <p className="text-xs font-black text-slate-300 uppercase tracking-wider">Nenhuma conversa registrada no período</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
-                    {optimizerLogs.map(log => {
-                      const LABELS: Record<string, { label: string; color: string; emoji: string }> = {
-                        booked:    { label: 'Agendado',   color: 'bg-green-100 text-green-700', emoji: '✅' },
-                        abandoned: { label: 'Abandonado', color: 'bg-red-100 text-red-600',     emoji: '❌' },
-                        info:      { label: 'Informação', color: 'bg-slate-100 text-slate-600', emoji: 'ℹ️' },
-                      };
-                      const info = LABELS[log.outcome] || LABELS.info;
-                      const isExp = optimizerExpandedId === log.id;
-                      return (
-                        <div key={log.id}>
-                          <button
-                            onClick={() => setOptimizerExpandedId(isExp ? null : log.id)}
-                            className="w-full flex items-center gap-4 px-5 py-2.5 hover:bg-slate-50 transition-all text-left"
-                          >
-                            <span className="text-sm shrink-0">{info.emoji}</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-black text-slate-800">
-                                {(() => { try { return new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
-                              </p>
-                              <p className="text-[10px] font-bold text-slate-400">{log.turns} turnos</p>
-                            </div>
-                            <span className={`shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full ${info.color}`}>{info.label}</span>
-                            <span className={`text-[10px] text-slate-300 font-black transition-transform ${isExp ? 'rotate-90' : ''}`}>▶</span>
-                          </button>
-                          {isExp && (
-                            <div className="px-5 pb-3 space-y-1.5 bg-slate-50">
-                              {(log.history || []).map((msg, i) => (
-                                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                  <div className={`max-w-[80%] px-3 py-1.5 rounded-[12px] text-xs font-medium ${
-                                    msg.role === 'user' ? 'bg-black text-white' : 'bg-orange-50 border border-orange-100 text-slate-700'
-                                  }`}>{msg.text}</div>
+                  {optimizerLogsLoading ? (
+                    <div className="flex items-center gap-3 p-8">
+                      <div className="w-4 h-4 border-2 border-slate-100 border-t-violet-500 rounded-full animate-spin" />
+                      <p className="text-xs font-black text-slate-400 uppercase">Carregando...</p>
+                    </div>
+                  ) : visibleLogs.length === 0 ? (
+                    <div className="p-10 text-center">
+                      <p className="text-3xl mb-2">{optimizerOutcomeFilter ? LABELS[optimizerOutcomeFilter]?.emoji : '💬'}</p>
+                      <p className="text-xs font-black text-slate-300 uppercase tracking-wider">
+                        {optimizerOutcomeFilter ? `Nenhum registro de "${LABELS[optimizerOutcomeFilter]?.label}" no período` : 'Nenhuma conversa registrada no período'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-50 max-h-96 overflow-y-auto">
+                      {visibleLogs.map(log => {
+                        const info = LABELS[log.outcome] || LABELS.info;
+                        const isExp = optimizerExpandedId === log.id;
+                        const isDuplicate = log.outcome === 'duplicate';
+                        const dupMsg = isDuplicate ? (log.history?.[0] as any)?.text || '' : '';
+                        const isEditing = editingLogId === log.id;
+                        const isDeleting = deletingLogId === log.id;
+                        return (
+                          <div key={log.id} className="group">
+                            <div className={`flex items-center gap-0 ${isDuplicate ? 'border-l-[3px] border-l-yellow-400' : ''}`}>
+                              {/* Main row — expand on click */}
+                              <button
+                                onClick={() => { setOptimizerExpandedId(isExp ? null : log.id); setEditingLogId(null); setDeletingLogId(null); }}
+                                className="flex-1 flex items-center gap-4 px-5 py-3 hover:bg-slate-50 transition-all text-left"
+                              >
+                                <span className="text-sm shrink-0">{info.emoji}</span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs font-black text-slate-800">
+                                      {(() => { try { return new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+                                    </p>
+                                    {log.phone && <p className="text-[10px] font-bold text-slate-400">{log.phone}</p>}
+                                  </div>
+                                  {isDuplicate ? (
+                                    <p className="text-[10px] font-bold text-yellow-600 truncate mt-0.5">
+                                      Msg repetida: "{dupMsg.slice(0, 60)}{dupMsg.length > 60 ? '…' : ''}"
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] font-bold text-slate-400">{log.turns} turnos na conversa</p>
+                                  )}
                                 </div>
-                              ))}
+                                <span className={`shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full ${info.color}`}>{info.label}</span>
+                                <span className={`text-[10px] text-slate-300 font-black transition-transform ${isExp ? 'rotate-90' : ''}`}>▶</span>
+                              </button>
+                              {/* Action buttons — visible on hover */}
+                              <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                <button
+                                  onClick={e => { e.stopPropagation(); setEditingLogId(isEditing ? null : log.id); setEditingOutcome(log.outcome); setDeletingLogId(null); setOptimizerExpandedId(log.id); }}
+                                  title="Reclassificar apontamento"
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-all"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setDeletingLogId(isDeleting ? null : log.id); setEditingLogId(null); setOptimizerExpandedId(log.id); }}
+                                  title="Apagar apontamento"
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+
+                            {/* Expanded panel */}
+                            {isExp && (
+                              <div className="px-5 pb-4 pt-2 bg-slate-50 space-y-3">
+
+                                {/* Edit panel */}
+                                {isEditing && (
+                                  <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
+                                    <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest shrink-0">Reclassificar como:</p>
+                                    <select
+                                      value={editingOutcome}
+                                      onChange={e => setEditingOutcome(e.target.value as ConversationLog['outcome'])}
+                                      className="flex-1 min-w-28 px-3 py-1.5 rounded-lg border border-violet-200 bg-white text-xs font-bold text-slate-700 outline-none focus:border-violet-500"
+                                    >
+                                      <option value="booked">✅ Agendado</option>
+                                      <option value="abandoned">❌ Abandonado</option>
+                                      <option value="info">ℹ️ Informação</option>
+                                      <option value="duplicate">⚠️ Duplicata</option>
+                                    </select>
+                                    <button onClick={() => handleSaveLogEdit(log.id)} className="px-3 py-1.5 bg-violet-600 text-white text-[10px] font-black rounded-lg hover:bg-violet-700 transition-all uppercase tracking-widest">Salvar</button>
+                                    <button onClick={() => setEditingLogId(null)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-50 transition-all uppercase tracking-widest">Cancelar</button>
+                                  </div>
+                                )}
+
+                                {/* Delete confirmation */}
+                                {isDeleting && (
+                                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
+                                    <p className="text-xs font-bold text-red-700 flex-1">Apagar este apontamento permanentemente? Ele não será mais considerado nas próximas otimizações.</p>
+                                    <button onClick={() => handleDeleteLog(log.id)} className="px-3 py-1.5 bg-red-600 text-white text-[10px] font-black rounded-lg hover:bg-red-700 transition-all uppercase tracking-widest shrink-0">Apagar</button>
+                                    <button onClick={() => setDeletingLogId(null)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-500 text-[10px] font-black rounded-lg hover:bg-slate-50 transition-all uppercase tracking-widest shrink-0">Cancelar</button>
+                                  </div>
+                                )}
+
+                                {isDuplicate ? (
+                                  <div className="space-y-2">
+                                    <p className="text-[10px] font-black text-yellow-700 uppercase tracking-widest">⚠️ Mensagem Duplicada Detectada</p>
+                                    <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl px-4 py-3 space-y-1">
+                                      <p className="text-[9px] font-black text-yellow-600 uppercase tracking-widest">Mensagem repetida</p>
+                                      <p className="text-sm font-bold text-slate-800">"{dupMsg}"</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                      <div className="bg-white border border-slate-100 rounded-xl px-3 py-2">
+                                        <p className="font-black text-slate-400 uppercase tracking-widest mb-0.5">Lead (telefone)</p>
+                                        <p className="font-bold text-slate-700">{log.phone || '—'}</p>
+                                      </div>
+                                      <div className="bg-white border border-slate-100 rounded-xl px-3 py-2">
+                                        <p className="font-black text-slate-400 uppercase tracking-widest mb-0.5">Quando ocorreu</p>
+                                        <p className="font-bold text-slate-700">
+                                          {(() => { try { return new Date(log.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }); } catch { return '—'; } })()}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="bg-white border border-slate-100 rounded-xl px-3 py-2">
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Motivo provável</p>
+                                      <p className="text-[10px] font-bold text-slate-600">O agente detectou o mesmo gatilho duas vezes em menos de 10 minutos (ex: mensagem de reset/sair recebida duplicada pelo webhook) e enviou a mesma resposta novamente. O GPT-4o Mini incluirá este padrão na próxima otimização automática.</p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  (log.history || []).map((msg, i) => (
+                                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                      <div className={`max-w-[80%] px-3 py-1.5 rounded-[12px] text-xs font-medium ${
+                                        msg.role === 'user' ? 'bg-black text-white' : 'bg-orange-50 border border-orange-100 text-slate-700'
+                                      }`}>{msg.text}</div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1447,6 +1831,149 @@ END $$;`.trim();
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ══════════════════════ CONFIGURAÇÕES ══════════════════════ */}
+      {tab === 'config' && (
+        <div className="space-y-6 max-w-2xl">
+
+          {/* ── Credenciais de Acesso ── */}
+          <div className="bg-white rounded-3xl border-2 border-slate-100 p-8 space-y-5">
+            <div>
+              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">🔐 Credenciais de Acesso</p>
+              <p className="text-xs text-slate-400 mt-1">Altere o e-mail e a senha de login do superadmin. Após salvar, as novas credenciais serão exigidas no próximo login.</p>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Novo E-mail de Acesso</label>
+                <input
+                  type="email"
+                  value={cfgEmail}
+                  onChange={e => setCfgEmail(e.target.value)}
+                  placeholder="admin@suaempresa.com"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-mono text-sm outline-none focus:border-orange-500 transition-all"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nova Senha</label>
+                <div className="relative">
+                  <input
+                    type={showCfgPass ? 'text' : 'password'}
+                    value={cfgPass}
+                    onChange={e => setCfgPass(e.target.value)}
+                    placeholder="Mínimo 8 caracteres"
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-mono text-sm outline-none focus:border-orange-500 transition-all pr-16"
+                  />
+                  <button type="button" onClick={() => setShowCfgPass(v => !v)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-black text-xs font-black uppercase">
+                    {showCfgPass ? 'Ocultar' : 'Ver'}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar Nova Senha</label>
+                <input
+                  type="password"
+                  value={cfgPassConfirm}
+                  onChange={e => setCfgPassConfirm(e.target.value)}
+                  placeholder="Repita a senha"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-mono text-sm outline-none focus:border-orange-500 transition-all"
+                />
+              </div>
+            </div>
+            {cfgError && <p className="text-xs font-bold text-red-500">{cfgError}</p>}
+            <button
+              onClick={async () => {
+                setCfgError('');
+                if (!cfgEmail.trim()) { setCfgError('Informe o e-mail.'); return; }
+                if (cfgPass && cfgPass !== cfgPassConfirm) { setCfgError('As senhas não coincidem.'); return; }
+                if (cfgPass && cfgPass.length < 8) { setCfgError('Senha deve ter no mínimo 8 caracteres.'); return; }
+                setCfgSaving(true);
+                try {
+                  const updates: Record<string, string> = { admin_email: cfgEmail.trim() };
+                  if (cfgPass) updates['admin_password'] = cfgPass;
+                  await db.saveGlobalConfig(updates);
+                  setCfgSaved(true);
+                  setCfgPass(''); setCfgPassConfirm('');
+                  setTimeout(() => setCfgSaved(false), 3000);
+                } finally { setCfgSaving(false); }
+              }}
+              disabled={cfgSaving}
+              className={`px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all disabled:opacity-50 ${cfgSaved ? 'bg-green-500 text-white' : 'bg-black text-white hover:bg-orange-500'}`}
+            >
+              {cfgSaving ? 'Salvando...' : cfgSaved ? '✓ Credenciais Salvas' : 'Salvar Credenciais'}
+            </button>
+          </div>
+
+          {/* ── Chave OpenAI ── */}
+          <div className="bg-white rounded-3xl border-2 border-orange-100 p-8 space-y-5">
+            <div>
+              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">🔑 Chave OpenAI Compartilhada</p>
+              <p className="text-xs text-slate-400 mt-1">Propagada para todos os tenants que não configuraram a própria. Usada tanto no servidor (Edge Function) quanto no browser.</p>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <input
+                  type={showSharedKey ? 'text' : 'password'}
+                  value={sharedOpenAiKey}
+                  onChange={e => setSharedOpenAiKey(e.target.value)}
+                  placeholder="sk-proj-..."
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-mono text-sm outline-none focus:border-orange-500 transition-all pr-16"
+                />
+                <button type="button" onClick={() => setShowSharedKey(v => !v)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-black text-xs font-black uppercase">
+                  {showSharedKey ? 'Ocultar' : 'Ver'}
+                </button>
+              </div>
+              <button onClick={handleSaveSharedKey} disabled={savingSharedKey}
+                className={`px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all disabled:opacity-50 ${sharedKeySaved ? 'bg-green-500 text-white' : 'bg-black text-white hover:bg-orange-500'}`}>
+                {savingSharedKey ? 'Salvando...' : sharedKeySaved ? '✓ Aplicado' : 'Salvar & Aplicar'}
+              </button>
+            </div>
+            {sharedOpenAiKey && (
+              <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">
+                ✓ Chave configurada — {sharedOpenAiKey.length} caracteres
+              </p>
+            )}
+          </div>
+
+          {/* ── Plataforma ── */}
+          <div className="bg-white rounded-3xl border-2 border-slate-100 p-8 space-y-5">
+            <div>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">🏢 Dados da Plataforma</p>
+              <p className="text-xs text-slate-400 mt-1">Informações gerais exibidas no sistema.</p>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome da Plataforma</label>
+                <input type="text" value={cfgPlatformName} onChange={e => setCfgPlatformName(e.target.value)}
+                  placeholder="AgendeZap"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-500 transition-all" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail de Suporte</label>
+                <input type="email" value={cfgSupportEmail} onChange={e => setCfgSupportEmail(e.target.value)}
+                  placeholder="suporte@agendezap.com"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-500 transition-all" />
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                await db.saveGlobalConfig({ platform_name: cfgPlatformName, support_email: cfgSupportEmail });
+                setCfgSaved(true); setTimeout(() => setCfgSaved(false), 2000);
+              }}
+              className="px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest bg-black text-white hover:bg-orange-500 transition-all">
+              Salvar Plataforma
+            </button>
+          </div>
+
+          {/* ── Danger Zone ── */}
+          <div className="bg-white rounded-3xl border-2 border-red-100 p-8 space-y-4">
+            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">⚠️ Zona de Risco</p>
+            <p className="text-xs text-slate-400">Credenciais de emergência (hardcoded): <span className="font-mono text-slate-600">admin@super.com</span> — use apenas se perder acesso às credenciais configuradas acima.</p>
+          </div>
+
         </div>
       )}
 

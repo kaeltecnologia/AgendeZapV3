@@ -89,6 +89,9 @@ interface Session {
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const sessions = new Map<string, Session>();
 
+// Tracks last sent message per session to detect duplicates
+const lastSentMsg = new Map<string, { text: string; ts: number }>();
+
 function sessionKey(tenantId: string, phone: string): string {
   return `${tenantId}::${phone}`;
 }
@@ -138,6 +141,18 @@ function logConv(
     outcome,
     turns: history.filter(h => h.role === 'user').length,
     history,
+    started_at: new Date().toISOString(),
+  }).then(() => {}).catch(() => {});
+}
+
+/** Loga quando o agente envia a mesma mensagem duas vezes seguidas para o mesmo lead. */
+function logDuplicate(tenantId: string, phone: string, text: string): void {
+  supabase.from('conversation_logs').insert({
+    tenant_id: tenantId,
+    phone,
+    outcome: 'duplicate',
+    turns: 0,
+    history: [{ role: 'bot', text, note: 'DUPLICATE_DETECTED' }],
     started_at: new Date().toISOString(),
   }).then(() => {}).catch(() => {});
 }
@@ -831,7 +846,7 @@ function isLocalDuplicate(fp: string): boolean {
 // MAIN HANDLER
 // =====================================================================
 
-export async function handleMessage(
+async function _handleMessage(
   tenant: any,
   phone: string,
   messageText: string,
@@ -2096,4 +2111,31 @@ export async function handleMessage(
   saveSession(session);
   if (shouldGreet) _greetedToday.set(_greetKey, brasiliaDate);
   return finalReply;
+}
+
+/**
+ * Wrapper público de handleMessage com detecção de mensagens duplicadas.
+ * Quando o agente envia a mesma resposta duas vezes seguidas para o mesmo lead
+ * (dentro de 10 minutos), registra o evento em conversation_logs para análise semanal.
+ */
+export async function handleMessage(
+  tenant: any,
+  phone: string,
+  messageText: string,
+  pushName?: string,
+  options?: { isAudio?: boolean }
+): Promise<string | null> {
+  const result = await _handleMessage(tenant, phone, messageText, pushName, options);
+  if (result) {
+    const key = `${tenant.id}:${phone}`;
+    const prev = lastSentMsg.get(key);
+    const now = Date.now();
+    // Duplicate = same text sent within 10 minutes
+    if (prev && prev.text === result && now - prev.ts < 10 * 60 * 1000) {
+      logDuplicate(tenant.id, phone, result);
+      console.warn(`[Agent] Duplicate message detected for ${phone}: "${result.slice(0, 60)}..."`);
+    }
+    lastSentMsg.set(key, { text: result, ts: now });
+  }
+  return result;
 }

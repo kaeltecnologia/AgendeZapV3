@@ -38,7 +38,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
       // Lógica de Login Existente
       if ((cleanEmail === 'admin@super.com' && cleanPassword === 'M@theus2026') || (cleanEmail === 'admin@agendezap.com' && cleanPassword === 'admin123')) {
-        await onLogin('SUPERADMIN');
+        await onLogin('SUPERADMIN', undefined, cleanEmail, cleanPassword);
       } else {
         const parts = cleanEmail.split('@');
         if (parts.length < 2) {

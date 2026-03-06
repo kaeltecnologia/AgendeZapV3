@@ -37,7 +37,8 @@ export default function OtimizacaoView({ tenantId }: Props) {
 
   const booked = logs.filter(l => l.outcome === 'booked').length;
   const abandoned = logs.filter(l => l.outcome === 'abandoned').length;
-  const total = logs.length;
+  const duplicates = logs.filter(l => l.outcome === 'duplicate').length;
+  const total = logs.filter(l => l.outcome !== 'duplicate').length;
   const conversionRate = total > 0 ? Math.round((booked / total) * 100) : 0;
 
   return (
@@ -67,12 +68,13 @@ export default function OtimizacaoView({ tenantId }: Props) {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         {[
-          { label: 'Conversas', value: total,             color: 'text-slate-800',  bg: 'bg-slate-50',  emoji: '💬' },
-          { label: 'Agendados', value: booked,            color: 'text-green-700',  bg: 'bg-green-50',  emoji: '✅' },
-          { label: 'Abandonados', value: abandoned,       color: 'text-red-600',    bg: 'bg-red-50',    emoji: '❌' },
-          { label: 'Conversão',  value: `${conversionRate}%`, color: 'text-orange-600', bg: 'bg-orange-50', emoji: '🎯' },
+          { label: 'Conversas',   value: total,                  color: 'text-slate-800',   bg: 'bg-slate-50',   emoji: '💬' },
+          { label: 'Agendados',   value: booked,                 color: 'text-green-700',   bg: 'bg-green-50',   emoji: '✅' },
+          { label: 'Abandonados', value: abandoned,              color: 'text-red-600',     bg: 'bg-red-50',     emoji: '❌' },
+          { label: 'Conversão',   value: `${conversionRate}%`,   color: 'text-orange-600',  bg: 'bg-orange-50',  emoji: '🎯' },
+          { label: 'Duplicatas',  value: duplicates,             color: duplicates > 0 ? 'text-yellow-600' : 'text-slate-400', bg: duplicates > 0 ? 'bg-yellow-50' : 'bg-slate-50', emoji: duplicates > 0 ? '⚠️' : '✔️' },
         ].map(card => (
           <div key={card.label} className={`${card.bg} rounded-2xl p-4 space-y-1 border border-slate-100`}>
             <p className="text-xl">{card.emoji}</p>

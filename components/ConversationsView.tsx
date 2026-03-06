@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
-import { evolutionService } from '../services/evolutionService';
+import { evolutionService, EVOLUTION_API_URL, EVOLUTION_API_KEY } from '../services/evolutionService';
 import { supabase } from '../services/supabase';
-import { Customer } from '../types';
+import { Customer, Service, Professional, AppointmentStatus, BookingSource } from '../types';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
 
 interface ConvMessage {
@@ -54,6 +54,15 @@ function normalizeEvoMsg(msg: any, extrairNumero: (m: any) => string | null) {
   };
 }
 
+// ── Profile pic cache (localStorage, 24h TTL) ────────────────────────────────
+const PIC_CACHE_KEY = 'agz_profile_pics';
+function loadPicCache(): Record<string, { url: string; ts: number }> {
+  try { return JSON.parse(localStorage.getItem(PIC_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+function savePicCache(cache: Record<string, { url: string; ts: number }>) {
+  try { localStorage.setItem(PIC_CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+
 const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
@@ -61,6 +70,22 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [instanceName, setInstanceName] = useState('');
   const [connected, setConnected] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Profile pictures: phone → url
+  const [profilePics, setProfilePics] = useState<Record<string, string>>(() => {
+    const cache = loadPicCache();
+    const now = Date.now();
+    const valid: Record<string, string> = {};
+    for (const [phone, { url, ts }] of Object.entries(cache)) {
+      if (url && now - ts < 24 * 3600 * 1000) valid[phone] = url;
+    }
+    return valid;
+  });
+
+  // Seen timestamps: phone → lastTimestamp when human last opened that conv
+  const [seenAt, setSeenAt] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem(`agz_conv_seen_${tenantId}`) || '{}'); } catch { return {}; }
+  });
 
   // Track whether the initial 10-day bulk import from Evolution API has been done
   const importedRef = useRef(false);
@@ -82,6 +107,22 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [transcriptions, setTranscriptions] = useState<Record<string, string>>({});
   const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
   const [apiKey, setApiKey] = useState('');
+
+  // Quick booking modal
+  const [showBooking, setShowBooking] = useState(false);
+  const [bookingProfs, setBookingProfs] = useState<Professional[]>([]);
+  const [bookingServices, setBookingServices] = useState<Service[]>([]);
+  const [bookingCustomerId, setBookingCustomerId] = useState('');
+  const [bookingProfId, setBookingProfId] = useState('');
+  const [bookingServiceId, setBookingServiceId] = useState('');
+  const [bookingDate, setBookingDate] = useState('');
+  const [bookingTime, setBookingTime] = useState('');
+  const [bookingSaving, setBookingSaving] = useState(false);
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingError, setBookingError] = useState('');
+  const [bookingSlots, setBookingSlots] = useState<string[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [dayClosed, setDayClosed] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -388,6 +429,73 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const findCustomerByPhone = (phone: string) =>
     customers.find(c => phonesMatch(c.phone, phone));
 
+  // Mark conversation as seen + select it
+  const handleSelectConv = (phone: string) => {
+    setSelectedPhone(phone);
+    const conv = conversations.find(c => c.phone === phone);
+    if (conv) {
+      const updated = { ...seenAt, [phone]: conv.lastTimestamp };
+      setSeenAt(updated);
+      try { localStorage.setItem(`agz_conv_seen_${tenantId}`, JSON.stringify(updated)); } catch {}
+    }
+  };
+
+  // Whether a conversation has unread messages (has incoming msgs after last seen)
+  const isUnread = (conv: Conversation) => {
+    const seen = seenAt[conv.phone] ?? 0;
+    return conv.lastTimestamp > seen && conv.messages.some(m => !m.fromMe);
+  };
+
+  // Fetch profile pics via batch endpoint (findContacts) — single call for all contacts
+  useEffect(() => {
+    if (!instanceName || !connected || conversations.length === 0) return;
+    const cache = loadPicCache();
+    const now = Date.now();
+    // Check if any conversation needs a refresh (not cached or expired)
+    const needsRefresh = conversations.some(c => {
+      const cached = cache[c.phone];
+      return !cached || now - cached.ts > 24 * 3600 * 1000;
+    });
+    if (!needsRefresh) return;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `${EVOLUTION_API_URL}/chat/findContacts/${instanceName}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+            body: '{}',
+          }
+        );
+        if (!res.ok) return;
+        const contacts: any[] = await res.json();
+        if (!Array.isArray(contacts)) return;
+
+        const newCache = loadPicCache();
+        const newPics: Record<string, string> = {};
+        const ts = Date.now();
+
+        for (const contact of contacts) {
+          // remoteJid format: "554499241914@s.whatsapp.net"
+          const jid: string = contact.remoteJid || contact.id || '';
+          if (!jid || jid.includes('@g.us')) continue;
+          const phone = jid.replace(/@.*/, '').replace(/\D/g, '');
+          if (!phone) continue;
+          const url: string = contact.profilePicUrl || contact.profilePictureUrl || '';
+          newCache[phone] = { url, ts };
+          if (url) newPics[phone] = url;
+        }
+
+        savePicCache(newCache);
+        if (Object.keys(newPics).length > 0) {
+          setProfilePics(prev => ({ ...prev, ...newPics }));
+        }
+      } catch {}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.length, instanceName, connected]);
+
   const toggleAiForLead = async (phone: string) => {
     const cust = findCustomerByPhone(phone);
     if (!cust || togglingAi) return;
@@ -418,11 +526,143 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } catch (e) { console.error('clearWaitlistAlert error:', e); }
   };
 
+  // Recompute available slots whenever prof / date / service changes while modal is open
+  useEffect(() => {
+    if (!showBooking || !bookingProfId || !bookingDate || !bookingServiceId) {
+      setBookingSlots([]);
+      setDayClosed(false);
+      return;
+    }
+    setSlotsLoading(true);
+    setBookingTime('');
+    (async () => {
+      try {
+        const settings = await db.getSettings(tenantId);
+        // Day of week for chosen date (avoid DST: use midday)
+        const dow = new Date(`${bookingDate}T12:00:00`).getDay();
+        const dayConfig = settings.operatingHours?.[dow];
+        if (!dayConfig?.active) {
+          setDayClosed(true);
+          setBookingSlots([]);
+          return;
+        }
+        setDayClosed(false);
+        const [openStr, closeStr] = (dayConfig.range || '08:00-20:00').split('-');
+        const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+        const openMin = toMin(openStr);
+        const closeMin = toMin(closeStr);
+        const svc = bookingServices.find(s => s.id === bookingServiceId);
+        const dur = svc?.durationMinutes || 30;
+
+        // Generate all possible start slots
+        const allSlots: string[] = [];
+        for (let cur = openMin; cur + dur <= closeMin; cur += dur) {
+          allSlots.push(`${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`);
+        }
+
+        // Fetch booked appointments for this prof on this day
+        const allAppts = await db.getAppointments(tenantId);
+        const todayAppts = allAppts.filter(a =>
+          a.professional_id === bookingProfId &&
+          a.status !== AppointmentStatus.CANCELLED &&
+          new Date(a.startTime).toLocaleDateString('en-CA') === bookingDate
+        );
+
+        // Filter: slot is available if it doesn't overlap any existing appointment
+        const nowMin = bookingDate === new Date().toISOString().slice(0, 10)
+          ? new Date().getHours() * 60 + new Date().getMinutes()
+          : 0;
+
+        const available = allSlots.filter(slot => {
+          const slotStart = toMin(slot);
+          if (slotStart <= nowMin) return false; // skip past slots on today
+          const slotEnd = slotStart + dur;
+          return !todayAppts.some(a => {
+            const aStart = new Date(a.startTime);
+            const aStartMin = aStart.getHours() * 60 + aStart.getMinutes();
+            const aEndMin = aStartMin + (a.durationMinutes || 30);
+            return slotStart < aEndMin && slotEnd > aStartMin;
+          });
+        });
+
+        setBookingSlots(available);
+      } catch { setBookingSlots([]); }
+      finally { setSlotsLoading(false); }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBooking, bookingProfId, bookingDate, bookingServiceId]);
+
+  const openBookingModal = async () => {
+    setBookingSuccess(false);
+    setBookingError('');
+    setBookingSaving(false);
+    // Default date = today, time reset (will be chosen from slots)
+    setBookingDate(new Date().toISOString().slice(0, 10));
+    setBookingTime('');
+    // Pre-select customer from selected conversation
+    if (selectedPhone) {
+      const cust = findCustomerByPhone(selectedPhone);
+      setBookingCustomerId(cust?.id || '');
+    } else {
+      setBookingCustomerId('');
+    }
+    setBookingProfId('');
+    setBookingServiceId('');
+    // Load profs + services if not yet loaded
+    if (bookingProfs.length === 0 || bookingServices.length === 0) {
+      const [profs, svcs] = await Promise.all([
+        db.getProfessionals(tenantId),
+        db.getServices(tenantId),
+      ]);
+      setBookingProfs(profs.filter((p: Professional) => p.active !== false));
+      setBookingServices(svcs.filter((s: Service) => s.active !== false));
+      if (profs.length > 0) setBookingProfId(profs[0].id);
+      if (svcs.length > 0) setBookingServiceId(svcs[0].id);
+    } else {
+      if (bookingProfId === '' && bookingProfs.length > 0) setBookingProfId(bookingProfs[0].id);
+      if (bookingServiceId === '' && bookingServices.length > 0) setBookingServiceId(bookingServices[0].id);
+    }
+    setShowBooking(true);
+  };
+
+  const saveBooking = async () => {
+    if (!bookingCustomerId || !bookingProfId || !bookingServiceId || !bookingDate) {
+      setBookingError('Preencha todos os campos.');
+      return;
+    }
+    if (!bookingTime) {
+      setBookingError('Selecione um horário disponível.');
+      return;
+    }
+    setBookingSaving(true);
+    setBookingError('');
+    try {
+      const svc = bookingServices.find(s => s.id === bookingServiceId);
+      const startTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString();
+      await db.addAppointment({
+        tenant_id: tenantId,
+        customer_id: bookingCustomerId,
+        professional_id: bookingProfId,
+        service_id: bookingServiceId,
+        startTime,
+        durationMinutes: svc?.durationMinutes || 30,
+        status: AppointmentStatus.CONFIRMED,
+        source: BookingSource.WEB,
+      });
+      setBookingSuccess(true);
+      setTimeout(() => setShowBooking(false), 1500);
+    } catch (e: any) {
+      setBookingError(e?.message || 'Erro ao agendar.');
+    } finally {
+      setBookingSaving(false);
+    }
+  };
+
   const openContact = (phone: string, name: string) => {
     const cleanPhone = phone.replace(/\D/g, '');
     const existing = conversations.find(c => c.phone === cleanPhone || c.phone.slice(-11) === cleanPhone.slice(-11));
     if (existing) {
-      setSelectedPhone(existing.phone);
+      handleSelectConv(existing.phone);
     } else {
       // Create a virtual conversation
       const newConv: Conversation = {
@@ -434,7 +674,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         messages: [],
       };
       setConversations(prev => [newConv, ...prev]);
-      setSelectedPhone(cleanPhone);
+      handleSelectConv(cleanPhone);
     }
     setShowNewConv(false);
     setContactSearch('');
@@ -453,13 +693,21 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               : <span className="text-red-500 ml-2">● Offline</span>}
           </p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="bg-black text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-500 transition-all disabled:opacity-50"
-        >
-          {loading ? 'Carregando...' : '↺ Atualizar'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={openBookingModal}
+            className="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all"
+          >
+            + Agendar
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="bg-black text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-500 transition-all disabled:opacity-50"
+          >
+            {loading ? 'Carregando...' : '↺ Atualizar'}
+          </button>
+        </div>
       </div>
 
       {!connected && !loading && (
@@ -502,16 +750,31 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 {filtered.map(conv => (
                   <button
                     key={conv.phone}
-                    onClick={() => setSelectedPhone(conv.phone)}
+                    onClick={() => handleSelectConv(conv.phone)}
                     className={`w-full text-left px-4 py-3.5 border-b border-slate-50 hover:bg-slate-100 transition-all ${selectedPhone === conv.phone ? 'bg-orange-50 border-l-[3px] border-l-orange-500' : ''}`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0 ${conv.isProfessional ? 'bg-orange-100' : 'bg-slate-100'}`}>
-                        {conv.isProfessional ? '💈' : '👤'}
+                      {/* Avatar with unread dot */}
+                      <div className="relative flex-shrink-0">
+                        {profilePics[conv.phone] ? (
+                          <img
+                            src={profilePics[conv.phone]}
+                            alt={conv.name}
+                            className="w-10 h-10 rounded-full object-cover"
+                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-base ${conv.isProfessional ? 'bg-orange-100' : 'bg-slate-100'}`}>
+                            {conv.isProfessional ? '💈' : '👤'}
+                          </div>
+                        )}
+                        {isUnread(conv) && selectedPhone !== conv.phone && (
+                          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-500 rounded-full border-2 border-white" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline gap-1">
-                          <span className="text-[11px] font-black text-black truncate">
+                          <span className={`text-[11px] truncate ${isUnread(conv) && selectedPhone !== conv.phone ? 'font-black text-black' : 'font-bold text-slate-700'}`}>
                             {conv.professionalName || conv.name}
                           </span>
                           <div className="flex items-center gap-1 flex-shrink-0">
@@ -521,13 +784,13 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                 ? <span title="Lista de espera — aguardando horário" className="text-yellow-500 text-sm leading-none">⚠️</span>
                                 : null;
                             })()}
-                            <span className="text-[9px] font-bold text-slate-400">{formatDateLabel(conv.lastTimestamp)}</span>
+                            <span className={`text-[9px] font-bold ${isUnread(conv) && selectedPhone !== conv.phone ? 'text-orange-500' : 'text-slate-400'}`}>{formatDateLabel(conv.lastTimestamp)}</span>
                           </div>
                         </div>
                         {conv.isProfessional && (
                           <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Barbeiro</span>
                         )}
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{conv.lastMessage}</p>
+                        <p className={`text-[10px] truncate mt-0.5 ${isUnread(conv) && selectedPhone !== conv.phone ? 'text-slate-600 font-semibold' : 'text-slate-400'}`}>{conv.lastMessage}</p>
                       </div>
                     </div>
                   </button>
@@ -739,6 +1002,140 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Booking Modal ─────────────── */}
+      {showBooking && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] w-full max-w-md p-8 space-y-5 animate-scaleUp shadow-2xl">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-black text-black uppercase tracking-tight">Novo Agendamento</h2>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Agendamento manual</p>
+              </div>
+              <button onClick={() => setShowBooking(false)} className="text-slate-300 hover:text-red-500 font-black text-xl transition-colors">✕</button>
+            </div>
+
+            {bookingSuccess ? (
+              <div className="py-10 flex flex-col items-center gap-3">
+                <div className="text-5xl">✅</div>
+                <p className="text-sm font-black text-green-600 uppercase tracking-widest">Agendado com sucesso!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Cliente */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Cliente</label>
+                  <select
+                    value={bookingCustomerId}
+                    onChange={e => setBookingCustomerId(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
+                  >
+                    <option value="">Selecione o cliente...</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} — {c.phone}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Profissional + Serviço */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Profissional</label>
+                    <select
+                      value={bookingProfId}
+                      onChange={e => setBookingProfId(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
+                    >
+                      <option value="">Selecione...</option>
+                      {bookingProfs.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Serviço</label>
+                    <select
+                      value={bookingServiceId}
+                      onChange={e => setBookingServiceId(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
+                    >
+                      <option value="">Selecione...</option>
+                      {bookingServices.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.durationMinutes}min)</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Data */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Data</label>
+                  <input
+                    type="date"
+                    value={bookingDate}
+                    onChange={e => setBookingDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
+                  />
+                </div>
+
+                {/* Horários disponíveis */}
+                {bookingProfId && bookingDate && bookingServiceId && (
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+                      Horários disponíveis
+                      {bookingTime && <span className="ml-2 text-orange-500">— {bookingTime} selecionado</span>}
+                    </label>
+                    {slotsLoading ? (
+                      <p className="text-[10px] font-black text-slate-300 uppercase animate-pulse">Calculando horários...</p>
+                    ) : dayClosed ? (
+                      <p className="text-[10px] font-black text-red-400 uppercase">Dia fechado</p>
+                    ) : bookingSlots.length === 0 ? (
+                      <p className="text-[10px] font-black text-slate-400 uppercase">Nenhum horário disponível</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto custom-scrollbar pr-1">
+                        {bookingSlots.map(slot => (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => setBookingTime(slot)}
+                            className={`px-3 py-1.5 rounded-xl font-black text-[11px] transition-all border-2 ${
+                              bookingTime === slot
+                                ? 'bg-orange-500 text-white border-orange-500'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-orange-400 hover:text-orange-500'
+                            }`}
+                          >
+                            {slot}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {bookingError && (
+                  <p className="text-[11px] font-black text-red-500 uppercase tracking-wide">{bookingError}</p>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={() => setShowBooking(false)}
+                    className="flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 border-slate-200 text-slate-500 hover:bg-slate-50 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={saveBooking}
+                    disabled={bookingSaving}
+                    className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all disabled:opacity-50"
+                  >
+                    {bookingSaving ? 'Salvando...' : '✓ Confirmar'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -8,6 +8,124 @@ import { notifyWaitlistLeads } from '../services/waitlistService';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+// ── Visual calendar range picker ─────────────────────────────────────────────
+const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function MiniCalendar({ startDate, endDate, disabled, onChange }: {
+  startDate: string; endDate: string; disabled?: boolean;
+  onChange: (start: string, end: string) => void;
+}) {
+  const [view, setView] = useState(() => {
+    const d = startDate ? new Date(startDate + 'T12:00:00') : new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [picking, setPicking] = useState<string | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const today = new Date().toISOString().split('T')[0];
+
+  const toISO = (y: number, m: number, d: number) =>
+    `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+  const prevMonth = () => setView(v => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 });
+  const nextMonth = () => setView(v => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 });
+
+  const handleClick = (iso: string) => {
+    if (disabled) return;
+    if (!picking) {
+      setPicking(iso);
+      onChange(iso, iso);
+    } else {
+      const [a, b] = iso < picking ? [iso, picking] : [picking, iso];
+      onChange(a, b);
+      setPicking(null);
+      setHover(null);
+    }
+  };
+
+  const eStart = picking && hover ? (hover < picking ? hover : picking) : startDate;
+  const eEnd   = picking && hover ? (hover < picking ? picking : hover) : endDate;
+  const isSingle = eStart === eEnd;
+
+  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+  const firstDay    = new Date(view.year, view.month, 1).getDay();
+
+  return (
+    <div className={disabled ? 'opacity-30 pointer-events-none select-none' : ''}>
+      {/* Month nav */}
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMonth} className="w-7 h-7 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+          <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span className="text-[11px] font-black text-black uppercase tracking-widest">
+          {MONTH_NAMES[view.month]} {view.year}
+        </span>
+        <button onClick={nextMonth} className="w-7 h-7 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+          <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+
+      {/* Day headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {['D','S','T','Q','Q','S','S'].map((d, i) => (
+          <div key={i} className="text-center text-[9px] font-black text-slate-300 py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Days grid */}
+      <div className="grid grid-cols-7">
+        {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const iso = toISO(view.year, view.month, day);
+          const isStart   = iso === eStart;
+          const isEnd     = iso === eEnd;
+          const inRange   = !isSingle && eStart && eEnd && iso > eStart && iso < eEnd;
+          const isToday   = iso === today;
+          const isEdge    = isStart || isEnd;
+          return (
+            <div
+              key={iso}
+              onClick={() => handleClick(iso)}
+              onMouseEnter={() => picking && setHover(iso)}
+              onMouseLeave={() => picking && setHover(null)}
+              className={`relative h-8 flex items-center justify-center cursor-pointer transition-all
+                ${inRange ? 'bg-orange-50' : ''}
+                ${inRange && isStart ? 'rounded-l-full' : ''}
+                ${inRange && isEnd   ? 'rounded-r-full' : ''}
+                ${!isSingle && isStart ? 'bg-orange-50 rounded-l-full' : ''}
+                ${!isSingle && isEnd   ? 'bg-orange-50 rounded-r-full' : ''}
+              `}
+            >
+              <span className={`w-7 h-7 flex items-center justify-center rounded-full text-[11px] font-bold transition-all
+                ${isEdge ? 'bg-black text-white font-black shadow-md' : ''}
+                ${isToday && !isEdge ? 'ring-2 ring-orange-400 text-orange-500 font-black' : ''}
+                ${!isEdge ? 'hover:bg-slate-100 text-slate-700' : ''}
+              `}>
+                {day}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Status line */}
+      <div className="mt-3 text-center min-h-[16px]">
+        {picking ? (
+          <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest animate-pulse">
+            Clique para definir o fim do período
+          </p>
+        ) : startDate && startDate !== endDate ? (
+          <p className="text-[9px] font-bold text-slate-400">
+            {startDate.split('-').reverse().join('/')} → {endDate.split('-').reverse().join('/')}
+          </p>
+        ) : startDate ? (
+          <p className="text-[9px] font-bold text-slate-400">{startDate.split('-').reverse().join('/')}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function generateId(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
@@ -564,21 +682,13 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
               <PresetBtn active={presetPeriod === 'month'} onClick={() => applyPreset('month')} label="Este Mês" />
               <PresetBtn active={presetPeriod === 'all'} onClick={() => applyPreset('all')} label="Tudo" />
             </div>
-            <div className="space-y-4 pt-4 border-t border-slate-50">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Início</label>
-                <input type="date" value={startDate} disabled={presetPeriod === 'all'}
-                  onChange={e => { setStartDate(e.target.value); setPresetPeriod('custom'); }}
-                  className={`w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-xs focus:border-orange-500 transition-colors ${presetPeriod === 'all' ? 'opacity-30 cursor-not-allowed' : ''}`}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Fim</label>
-                <input type="date" value={endDate} disabled={presetPeriod === 'all'}
-                  onChange={e => { setEndDate(e.target.value); setPresetPeriod('custom'); }}
-                  className={`w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-black text-xs focus:border-orange-500 transition-colors ${presetPeriod === 'all' ? 'opacity-30 cursor-not-allowed' : ''}`}
-                />
-              </div>
+            <div className="pt-4 border-t border-slate-50">
+              <MiniCalendar
+                startDate={startDate}
+                endDate={endDate}
+                disabled={presetPeriod === 'all'}
+                onChange={(start, end) => { setStartDate(start); setEndDate(end); setPresetPeriod('custom'); }}
+              />
             </div>
             <div className="mt-10 pt-6 border-t border-slate-100 space-y-4">
               <div className="flex justify-between items-center">

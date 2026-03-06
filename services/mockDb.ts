@@ -1694,6 +1694,25 @@ class DatabaseService {
     }
   }
 
+  async deleteConversationLog(id: string): Promise<void> {
+    try {
+      await supabase.from('conversation_logs').delete().eq('id', id);
+    } catch (e) {
+      console.error('[mockDb] deleteConversationLog error:', e);
+    }
+  }
+
+  async updateConversationLog(id: string, updates: { outcome?: ConversationLog['outcome']; adminNote?: string }): Promise<void> {
+    try {
+      const payload: Record<string, any> = {};
+      if (updates.outcome) payload.outcome = updates.outcome;
+      if (updates.adminNote !== undefined) payload.admin_note = updates.adminNote;
+      await supabase.from('conversation_logs').update(payload).eq('id', id);
+    } catch (e) {
+      console.error('[mockDb] updateConversationLog error:', e);
+    }
+  }
+
   async uploadSupportImage(tenantId: string, file: File): Promise<string> {
     const path = `${tenantId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const { error } = await supabase.storage.from('support-images').upload(path, file, { upsert: false });

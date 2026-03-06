@@ -65,7 +65,7 @@ enum View {
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
-type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas';
+type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config';
 
 const SESSION_KEY = 'agz_session';
 
@@ -183,6 +183,19 @@ const App: React.FC = () => {
     console.log(`Tentativa de login: ${selectedRole}, Slug: ${userSlug}`);
     try {
       if (selectedRole === 'SUPERADMIN') {
+        // Check if custom credentials are set in global_settings
+        try {
+          const cfg = await db.getGlobalConfig();
+          const customEmail = (cfg['admin_email'] || '').trim();
+          const customPass  = (cfg['admin_password'] || '').trim();
+          if (customEmail && customPass) {
+            if (userEmail !== customEmail || userPassword !== customPass) {
+              alert('Credenciais incorretas.');
+              return;
+            }
+          }
+          // If no custom creds set, Login.tsx already validated the hardcoded ones
+        } catch { /* allow login if Supabase unreachable */ }
         setRole('SUPERADMIN');
         setIsAuthenticated(true);
         setCurrentView(View.SUPERADMIN_DASHBOARD);
@@ -407,6 +420,7 @@ const App: React.FC = () => {
               <NavItem active={superAdminTab === 'clients'} onClick={navTo(() => setSuperAdminTab('clients'))} icon={<IconUsers />} label="Clientes SaaS" />
               <NavItem active={superAdminTab === 'avisos'} onClick={navTo(() => setSuperAdminTab('avisos'))} icon={<IconBroadcast />} label="Avisos" />
               <NavItem active={superAdminTab === 'cobranca'} onClick={navTo(() => setSuperAdminTab('cobranca'))} icon={<IconFinance />} label="Cobrança" />
+              <NavItem active={superAdminTab === 'suporte'} onClick={navTo(() => setSuperAdminTab('suporte'))} icon={<IconChat />} label="Caixa de Entrada" />
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">WhatsApp Admin</p>
                 <NavItem active={superAdminTab === 'conversas'} onClick={navTo(() => setSuperAdminTab('conversas'))} icon={<IconChat />} label="Conversas" />
@@ -419,10 +433,7 @@ const App: React.FC = () => {
                 <NavItem active={superAdminTab === 'logs'} onClick={navTo(() => setSuperAdminTab('logs'))} icon={<IconTerminal />} label="Logs" />
                 <NavItem active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
                 <NavItem active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
-              </div>
-              <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Suporte</p>
-                <NavItem active={superAdminTab === 'suporte'} onClick={navTo(() => setSuperAdminTab('suporte'))} icon={<IconChat />} label="Caixa de Entrada" />
+                <NavItem active={superAdminTab === 'config'} onClick={navTo(() => setSuperAdminTab('config'))} icon={<IconSettings />} label="Configurações" />
               </div>
             </>
           ) : (
@@ -493,8 +504,7 @@ const App: React.FC = () => {
                 <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
                 <NavItem active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
                 <NavItem active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
-                <NavItem active={currentView === View.TEST_WA} onClick={navTo(() => handleGatedNav(View.TEST_WA, 'assistenteAdmin'))} icon={<IconTerminal />} label="Terminal IA" />
-                <NavItem active={currentView === View.OTIMIZACAO} onClick={navTo(() => setCurrentView(View.OTIMIZACAO))} icon={<IconTerminal />} label="IA Otimização" />
+                <NavItem active={currentView === View.OTIMIZACAO} onClick={navTo(() => setCurrentView(View.OTIMIZACAO))} icon={<IconTerminal />} label="Dados IA" />
               </div>
             </>
           )}
@@ -530,7 +540,7 @@ const App: React.FC = () => {
             <div className="w-1 h-6 rounded-full bg-orange-500" />
             <h2 className="text-sm font-black text-slate-700 tracking-widest uppercase">
               {role === 'SUPERADMIN'
-                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'Conversas Admin', disparo: 'Disparador Admin', campanhas: 'Campanhas em Andamento', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada' } as Record<SuperAdminTab, string>)[superAdminTab]
+                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'Conversas Admin', disparo: 'Disparador Admin', campanhas: 'Campanhas em Andamento', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada', config: 'Configurações do Sistema' } as Record<SuperAdminTab, string>)[superAdminTab]
                 : tenantName}
             </h2>
           </div>

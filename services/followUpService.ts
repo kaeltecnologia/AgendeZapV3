@@ -121,8 +121,11 @@ export async function runFollowUp(tenant: any): Promise<void> {
         servico: svc?.name || '',
       });
 
-      // Claim before sending (prevents re-send if polling fires again before DB save)
-      followUpSentMemory.add(custDayKey);
+      // Atomic cross-tab claim via Supabase unique constraint (prevents multi-tab duplicate sends)
+      const claimKey = `fu::aviso::${cust.id}::${nowDate}`;
+      const claimed = await db.claimMessage(claimKey);
+      if (!claimed) continue; // another tab already claimed this send
+      followUpSentMemory.add(custDayKey); // same-tab guard for subsequent cycles
 
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);
@@ -182,7 +185,10 @@ export async function runFollowUp(tenant: any): Promise<void> {
         servico: svc?.name || '',
       });
 
-      followUpSentMemory.add(sentKey); // claim before sending
+      // Atomic cross-tab claim
+      const claimedL = await db.claimMessage(`fu::lembrete::${appt.id}`);
+      if (!claimedL) continue;
+      followUpSentMemory.add(sentKey);
 
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);
@@ -256,7 +262,10 @@ export async function runFollowUp(tenant: any): Promise<void> {
         servico: svc?.name || '',
       });
 
-      followUpSentMemory.add(sentKey); // claim before sending
+      // Atomic cross-tab claim
+      const claimedR = await db.claimMessage(`fu::reativacao::${custId}::${lastAppt.id}`);
+      if (!claimedR) continue;
+      followUpSentMemory.add(sentKey);
 
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);

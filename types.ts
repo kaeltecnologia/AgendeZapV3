@@ -371,7 +371,7 @@ export interface ConversationLog {
   id: string;
   tenantId: string;
   phone: string;
-  outcome: 'booked' | 'abandoned' | 'info';
+  outcome: 'booked' | 'abandoned' | 'info' | 'duplicate';
   turns: number;
   history: Array<{ role: 'user' | 'bot'; text: string }>;
   startedAt?: string;
