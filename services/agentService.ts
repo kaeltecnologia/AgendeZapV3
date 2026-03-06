@@ -374,7 +374,8 @@ async function callBrain(
   nichoName?: string,
   tenantId?: string,
   phone?: string,
-  isAudio?: boolean
+  isAudio?: boolean,
+  vacationCtx?: string
 ): Promise<BrainOutput | null> {
 
   const svcList = services.map(s =>
@@ -415,11 +416,11 @@ async function callBrain(
     : '';
 
   const slotsSection = availableSlots && availableSlots.length > 0
-    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
+    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
-        ? `\n(Horários para esta data ainda não verificados — NÃO sugira horários específicos ainda)`
-        : `\n⚠️ SERVIÇO NÃO DEFINIDO — Descubra qual serviço o cliente quer ANTES de buscar horários. Pergunte o serviço agora.`)
+        ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia.'
+        : '\n🚫 SERVIÇO NÃO DEFINIDO — ⛔ PROIBIDO mencionar ou sugerir QUALQUER horário específico (ex: "16:00", "17:00"). Pergunte APENAS: "Qual procedimento/serviço você gostaria?" — a disponibilidade depende da duração do serviço.')
       : (data.professionalId && !data.date
         ? `\n⛔ DIA NÃO DEFINIDO — NÃO sugira horários. Pergunte o dia de preferência primeiro.`
         : ''));
@@ -509,6 +510,11 @@ async function callBrain(
 • "Trocar de barbeiro, manter horário" → verificar disponibilidade do novo prof naquele slot ANTES de confirmar
 • "Primeiro horário do [prof]" = duas ações → cancelar atual + agendar novo → confirmar as duas juntas: "O primeiro horário do [prof] é [data/hora]. Confirmo o reagendamento e cancelo o seu atual ([data/hora])?"
 
+🏖️ PROFISSIONAL DE FÉRIAS — protocolo obrigatório:
+• Se o cliente pedir um profissional que está DE FÉRIAS → informe que está de férias e quando retorna. Ofereça alternativa UMA VEZ.
+• Se o cliente INSISTIR que quer SOMENTE aquele profissional ("só com o [nome]", "somente com o [nome]", "quero esperar o [nome]") → RESPEITE a escolha. NÃO insista em outro profissional. Diga: "Entendido! O [nome] retorna [data]. Posso te avisar quando ele voltar? 😊"
+• NUNCA "discuta" com o cliente sobre a escolha de profissional — se ele quer esperar, aceite.
+
 📋 CONSULTAS — responder a pergunta ≠ agendar automaticamente:
 • "Vocês trabalham domingo?" / "qual o horário de vocês?" → informar funcionamento; só depois oferecer agendar
 • "Quanto tempo demora um procedimento?" → informar duração; só depois oferecer agendar
@@ -517,7 +523,7 @@ async function callBrain(
 • "Para hoje" / "quero pra hoje" no meio do fluxo → mude o DIA para hoje e consulte os horários disponíveis
 
 🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — quando o cliente usa termo informal que mapeia claramente para um serviço, preencha o serviço automaticamente NO extracted.service e NÃO pergunte "qual serviço?" — prossiga direto para data/horário:
-CORTE DE CABELO → "cabeça" / "cortar a cabeça" / "cabecinha" / "cortar o cabelo" / "cortar o cabelo do meu filho/da minha filha" / "aparar" / "dar uma aparada" / "dar um trato no cabelo" / "dar um jeito no cabelo" / "fazer o cabelo" / "tirar o excesso" / "franja" / "ligar" / "passar o pente" / "zerar" / "na máquina" / "renovar o visual" / "dar uma caprichada"
+CORTE DE CABELO → "cabelo" / "cabeça" / "cortar a cabeça" / "cabecinha" / "cortar o cabelo" / "cortar o cabelo do meu filho/da minha filha" / "aparar" / "dar uma aparada" / "dar um trato no cabelo" / "dar um jeito no cabelo" / "fazer o cabelo" / "tirar o excesso" / "franja" / "ligar" / "passar o pente" / "zerar" / "na máquina" / "renovar o visual" / "dar uma caprichada"
 BARBA → "barba" / "fazer a barba" / "tirar a barba" / "aparar a barba" / "dar um trato na barba" / "modelar a barba" / "barba e bigode"
 BIGODE → "bigode" / "aparar o bigode"
 SOBRANCELHA → "sobrancelha" / "sombrancelha" / "fazer a sobrancelha" / "tirar a sobrancelha" / "design de sobrancelha"
@@ -545,7 +551,7 @@ ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
 ${introLinha}
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${followUpCtx}${audioNote}${greetSection}${groupSection}
 SERVIÇOS: ${svcList}
-PROFISSIONAIS: ${profList}${slotsSection}
+PROFISSIONAIS: ${profList}${vacationCtx ? `\n${vacationCtx}` : ''}${slotsSection}
 
 CONTEXTO ATUAL: ${known.length > 0 ? known.join(' | ') : 'nenhuma informação coletada ainda'}
 ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("sim","ok","pode","beleza","bora","fechou","isso","confirma") → "confirmed":true OBRIGATORIAMENTE.' : ''}
@@ -709,6 +715,11 @@ function matchProfessionalName(
   const norm = (s: string) =>
     s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
 
+  // Brazilian Portuguese spelling normalization: handles common name variations
+  // e.g. Matheus↔Mateus, Philipe↔Felipe, Thiago↔Tiago, Raphael↔Rafael
+  const brNorm = (s: string) =>
+    s.replace(/th/g, 't').replace(/ph/g, 'f').replace(/([a-z])\1/g, '$1').replace(/y/g, 'i').replace(/ck/g, 'c').replace(/w/g, 'v');
+
   const normText = norm(text);
 
   // Full name match
@@ -728,7 +739,51 @@ function matchProfessionalName(
       if (nameParts.some(part => part.includes(word))) return p;
     }
   }
+  // Brazilian spelling variation match (Matheus↔Mateus, Thiago↔Tiago, etc.)
+  const brText = brNorm(normText);
+  for (const p of professionals) {
+    const brFirst = brNorm(norm(p.name).split(' ')[0]);
+    if (brFirst.length >= 3 && new RegExp(`\\b${brFirst}\\b`).test(brText)) return p;
+  }
   return null;
+}
+
+// =====================================================================
+// SERVICE KEYWORD MATCHER
+// =====================================================================
+
+function matchServiceByKeywords(
+  text: string,
+  services: Array<{ id: string; name: string; durationMinutes: number; price: number }>
+): { id: string; name: string; durationMinutes: number; price: number } | null {
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+  const normText = norm(text);
+  const STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado']);
+
+  for (const svc of services) {
+    if (normText.includes(norm(svc.name))) return svc;
+  }
+
+  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+  if (msgWords.length === 0) return null;
+
+  let best: typeof services[0] | null = null;
+  let bestHits = 0;
+  let bestCoverage = 0;
+
+  for (const svc of services) {
+    const svcWords = norm(svc.name).split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+    if (svcWords.length === 0) continue;
+    const hits = msgWords.filter(mw => svcWords.some(sw => sw.includes(mw) || mw.includes(sw))).length;
+    const coverage = hits / svcWords.length;
+    if (hits > bestHits || (hits === bestHits && coverage > bestCoverage)) {
+      bestHits = hits;
+      bestCoverage = coverage;
+      best = svc;
+    }
+  }
+
+  return bestHits >= 1 ? best : null;
 }
 
 // =====================================================================
@@ -1666,14 +1721,21 @@ async function _handleMessage(
     const matchedProf = matchProfessionalName(lowerText, profOptions);
     if (matchedProf) {
       // ── Vacation check: always runs regardless of professional count ──
-      const profIsOnVacation = (settings.breaks || []).some((b: any) => {
+      const vacBreak = (settings.breaks || []).find((b: any) => {
         if (b.professionalId && b.professionalId !== matchedProf.id) return false;
         if ((b as any).type !== 'vacation') return false;
         const vacStart = b.date || '';
         const vacEnd = (b as any).vacationEndDate || b.date || '';
         return !!vacStart && todayISO >= vacStart && todayISO <= vacEnd;
       });
-      if (profIsOnVacation) {
+      if (vacBreak) {
+        const vacEndDate = (vacBreak as any).vacationEndDate || vacBreak.date || '';
+        const returnDate = vacEndDate ? (() => {
+          const d = new Date(vacEndDate + 'T12:00:00');
+          d.setDate(d.getDate() + 1);
+          return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+        })() : '';
+        const returnInfo = returnDate ? ` Retorna ${returnDate}.` : '';
         const othersAvail = profOptions
           .filter((p: any) => p.id !== matchedProf.id)
           .filter((p: any) => !(settings.breaks || []).some((b: any) => {
@@ -1683,7 +1745,7 @@ async function _handleMessage(
             return !!vs && todayISO >= vs && todayISO <= ve;
           }));
         const othersStr = othersAvail.map((p: any) => p.name).join(' ou ');
-        const vacMsg = `*${matchedProf.name}* está de férias no momento! 🏖️\n\n${othersStr ? `Gostaria de agendar com ${othersStr}?` : 'Gostaria de agendar com outro profissional?'}`;
+        const vacMsg = `*${matchedProf.name}* está de férias no momento!${returnInfo} 🏖️\n\n${othersStr ? `Mas o ${othersStr} pode te atender! Gostaria de agendar?` : 'Gostaria de agendar com outro profissional?'}`;
         session.history.push({ role: 'user', text }, { role: 'bot', text: vacMsg });
         saveSession(session);
         return vacMsg;
@@ -1692,7 +1754,7 @@ async function _handleMessage(
       if (profOptions.length > 1) {
         // Multiple professionals: check for booking intent or personal-contact flow
         const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'quero marcar', 'quero agendar', 'cabeca', 'cabecinha', 'cabeça'];
+        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'quero marcar', 'quero agendar', 'cabelo', 'cabeca', 'cabecinha', 'cabeça'];
         const hasSvcMention = activeServices.some((s: any) =>
           normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
         );
@@ -1747,15 +1809,22 @@ async function _handleMessage(
   // Always respond with vacation message — no keyword matching needed since
   // real users ask in countless unpredictable ways ("tá atendendo?", "já voltou?", etc.)
   if (session.data.professionalId) {
-    const _curProfOnVac = (settings.breaks || []).some((b: any) => {
+    const _curVacBreak = (settings.breaks || []).find((b: any) => {
       if ((b as any).type !== 'vacation') return false;
       if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
       const vs = b.date || '';
       const ve = (b as any).vacationEndDate || b.date || '';
       return !!vs && todayISO >= vs && todayISO <= ve;
     });
-    if (_curProfOnVac) {
+    if (_curVacBreak) {
       const _vacProfName = session.data.professionalName || 'O profissional';
+      const _vacEnd2 = (_curVacBreak as any).vacationEndDate || _curVacBreak.date || '';
+      const _returnDate2 = _vacEnd2 ? (() => {
+        const d = new Date(_vacEnd2 + 'T12:00:00');
+        d.setDate(d.getDate() + 1);
+        return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+      })() : '';
+      const _returnInfo2 = _returnDate2 ? ` Retorna ${_returnDate2}.` : '';
       const _othersAvail = profOptions
         .filter((p: any) => p.id !== session.data.professionalId)
         .filter((p: any) => !(settings.breaks || []).some((b: any) => {
@@ -1765,7 +1834,7 @@ async function _handleMessage(
           return !!vs && todayISO >= vs && todayISO <= ve;
         }));
       const _othersStr = _othersAvail.map((p: any) => p.name).join(' ou ');
-      const _vacMsg = `*${_vacProfName}* está de férias no momento! 🏖️\n\n${_othersStr ? `Gostaria de agendar com ${_othersStr}?` : 'Pode agendar quando o profissional retornar.'}`;
+      const _vacMsg = `*${_vacProfName}* está de férias no momento!${_returnInfo2} 🏖️\n\n${_othersStr ? `Mas o ${_othersStr} pode te atender! Gostaria de agendar?` : 'Pode agendar quando o profissional retornar.'}`;
       session.data.professionalId   = undefined;
       session.data.professionalName = undefined;
       session.data.date             = undefined;
@@ -1775,19 +1844,35 @@ async function _handleMessage(
     }
   }
 
-  // ─── Fetch available slots only when service is known (duration required for accuracy) ──
+  // ─── TS-level service pre-extraction via keywords ────────────────
+  if (!session.data.serviceId) {
+    const _matchedSvc = matchServiceByKeywords(lowerText, services);
+    if (_matchedSvc) {
+      session.data.serviceId       = _matchedSvc.id;
+      session.data.serviceName     = _matchedSvc.name;
+      session.data.serviceDuration = _matchedSvc.durationMinutes;
+      session.data.servicePrice    = _matchedSvc.price;
+      console.log('[Agent] TS pre-extracted service:', _matchedSvc.name);
+    }
+  }
+
+  // ─── Fetch available slots when professional + date are known ──────
+  // When service is known → exact duration. When unknown → longest service (conservative).
   let prefetchedSlots: string[] | undefined;
-  if (session.data.professionalId && session.data.date && session.data.serviceId) {
+  const _hasProfSPA = !!session.data.professionalId;
+  const _hasDateSPA = !!session.data.date;
+  const _hasSvcSPA  = !!session.data.serviceId;
+  if (_hasProfSPA && _hasDateSPA && _hasSvcSPA) {
     const _slotDuration = session.data.serviceDuration || 30;
     prefetchedSlots = await getAvailableSlots(
-      tenantId, session.data.professionalId, session.data.date,
+      tenantId, session.data.professionalId!, session.data.date!,
       _slotDuration, settings
     );
     session.data.availableSlots = prefetchedSlots;
 
     // Empty slots = vacation or truly fully booked — handle before calling brain
     if (prefetchedSlots.length === 0) {
-      const isVacation = (settings.breaks || []).some((b: any) => {
+      const _vacBreak3 = (settings.breaks || []).find((b: any) => {
         if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
         if ((b as any).type !== 'vacation') return false;
         const vacStart = b.date || '';
@@ -1795,8 +1880,15 @@ async function _handleMessage(
         return !!vacStart && session.data.date! >= vacStart && session.data.date! <= vacEnd;
       });
       const profName = session.data.professionalName || 'O profissional';
-      if (isVacation) {
-        const noAvail = `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`;
+      if (_vacBreak3) {
+        const _vacEnd3 = (_vacBreak3 as any).vacationEndDate || _vacBreak3.date || '';
+        const _returnDate3 = _vacEnd3 ? (() => {
+          const d = new Date(_vacEnd3 + 'T12:00:00');
+          d.setDate(d.getDate() + 1);
+          return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+        })() : '';
+        const _returnInfo3 = _returnDate3 ? ` Retorna ${_returnDate3}.` : '';
+        const noAvail = `${profName} está de férias neste período!${_returnInfo3} 🏖️\n\nGostaria de escolher outro profissional ou outra data?`;
         session.data.date = undefined;
         session.data.professionalId = undefined;
         session.data.professionalName = undefined;
@@ -1848,6 +1940,32 @@ async function _handleMessage(
     })
   );
 
+  // ─── Build vacation context for AI prompt ──────────────────────────
+  const _profsOnVacation = profOptions.filter((p: { id: string; name: string }) =>
+    _breaks.some(b => {
+      if ((b as any).type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== p.id) return false;
+      const vacStart = b.date || '';
+      const vacEnd = (b as any).vacationEndDate || b.date || '';
+      return !!vacStart && _targetDate >= vacStart && _targetDate <= vacEnd;
+    })
+  );
+  const _vacCtx = _profsOnVacation.length > 0 ? `🏖️ PROFISSIONAIS DE FÉRIAS (NÃO disponíveis para agendamento):\n${_profsOnVacation.map((p: { id: string; name: string }) => {
+    const vb = _breaks.find(b => {
+      if ((b as any).type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== p.id) return false;
+      const vs = b.date || '', ve = (b as any).vacationEndDate || b.date || '';
+      return !!vs && _targetDate >= vs && _targetDate <= ve;
+    });
+    const ve = vb ? ((vb as any).vacationEndDate || vb.date || '') : '';
+    const retorno = ve ? (() => {
+      const d = new Date(ve + 'T12:00:00');
+      d.setDate(d.getDate() + 1);
+      return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    })() : 'data indefinida';
+    return `• ${p.name} — de férias, retorna ${retorno}`;
+  }).join('\n')}\n⚠️ Se o cliente pedir ESPECIFICAMENTE um profissional de férias, INFORME que está de férias e quando retorna. NÃO insista em outro profissional se o cliente disser que quer SOMENTE aquele. Respeite a escolha do cliente.` : '';
+
   // ─── First AI Brain call ────────────────────────────────────────────
   const tenantNicho: string = (tenant.nicho as string) || 'Barbearia';
   const groupBookingCtx = buildGroupCtx(session.data);
@@ -1856,7 +1974,8 @@ async function _handleMessage(
     serviceOptions, profOptionsVisible,
     session.history, session.data, prefetchedSlots, customPrompt || undefined,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
-    tenantNicho, tenantId, phone, options?.isAudio
+    tenantNicho, tenantId, phone, options?.isAudio,
+    _vacCtx || undefined
   );
 
   if (!brain) {
@@ -1920,7 +2039,19 @@ async function _handleMessage(
     }
   }
 
+  // ── TypeScript guard: block LLM from offering times without service ──────────
+  if (!session.data.serviceId && session.data.professionalId) {
+    const _timePattern = /\b([01]?\d|2[0-3])[:h]\s*[0-5]?\d\b/;
+    if (_timePattern.test(brain.reply) || (ext.time && !ext.serviceId)) {
+      const svcNames = activeServices.map((s: any) => s.name).join(', ');
+      brain.reply = `Qual procedimento você gostaria? Temos: ${svcNames}`;
+      brain.extracted.time = null;
+      brain.extracted.confirmed = null;
+    }
+  }
+
   // ─── If we JUST extracted professional + date + service, fetch slots and re-run ──
+  // Re-fetch slots when all 3 are now set but weren't before the LLM call
   const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date && session.data.serviceId;
   if (justGotProfAndDate) {
     const newSlots = await getAvailableSlots(
@@ -1981,7 +2112,8 @@ async function _handleMessage(
       serviceOptions, profOptionsVisible,
       session.history, session.data, newSlots, customPrompt || undefined,
       false, brasiliaGreeting, groupBookingCtx2 || undefined,
-      tenantNicho, tenantId, phone, false
+      tenantNicho, tenantId, phone, false,
+      _vacCtx || undefined
     );
     if (brain2) {
       // Apply any new extractions from second call

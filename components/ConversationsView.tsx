@@ -497,15 +497,16 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }, [conversations.length, instanceName, connected]);
 
   const toggleAiForLead = async (phone: string) => {
+    if (togglingAi) return;
     const cust = findCustomerByPhone(phone);
-    if (!cust || togglingAi) return;
+    const key = cust ? cust.id : `phone:${phone}`;
     setTogglingAi(true);
     try {
       const settings = await db.getSettings(tenantId);
       const current = settings.customerData || {};
-      const custEntry = current[cust.id] || {};
+      const custEntry = current[key] || {};
       const newPaused = !custEntry.aiPaused;
-      const updated = { ...current, [cust.id]: { ...custEntry, aiPaused: newPaused } };
+      const updated = { ...current, [key]: { ...custEntry, aiPaused: newPaused } };
       await db.updateSettings(tenantId, { customerData: updated });
       setCustomerData(updated);
     } finally {
@@ -819,10 +820,11 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       <p className="text-sm font-black text-black">{selectedConv.professionalName || selectedConv.name}</p>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{selectedConv.phone}</p>
                     </div>
-                    {/* AI pause toggle — only for known customers */}
-                    {findCustomerByPhone(selectedConv.phone) && (() => {
-                      const cust = findCustomerByPhone(selectedConv.phone)!;
-                      const isPaused = !!customerData[cust.id]?.aiPaused;
+                    {/* AI pause toggle — all conversations */}
+                    {(() => {
+                      const cust = findCustomerByPhone(selectedConv.phone);
+                      const key = cust ? cust.id : `phone:${selectedConv.phone}`;
+                      const isPaused = !!customerData[key]?.aiPaused;
                       return (
                         <button
                           onClick={() => toggleAiForLead(selectedConv.phone)}

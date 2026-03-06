@@ -263,7 +263,8 @@ async function callBrain(
   history: any[], data: any,
   availableSlots?: string[], customSystemPrompt?: string,
   shouldGreet?: boolean, brasiliaGreeting?: string,
-  tenantId?: string, phone?: string
+  tenantId?: string, phone?: string,
+  vacationCtx?: string
 ): Promise<any | null> {
   const svcList = services.map(s => `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`).join('\n');
   const profList = professionals.length > 0 ? professionals.map(p => `• ${p.name} — ID:"${p.id}"`).join('\n') : '• (apenas um profissional disponível)';
@@ -286,11 +287,11 @@ async function callBrain(
   }
 
   const slotsSection = availableSlots?.length
-    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
+    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
-        ? '\n(Horários ainda não verificados — NÃO sugira horários específicos)'
-        : '\n⚠️ SERVIÇO NÃO DEFINIDO — Descubra qual serviço o cliente quer ANTES de buscar horários. Pergunte o serviço agora.')
+        ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia.'
+        : '\n🚫 SERVIÇO NÃO DEFINIDO — ⛔ PROIBIDO mencionar ou sugerir QUALQUER horário específico (ex: "16:00", "17:00"). Pergunte APENAS: "Qual procedimento/serviço você gostaria?" — a disponibilidade depende da duração do serviço.')
       : '');
 
   const histStr = history.slice(-10).map((h: any) => `${h.role === 'user' ? 'Cliente' : 'Agente'}: ${h.text}`).join('\n');
@@ -338,6 +339,11 @@ async function callBrain(
 • "Trocar de barbeiro, manter horário" → verificar disponibilidade do novo prof naquele slot ANTES de confirmar
 • "Primeiro horário do [prof]" = duas ações → cancelar atual + agendar novo → confirmar as duas juntas: "O primeiro horário do [prof] é [data/hora]. Confirmo o reagendamento e cancelo o seu atual ([data/hora])?"
 
+🏖️ PROFISSIONAL DE FÉRIAS — protocolo obrigatório:
+• Se o cliente pedir um profissional que está DE FÉRIAS → informe que está de férias e quando retorna. Ofereça alternativa UMA VEZ.
+• Se o cliente INSISTIR que quer SOMENTE aquele profissional ("só com o [nome]", "somente com o [nome]", "quero esperar o [nome]") → RESPEITE a escolha. NÃO insista em outro profissional. Diga: "Entendido! O [nome] retorna [data]. Posso te avisar quando ele voltar? 😊"
+• NUNCA "discuta" com o cliente sobre a escolha de profissional — se ele quer esperar, aceite.
+
 📋 CONSULTAS — responder a pergunta ≠ agendar automaticamente:
 • "Vocês trabalham domingo?" / "qual o horário de vocês?" → informar funcionamento; só depois oferecer agendar
 • "Quanto tempo demora um procedimento?" → informar duração; só depois oferecer agendar
@@ -346,7 +352,7 @@ async function callBrain(
 • "Para hoje" / "quero pra hoje" no meio do fluxo → mude o DIA para hoje e consulte os horários disponíveis
 
 🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — quando o cliente usa termo informal que mapeia claramente para um serviço, preencha o serviço automaticamente NO extracted.service e NÃO pergunte "qual serviço?" — prossiga direto para data/horário:
-CORTE DE CABELO → "cabeça" / "cortar a cabeça" / "cabecinha" / "cortar o cabelo" / "cortar o cabelo do meu filho/da minha filha" / "aparar" / "dar uma aparada" / "dar um trato no cabelo" / "dar um jeito no cabelo" / "fazer o cabelo" / "tirar o excesso" / "franja" / "ligar" / "passar o pente" / "zerar" / "na máquina" / "renovar o visual" / "dar uma caprichada"
+CORTE DE CABELO → "cabelo" / "cabeça" / "cortar a cabeça" / "cabecinha" / "cortar o cabelo" / "cortar o cabelo do meu filho/da minha filha" / "aparar" / "dar uma aparada" / "dar um trato no cabelo" / "dar um jeito no cabelo" / "fazer o cabelo" / "tirar o excesso" / "franja" / "ligar" / "passar o pente" / "zerar" / "na máquina" / "renovar o visual" / "dar uma caprichada"
 BARBA → "barba" / "fazer a barba" / "tirar a barba" / "aparar a barba" / "dar um trato na barba" / "modelar a barba" / "barba e bigode"
 BIGODE → "bigode" / "aparar o bigode"
 SOBRANCELHA → "sobrancelha" / "sombrancelha" / "fazer a sobrancelha" / "tirar a sobrancelha" / "design de sobrancelha"
@@ -370,15 +376,24 @@ ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
 • Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map((p: any) => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
     : '';
 
-  const [ty, tm, td] = today.split('-').map(Number);
+  // Ensure we have ISO format for date calculations (handles both "YYYY-MM-DD" and formatted strings)
+  const todayISOClean = /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : (() => {
+    // Extract date from formatted string like "sexta-feira, 06/03/2026"
+    const m = today.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : today;
+  })();
+  const [ty, tm, td] = todayISOClean.split('-').map(Number);
   const tomorrowDate = new Date(Date.UTC(ty, tm-1, td+1));
   const tomorrowISO = `${tomorrowDate.getUTCFullYear()}-${pad(tomorrowDate.getUTCMonth()+1)}-${pad(tomorrowDate.getUTCDate())}`;
+  const todayFormatted = formatDate(todayISOClean);
+  const todayDow = DOW_PT[new Date(todayISOClean+'T12:00:00Z').getUTCDay()];
+  const tomorrowDow = DOW_PT[tomorrowDate.getUTCDay()];
 
-  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today} (${DOW_PT[new Date(today+'T12:00:00Z').getUTCDay()]}).
+  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${todayFormatted} (${todayDow}).
 Atendente brasileiro — informal, caloroso, direto. Máximo 2-3 linhas por resposta.
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${greetSection}
 SERVIÇOS: ${svcList}
-PROFISSIONAIS: ${profList}${slotsSection}
+PROFISSIONAIS: ${profList}${vacationCtx ? `\n${vacationCtx}` : ''}${slotsSection}
 
 CONTEXTO ATUAL: ${known.length > 0 ? known.join(' | ') : 'nenhuma informação coletada ainda'}
 ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("sim","ok","pode","beleza","bora","fechou","isso","confirma") → "confirmed":true OBRIGATORIAMENTE.' : ''}
@@ -429,8 +444,8 @@ EXTRAÇÃO:
 • waitlist: true se cliente pediu lista de espera / ser avisado se abrir horário
 • reschedule: true se cliente disse que quer reagendar / remarcar horário JÁ existente ("tenho horário mas não vou conseguir ir", "preciso mudar meu horário", "não consigo chegar a tempo, quero remarcar")
 📅 DATAS (retorne SEMPRE em YYYY-MM-DD):
-• "hoje" → ${today} | "amanhã" → ${tomorrowISO}
-• Dia da semana (ex: "sábado") → calcule o PRÓXIMO a partir de hoje (${today}, ${DOW_PT[new Date(today+'T12:00:00Z').getUTCDay()]})
+• "hoje" → ${todayISOClean} (${todayDow}) | "amanhã" → ${tomorrowISO} (${tomorrowDow})
+• Dia da semana (ex: "sábado") → calcule o PRÓXIMO a partir de hoje (${todayISOClean}, ${todayDow})
 • Nunca extraia datas no passado — se o dia já passou esta semana, use a próxima semana
 
 RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
@@ -586,6 +601,10 @@ const DOW_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'qui
 // ── Professional name matcher ─────────────────────────────────────────
 function matchProfessionalName(text: string, professionals: Array<{ id: string; name: string }>): { id: string; name: string } | null {
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+  // Brazilian Portuguese spelling normalization: handles common name variations
+  // e.g. Matheus↔Mateus, Philipe↔Felipe, Thiago↔Tiago, Raphael↔Rafael
+  const brNorm = (s: string) =>
+    s.replace(/th/g, 't').replace(/ph/g, 'f').replace(/([a-z])\1/g, '$1').replace(/y/g, 'i').replace(/ck/g, 'c').replace(/w/g, 'v');
   const normText = norm(text);
   for (const p of professionals) {
     if (normText.includes(norm(p.name))) return p;
@@ -602,7 +621,53 @@ function matchProfessionalName(text: string, professionals: Array<{ id: string; 
       if (nameParts.some((part: string) => part.includes(word))) return p;
     }
   }
+  // Brazilian spelling variation match (Matheus↔Mateus, Thiago↔Tiago, etc.)
+  const brText = brNorm(normText);
+  for (const p of professionals) {
+    const brFirst = brNorm(norm(p.name).split(' ')[0]);
+    if (brFirst.length >= 3 && new RegExp(`\\b${brFirst}\\b`).test(brText)) return p;
+  }
   return null;
+}
+
+// ── Service keyword matcher ──────────────────────────────────────────
+// Matches service by counting how many message keywords appear in each service name.
+// "corte barba" → "Corte de Cabelo e Barba" (2 hits) over "Corte de Cabelo" (1 hit).
+// Tiebreaker: higher coverage (hits / service words) wins.
+function matchServiceByKeywords(
+  text: string,
+  services: Array<{ id: string; name: string; durationMinutes: number; price: number }>
+): { id: string; name: string; durationMinutes: number; price: number } | null {
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+  const normText = norm(text);
+  const STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado']);
+
+  // 1. Full service name as substring
+  for (const svc of services) {
+    if (normText.includes(norm(svc.name))) return svc;
+  }
+
+  // 2. Keyword overlap scoring
+  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+  if (msgWords.length === 0) return null;
+
+  let best: typeof services[0] | null = null;
+  let bestHits = 0;
+  let bestCoverage = 0;
+
+  for (const svc of services) {
+    const svcWords = norm(svc.name).split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+    if (svcWords.length === 0) continue;
+    const hits = msgWords.filter(mw => svcWords.some(sw => sw.includes(mw) || mw.includes(sw))).length;
+    const coverage = hits / svcWords.length;
+    if (hits > bestHits || (hits === bestHits && coverage > bestCoverage)) {
+      bestHits = hits;
+      bestCoverage = coverage;
+      best = svc;
+    }
+  }
+
+  return bestHits >= 1 ? best : null;
 }
 
 // ── Brasília greeting ─────────────────────────────────────────────────
@@ -1264,14 +1329,21 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const matched = matchProfessionalName(lowerText, professionals);
     if (matched) {
       // ── Vacation check: always runs regardless of professional count ──
-      const profIsOnVacation = (settings.breaks || []).some((b: any) => {
+      const _vacBreakWh1 = (settings.breaks || []).find((b: any) => {
         if (b.professionalId && b.professionalId !== matched.id) return false;
         if (b.type !== 'vacation') return false;
         const vacStart: string = b.date || '';
         const vacEnd: string = b.vacationEndDate || b.date || '';
         return !!vacStart && todayISO >= vacStart && todayISO <= vacEnd;
       });
-      if (profIsOnVacation) {
+      if (_vacBreakWh1) {
+        const _vacEnd1 = (_vacBreakWh1 as any).vacationEndDate || _vacBreakWh1.date || '';
+        const _returnDate1 = _vacEnd1 ? (() => {
+          const d = new Date(_vacEnd1 + 'T12:00:00');
+          d.setDate(d.getDate() + 1);
+          return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+        })() : '';
+        const _returnInfo1 = _returnDate1 ? ` Retorna ${_returnDate1}.` : '';
         const othersAvail = (professionals as any[])
           .filter((p: any) => p.id !== matched.id)
           .filter((p: any) => !(settings.breaks || []).some((b: any) => {
@@ -1281,7 +1353,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             return !!vs && todayISO >= vs && todayISO <= ve;
           }));
         const othersStr = othersAvail.map((p: any) => p.name).join(' ou ');
-        const vacMsg = `*${matched.name}* está de férias no momento! 🏖️\n\n${othersStr ? `Gostaria de agendar com ${othersStr}?` : 'Gostaria de agendar com outro profissional?'}`;
+        const vacMsg = `*${matched.name}* está de férias no momento!${_returnInfo1} 🏖️\n\n${othersStr ? `Mas o ${othersStr} pode te atender! Gostaria de agendar?` : 'Gostaria de agendar com outro profissional?'}`;
         session.history.push({ role: 'user', text });
         session.history.push({ role: 'bot', text: vacMsg });
         await sendMsg(instanceName, phone, vacMsg, tenantId);
@@ -1292,7 +1364,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       if (professionals.length > 1) {
         // Multiple professionals: check for booking intent or personal-contact flow
         const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'cabeca', 'cabecinha', 'cabeça'];
+        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'cabelo', 'cabeca', 'cabecinha', 'cabeça'];
         const hasSvcMention = services.some((s: any) =>
           normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
         );
@@ -1384,15 +1456,22 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // Always respond with vacation message — no keyword matching needed since
   // real users ask in countless unpredictable ways ("tá atendendo?", "já voltou?", etc.)
   if (session.data.professionalId) {
-    const _curProfOnVacWh = (settings.breaks || []).some((b: any) => {
+    const _curVacBreakWh = (settings.breaks || []).find((b: any) => {
       if (b.type !== 'vacation') return false;
       if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
       const vs: string = b.date || '';
       const ve: string = b.vacationEndDate || b.date || '';
       return !!vs && todayISO >= vs && todayISO <= ve;
     });
-    if (_curProfOnVacWh) {
+    if (_curVacBreakWh) {
       const _vacProfNameWh = session.data.professionalName || 'O profissional';
+      const _vacEndWh2 = (_curVacBreakWh as any).vacationEndDate || _curVacBreakWh.date || '';
+      const _returnDateWh2 = _vacEndWh2 ? (() => {
+        const d = new Date(_vacEndWh2 + 'T12:00:00');
+        d.setDate(d.getDate() + 1);
+        return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+      })() : '';
+      const _returnInfoWh2 = _returnDateWh2 ? ` Retorna ${_returnDateWh2}.` : '';
       const _othersAvailWh = professionals.filter((p: any) => p.id !== session.data.professionalId)
         .filter((p: any) => !(settings.breaks || []).some((b: any) => {
           if (b.type !== 'vacation') return false;
@@ -1401,7 +1480,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           return !!vs && todayISO >= vs && todayISO <= ve;
         }));
       const _othersStrWh = _othersAvailWh.map((p: any) => p.name).join(' ou ');
-      const _vacMsgWh = `*${_vacProfNameWh}* está de férias no momento! 🏖️\n\n${_othersStrWh ? `Gostaria de agendar com ${_othersStrWh}?` : 'Pode agendar quando o profissional retornar.'}`;
+      const _vacMsgWh = `*${_vacProfNameWh}* está de férias no momento!${_returnInfoWh2} 🏖️\n\n${_othersStrWh ? `Mas o ${_othersStrWh} pode te atender! Gostaria de agendar?` : 'Pode agendar quando o profissional retornar.'}`;
       session.data.professionalId   = undefined;
       session.data.professionalName = undefined;
       session.data.date             = undefined;
@@ -1611,7 +1690,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const { profId, profName, profPhone } = session.data.pendingProfContact as { profId: string; profName: string; profPhone: string };
     const normMsgPc = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
     const normWdsPc = normMsgPc.split(/\s+/);
-    const BOOK_KW_PC = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'cabeca', 'cabecinha', 'cabeça'];
+    const BOOK_KW_PC = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'cabelo', 'cabeca', 'cabecinha', 'cabeça'];
     const AFFIRM_PC  = ['sim', 'pode', 'quero', 'ok', 'claro', 'isso', 'bora', 'gostaria', 'queria', 'preciso', 'favor', 'exato'];
     const DENY_PC    = ['nao', 'não', 'nope', 'negativo'];
     const hasBookingKwPc = BOOK_KW_PC.some((k: string) => normMsgPc.includes(k));
@@ -1650,15 +1729,33 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
-  // Prefetch slots only when service is known (duration required for accuracy)
+  // ── TypeScript-layer service keyword pre-extraction ─────────────────
+  // Matches "corte barba" → "Corte de Cabelo e Barba", "barba" → "Barba", etc.
+  // Runs BEFORE slot prefetch so the system knows the exact duration.
+  if (!session.data.serviceId) {
+    const _matchedSvc = matchServiceByKeywords(lowerText, services);
+    if (_matchedSvc) {
+      session.data.serviceId = _matchedSvc.id;
+      session.data.serviceName = _matchedSvc.name;
+      session.data.serviceDuration = _matchedSvc.durationMinutes;
+      session.data.servicePrice = _matchedSvc.price;
+      console.log('[Agent] TS pre-extracted service:', _matchedSvc.name);
+    }
+  }
+
+  // Prefetch slots only when all 3 are known (professional + date + service).
+  // Service is required because availability depends on duration.
   let prefetchedSlots: string[] | undefined;
-  if (session.data.professionalId && session.data.date && session.data.serviceId) {
+  const _hasProf = !!session.data.professionalId;
+  const _hasDate = !!session.data.date;
+  const _hasSvc  = !!session.data.serviceId;
+  if (_hasProf && _hasDate && _hasSvc) {
     const _slotDur = session.data.serviceDuration || 30;
-    prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId, session.data.date, _slotDur, settings);
+    prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, _slotDur, settings);
 
     // Empty slots = vacation or fully booked — handle immediately before calling brain
     if (prefetchedSlots.length === 0) {
-      const isVacation = (settings.breaks || []).some((b: any) => {
+      const _vacBreakWh3 = (settings.breaks || []).find((b: any) => {
         if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
         if (b.type !== 'vacation') return false;
         const vacStart = b.date || '';
@@ -1666,8 +1763,15 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         return !!vacStart && session.data.date >= vacStart && session.data.date <= vacEnd;
       });
       const profName = session.data.professionalName || 'O profissional';
-      if (isVacation) {
-        const noAvail = `${profName} está de férias neste período! 🏖️\n\nGostaria de escolher outro profissional ou outra data?`;
+      if (_vacBreakWh3) {
+        const _vacEndWh3 = (_vacBreakWh3 as any).vacationEndDate || _vacBreakWh3.date || '';
+        const _returnDateWh3 = _vacEndWh3 ? (() => {
+          const d = new Date(_vacEndWh3 + 'T12:00:00');
+          d.setDate(d.getDate() + 1);
+          return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+        })() : '';
+        const _returnInfoWh3 = _returnDateWh3 ? ` Retorna ${_returnDateWh3}.` : '';
+        const noAvail = `${profName} está de férias neste período!${_returnInfoWh3} 🏖️\n\nGostaria de escolher outro profissional ou outra data?`;
         session.data.date = undefined;
         session.data.professionalId = undefined;
         session.data.professionalName = undefined;
@@ -1736,8 +1840,34 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const effectiveShouldGreet = shouldGreet && !richFirstMessage;
   if (richFirstMessage) session.data.greetedAt = brasiliaDate;
 
+  // ── Build vacation context for AI prompt ──────────────────────────
+  const _breaksWh = settings.breaks || [];
+  const _profsOnVacWh = professionals.filter((p: any) =>
+    _breaksWh.some((b: any) => {
+      if (b.type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== p.id) return false;
+      const vs = b.date || '', ve = b.vacationEndDate || b.date || '';
+      return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
+    })
+  );
+  const _vacCtxWh = _profsOnVacWh.length > 0 ? `🏖️ PROFISSIONAIS DE FÉRIAS (NÃO disponíveis para agendamento):\n${_profsOnVacWh.map((p: any) => {
+    const vb = _breaksWh.find((b: any) => {
+      if (b.type !== 'vacation') return false;
+      if (b.professionalId && b.professionalId !== p.id) return false;
+      const vs = b.date || '', ve = b.vacationEndDate || b.date || '';
+      return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
+    });
+    const ve = vb ? (vb.vacationEndDate || vb.date || '') : '';
+    const retorno = ve ? (() => {
+      const d = new Date(ve + 'T12:00:00');
+      d.setDate(d.getDate() + 1);
+      return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    })() : 'data indefinida';
+    return `• ${p.name} — de férias, retorna ${retorno}`;
+  }).join('\n')}\n⚠️ Se o cliente pedir ESPECIFICAMENTE um profissional de férias, INFORME que está de férias e quando retorna. NÃO insista em outro profissional se o cliente disser que quer SOMENTE aquele.` : '';
+
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, formatDate(todayISO), services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
@@ -1762,7 +1892,22 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (prefetchedSlots.includes(ext.time)) session.data.time = ext.time;
   }
 
+  // ── TypeScript guard: block LLM from offering times without service ──────────
+  // If service is still unknown after LLM extraction, strip any specific times from
+  // the reply and replace with a service question. This is a hard guardrail since
+  // availability depends on service duration.
+  if (!session.data.serviceId && session.data.professionalId) {
+    const _timePattern = /\b([01]?\d|2[0-3])[:h]\s*[0-5]?\d\b/;
+    if (_timePattern.test(brain.reply) || (ext.time && !ext.serviceId)) {
+      const svcNames = services.map((s: any) => s.name).join(', ');
+      brain.reply = `Qual procedimento você gostaria? Temos: ${svcNames}`;
+      brain.extracted.time = null;
+      brain.extracted.confirmed = null;
+    }
+  }
+
   // Re-run with real slots if we just got prof+date+service
+  // Re-fetch slots when all 3 are now set but weren't before the LLM call
   const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date && session.data.serviceId;
   if (justGotProfAndDate) {
     const newSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, session.data.serviceDuration || 60, settings);
@@ -1796,7 +1941,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, formatDate(todayISO), services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone);
+    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined);
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;
@@ -2242,6 +2387,8 @@ Deno.serve(async (req) => {
         resolvedCustomerId = existingCust?.id || null;
       }
       if (resolvedCustomerId && settings.customerData[resolvedCustomerId]?.aiPaused) continue;
+      // Also check phone-based pause key (for leads not yet in customers table)
+      if (settings.customerData[`phone:${phone}`]?.aiPaused) continue;
 
       // Fire-and-forget: responde 200 imediatamente; debounce roda em background
       EdgeRuntime.waitUntil(
