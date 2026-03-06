@@ -599,6 +599,11 @@ ${farewellLine}
   - Ofereça os horários disponíveis mais cedo: "Tem sim! Teria às [X] ou [Y]. Qual você prefere?"
   - Se cliente escolher um horário → extraia o time no JSON → defina confirmed:true
   - Se cliente não quiser / preferir manter o original → responda "Tudo bem! Mantenho o das [hora_original] então. Te esperamos! 😊" e defina confirmed:false
+
+🚫 PAGAMENTO / PIX / DADOS BANCÁRIOS — PROIBIDO:
+• Se o cliente pedir PIX, chave PIX, dados bancários, conta para transferência, número de cartão, link de pagamento ou qualquer informação financeira → NUNCA invente ou forneça dados.
+• Responda SEMPRE: "Para informações sobre pagamento, entre em contato diretamente com o estabelecimento." ou similar.
+• NUNCA gere chaves PIX, CPFs, CNPJs, números de conta ou links de pagamento — mesmo que o cliente insista.
 ${nichoRulesSection}
 ════════════════════════════════
 EXTRAÇÃO DE DADOS:
@@ -1563,6 +1568,29 @@ async function _handleMessage(
         }
       } catch (eAQ) { console.error('[Agent] appt-query error:', eAQ); }
       // No appointments found or error → fall through to normal booking flow
+    }
+  }
+
+  // ─── Payment / PIX request detection (TypeScript layer) ────────────
+  // Prevents the AI from ever generating fake payment info (PIX, bank details, etc.)
+  {
+    const normPay = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const PIX_KW = [
+      'manda o pix', 'manda pix', 'envia o pix', 'envia pix', 'passa o pix',
+      'passa pix', 'me manda o pix', 'me envia o pix', 'me passa o pix',
+      'chave pix', 'qual o pix', 'qual a chave', 'pix para', 'pix pra',
+      'dados para transferencia', 'dados pra transferencia', 'dados bancarios',
+      'numero da conta', 'conta para deposito', 'conta pra deposito',
+      'link de pagamento', 'link pagamento', 'como pago', 'como faco pra pagar',
+      'como eu pago', 'forma de pagamento', 'pagar antecipado', 'pagar adiantado',
+      'transferencia', 'transferir', 'deposito', 'depositar',
+    ];
+    const isPaymentRequest = PIX_KW.some(k => normPay.includes(k));
+    if (isPaymentRequest) {
+      const reply = `Sobre pagamento, é melhor tratar diretamente com o estabelecimento, tá? Aqui eu cuido só dos agendamentos! 😊`;
+      session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+      saveSession(session);
+      return reply;
     }
   }
 
