@@ -12,6 +12,26 @@ export interface SendMessageResponse {
   error?: string;
 }
 
+// ── Send-side dedup: prevents the exact same message from being sent twice
+// to the same phone within a short window (regardless of which system triggers it)
+const _sentDedup = new Map<string, number>();
+const _SEND_DEDUP_TTL = 30_000; // 30 seconds
+
+function _isSendDuplicate(phone: string, text: string): boolean {
+  const key = `${phone.replace(/\D/g, '')}::${text.trim().slice(0, 150)}`;
+  const now = Date.now();
+  const last = _sentDedup.get(key);
+  if (last !== undefined && now - last < _SEND_DEDUP_TTL) return true;
+  _sentDedup.set(key, now);
+  // Prune old entries
+  if (_sentDedup.size > 200) {
+    for (const [k, t] of _sentDedup) {
+      if (now - t > _SEND_DEDUP_TTL) _sentDedup.delete(k);
+    }
+  }
+  return false;
+}
+
 export const evolutionService = {
   async sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -144,6 +164,10 @@ export const evolutionService = {
   },
 
   async sendMessage(instanceName: string, recipient: string, text: string): Promise<SendMessageResponse> {
+    if (_isSendDuplicate(recipient, text)) {
+      console.log(`[Evolution] Dedup: mensagem duplicada bloqueada para ${recipient.slice(-4)}`);
+      return { success: true }; // already sent — silently succeed
+    }
     return this.sendToWhatsApp(instanceName, recipient, text);
   },
 
