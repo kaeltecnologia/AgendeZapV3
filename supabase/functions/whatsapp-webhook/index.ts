@@ -688,8 +688,13 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const AFFIRM_PCC = ['sim', 'ok', 'pode', 'certo', 'cancela', 'cancelar', 'confirmo', 'bora', 'isso', 'claro', 'pode cancelar', 'cancela sim'];
     const DENY_PCC  = ['nao', 'não', 'negativo', 'nope', 'deixa', 'esquece'];
     const RESCHEDULE_PCC = ['remarcar', 'reagendar', 'mudar', 'trocar', 'outro dia', 'outro horario'];
+    // Implicit cancel phrases — if present, the user is repeating "can't make it", not saying "no, keep it"
+    const IMPLICIT_CANCEL_PCC = ['nao vou conseguir', 'nao vou chegar', 'nao consigo ir', 'nao consigo comparecer', 'nao vou comparecer', 'nao vou poder'];
+    const hasImplicitCancelPCC = IMPLICIT_CANCEL_PCC.some(k => normPCC.includes(k));
     const isAffirmPCC  = AFFIRM_PCC.some(a => normPCC === a || normPCC.includes(a));
-    const isDenyPCC    = DENY_PCC.some(d => normPCC === d || normPCC.split(/\s+/).includes(d)) && !isAffirmPCC;
+    // isDenyPCC: only fire on short/clear "no" replies — not on long messages that happen to contain "nao"
+    const isDenyPCC    = !hasImplicitCancelPCC && normPCC.split(/\s+/).length <= 8 &&
+      DENY_PCC.some(d => normPCC === d || normPCC.split(/\s+/).includes(d)) && !isAffirmPCC;
     const isReschPCC   = RESCHEDULE_PCC.some(r => normPCC.includes(r));
 
     if (isReschPCC || (isAffirmPCC && normPCC.includes('remarcar')) || (isAffirmPCC && normPCC.includes('reagendar'))) {
@@ -718,8 +723,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       await sendMsg(instanceName, phone, replyPCC, tenantId);
       return;
     } else {
-      // Ambiguous → let AI handle with context
+      // Ambiguous or repeated implicit-cancel → clear pendingCancelConfirm and fall through
+      // so the implicit-cancel detection block below can re-evaluate and re-ask correctly.
       preSession.data.pendingCancelConfirm = undefined;
+      preSession.data.pendingCancelConfirm_rescheduleData = undefined;
       await saveSession(tenantId, phone, preSession.data, preSession.history);
     }
   }
