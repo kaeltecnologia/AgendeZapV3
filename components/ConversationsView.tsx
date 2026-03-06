@@ -639,7 +639,8 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setBookingError('');
     try {
       const svc = bookingServices.find(s => s.id === bookingServiceId);
-      const startTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString();
+      // Pass local time string directly — never go through Date/toISOString (avoids UTC+3h shift)
+      const startTime = `${bookingDate}T${bookingTime}:00`;
       await db.addAppointment({
         tenant_id: tenantId,
         customer_id: bookingCustomerId,

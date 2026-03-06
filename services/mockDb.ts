@@ -219,11 +219,26 @@ class DatabaseService {
 
   async addAppointment(app: any) {
     try {
-      const start = new Date(app.startTime);
-      const end = new Date(start.getTime() + (app.durationMinutes || 30) * 60000);
-      // Use local time strings — avoids UTC offset storing the wrong time
-      const inicio = toLocalISO(start);
-      const fim = toLocalISO(end);
+      // If startTime is already a local ISO string (no "Z"/"+" suffix), use it directly
+      // to avoid any Date/timezone conversion issues (UTC+3h shift).
+      const isLocalStr = typeof app.startTime === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(app.startTime) && !app.startTime.includes('Z') && !app.startTime.includes('+');
+      let inicio: string;
+      let fim: string;
+      if (isLocalStr) {
+        inicio = app.startTime;
+        // Compute end by parsing HH:MM from the string (no Date object needed)
+        const [hStr, mStr] = app.startTime.substring(11, 16).split(':').map(Number);
+        const dur = app.durationMinutes || 30;
+        const totalMin = hStr * 60 + mStr + dur;
+        const eH = Math.floor(totalMin / 60) % 24;
+        const eM = totalMin % 60;
+        fim = `${app.startTime.substring(0, 11)}${String(eH).padStart(2, '0')}:${String(eM).padStart(2, '0')}:00`;
+      } else {
+        const start = new Date(app.startTime);
+        const end = new Date(start.getTime() + (app.durationMinutes || 30) * 60000);
+        inicio = toLocalISO(start);
+        fim = toLocalISO(end);
+      }
       const payload: any = {
         tenant_id: app.tenant_id,
         customer_id: app.customer_id,
@@ -284,8 +299,8 @@ class DatabaseService {
     const { error } = await supabase.from('appointments').update({
       professional_id: professionalId,
       service_id: serviceId,
-      inicio: startTime.toISOString(),
-      fim: fim.toISOString(),
+      inicio: toLocalISO(startTime),
+      fim: toLocalISO(fim),
     }).eq('id', id);
     if (error) throw error;
   }
