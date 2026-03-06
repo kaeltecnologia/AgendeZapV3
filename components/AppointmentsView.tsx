@@ -570,12 +570,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     }
     const svc = services.find(s => s.id === editSvcId);
     if (!svc) return;
-    const startTime = new Date(`${editDate}T${editTime}:00`);
-    if (isNaN(startTime.getTime())) { setEditError('Data ou hora inválida.'); return; }
+    const startTimeStr = `${editDate}T${editTime}:00`;
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(startTimeStr)) { setEditError('Data ou hora inválida.'); return; }
     setSavingEdit(true);
     setEditError('');
     try {
-      await db.updateAppointmentSchedule(editAppt.id, editProfId, editSvcId, startTime, svc.durationMinutes);
+      await db.updateAppointmentSchedule(editAppt.id, editProfId, editSvcId, startTimeStr, svc.durationMinutes);
       setEditAppt(null);
       refreshData();
     } catch (e: any) {

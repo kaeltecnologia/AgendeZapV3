@@ -292,15 +292,27 @@ class DatabaseService {
     id: string,
     professionalId: string,
     serviceId: string,
-    startTime: Date,
+    startTime: string | Date,
     durationMinutes: number
   ): Promise<void> {
-    const fim = new Date(startTime.getTime() + durationMinutes * 60000);
+    let inicio: string;
+    let fim: string;
+    if (typeof startTime === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(startTime) && !startTime.includes('Z') && !startTime.includes('+')) {
+      inicio = startTime;
+      const [hh, mm] = startTime.substring(11, 16).split(':').map(Number);
+      const total = hh * 60 + mm + durationMinutes;
+      fim = `${startTime.substring(0, 11)}${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}:00`;
+    } else {
+      const d = typeof startTime === 'string' ? new Date(startTime) : startTime;
+      const e = new Date(d.getTime() + durationMinutes * 60000);
+      inicio = toLocalISO(d);
+      fim = toLocalISO(e);
+    }
     const { error } = await supabase.from('appointments').update({
       professional_id: professionalId,
       service_id: serviceId,
-      inicio: toLocalISO(startTime),
-      fim: toLocalISO(fim),
+      inicio,
+      fim,
     }).eq('id', id);
     if (error) throw error;
   }
