@@ -23,6 +23,27 @@ const EVO_HEADERS = { 'Content-Type': 'application/json', 'apikey': EVO_KEY };
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours — follow-up replies can come hours after the message
 
+// ── Periodic background cleanup (runs at most once per hour) ─────────
+let _lastCleanup = 0;
+function maybeCleanup() {
+  const now = Date.now();
+  if (now - _lastCleanup < 3_600_000) return; // max once/hour
+  _lastCleanup = now;
+  (async () => {
+    try {
+      // Purge sessions older than 24h (safety net beyond per-load TTL)
+      await supabase.from('agent_sessions').delete()
+        .lt('updated_at', new Date(now - 86_400_000).toISOString());
+      // Purge old msg_dedup entries
+      await supabase.from('msg_dedup').delete()
+        .lt('ts', new Date(now - 86_400_000).toISOString());
+      // Purge stale _wSentDedup entries from memory
+      for (const [k, t] of _wSentDedup) { if (now - t > _W_DEDUP_TTL) _wSentDedup.delete(k); }
+      console.log('[Cleanup] Purged old sessions, msg_dedup, and in-memory cache');
+    } catch (e) { console.error('[Cleanup] error:', e); }
+  })();
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -60,7 +81,13 @@ async function getSession(tenantId: string, phone: string): Promise<any | null> 
     await supabase.from('agent_sessions').delete().eq('tenant_id', tenantId).eq('phone', phone);
     return null;
   }
-  return { data: data.data || {}, history: data.history || [] };
+  const sd = data.data || {};
+  // ── Clean stale volatile fields on session load ──────────────────────
+  // availableSlots must always be freshly fetched, never carried over
+  delete sd.availableSlots;
+  // pendingVacationOffer is per-turn context, should not persist
+  delete sd.pendingVacationOffer;
+  return { data: sd, history: data.history || [] };
 }
 
 async function saveSession(tenantId: string, phone: string, data: any, history: any[]) {
@@ -208,13 +235,14 @@ async function getAvailableSlots(
     });
     if (conflict) { cursor += 30; continue; }
     const brk = breaks.some((b: any) => {
-      if (b.professionalId && b.professionalId !== professionalId) return false;
-      // Férias: verifica faixa de datas (date → vacationEndDate)
+      // Férias: EXIGE professionalId explícito (sem professionalId = não aplica a ninguém)
       if (b.type === 'vacation') {
+        if (!b.professionalId || b.professionalId !== professionalId) return false;
         const vacStart = b.date || '';
         const vacEnd = b.vacationEndDate || b.date || '';
         return !!vacStart && date >= vacStart && date <= vacEnd;
       }
+      if (b.professionalId && b.professionalId !== professionalId) return false;
       if (b.date && b.date !== date) return false;
       if (b.dayOfWeek != null && b.dayOfWeek !== dayIndex) return false;
       return label < b.endTime && slotEndLabel > b.startTime;
@@ -2077,6 +2105,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // ── Clear stale availableSlots from session — always start fresh ──────────
+  // Old slots from previous turns must never leak into the AI context.
+  session.data.availableSlots = undefined;
+
   // Prefetch slots only when all 3 are known (professional + date + service).
   // Service is required because availability depends on duration.
   let prefetchedSlots: string[] | undefined;
@@ -2234,9 +2266,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // ── TypeScript guard: block LLM from offering times without service ──────────
   // If service is still unknown after LLM extraction, strip any specific times from
-  // the reply and replace with a service question. This is a hard guardrail since
-  // availability depends on service duration.
-  if (!session.data.serviceId && session.data.professionalId) {
+  // the reply. This is a hard guardrail since availability depends on service duration.
+  if (!session.data.serviceId) {
     const _timePattern = /\b([01]?\d|2[0-3])[:h]\s*[0-5]?\d\b/;
     if (_timePattern.test(brain.reply) || (ext.time && !ext.serviceId)) {
       const svcNames = services.map((s: any) => s.name).join(', ');
@@ -2647,6 +2678,9 @@ Deno.serve(async (req) => {
 
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+
+  // Background cleanup of old sessions + dedup entries (max once/hour)
+  maybeCleanup();
 
   // ── Campaign-tick shortcut (browser polls + pg_cron) ─────────────────
   if (req.headers.get('x-campaign-tick') === 'true') {

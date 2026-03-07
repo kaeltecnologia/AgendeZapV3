@@ -92,6 +92,20 @@ const sessions = new Map<string, Session>();
 // Tracks last sent message per session to detect duplicates
 const lastSentMsg = new Map<string, { text: string; ts: number }>();
 
+// ── Periodic in-memory cache cleanup (runs at most once per 15 min) ──
+let _lastCachePurge = 0;
+function maybePurgeStaleSessions() {
+  const now = Date.now();
+  if (now - _lastCachePurge < 900_000) return; // max once per 15 min
+  _lastCachePurge = now;
+  for (const [k, s] of sessions) {
+    if (now - s.updatedAt > SESSION_TIMEOUT_MS) sessions.delete(k);
+  }
+  for (const [k, v] of lastSentMsg) {
+    if (now - v.ts > SESSION_TIMEOUT_MS) lastSentMsg.delete(k);
+  }
+}
+
 function sessionKey(tenantId: string, phone: string): string {
   return `${tenantId}::${phone}`;
 }
@@ -103,6 +117,9 @@ function getSession(tenantId: string, phone: string): Session | null {
     sessions.delete(sessionKey(tenantId, phone));
     return null;
   }
+  // ── Clean stale volatile fields on session load ──────────────────────
+  delete (s.data as any).availableSlots;
+  delete (s.data as any).pendingVacationOffer;
   return s;
 }
 
@@ -318,13 +335,14 @@ async function getAvailableSlots(
     if (hasAppConflict) { cursor += INTERVAL_MIN; continue; }
 
     const hasBreakConflict = breaks.some(brk => {
-      if (brk.professionalId && brk.professionalId !== professionalId) return false;
-      // Férias: verifica faixa de datas (date → vacationEndDate)
+      // Férias: EXIGE professionalId explícito (sem professionalId = não aplica a ninguém)
       if ((brk as any).type === 'vacation') {
+        if (!brk.professionalId || brk.professionalId !== professionalId) return false;
         const vacStart = brk.date || '';
         const vacEnd = (brk as any).vacationEndDate || brk.date || '';
         return !!vacStart && date >= vacStart && date <= vacEnd;
       }
+      if (brk.professionalId && brk.professionalId !== professionalId) return false;
       const matchDate = !brk.date || brk.date === date;
       const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
       if (!matchDate || !matchDay) return false;
@@ -1932,6 +1950,9 @@ async function _handleMessage(
 
   // ─── Fetch available slots when professional + date are known ──────
   // When service is known → exact duration. When unknown → longest service (conservative).
+  // ── Clear stale availableSlots from session — always start fresh ──────────
+  session.data.availableSlots = undefined;
+
   let prefetchedSlots: string[] | undefined;
   const _hasProfSPA = !!session.data.professionalId;
   const _hasDateSPA = !!session.data.date;
@@ -2182,7 +2203,7 @@ async function _handleMessage(
   }
 
   // ── TypeScript guard: block LLM from offering times without service ──────────
-  if (!session.data.serviceId && session.data.professionalId) {
+  if (!session.data.serviceId) {
     const _timePattern = /\b([01]?\d|2[0-3])[:h]\s*[0-5]?\d\b/;
     if (_timePattern.test(brain.reply) || (ext.time && !ext.serviceId)) {
       const svcNames = activeServices.map((s: any) => s.name).join(', ');
@@ -2518,6 +2539,7 @@ export async function handleMessage(
   pushName?: string,
   options?: { isAudio?: boolean }
 ): Promise<string | null> {
+  maybePurgeStaleSessions();
   const result = await _handleMessage(tenant, phone, messageText, pushName, options);
   if (result) {
     const key = `${tenant.id}:${phone}`;
