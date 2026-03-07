@@ -2083,8 +2083,22 @@ async function _handleMessage(
     const prof = activeProfessionals.find((p: any) => p.id === ext.professionalId);
     if (prof) { session.data.professionalId = prof.id; session.data.professionalName = prof.name; }
   }
-  // Only apply date/time if not already set
-  if (ext.date && !session.data.date) session.data.date = ext.date;
+  // Only apply date/time if not already set — skip if message has cancellation intent
+  if (ext.date && !session.data.date) {
+    const _normCancelSPA = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const _cancelSPA = [
+      /nao\s+(?:vou|posso|consigo|da|dou|tenho como|vai\s+dar)/,
+      /(?:vou|posso|consigo|vai\s+dar)\s+(?:nao|não)/,
+      /conseguir\s+ir\s+nao/,
+      /nao\s+(?:vai|vou)\s+(?:dar|rolar|conseguir)/,
+      /cancelar/, /desmarcar/, /remarcar/, /reagendar/,
+      /nao\s+ir/, /ir\s+nao/,
+      /(?:vou|preciso)\s+(?:faltar|desistir)/,
+    ];
+    if (!_cancelSPA.some(re => re.test(_normCancelSPA))) {
+      session.data.date = ext.date;
+    }
+  }
 
   // ── Closed-day guard (TypeScript layer) ─────────────────────────────
   // If the AI extracted a date on a closed day, find next open day and respond from code.

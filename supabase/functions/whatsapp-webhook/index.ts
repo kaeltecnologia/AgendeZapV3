@@ -1458,9 +1458,21 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // Date pre-extraction (TypeScript layer — resolves day names to YYYY-MM-DD)
   // Always try to resolve — if client mentions a NEW date, update the session
+  // BUT skip if the message contains cancellation/no-show intent (e.g. "amanhã não vou")
   {
+    const _normCancel = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const CANCEL_PATTERNS = [
+      /nao\s+(?:vou|posso|consigo|da|dou|tenho como|vai\s+dar)/,
+      /(?:vou|posso|consigo|vai\s+dar)\s+(?:nao|não)/,
+      /conseguir\s+ir\s+nao/,
+      /nao\s+(?:vai|vou)\s+(?:dar|rolar|conseguir)/,
+      /cancelar/, /desmarcar/, /remarcar/, /reagendar/,
+      /nao\s+ir/, /ir\s+nao/,
+      /(?:vou|preciso)\s+(?:faltar|desistir)/,
+    ];
+    const hasCancelIntent = CANCEL_PATTERNS.some(re => re.test(_normCancel));
     const resolved = resolveRelativeDate(lowerText, todayISO);
-    if (resolved && resolved !== session.data.date) {
+    if (resolved && resolved !== session.data.date && !hasCancelIntent) {
       session.data.date = resolved;
       // New date → clear time and slots so they are re-fetched
       session.data.time = undefined;
@@ -1956,7 +1968,22 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     // If date wasn't pre-extracted yet, try to resolve it now (fallback path)
     if (!session.data.date) {
       const resolvedFm = resolveRelativeDate(lowerText, todayISO);
-      if (resolvedFm) session.data.date = resolvedFm;
+      if (resolvedFm) {
+        // Don't set date if message has cancellation/no-show intent (e.g. "amanhã não vou")
+        const _normCancelFm = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+        const _cancelFm = [
+          /nao\s+(?:vou|posso|consigo|da|dou|tenho como|vai\s+dar)/,
+          /(?:vou|posso|consigo|vai\s+dar)\s+(?:nao|não)/,
+          /conseguir\s+ir\s+nao/,
+          /nao\s+(?:vai|vou)\s+(?:dar|rolar|conseguir)/,
+          /cancelar/, /desmarcar/, /remarcar/, /reagendar/,
+          /nao\s+ir/, /ir\s+nao/,
+          /(?:vou|preciso)\s+(?:faltar|desistir)/,
+        ];
+        if (!_cancelFm.some(re => re.test(_normCancelFm))) {
+          session.data.date = resolvedFm;
+        }
+      }
     }
     if (session.data.date) {
       const normFmCtx = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
