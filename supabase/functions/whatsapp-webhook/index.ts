@@ -2843,7 +2843,32 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (!text) continue;
+      // ── Persist media messages (image/video/doc/sticker) even without text ──
+      if (!text) {
+        const _mType = msg.messageType || msg.type || '';
+        const _isImg = _mType === 'imageMessage' || !!msg.message?.imageMessage;
+        const _isVid = _mType === 'videoMessage' || !!msg.message?.videoMessage;
+        const _isDoc = _mType === 'documentMessage' || !!msg.message?.documentMessage;
+        const _isStk = _mType === 'stickerMessage' || !!msg.message?.stickerMessage;
+        if (_isImg || _isVid || _isDoc || _isStk) {
+          const _mPhone = extractPhone(msg);
+          if (_mPhone) {
+            let _mBody = '[imagem]';
+            if (_isImg) _mBody = msg.message?.imageMessage?.caption || '[imagem]';
+            else if (_isVid) _mBody = msg.message?.videoMessage?.caption || '[vídeo]';
+            else if (_isDoc) _mBody = '[documento]';
+            else if (_isStk) _mBody = '[sticker]';
+            EdgeRuntime.waitUntil(saveWaMsg(
+              tenant.id, msgId || `${_mPhone}_${msg.messageTimestamp || Date.now()}`,
+              _mPhone, _mBody, msg.messageTimestamp || Math.floor(Date.now() / 1000),
+              msg.pushName || '', _mType, false,
+              { key: msg.key, message: msg.message, messageType: msg.messageType }
+            ));
+          }
+          continue;
+        }
+        continue;
+      }
       const phone = extractPhone(msg);
       if (!phone) continue;
 

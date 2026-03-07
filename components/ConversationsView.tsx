@@ -13,7 +13,8 @@ interface ConvMessage {
   timestamp: number;
   fromMe: boolean;
   isAudio?: boolean;
-  rawMsg?: any; // raw Evolution API message (kept for audio transcription)
+  isImage?: boolean;
+  rawMsg?: any; // raw Evolution API message (kept for audio/image media)
 }
 
 interface Conversation {
@@ -41,11 +42,20 @@ function normalizeEvoMsg(msg: any, extrairNumero: (m: any) => string | null) {
     ['audioMessage', 'pttMessage'].includes(msgType) ||
     !!msg.message?.audioMessage ||
     !!msg.message?.pttMessage;
+  const isImage = msgType === 'imageMessage' || !!msg.message?.imageMessage;
+  let body = text;
+  if (!body) {
+    if (isAudio) body = '[áudio]';
+    else if (isImage) body = msg.message?.imageMessage?.caption || '[imagem]';
+    else if (msg.message?.videoMessage) body = msg.message.videoMessage.caption || '[vídeo]';
+    else if (msg.message?.documentMessage) body = '[documento]';
+    else if (msg.message?.stickerMessage) body = '[sticker]';
+  }
   return {
     msg_id:    msg.key?.id || `${phone}_${msg.messageTimestamp || Date.now()}`,
     phone,
     direction: (msg.key?.fromMe ? 'out' : 'in') as 'in' | 'out',
-    body:      text || (isAudio ? '[áudio]' : ''),
+    body:      body || '',
     msg_type:  msgType || 'text',
     push_name: msg.pushName || phone,
     from_me:   !!msg.key?.fromMe,
@@ -107,6 +117,11 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [transcriptions, setTranscriptions] = useState<Record<string, string>>({});
   const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
   const [apiKey, setApiKey] = useState('');
+
+  // Image media
+  const [imageCache, setImageCache] = useState<Record<string, string>>({});
+  const [imageLoading, setImageLoading] = useState<Set<string>>(new Set());
+  const [imageFailed, setImageFailed] = useState<Set<string>>(new Set());
 
   // Quick booking modal
   const [showBooking, setShowBooking] = useState(false);
@@ -238,11 +253,17 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
       for (const row of dbRows) {
         const { msg_id, phone, body, msg_type, push_name, from_me, ts, raw } = row;
-        if (!body.trim() && body !== '[áudio]') continue;
 
         const isAudio =
           body === '[áudio]' ||
           ['audioMessage', 'pttMessage'].includes(msg_type || '');
+        const isImage =
+          body === '[imagem]' ||
+          msg_type === 'imageMessage' ||
+          !!(raw?.message?.imageMessage);
+
+        // Skip empty messages, but allow audio and image placeholders
+        if (!body.trim() && !isAudio && !isImage) continue;
 
         const matchedProf = professionals.find((p: any) => phonesMatch(p.phone || '', phone));
         const matchedCust = custs.find((c: any) => phonesMatch(c.phone, phone));
@@ -251,11 +272,16 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           id:        msg_id,
           phone,
           pushName:  push_name || phone,
-          text:      isAudio && !body.startsWith('[') ? body : (isAudio ? '🎵 Áudio' : body),
+          text:      isAudio && !body.startsWith('[')
+                       ? body
+                       : isAudio ? '🎵 Áudio'
+                       : isImage ? (body !== '[imagem]' ? body : '')
+                       : body,
           timestamp: ts,
           fromMe:    from_me,
-          isAudio:   isAudio,
-          rawMsg:    isAudio ? (raw || undefined) : undefined,
+          isAudio,
+          isImage,
+          rawMsg:    (isAudio || isImage) ? (raw || undefined) : undefined,
         };
 
         const existing = convMap.get(phone);
@@ -380,6 +406,27 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setTranscribing(prev => { const s = new Set(prev); s.delete(msg.id); return s; });
     }
   }, [apiKey, instanceName, transcriptions, transcribing]);
+
+  const fetchImageMedia = useCallback(async (msgId: string, rawMsg: any) => {
+    if (!rawMsg || !instanceName) return;
+    if (imageCache[msgId] || imageLoading.has(msgId)) return;
+    setImageLoading(prev => new Set(prev).add(msgId));
+    setImageFailed(prev => { const s = new Set(prev); s.delete(msgId); return s; });
+    try {
+      const result = await fetchAudioBase64(instanceName, rawMsg);
+      if (result && result.base64) {
+        const mime = result.mimeType || 'image/jpeg';
+        setImageCache(prev => ({ ...prev, [msgId]: `data:${mime};base64,${result.base64}` }));
+      } else {
+        setImageFailed(prev => new Set(prev).add(msgId));
+      }
+    } catch (e) {
+      console.error('[ConversationsView] fetchImageMedia error:', e);
+      setImageFailed(prev => new Set(prev).add(msgId));
+    } finally {
+      setImageLoading(prev => { const s = new Set(prev); s.delete(msgId); return s; });
+    }
+  }, [instanceName, imageCache, imageLoading]);
 
   const formatTime = (ts: number) => {
     if (!ts) return '';
@@ -710,6 +757,65 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setContactSearch('');
   };
 
+  // ── ImageBubble: lazy-loaded image with IntersectionObserver ──────────
+  const ImageBubble = ({ msg }: { msg: ConvMessage }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const triggered = useRef(false);
+    const cached = imageCache[msg.id];
+    const loading = imageLoading.has(msg.id);
+    const failed = imageFailed.has(msg.id);
+
+    useEffect(() => {
+      if (cached || loading || !msg.rawMsg || triggered.current) return;
+      const el = ref.current;
+      if (!el) return;
+      const obs = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting && !triggered.current) {
+          triggered.current = true;
+          fetchImageMedia(msg.id, msg.rawMsg);
+          obs.disconnect();
+        }
+      }, { threshold: 0.1 });
+      obs.observe(el);
+      return () => obs.disconnect();
+    }, [cached, loading, msg.rawMsg, msg.id]);
+
+    useEffect(() => { if (failed) triggered.current = false; }, [failed]);
+
+    return (
+      <div ref={ref} className="space-y-1">
+        {cached ? (
+          <img
+            src={cached}
+            alt="imagem"
+            className="max-w-full max-h-64 rounded-xl cursor-pointer"
+            onClick={() => window.open(cached, '_blank')}
+            style={{ minWidth: 120, minHeight: 80 }}
+          />
+        ) : loading ? (
+          <div className="flex items-center justify-center bg-slate-100 rounded-xl" style={{ width: 200, height: 120 }}>
+            <div className="w-6 h-6 border-2 border-slate-300 border-t-orange-500 rounded-full animate-spin" />
+          </div>
+        ) : failed ? (
+          <button
+            onClick={() => fetchImageMedia(msg.id, msg.rawMsg)}
+            className="flex flex-col items-center justify-center gap-1 bg-slate-100 rounded-xl cursor-pointer hover:bg-slate-200 transition-all"
+            style={{ width: 200, height: 120 }}
+          >
+            <span className="text-2xl">📷</span>
+            <span className={`text-[9px] font-bold ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`}>Imagem indisponível</span>
+            <span className={`text-[8px] underline ${msg.fromMe ? 'text-orange-100' : 'text-slate-400'}`}>Tentar novamente</span>
+          </button>
+        ) : (
+          <div className="flex items-center justify-center bg-slate-50 rounded-xl" style={{ width: 200, height: 120 }}>
+            <span className="text-2xl">📷</span>
+          </div>
+        )}
+        {msg.text && <p className="whitespace-pre-wrap leading-relaxed break-words text-xs">{msg.text}</p>}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
@@ -820,7 +926,14 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         {conv.isProfessional && (
                           <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Barbeiro</span>
                         )}
-                        <p className={`text-[10px] truncate mt-0.5 ${isUnread(conv) && selectedPhone !== conv.phone ? 'text-slate-600 font-semibold' : 'text-slate-400'}`}>{conv.lastMessage}</p>
+                        <p className={`text-[10px] truncate mt-0.5 ${isUnread(conv) && selectedPhone !== conv.phone ? 'text-slate-600 font-semibold' : 'text-slate-400'}`}>{
+                          conv.lastMessage === '[imagem]' ? '📷 Imagem'
+                          : conv.lastMessage === '[áudio]' ? '🎵 Áudio'
+                          : conv.lastMessage === '[vídeo]' ? '🎥 Vídeo'
+                          : conv.lastMessage === '[documento]' ? '📄 Documento'
+                          : conv.lastMessage === '[sticker]' ? '🏷️ Sticker'
+                          : conv.lastMessage
+                        }</p>
                       </div>
                     </div>
                   </button>
@@ -921,7 +1034,9 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                 ? 'bg-orange-500 text-white rounded-br-sm'
                                 : 'bg-white text-black border border-slate-100 rounded-bl-sm'
                             }`}>
-                              {msg.isAudio ? (
+                              {msg.isImage ? (
+                                <ImageBubble msg={msg} />
+                              ) : msg.isAudio ? (
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2 py-0.5">
                                     <span className="text-base">🎵</span>

@@ -275,7 +275,36 @@ export async function processarMensagem(tenant: any, msg: any) {
     }
   }
 
-  if (!text) return;
+  // ── Persist media messages (image/video/doc/sticker) even without text ──
+  if (!text) {
+    const _mType = msgType || msg.messageType || msg.type || '';
+    const _isImg = _mType === 'imageMessage' || !!msg.message?.imageMessage;
+    const _isVid = _mType === 'videoMessage' || !!msg.message?.videoMessage;
+    const _isDoc = _mType === 'documentMessage' || !!msg.message?.documentMessage;
+    const _isStk = _mType === 'stickerMessage' || !!msg.message?.stickerMessage;
+    if (_isImg || _isVid || _isDoc || _isStk) {
+      const _mPhone = extrairNumero(msg);
+      if (_mPhone) {
+        let _mBody = '[imagem]';
+        if (_isImg) _mBody = msg.message?.imageMessage?.caption || '[imagem]';
+        else if (_isVid) _mBody = msg.message?.videoMessage?.caption || '[vídeo]';
+        else if (_isDoc) _mBody = '[documento]';
+        else if (_isStk) _mBody = '[sticker]';
+        db.saveWaMessages(tenant.id, [{
+          msg_id:    msg.key?.id || `${_mPhone}_${msg.messageTimestamp || Date.now()}`,
+          phone:     _mPhone,
+          direction: 'in',
+          body:      _mBody,
+          msg_type:  _mType,
+          push_name: msg.pushName || 'Cliente',
+          from_me:   false,
+          ts:        msg.messageTimestamp || Math.floor(Date.now() / 1000),
+          raw:       { key: msg.key, message: msg.message, messageType: msg.messageType },
+        }]).catch(() => {});
+      }
+    }
+    return;
+  }
 
   const pushName = msg.pushName || 'Cliente';
   const numero = extrairNumero(msg);
