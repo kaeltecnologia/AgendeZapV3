@@ -514,8 +514,10 @@ async function callBrain(
 • "Primeiro horário do [prof]" = duas ações → cancelar atual + agendar novo → confirmar as duas juntas: "O primeiro horário do [prof] é [data/hora]. Confirmo o reagendamento e cancelo o seu atual ([data/hora])?"
 
 🏖️ PROFISSIONAL DE FÉRIAS — protocolo obrigatório:
-• Se o cliente pedir um profissional que está DE FÉRIAS → informe que está de férias e quando retorna. Ofereça alternativa UMA VEZ.
-• Se o cliente INSISTIR que quer SOMENTE aquele profissional ("só com o [nome]", "somente com o [nome]", "quero esperar o [nome]") → RESPEITE a escolha. NÃO insista em outro profissional. Diga: "Entendido! O [nome] retorna [data]. Posso te avisar quando ele voltar? 😊"
+• SOMENTE diga que um profissional está de férias se ele aparecer na seção "PROFISSIONAIS DE FÉRIAS" abaixo. Se NÃO houver essa seção ou o profissional NÃO estiver listado, ele NÃO está de férias.
+• ⛔ NUNCA invente que um profissional está de férias, "retorna" em tal data, ou está indisponível por férias. "Dia fechado" ou "barbearia fechada" NÃO significa que o profissional está de férias — significa que o ESTABELECIMENTO não abre naquele dia.
+• Se o cliente pedir um profissional que está DE FÉRIAS (listado abaixo) → informe que está de férias e quando retorna. Ofereça alternativa UMA VEZ.
+• Se o cliente INSISTIR que quer SOMENTE aquele profissional → RESPEITE a escolha. Diga: "Entendido! O [nome] retorna [data]. Posso te avisar quando ele voltar? 😊"
 • NUNCA "discuta" com o cliente sobre a escolha de profissional — se ele quer esperar, aceite.
 
 📋 CONSULTAS — responder a pergunta ≠ agendar automaticamente:
