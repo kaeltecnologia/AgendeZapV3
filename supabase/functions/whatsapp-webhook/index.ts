@@ -547,15 +547,26 @@ function _isWDuplicate(phone: string, text: string): boolean {
   return false;
 }
 
+// ── Send "typing..." presence indicator ──────────────────────────────
+async function sendTyping(instanceName: string, phone: string, delayMs = 3000) {
+  try {
+    await fetch(`${EVO_URL}/chat/sendPresence/${instanceName}`, {
+      method: 'POST', headers: EVO_HEADERS,
+      body: JSON.stringify({ number: phone, options: { delay: delayMs, presence: 'composing' } }),
+    });
+  } catch { /* non-fatal */ }
+}
+
 // ── Send WhatsApp message ─────────────────────────────────────────────
 async function sendMsg(instanceName: string, phone: string, text: string, tenantId?: string) {
   if (_isWDuplicate(phone, text)) {
     console.log(`[sendMsg] Dedup: blocked duplicate → ${phone}`);
     return;
   }
+  // Send with composing presence (simulates typing before message)
   await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
     method: 'POST', headers: EVO_HEADERS,
-    body: JSON.stringify({ number: phone, text, linkPreview: false }),
+    body: JSON.stringify({ number: phone, textMessage: { text }, options: { delay: 1200, presence: 'composing', linkPreview: false } }),
   }).catch(e => console.error('[sendMsg] error:', e));
   // Persist outgoing message so ConversationsView shows full history
   if (tenantId) {
@@ -791,6 +802,10 @@ async function debouncedRun(tenant: any, phone: string, text: string, settings: 
   delete cleanData._pendingMsgs;
   delete cleanData._processorId;
   await saveSession(tenantId, phone, cleanData, fresh.history);
+
+  // Show "typing..." indicator while AI processes the message
+  const instanceName = tenant.evolution_instance || `agz_${(tenant.slug || '').replace(/[^a-z0-9]/g, '')}`;
+  await sendTyping(instanceName, phone, 15000);
 
   await runAgent(tenant, phone, combined || text, settings, pushName);
 }
@@ -2740,7 +2755,7 @@ Deno.serve(async (req) => {
       systemPrompt: fu._systemPrompt || '',
       operatingHours: settingsRow?.operating_hours || fu._operatingHours || {},
       breaks: fu._breaks || [],
-      msgBufferSecs: fu._msgBufferSecs ?? 30,
+      msgBufferSecs: fu._msgBufferSecs ?? 20,
       customerData: (fu._customerData || {}) as Record<string, { aiPaused?: boolean; planId?: string; planStatus?: string }>,
       plans: (fu._plans || []) as Array<{ id: string; active: boolean; quotas?: Array<{ serviceId: string; quantity: number }>; serviceId?: string; proceduresPerMonth?: number; price?: number }>,
       planUsage: (fu._planUsage || {}) as Record<string, number>,

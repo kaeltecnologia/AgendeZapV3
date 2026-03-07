@@ -32,7 +32,7 @@ const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPT);
   const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME);
   const [openaiApiKey, setOpenaiApiKey] = useState('');
-  const [msgBufferSecs, setMsgBufferSecs] = useState(30);
+  const [msgBufferSecs, setMsgBufferSecs] = useState(20);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingPrompt, setSavingPrompt] = useState(false);
 
@@ -45,7 +45,7 @@ const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setSystemPrompt(settings.systemPrompt || DEFAULT_PROMPT);
       setAgentName(settings.agentName || DEFAULT_AGENT_NAME);
       setOpenaiApiKey(settings.openaiApiKey || '');
-      setMsgBufferSecs(settings.msgBufferSecs ?? 30);
+      setMsgBufferSecs(settings.msgBufferSecs ?? 20);
       setLoadingSettings(false);
     };
     load();

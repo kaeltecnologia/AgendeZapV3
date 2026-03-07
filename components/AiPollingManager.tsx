@@ -280,7 +280,7 @@ async function poll(tenantId: string) {
 
     // ── Phase 2b: for each phone whose text buffer has been silent long enough,
     //             process the LAST (most recent) accumulated text message ──────
-    const bufferMs = (settings.msgBufferSecs ?? 30) * 1_000;
+    const bufferMs = (settings.msgBufferSecs ?? 20) * 1_000;
     for (const [phone, msgs] of Array.from(_pendingMsgs.entries())) {
       const lastTime = _lastMsgTime.get(phone) ?? 0;
       if (now - lastTime < bufferMs) continue; // still within silence window

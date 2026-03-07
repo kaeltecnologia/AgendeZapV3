@@ -428,6 +428,9 @@ Situação: cliente mudou de ideia ("na verdade quero com o felipe")
 
     const ai = new GoogleGenAI({ apiKey });
 
+    // Show "typing..." indicator while AI processes
+    evolutionService.sendTyping(tenant.evolution_instance, numero, 15000).catch(() => {});
+
     // Build contents array: previous turns + current user message
     const contents = [
       ...hist,

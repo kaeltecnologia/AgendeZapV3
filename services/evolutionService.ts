@@ -142,6 +142,16 @@ export const evolutionService = {
     return [];
   },
 
+  async sendTyping(instanceName: string, phone: string, delayMs = 3000): Promise<void> {
+    if (!instanceName) return;
+    try {
+      await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ number: phone.replace(/\D/g, ''), options: { delay: delayMs, presence: 'composing' } }),
+      });
+    } catch { /* non-fatal */ }
+  },
+
   async sendToWhatsApp(instanceName: string, to: string, text: string): Promise<SendMessageResponse> {
     const cleanNumber = to.replace(/\D/g, '');
     if (!instanceName) return { success: false, error: "Instância não definida" };
@@ -151,8 +161,8 @@ export const evolutionService = {
         headers,
         body: JSON.stringify({
           number: cleanNumber,
-          text: text,
-          linkPreview: false
+          textMessage: { text },
+          options: { delay: 1200, presence: 'composing', linkPreview: false }
         })
       });
       if (response.ok) return { success: true };
