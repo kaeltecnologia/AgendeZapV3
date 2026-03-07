@@ -806,7 +806,7 @@ function getBrasiliaGreeting(): { greeting: string; dateStr: string } {
   const h = b.getUTCHours();
   const pad = (n: number) => String(n).padStart(2, '0');
   return {
-    greeting: h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite',
+    greeting: h < 12 ? 'bom dia' : h < 19 ? 'boa tarde' : 'boa noite',
     dateStr: `${b.getUTCFullYear()}-${pad(b.getUTCMonth() + 1)}-${pad(b.getUTCDate())}`,
   };
 }
@@ -2122,17 +2122,23 @@ async function _handleMessage(
       }
       const _closedDowName = DOW_PT_SPA[_cdDowSPA];
       const _closedLabel = _cdDateSPA === todayISO ? 'Hoje' : formatDate(_cdDateSPA);
+      // Prepend greeting if this is first interaction of the day
+      const _cdGreetPrefixSPA = shouldGreet ? `${brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1)}! ` : '';
+      if (shouldGreet) {
+        session.data.greetedAt = brasiliaDate;
+        _greetedToday.set(_greetKey, brasiliaDate);
+      }
       if (_nextOpenSPA) {
         const _nextDowName = DOW_PT_SPA[_nextOpenDowSPA];
         const _nextDD = _nextOpenSPA.slice(8, 10);
         const _nextMM = _nextOpenSPA.slice(5, 7);
-        const _cdMsg = `${_closedLabel} (${_closedDowName}) a gente não abre 😕 Mas na ${_nextDowName}, dia ${_nextDD}/${_nextMM}, estamos abertos! Quer agendar pra esse dia?`;
+        const _cdMsg = `${_cdGreetPrefixSPA}${_closedLabel} (${_closedDowName}) a gente não abre 😕 Mas na ${_nextDowName}, dia ${_nextDD}/${_nextMM}, estamos abertos! Quer agendar pra esse dia?`;
         session.data.date = _nextOpenSPA;
         session.history.push({ role: 'bot', text: _cdMsg });
         saveSession(session);
         return _cdMsg;
       } else {
-        const _cdMsg = `Desculpe, não temos dias abertos nos próximos 14 dias 😕`;
+        const _cdMsg = `${_cdGreetPrefixSPA}Desculpe, não temos dias abertos nos próximos 14 dias 😕`;
         session.data.date = undefined;
         session.history.push({ role: 'bot', text: _cdMsg });
         saveSession(session);

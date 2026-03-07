@@ -722,7 +722,7 @@ function getBrasiliaGreeting(): { greeting: string; dateStr: string } {
   const h = b.getUTCHours();
   const p = (n: number) => String(n).padStart(2, '0');
   return {
-    greeting: h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite',
+    greeting: h < 12 ? 'bom dia' : h < 19 ? 'boa tarde' : 'boa noite',
     dateStr: `${b.getUTCFullYear()}-${p(b.getUTCMonth() + 1)}-${p(b.getUTCDate())}`,
   };
 }
@@ -1509,18 +1509,23 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         return _cdBaseDate.getTime() - td.getTime() === 86400000;
       })();
       const _closedLabel = _cdDate === todayISO ? 'Hoje' : _isTomorrow ? 'Amanhã' : formatDate(_cdDate);
+      // Prepend greeting if this is first interaction of the day
+      const _cdGreetPrefix = shouldGreet ? `${brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1)}! ` : '';
+      if (shouldGreet) {
+        session.data.greetedAt = brasiliaDate;
+      }
       if (_nextOpenISO) {
         const _nextDowName = DOW_PT[_nextOpenDow];
         const _nextDD = _nextOpenISO.slice(8, 10);
         const _nextMM = _nextOpenISO.slice(5, 7);
-        const _cdMsg = `${_closedLabel} (${_closedDowName}) a gente não abre 😕 Mas na ${_nextDowName}, dia ${_nextDD}/${_nextMM}, estamos abertos! Quer agendar pra esse dia?`;
+        const _cdMsg = `${_cdGreetPrefix}${_closedLabel} (${_closedDowName}) a gente não abre 😕 Mas na ${_nextDowName}, dia ${_nextDD}/${_nextMM}, estamos abertos! Quer agendar pra esse dia?`;
         session.data.date = _nextOpenISO;
         session.history.push({ role: 'bot', text: _cdMsg });
         await sendMsg(instanceName, phone, _cdMsg, tenantId);
         saveSession(tenantId, phone, session.data, session.history).catch(() => {});
         return;
       } else {
-        const _cdMsg = `Desculpe, não temos dias abertos nos próximos 14 dias 😕 Entre em contato novamente mais tarde!`;
+        const _cdMsg = `${_cdGreetPrefix}Desculpe, não temos dias abertos nos próximos 14 dias 😕 Entre em contato novamente mais tarde!`;
         session.data.date = undefined;
         session.history.push({ role: 'bot', text: _cdMsg });
         await sendMsg(instanceName, phone, _cdMsg, tenantId);
