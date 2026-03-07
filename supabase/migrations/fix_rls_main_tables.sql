@@ -22,21 +22,13 @@ ALTER TABLE IF EXISTS tenant_settings   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS tenants           DISABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS expenses          DISABLE ROW LEVEL SECURITY;
 
--- Alternativa (se preferir manter RLS ativo): adicionar policies permissivas
--- para o role 'anon'. Descomente o bloco abaixo se preferir esta abordagem:
---
--- DO $$ BEGIN
---   CREATE POLICY "anon_all_customers"       ON customers       FOR ALL USING (true) WITH CHECK (true);
---   CREATE POLICY "anon_all_appointments"    ON appointments    FOR ALL USING (true) WITH CHECK (true);
---   CREATE POLICY "anon_all_professionals"   ON professionals   FOR ALL USING (true) WITH CHECK (true);
---   CREATE POLICY "anon_all_services"        ON services        FOR ALL USING (true) WITH CHECK (true);
---   CREATE POLICY "anon_all_tenant_settings" ON tenant_settings FOR ALL USING (true) WITH CHECK (true);
---   CREATE POLICY "anon_all_tenants"         ON tenants         FOR ALL USING (true) WITH CHECK (true);
---   CREATE POLICY "anon_all_expenses"        ON expenses        FOR ALL USING (true) WITH CHECK (true);
--- EXCEPTION WHEN duplicate_object THEN NULL;
--- END $$;
+-- Tabelas de operação 24/7 (Edge Function + browser precisam acessar)
+ALTER TABLE IF EXISTS whatsapp_messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS agent_sessions    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS msg_dedup         DISABLE ROW LEVEL SECURITY;
 
 -- Confirmar resultado:
 -- SELECT tablename, rowsecurity FROM pg_tables
 -- WHERE schemaname = 'public'
--- AND tablename IN ('customers','appointments','professionals','services','tenant_settings','tenants','expenses');
+-- AND tablename IN ('customers','appointments','professionals','services',
+--   'tenant_settings','tenants','expenses','whatsapp_messages','agent_sessions','msg_dedup');

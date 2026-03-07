@@ -19,9 +19,6 @@ CREATE TABLE IF NOT EXISTS whatsapp_messages (
 CREATE INDEX IF NOT EXISTS idx_wam_tenant_ts    ON whatsapp_messages (tenant_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_wam_tenant_phone ON whatsapp_messages (tenant_id, phone);
 
--- Allow service_role (used by Edge Function and browser) to read/write
-ALTER TABLE whatsapp_messages ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "service_role full access" ON whatsapp_messages;
-CREATE POLICY "service_role full access" ON whatsapp_messages
-  FOR ALL USING (auth.role() = 'service_role');
+-- RLS desabilitado — o app usa tenant_id para isolamento, não Supabase Auth.
+-- O browser usa anon key e precisa ler/gravar mensagens.
+ALTER TABLE whatsapp_messages DISABLE ROW LEVEL SECURITY;

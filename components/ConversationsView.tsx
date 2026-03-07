@@ -1017,15 +1017,25 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       const prevDate = prevMsg ? new Date(prevMsg.timestamp * 1000).toDateString() : null;
                       const showDateSep = msgDate !== prevDate;
 
+                      const dateSepLabel = (() => {
+                        if (!showDateSep || msg.timestamp <= 0) return '';
+                        const d = new Date(msg.timestamp * 1000);
+                        const now = new Date();
+                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                        const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+                        const diff = today - msgDay;
+                        if (diff === 0) return 'Hoje';
+                        if (diff === 86400000) return 'Ontem';
+                        return d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+                      })();
+
                       return (
                         <React.Fragment key={msg.id || i}>
                           {showDateSep && msg.timestamp > 0 && (
-                            <div className="flex items-center gap-3 py-2">
-                              <div className="flex-1 h-px bg-slate-100" />
-                              <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest px-2">
-                                {new Date(msg.timestamp * 1000).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                            <div className="flex justify-center py-3">
+                              <span className="bg-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-wider px-4 py-1 rounded-full shadow-sm">
+                                {dateSepLabel}
                               </span>
-                              <div className="flex-1 h-px bg-slate-100" />
                             </div>
                           )}
                           <div className={`flex ${msg.fromMe ? 'justify-end' : 'justify-start'}`}>

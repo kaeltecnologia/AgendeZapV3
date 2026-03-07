@@ -31,23 +31,13 @@ create table if not exists global_settings (
   value text not null default ''
 );
 
--- RLS: apenas service_role (Edge Function) pode acessar
-alter table agent_sessions enable row level security;
-alter table msg_dedup enable row level security;
+-- RLS desabilitado em agent_sessions e msg_dedup — browser usa anon key
+-- e precisa acessar para dedup e sessões do agente.
+alter table agent_sessions disable row level security;
+alter table msg_dedup disable row level security;
+
+-- global_settings mantém RLS ativo (contém chaves API sensíveis)
 alter table global_settings enable row level security;
-
--- Policies para service_role (Edge Function usa SUPABASE_SERVICE_ROLE_KEY)
-do $$ begin
-  create policy "service_role_all_agent_sessions" on agent_sessions
-    for all using (auth.role() = 'service_role');
-exception when duplicate_object then null;
-end $$;
-
-do $$ begin
-  create policy "service_role_all_msg_dedup" on msg_dedup
-    for all using (auth.role() = 'service_role');
-exception when duplicate_object then null;
-end $$;
 
 do $$ begin
   create policy "service_role_all_global_settings" on global_settings
