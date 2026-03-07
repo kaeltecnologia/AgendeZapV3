@@ -1308,6 +1308,58 @@ async function _handleMessage(
     console.log('[Agent] Group booking detected:', session.data.groupBooking.companionDesc);
   }
 
+  // ── Vacation offer response handler ──────────────────────────────────
+  // After vacation message offers other professionals, handle the client's reply in TS.
+  if ((session.data as any).pendingVacationOffer) {
+    const _vacOffer = (session.data as any).pendingVacationOffer as {
+      vacProfName: string; returnDate: string; otherProfs: { id: string; name: string }[];
+    };
+    const _normVac = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const _vacWords = _normVac.split(/\s+/);
+    const AFFIRM_VAC = ['sim', 'pode', 'quero', 'ok', 'bora', 'beleza', 'blz', 'claro', 'isso', 'certo', 'vamos', 'vamo', 'fechou', 'show', 'dale', 'perfeito', 'agendar', 'marcar', 'po', 'podemos'];
+    const DECLINE_VAC = ['nao', 'quando voltar', 'quando ele voltar', 'quando ela voltar', 'vou esperar', 'esperar', 'depois', 'nada', 'valeu', 'obrigado', 'obrigada', 'tchau', 'flw', 'falou', 'ate', 'brigado', 'brigada', 'tmj', 'vlw'];
+    const isAffirmVac = AFFIRM_VAC.some(a => _vacWords.includes(a));
+    const isDeclineVac = DECLINE_VAC.some(d => _normVac.includes(d));
+    const _matchedOther = _vacOffer.otherProfs.find(p =>
+      _normVac.includes(p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+    );
+
+    if (_matchedOther) {
+      session.data.professionalId = _matchedOther.id;
+      session.data.professionalName = _matchedOther.name;
+      (session.data as any).pendingVacationOffer = undefined;
+      const _vacReply = `Boa! Vamos agendar com ${_matchedOther.name} então! Qual serviço você gostaria?`;
+      session.history.push({ role: 'bot', text: _vacReply });
+      saveSession(session);
+      return _vacReply;
+    } else if (isAffirmVac && !isDeclineVac) {
+      (session.data as any).pendingVacationOffer = undefined;
+      if (_vacOffer.otherProfs.length === 1) {
+        session.data.professionalId = _vacOffer.otherProfs[0].id;
+        session.data.professionalName = _vacOffer.otherProfs[0].name;
+        const _vacReply = `Vamos agendar com ${_vacOffer.otherProfs[0].name} então! 😊 Qual serviço você gostaria?`;
+        session.history.push({ role: 'bot', text: _vacReply });
+        saveSession(session);
+        return _vacReply;
+      } else {
+        const _profNames = _vacOffer.otherProfs.map(p => p.name).join(' ou ');
+        const _vacReply = `Com qual profissional prefere? ${_profNames}`;
+        session.history.push({ role: 'bot', text: _vacReply });
+        saveSession(session);
+        return _vacReply;
+      }
+    } else if (isDeclineVac) {
+      (session.data as any).pendingVacationOffer = undefined;
+      const _returnNote = _vacOffer.returnDate ? ` O ${_vacOffer.vacProfName} retorna ${_vacOffer.returnDate}.` : '';
+      const _vacReply = `Sem problema!${_returnNote} Quando quiser agendar é só chamar aqui. 😊`;
+      session.history.push({ role: 'bot', text: _vacReply });
+      saveSession(session);
+      return _vacReply;
+    }
+    // Ambiguous — clear flag and fall through to AI
+    (session.data as any).pendingVacationOffer = undefined;
+  }
+
   // ─── Date-change during confirmation (TypeScript layer) ──────────────
   // If a slot was already shown (date+time set) and client asks about a DIFFERENT day,
   // reset date/time/availableSlots/pendingConfirm so the AI queries the new day.
@@ -1754,6 +1806,12 @@ async function _handleMessage(
           }));
         const othersStr = othersAvail.map((p: any) => p.name).join(' ou ');
         const vacMsg = `*${matchedProf.name}* está de férias no momento!${returnInfo} 🏖️\n\n${othersStr ? `Mas o ${othersStr} pode te atender! Gostaria de agendar?` : 'Gostaria de agendar com outro profissional?'}`;
+        if (othersAvail.length > 0) {
+          (session.data as any).pendingVacationOffer = {
+            vacProfName: matchedProf.name, returnDate,
+            otherProfs: othersAvail.map((p: any) => ({ id: p.id, name: p.name })),
+          };
+        }
         session.history.push({ role: 'user', text }, { role: 'bot', text: vacMsg });
         saveSession(session);
         return vacMsg;
@@ -1846,6 +1904,12 @@ async function _handleMessage(
       session.data.professionalId   = undefined;
       session.data.professionalName = undefined;
       session.data.date             = undefined;
+      if (_othersAvail.length > 0) {
+        (session.data as any).pendingVacationOffer = {
+          vacProfName: _vacProfName, returnDate: _returnDate2,
+          otherProfs: _othersAvail.map((p: any) => ({ id: p.id, name: p.name })),
+        };
+      }
       session.history.push({ role: 'bot', text: _vacMsg });
       saveSession(session);
       return _vacMsg;

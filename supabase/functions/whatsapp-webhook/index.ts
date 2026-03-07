@@ -1400,6 +1400,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           }));
         const othersStr = othersAvail.map((p: any) => p.name).join(' ou ');
         const vacMsg = `*${matched.name}* está de férias no momento!${_returnInfo1} 🏖️\n\n${othersStr ? `Mas o ${othersStr} pode te atender! Gostaria de agendar?` : 'Gostaria de agendar com outro profissional?'}`;
+        // Store vacation context so next message can be handled in TS
+        if (othersAvail.length > 0) {
+          (session.data as any).pendingVacationOffer = {
+            vacProfName: matched.name,
+            returnDate: _returnDate1,
+            otherProfs: othersAvail.map((p: any) => ({ id: p.id, name: p.name })),
+          };
+        }
         session.history.push({ role: 'user', text });
         session.history.push({ role: 'bot', text: vacMsg });
         await sendMsg(instanceName, phone, vacMsg, tenantId);
@@ -1586,6 +1594,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       session.data.professionalId   = undefined;
       session.data.professionalName = undefined;
       session.data.date             = undefined;
+      // Store vacation context so next message can be handled in TS
+      if (_othersAvailWh.length > 0) {
+        (session.data as any).pendingVacationOffer = {
+          vacProfName: _vacProfNameWh,
+          returnDate: _returnDateWh2,
+          otherProfs: _othersAvailWh.map((p: any) => ({ id: p.id, name: p.name })),
+        };
+      }
       session.history.push({ role: 'bot', text: _vacMsgWh });
       await sendMsg(instanceName, phone, _vacMsgWh, tenantId);
       saveSession(tenantId, phone, session.data, session.history).catch(() => {});
@@ -1593,13 +1609,71 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
-  // ── Follow-up context: aviso/lembrete/reativacao ──────────────────────────
-  // When followUpService sends a follow-up message it persists pendingFollowUpType
-  // in the session. Handle the first reply here before falling through to the AI.
-  // Affirmative emoji detection (👍👊✅🤙🙏💪👏🔥) — used in follow-up and fallback
+  // Affirmative emoji detection (👍👊✅🤙🙏💪👏🔥) — reused across handlers
   const AFFIRM_EMOJI_RE = /[\u{1F44D}\u{1F44A}\u{2705}\u{1F919}\u{1F64F}\u{1F4AA}\u{1F44F}\u{1F525}\u{1F91D}\u{1F60A}\u{1F609}\u{1F601}\u{1F973}]/u;
   const isEmojiAffirm = AFFIRM_EMOJI_RE.test(text) && text.replace(/[\s\u{FE0F}\u{200D}\u{20E3}]/gu, '').replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '').length === 0;
 
+  // ── Vacation offer response handler ─────────────────────────────────
+  // After vacation message offers other professionals, handle the client's reply in TS.
+  if ((session.data as any).pendingVacationOffer) {
+    const _vacOffer = (session.data as any).pendingVacationOffer as {
+      vacProfName: string; returnDate: string; otherProfs: { id: string; name: string }[];
+    };
+    const _normVac = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const _vacWords = _normVac.split(/\s+/);
+    const AFFIRM_VAC = ['sim', 'pode', 'quero', 'ok', 'bora', 'beleza', 'blz', 'claro', 'isso', 'certo', 'vamos', 'vamo', 'fechou', 'show', 'dale', 'dale', 'perfeito', 'agendar', 'marcar', 'po', 'podemos'];
+    const DECLINE_VAC = ['nao', 'quando voltar', 'quando ele voltar', 'quando ela voltar', 'vou esperar', 'esperar', 'depois', 'nada', 'valeu', 'obrigado', 'obrigada', 'tchau', 'flw', 'falou', 'ate', 'brigado', 'brigada', 'tmj', 'vlw'];
+    const isAffirmVac = AFFIRM_VAC.some(a => _vacWords.includes(a)) || isEmojiAffirm;
+    const isDeclineVac = DECLINE_VAC.some(d => _normVac.includes(d));
+    // Check if client mentioned one of the other profs by name
+    const _matchedOther = _vacOffer.otherProfs.find(p =>
+      _normVac.includes(p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+    );
+
+    if (_matchedOther) {
+      // Client chose a specific professional
+      session.data.professionalId = _matchedOther.id;
+      session.data.professionalName = _matchedOther.name;
+      (session.data as any).pendingVacationOffer = undefined;
+      const _vacReply = `Boa! Vamos agendar com ${_matchedOther.name} então! Qual serviço você gostaria?`;
+      session.history.push({ role: 'bot', text: _vacReply });
+      await sendMsg(instanceName, phone, _vacReply, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
+    } else if (isAffirmVac && !isDeclineVac) {
+      // Client said yes → pick first available prof or ask
+      (session.data as any).pendingVacationOffer = undefined;
+      if (_vacOffer.otherProfs.length === 1) {
+        session.data.professionalId = _vacOffer.otherProfs[0].id;
+        session.data.professionalName = _vacOffer.otherProfs[0].name;
+        const _vacReply = `Vamos agendar com ${_vacOffer.otherProfs[0].name} então! 😊 Qual serviço você gostaria?`;
+        session.history.push({ role: 'bot', text: _vacReply });
+        await sendMsg(instanceName, phone, _vacReply, tenantId);
+      } else {
+        const _profNames = _vacOffer.otherProfs.map(p => p.name).join(' ou ');
+        const _vacReply = `Com qual profissional prefere? ${_profNames}`;
+        session.history.push({ role: 'bot', text: _vacReply });
+        await sendMsg(instanceName, phone, _vacReply, tenantId);
+      }
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
+    } else if (isDeclineVac) {
+      // Client wants to wait or declined
+      (session.data as any).pendingVacationOffer = undefined;
+      const _returnNote = _vacOffer.returnDate ? ` O ${_vacOffer.vacProfName} retorna ${_vacOffer.returnDate}.` : '';
+      const _vacReply = `Sem problema!${_returnNote} Quando quiser agendar é só chamar aqui. 😊`;
+      session.history.push({ role: 'bot', text: _vacReply });
+      await sendMsg(instanceName, phone, _vacReply, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
+    }
+    // Ambiguous — clear flag and fall through to AI
+    (session.data as any).pendingVacationOffer = undefined;
+  }
+
+  // ── Follow-up context: aviso/lembrete/reativacao ──────────────────────────
+  // When followUpService sends a follow-up message it persists pendingFollowUpType
+  // in the session. Handle the first reply here before falling through to the AI.
   if (session.data.pendingFollowUpType) {
     const fType = session.data.pendingFollowUpType as string;
     const fNorm = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
