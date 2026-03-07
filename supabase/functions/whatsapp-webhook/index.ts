@@ -1378,7 +1378,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (matched) {
       // ── Vacation check: always runs regardless of professional count ──
       const _vacBreakWh1 = (settings.breaks || []).find((b: any) => {
-        if (b.professionalId && b.professionalId !== matched.id) return false;
+        if (!b.professionalId || b.professionalId !== matched.id) return false;
         if (b.type !== 'vacation') return false;
         const vacStart: string = b.date || '';
         const vacEnd: string = b.vacationEndDate || b.date || '';
@@ -1395,7 +1395,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         const othersAvail = (professionals as any[])
           .filter((p: any) => p.id !== matched.id)
           .filter((p: any) => !(settings.breaks || []).some((b: any) => {
-            if (b.professionalId && b.professionalId !== p.id) return false;
+            if (!b.professionalId || b.professionalId !== p.id) return false;
             if (b.type !== 'vacation') return false;
             const vs: string = b.date || '', ve: string = b.vacationEndDate || b.date || '';
             return !!vs && todayISO >= vs && todayISO <= ve;
@@ -1569,7 +1569,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const professionalsVisible = professionals.filter((p: { id: string; name: string }) =>
     !(settings.breaks || []).some((b: any) => {
       if (b.type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== p.id) return false;
+      if (!b.professionalId || b.professionalId !== p.id) return false;
       const vs: string = b.date || '';
       const ve: string = b.vacationEndDate || b.date || '';
       return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
@@ -1587,7 +1587,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (session.data.professionalId) {
     const _curVacBreakWh = (settings.breaks || []).find((b: any) => {
       if (b.type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+      if (!b.professionalId || b.professionalId !== session.data.professionalId) return false;
       const vs: string = b.date || '';
       const ve: string = b.vacationEndDate || b.date || '';
       return !!vs && todayISO >= vs && todayISO <= ve;
@@ -1604,7 +1604,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       const _othersAvailWh = professionals.filter((p: any) => p.id !== session.data.professionalId)
         .filter((p: any) => !(settings.breaks || []).some((b: any) => {
           if (b.type !== 'vacation') return false;
-          if (b.professionalId && b.professionalId !== p.id) return false;
+          if (!b.professionalId || b.professionalId !== p.id) return false;
           const vs: string = b.date || '', ve: string = b.vacationEndDate || b.date || '';
           return !!vs && todayISO >= vs && todayISO <= ve;
         }));
@@ -2090,7 +2090,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     // Empty slots = vacation or fully booked — handle immediately before calling brain
     if (prefetchedSlots.length === 0) {
       const _vacBreakWh3 = (settings.breaks || []).find((b: any) => {
-        if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+        if (!b.professionalId || b.professionalId !== session.data.professionalId) return false;
         if (b.type !== 'vacation') return false;
         const vacStart = b.date || '';
         const vacEnd = b.vacationEndDate || b.date || '';
@@ -2185,7 +2185,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const _profsOnVacWh = professionals.filter((p: any) =>
     _breaksWh.some((b: any) => {
       if (b.type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== p.id) return false;
+      if (!b.professionalId || b.professionalId !== p.id) return false;
       const vs = b.date || '', ve = b.vacationEndDate || b.date || '';
       return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
     })
@@ -2193,7 +2193,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const _vacCtxWh = _profsOnVacWh.length > 0 ? `🏖️ PROFISSIONAIS DE FÉRIAS (NÃO disponíveis para agendamento):\n${_profsOnVacWh.map((p: any) => {
     const vb = _breaksWh.find((b: any) => {
       if (b.type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== p.id) return false;
+      if (!b.professionalId || b.professionalId !== p.id) return false;
       const vs = b.date || '', ve = b.vacationEndDate || b.date || '';
       return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
     });
@@ -2352,6 +2352,15 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         await supabase.from('tenant_settings').upsert({ tenant_id: tenantId, follow_up: { ...fuWl, _customerData: allCDataWl } });
       }
     } catch (e) { console.error('[Agent] waitlist save error:', e); }
+  }
+
+  // ── TS guard: prevent AI from hallucinating booking confirmation ──────────
+  // Only allow booking if client's message actually looks like a time selection
+  // or confirmation — not a greeting, question, or unrelated message.
+  const _bookConfirmRe = /(?:\d{1,2}\s*[:\sh]\s*\d{0,2}|\d{1,2}\s*(?:hora|hrs?|h\b)|(?:^|\s)(?:sim|s|ss|ok|pode|confirma|quero|isso|esse|essa|beleza|bora|vamos|fechar|fechado|agendar|marcar|primeiro|segundo|terceiro|ultimo|última|1º|2º|3º)(?:\s|$|[!.,?]))/i;
+  if (brain.extracted.confirmed === true && session.data.time && !_bookConfirmRe.test(lowerText)) {
+    brain.extracted.confirmed = false;
+    console.log('[Agent] TS guard: blocked hallucinated booking confirmation — client msg:', lowerText.slice(0, 80));
   }
 
   // Handle booking

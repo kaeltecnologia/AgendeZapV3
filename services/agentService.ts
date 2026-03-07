@@ -1784,7 +1784,7 @@ async function _handleMessage(
     if (matchedProf) {
       // ── Vacation check: always runs regardless of professional count ──
       const vacBreak = (settings.breaks || []).find((b: any) => {
-        if (b.professionalId && b.professionalId !== matchedProf.id) return false;
+        if (!b.professionalId || b.professionalId !== matchedProf.id) return false;
         if ((b as any).type !== 'vacation') return false;
         const vacStart = b.date || '';
         const vacEnd = (b as any).vacationEndDate || b.date || '';
@@ -1801,7 +1801,7 @@ async function _handleMessage(
         const othersAvail = profOptions
           .filter((p: any) => p.id !== matchedProf.id)
           .filter((p: any) => !(settings.breaks || []).some((b: any) => {
-            if (b.professionalId && b.professionalId !== p.id) return false;
+            if (!b.professionalId || b.professionalId !== p.id) return false;
             if ((b as any).type !== 'vacation') return false;
             const vs = b.date || '', ve = (b as any).vacationEndDate || b.date || '';
             return !!vs && todayISO >= vs && todayISO <= ve;
@@ -1879,7 +1879,7 @@ async function _handleMessage(
   if (session.data.professionalId) {
     const _curVacBreak = (settings.breaks || []).find((b: any) => {
       if ((b as any).type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+      if (!b.professionalId || b.professionalId !== session.data.professionalId) return false;
       const vs = b.date || '';
       const ve = (b as any).vacationEndDate || b.date || '';
       return !!vs && todayISO >= vs && todayISO <= ve;
@@ -1897,7 +1897,7 @@ async function _handleMessage(
         .filter((p: any) => p.id !== session.data.professionalId)
         .filter((p: any) => !(settings.breaks || []).some((b: any) => {
           if ((b as any).type !== 'vacation') return false;
-          if (b.professionalId && b.professionalId !== p.id) return false;
+          if (!b.professionalId || b.professionalId !== p.id) return false;
           const vs = b.date || '', ve = (b as any).vacationEndDate || b.date || '';
           return !!vs && todayISO >= vs && todayISO <= ve;
         }));
@@ -1947,7 +1947,7 @@ async function _handleMessage(
     // Empty slots = vacation or truly fully booked — handle before calling brain
     if (prefetchedSlots.length === 0) {
       const _vacBreak3 = (settings.breaks || []).find((b: any) => {
-        if (b.professionalId && b.professionalId !== session.data.professionalId) return false;
+        if (!b.professionalId || b.professionalId !== session.data.professionalId) return false;
         if ((b as any).type !== 'vacation') return false;
         const vacStart = b.date || '';
         const vacEnd = (b as any).vacationEndDate || b.date || '';
@@ -2014,7 +2014,7 @@ async function _handleMessage(
   const profOptionsVisible = profOptions.filter((p: { id: string; name: string }) =>
     !_breaks.some(b => {
       if ((b as any).type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== p.id) return false;
+      if (!b.professionalId || b.professionalId !== p.id) return false;
       const vacStart = b.date || '';
       const vacEnd = (b as any).vacationEndDate || b.date || '';
       return !!vacStart && _targetDate >= vacStart && _targetDate <= vacEnd;
@@ -2025,7 +2025,7 @@ async function _handleMessage(
   const _profsOnVacation = profOptions.filter((p: { id: string; name: string }) =>
     _breaks.some(b => {
       if ((b as any).type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== p.id) return false;
+      if (!b.professionalId || b.professionalId !== p.id) return false;
       const vacStart = b.date || '';
       const vacEnd = (b as any).vacationEndDate || b.date || '';
       return !!vacStart && _targetDate >= vacStart && _targetDate <= vacEnd;
@@ -2034,7 +2034,7 @@ async function _handleMessage(
   const _vacCtx = _profsOnVacation.length > 0 ? `🏖️ PROFISSIONAIS DE FÉRIAS (NÃO disponíveis para agendamento):\n${_profsOnVacation.map((p: { id: string; name: string }) => {
     const vb = _breaks.find(b => {
       if ((b as any).type !== 'vacation') return false;
-      if (b.professionalId && b.professionalId !== p.id) return false;
+      if (!b.professionalId || b.professionalId !== p.id) return false;
       const vs = b.date || '', ve = (b as any).vacationEndDate || b.date || '';
       return !!vs && _targetDate >= vs && _targetDate <= ve;
     });
@@ -2294,6 +2294,13 @@ async function _handleMessage(
       console.log('[Agent] Affirmative fallback → forced confirmed=true');
       brain.extracted.confirmed = true;
     }
+  }
+
+  // ── TS guard: prevent AI from hallucinating booking confirmation ──────────
+  const _bookConfirmRe = /(?:\d{1,2}\s*[:\sh]\s*\d{0,2}|\d{1,2}\s*(?:hora|hrs?|h\b)|(?:^|\s)(?:sim|s|ss|ok|pode|confirma|quero|isso|esse|essa|beleza|bora|vamos|fechar|fechado|agendar|marcar|primeiro|segundo|terceiro|ultimo|última|1º|2º|3º)(?:\s|$|[!.,?]))/i;
+  if (brain.extracted.confirmed === true && session.data.time && !_bookConfirmRe.test(lowerText)) {
+    brain.extracted.confirmed = false;
+    console.log('[Agent] TS guard: blocked hallucinated booking confirmation — client msg:', lowerText.slice(0, 80));
   }
 
   // ─── Handle confirmation ────────────────────────────────────────────
