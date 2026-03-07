@@ -2701,18 +2701,49 @@ Deno.serve(async (req) => {
       planUsage: (fu._planUsage || {}) as Record<string, number>,
     };
 
-    if (!settings.aiActive) {
-      return new Response(JSON.stringify({ ok: true, skipped: 'ai_inactive' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Process each message
+    // Process each message — ALWAYS persist (even if aiActive is off)
     for (const msg of messages) {
-      if (!msg || msg.key?.fromMe) continue;
+      if (!msg) continue;
       const remoteJid: string = msg.key?.remoteJid || '';
       if (remoteJid.includes('@g.us')) continue; // skip groups
 
+      // ── OUTGOING (fromMe) — persist to DB, skip AI ──────────────────
+      if (msg.key?.fromMe) {
+        const _outPhone = extractPhone(msg);
+        if (!_outPhone) continue;
+
+        // Extract message body (text, audio, image, etc.)
+        let _outBody = (msg.message?.conversation
+          || msg.message?.extendedTextMessage?.text || '').trim();
+        if (!_outBody) {
+          const _outType = msg.messageType || msg.type || '';
+          if (['audioMessage', 'pttMessage'].includes(_outType)
+              || msg.message?.audioMessage || msg.message?.pttMessage) _outBody = '[áudio]';
+          else if (msg.message?.imageMessage) _outBody = msg.message.imageMessage.caption || '[imagem]';
+          else if (msg.message?.videoMessage) _outBody = msg.message.videoMessage?.caption || '[vídeo]';
+          else if (msg.message?.documentMessage) _outBody = '[documento]';
+          else if (msg.message?.stickerMessage) _outBody = '[sticker]';
+          else if (msg.message?.contactMessage || msg.message?.contactsArrayMessage) _outBody = '[contato]';
+          else if (msg.message?.locationMessage) _outBody = '[localização]';
+        }
+        if (!_outBody) continue; // protocol/status message — skip
+
+        // Dedup: if sendMsg() already saved this message recently, skip
+        const _outDedupKey = `${_outPhone.replace(/\D/g, '')}::${_outBody.trim().slice(0, 120)}`;
+        const _outLastSent = _wSentDedup.get(_outDedupKey);
+        if (_outLastSent && Date.now() - _outLastSent < _W_DEDUP_TTL) continue;
+
+        const _outMsgId = msg.key?.id || `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        EdgeRuntime.waitUntil(saveWaMsg(
+          tenant.id, _outMsgId, _outPhone, _outBody,
+          msg.messageTimestamp || Math.floor(Date.now() / 1000),
+          msg.pushName || '', msg.messageType || msg.type || 'text', true,
+          { key: msg.key, message: msg.message, messageType: msg.messageType }
+        ));
+        continue; // Don't process outgoing with AI
+      }
+
+      // ── INCOMING — dedup, persist, then AI (if active) ──────────────
       const msgId: string = msg.key?.id || '';
       if (msgId) {
         // Claim by message ID (instant dedup)
@@ -2731,6 +2762,21 @@ Deno.serve(async (req) => {
         const msgType = msg.messageType || msg.type || '';
         const isAudio = ['audioMessage', 'pttMessage'].includes(msgType) || !!msg.message?.audioMessage || !!msg.message?.pttMessage;
         if (isAudio) {
+          // Save audio placeholder to DB even before transcription attempt
+          const _audioPhone = extractPhone(msg);
+          if (_audioPhone) {
+            EdgeRuntime.waitUntil(saveWaMsg(
+              tenant.id,
+              msgId || `${_audioPhone}_${msg.messageTimestamp || Date.now()}`,
+              _audioPhone, '[áudio]',
+              msg.messageTimestamp || Math.floor(Date.now() / 1000),
+              msg.pushName || '', msgType || 'audioMessage', false,
+              { key: msg.key, message: msg.message, messageType: msg.messageType }
+            ));
+          }
+
+          if (!settings.aiActive) continue; // no AI → already saved placeholder, move on
+
           let audioKey = (settings.openaiApiKey || '').trim();
           if (!audioKey) {
             let gRows: any[] = [];
@@ -2767,6 +2813,9 @@ Deno.serve(async (req) => {
           { key: msg.key, message: msg.message, messageType: msg.messageType }
         )
       );
+
+      // ── AI processing — only if aiActive ──────────────────────────
+      if (!settings.aiActive) continue;
 
       // Se aiLeadActive estiver desativado, ignora mensagens de números desconhecidos
       // Também verifica se a IA foi pausada manualmente para este lead específico

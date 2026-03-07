@@ -210,6 +210,20 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         dbRows = evoNormalized;
       }
 
+      // Dedup outgoing messages: same phone + body + timestamp within 10s
+      // Handles sendReply/sendMsg AND webhook both saving the same outgoing message
+      {
+        const _dedupMap = new Map<string, number>();
+        dbRows = dbRows.filter((row: any) => {
+          if (row.direction !== 'out') return true; // only dedup outgoing
+          const fp = `${row.phone}::${(row.body || '').slice(0, 100)}`;
+          const lastTs = _dedupMap.get(fp);
+          if (lastTs !== undefined && Math.abs(row.ts - lastTs) < 10) return false;
+          _dedupMap.set(fp, row.ts);
+          return true;
+        });
+      }
+
       const phonesMatch = (a: string, b: string) => {
         const ca = a.replace(/\D/g, '');
         const cb = b.replace(/\D/g, '');
