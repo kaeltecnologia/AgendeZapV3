@@ -402,7 +402,8 @@ async function callBrain(
   tenantId?: string,
   phone?: string,
   isAudio?: boolean,
-  vacationCtx?: string
+  vacationCtx?: string,
+  settings?: any
 ): Promise<BrainOutput | null> {
 
   const svcList = services.map(s =>
@@ -585,7 +586,7 @@ ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
 
   // Build operating days context so the AI knows which days are open/closed
   const _dowNames = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
-  const _opHours = settings.operatingHours || {};
+  const _opHours = (settings || {}).operatingHours || {};
   const _todayDow = new Date(todayISO + 'T12:00:00').getDay();
   const _todayOpen = !!_opHours[_todayDow]?.active;
   const _openDays = _dowNames
@@ -2275,7 +2276,7 @@ async function _handleMessage(
     session.history, session.data, prefetchedSlots, customPrompt || undefined,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
     tenantNicho, tenantId, phone, options?.isAudio,
-    _vacCtx || undefined
+    _vacCtx || undefined, settings
   );
 
   if (!brain) {
@@ -2528,7 +2529,7 @@ async function _handleMessage(
       session.history, session.data, newSlots, customPrompt || undefined,
       false, brasiliaGreeting, groupBookingCtx2 || undefined,
       tenantNicho, tenantId, phone, false,
-      _vacCtx || undefined
+      _vacCtx || undefined, settings
     );
     if (brain2) {
       // Apply any new extractions from second call
