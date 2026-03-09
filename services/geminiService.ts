@@ -4,16 +4,20 @@ import { db } from "./mockDb";
 import { AppointmentStatus, BookingSource } from "../types";
 import { sendProfessionalNotification } from "./notificationService";
 
-export const processWhatsAppMessage = async (tenantId: string, phone: string, name: string, message: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const processWhatsAppMessage = async (tenantId: string, phone: string, name: string, message: string, apiKey?: string) => {
+  const tenants = await db.getAllTenants();
+  const tenant = tenants.find(t => t.id === tenantId);
+  const resolvedKey = apiKey || (tenant as any)?.gemini_api_key || '';
+  if (!resolvedKey) {
+    return { replyText: 'Chave de IA não configurada. Contate o administrador.', intent: 'CHAT' };
+  }
+  const ai = new GoogleGenAI({ apiKey: resolvedKey });
   
-  const [professionals, services, tenants] = await Promise.all([
+  const [professionals, services] = await Promise.all([
     db.getProfessionals(tenantId),
     db.getServices(tenantId),
-    db.getAllTenants()
   ]);
-  
-  const tenant = tenants.find(t => t.id === tenantId);
+
   const shopName = tenant?.name || "Barbearia";
   const today = new Date();
 

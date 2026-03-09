@@ -560,7 +560,7 @@ async function sendTyping(instanceName: string, phone: string, delayMs = 3000) {
 // ── Send WhatsApp message ─────────────────────────────────────────────
 async function sendMsg(instanceName: string, phone: string, text: string, tenantId?: string) {
   if (_isWDuplicate(phone, text)) {
-    console.log(`[sendMsg] Dedup: blocked duplicate → ${phone}`);
+    console.log(`[sendMsg] Dedup: blocked duplicate → ${phone.slice(0, 2)}***${phone.slice(-4)}`);
     return;
   }
   // Send with composing presence (simulates typing before message)

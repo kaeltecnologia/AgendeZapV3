@@ -6,6 +6,7 @@ import { handleMessage } from '../services/agentService';
 import { handleProfessionalMessage } from '../services/professionalAgentService';
 import { runFollowUp, runDailyProfessionalAgenda } from '../services/followUpService';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
+import { maskPhone } from '../services/security';
 
 // ── Module-level singletons — survive component remounts ──────────────
 // useRef resets every time the component unmounts/remounts (e.g. tab navigation).
@@ -253,7 +254,7 @@ async function poll(tenantId: string) {
 
       if (isAudio) {
         // Audio bypasses the silence buffer — processed on the very next poll cycle (≤ 4 s)
-        console.log('[AiPolling] Phase1: áudio enfileirado para', phone, '| msgType:', msgType);
+        console.log('[AiPolling] Phase1: áudio enfileirado para', maskPhone(phone), '| msgType:', msgType);
         if (!_pendingAudio.has(phone)) _pendingAudio.set(phone, []);
         _pendingAudio.get(phone)!.push(msg);
       } else if (text.trim()) {
@@ -377,7 +378,7 @@ const AiPollingManager: React.FC<{
                 `⏰ *Seu teste gratuito termina amanhã!*\n\nPara continuar usando o AgendeZap com IA de agendamento, escolha um plano:\n\n🟢 *Start* — R$ 39,90/mês\n🔵 *Profissional* — R$ 89,90/mês\n🟣 *Elite* — R$ 149,90/mês\n\nAcesse o sistema e clique em "Ver planos" para continuar. 🚀`
               );
               await db.updateSettings(tenantId, { trialWarningSent: true });
-              console.log('[Trial] Aviso do dia 6 enviado para', tenant.phone);
+              console.log('[Trial] Aviso do dia 6 enviado para', maskPhone(tenant.phone));
             }
           }
         }

@@ -2,6 +2,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { evolutionService, EVOLUTION_API_URL, EVOLUTION_API_KEY } from './evolutionService';
 import { supabase } from './supabase';
 import { db } from './mockDb';
+import { maskPhone } from './security';
 
 // ─── Dedup ────────────────────────────────────────────────────────────
 const processedIds = new Set<string>();
@@ -338,12 +339,12 @@ export async function processarMensagem(tenant: any, msg: any) {
       numero,
       'Histórico limpo! Vamos começar de novo 😊'
     );
-    log('CONTEXT', `Histórico resetado para ${numero}`);
+    log('CONTEXT', `Histórico resetado para ${maskPhone(numero)}`);
     return;
   }
 
   const hist = getHistory(tenantId, numero);
-  log('CONTEXT', `Histórico: ${hist.length} mensagem(ns) salvas para ${numero}`);
+  log('CONTEXT', `Histórico: ${hist.length} mensagem(ns) salvas para ${maskPhone(numero)}`);
   log('INFO', `Nova msg de ${pushName}: "${text.substring(0, 60)}"`);
 
   // ── Load tenant data for context ─────────────────────────────────────
@@ -490,10 +491,10 @@ Situação: cliente mudou de ideia ("na verdade quero com o felipe")
       // Save both turns to history ONLY after a successful reply
       addToHistory(tenantId, numero, 'user', text);
       addToHistory(tenantId, numero, 'model', result.replyText);
-      log('CONTEXT', `Histórico atualizado → ${getHistory(tenantId, numero).length} entradas`);
+      log('CONTEXT', `Histórico atualizado → ${getHistory(tenantId, numero).length} entradas para ${maskPhone(numero)}`);
 
       await evolutionService.sendMessage(tenant.evolution_instance, numero, result.replyText);
-      log('ENVIADO', `Resposta para ${pushName} (${numero})`);
+      log('ENVIADO', `Resposta para ${pushName} (${maskPhone(numero)})`);
       // Persist outgoing bot reply
       db.saveWaMessages(tenantId, [{
         msg_id:    `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,

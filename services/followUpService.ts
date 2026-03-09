@@ -18,6 +18,7 @@ import { db } from './mockDb';
 import { evolutionService } from './evolutionService';
 import { AppointmentStatus } from '../types';
 import { registerFollowUpContext } from './agentService';
+import { maskPhone } from './security';
 
 // Prevent concurrent runs for the same tenant
 const runningTenants = new Set<string>();
@@ -132,7 +133,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
         newSent[sentKey]    = nowDate;
         newSent[custDayKey] = nowDate;
         anySent = true;
-        console.log(`[FollowUp] Aviso enviado → ${cust.name} (${cust.phone})`);
+        console.log(`[FollowUp] Aviso enviado → ${cust.name} (${maskPhone(cust.phone)})`);
         registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
           apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
           serviceName: svc?.name || '',
@@ -141,7 +142,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
           serviceId: appt.service_id,
         });
       } catch (e: any) {
-        console.error(`[FollowUp] Erro ao enviar aviso para ${cust.phone}:`, e.message);
+        console.error(`[FollowUp] Erro ao enviar aviso para ${maskPhone(cust.phone)}:`, e.message);
       }
     }
 
@@ -203,7 +204,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
           serviceId: appt.service_id,
         });
       } catch (e: any) {
-        console.error(`[FollowUp] Erro ao enviar lembrete para ${cust.phone}:`, e.message);
+        console.error(`[FollowUp] Erro ao enviar lembrete para ${maskPhone(cust.phone)}:`, e.message);
       }
     }
 
@@ -277,7 +278,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
           clientName: cust.name,
         });
       } catch (e: any) {
-        console.error(`[FollowUp] Erro ao enviar recuperação para ${cust.phone}:`, e.message);
+        console.error(`[FollowUp] Erro ao enviar recuperação para ${maskPhone(cust.phone)}:`, e.message);
       }
     }
 
@@ -369,9 +370,9 @@ export async function runDailyProfessionalAgenda(tenant: any): Promise<void> {
         newSent[sentKey] = 'sent';
         agendaSentMemory.add(memKey); // mark in-memory immediately so save failures don't re-send
         anySent = true;
-        console.log(`[AgendaDiaria] Enviada para ${prof.name} (${prof.phone}) — ${profAppts.length} appts`);
+        console.log(`[AgendaDiaria] Enviada para ${prof.name} (${maskPhone(prof.phone)}) — ${profAppts.length} appts`);
       } catch (e: any) {
-        console.error(`[AgendaDiaria] Erro ao enviar para ${prof.phone}:`, e.message);
+        console.error(`[AgendaDiaria] Erro ao enviar para ${maskPhone(prof.phone)}:`, e.message);
       }
     }
 

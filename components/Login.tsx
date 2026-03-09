@@ -36,27 +36,27 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
         return;
       }
 
-      // Lógica de Login Existente
-      if ((cleanEmail === 'admin@super.com' && cleanPassword === 'M@theus2026') || (cleanEmail === 'admin@agendezap.com' && cleanPassword === 'admin123')) {
-        await onLogin('SUPERADMIN', undefined, cleanEmail, cleanPassword);
-      } else {
-        const parts = cleanEmail.split('@');
-        if (parts.length < 2) {
-          setError('Use o e-mail no formato barbearia@agendezap.com');
-          setLoading(false);
-          return;
-        }
-        
-        const slug = parts[0].toLowerCase().trim();
-        
-        // Validação amigável para o domínio customizado
-        if (!cleanEmail.includes('@agendezap.com')) {
-          setError('Por favor, use o e-mail corporativo: @agendezap.com');
-          setLoading(false);
-          return;
-        }
+      // Determine role based on email domain — actual credential
+      // validation is handled server-side by App.tsx handleLogin
+      const parts = cleanEmail.split('@');
+      if (parts.length < 2) {
+        setError('Use o e-mail no formato barbearia@agendezap.com');
+        setLoading(false);
+        return;
+      }
 
+      const domain = parts[1].toLowerCase().trim();
+      const slug = parts[0].toLowerCase().trim();
+
+      if (domain === 'super.com') {
+        // Superadmin login — credentials validated in handleLogin
+        await onLogin('SUPERADMIN', undefined, cleanEmail, cleanPassword);
+      } else if (domain === 'agendezap.com') {
         await onLogin('TENANT', slug, cleanEmail, cleanPassword);
+      } else {
+        setError('Por favor, use o e-mail corporativo: @agendezap.com');
+        setLoading(false);
+        return;
       }
     } catch (err: any) {
       console.error("Submit Error:", err);

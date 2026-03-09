@@ -14,6 +14,7 @@ import { evolutionService } from './evolutionService';
 import { nichoConfigs, isBarbearia } from '../config/nichoConfigs';
 import { logAIUsage, estimateTokens } from './usageTracker';
 import { notifyWaitlistLeads } from './waitlistService';
+import { maskPhone } from './security';
 
 // =====================================================================
 // TYPES
@@ -207,7 +208,7 @@ export function registerFollowUpContext(
   sessions.set(key, sess);
   // Persist to Supabase so the Edge Function webhook also sees this context
   saveSession(sess as Session);
-  console.log(`[Agent] Follow-up context registered: ${type} → ${phone}`);
+  console.log(`[Agent] Follow-up context registered: ${type} → ${maskPhone(phone)}`);
 }
 
 // =====================================================================
@@ -1277,7 +1278,7 @@ async function _handleMessage(
           updatedAt: new Date(sbSess.updated_at).getTime(),
         };
         sessions.set(sessionKey(tenantId, phone), session);
-        console.log('[Agent] Sessão restaurada do Supabase para', phone);
+        console.log('[Agent] Sessão restaurada do Supabase para', maskPhone(phone));
       }
     } catch { /* ignorar erro de restauração */ }
   }
@@ -2548,7 +2549,7 @@ export async function handleMessage(
     // Duplicate = same text sent within 10 minutes
     if (prev && prev.text === result && now - prev.ts < 10 * 60 * 1000) {
       logDuplicate(tenant.id, phone, result);
-      console.warn(`[Agent] Duplicate message detected for ${phone}: "${result.slice(0, 60)}..."`);
+      console.warn(`[Agent] Duplicate message detected for ${maskPhone(phone)}: "${result.slice(0, 60)}..."`);
     }
     lastSentMsg.set(key, { text: result, ts: now });
   }

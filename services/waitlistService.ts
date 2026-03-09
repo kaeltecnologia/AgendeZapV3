@@ -5,6 +5,7 @@
 import { db } from './mockDb';
 import { evolutionService } from './evolutionService';
 import { supabase } from './supabase';
+import { maskPhone } from './security';
 
 export interface WaitlistContext {
   professionalName?: string;
@@ -66,7 +67,7 @@ export async function notifyWaitlistLeads(
         // Clear flag so they don't get duplicate notifications
         updatedCData[cust.id] = { ...(updatedCData[cust.id] || {}), waitlistAlert: false };
       } catch (e) {
-        console.error(`[waitlistService] Failed to notify ${cust.telefone}:`, e);
+        console.error(`[waitlistService] Failed to notify ${maskPhone(cust.telefone)}:`, e);
       }
     }
 

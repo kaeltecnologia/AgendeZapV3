@@ -31,6 +31,7 @@ import AiPollingManager from './components/AiPollingManager';
 import TrialExpiredView from './components/TrialExpiredView';
 import BookingPage from './components/BookingPage';
 import { db } from './services/mockDb';
+import { supabase } from './services/supabase';
 import { evolutionService } from './services/evolutionService';
 import { TenantStatus } from './types';
 import PlanGate from './components/PlanGate';
@@ -69,6 +70,16 @@ type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 
 
 const SESSION_KEY = 'agz_session';
 
+// Simple session fingerprint to detect tampering (not crypto-grade, but prevents casual edits)
+function sessionFingerprint(data: Record<string, any>): string {
+  const raw = JSON.stringify(data) + '|agz_2026';
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState<Role>('TENANT');
@@ -92,10 +103,11 @@ const App: React.FC = () => {
   // Persist session whenever auth/nav state changes
   useEffect(() => {
     if (isAuthenticated) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify({
+      const payload = {
         isAuthenticated, role, tenantId, tenantSlug, tenantName,
         tenantPlan, isImpersonating, currentView, superAdminTab,
-      }));
+      };
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
     }
   }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, isImpersonating, currentView, superAdminTab]);
 
@@ -152,7 +164,11 @@ const App: React.FC = () => {
         const saved = localStorage.getItem(SESSION_KEY);
         if (saved) {
           const s = JSON.parse(saved);
-          if (s.isAuthenticated) {
+          // Verify session integrity — reject tampered data
+          const { _fp, ...payload } = s;
+          if (_fp && _fp !== sessionFingerprint(payload)) {
+            localStorage.removeItem(SESSION_KEY);
+          } else if (s.isAuthenticated) {
             setIsAuthenticated(true);
             setRole(s.role || 'TENANT');
             setTenantId(s.tenantId || '');
@@ -165,7 +181,7 @@ const App: React.FC = () => {
           }
         }
       } catch {
-        // ignore malformed session
+        localStorage.removeItem(SESSION_KEY);
       }
 
       try {
@@ -180,22 +196,32 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogin = async (selectedRole: Role, userSlug?: string, userEmail?: string, userPassword?: string) => {
-    console.log(`Tentativa de login: ${selectedRole}, Slug: ${userSlug}`);
     try {
       if (selectedRole === 'SUPERADMIN') {
-        // Check if custom credentials are set in global_settings
+        // Validate superadmin via secure RPC (credentials never leave the server)
         try {
-          const cfg = await db.getGlobalConfig();
-          const customEmail = (cfg['admin_email'] || '').trim();
-          const customPass  = (cfg['admin_password'] || '').trim();
-          if (customEmail && customPass) {
+          const { data, error } = await supabase.rpc('admin_login', {
+            p_email: userEmail || '',
+            p_password: userPassword || '',
+          });
+          if (error || !data || data.error) {
+            // Fallback to client-side check if RPC not yet deployed
+            const cfg = await db.getGlobalConfig();
+            const customEmail = (cfg['admin_email'] || '').trim();
+            const customPass  = (cfg['admin_password'] || '').trim();
+            if (!customEmail || !customPass) {
+              alert('Credenciais de administrador não configuradas no sistema.');
+              return;
+            }
             if (userEmail !== customEmail || userPassword !== customPass) {
               alert('Credenciais incorretas.');
               return;
             }
           }
-          // If no custom creds set, Login.tsx already validated the hardcoded ones
-        } catch { /* allow login if Supabase unreachable */ }
+        } catch {
+          alert('Não foi possível verificar as credenciais. Verifique sua conexão.');
+          return;
+        }
         setRole('SUPERADMIN');
         setIsAuthenticated(true);
         setCurrentView(View.SUPERADMIN_DASHBOARD);
@@ -203,27 +229,40 @@ const App: React.FC = () => {
       }
 
       if (userSlug) {
+        // Use secure RPC for tenant login (password validated server-side)
+        try {
+          const { data, error } = await supabase.rpc('tenant_login', {
+            p_email: userEmail || '',
+            p_password: userPassword || '',
+          });
+          if (!error && data && !data.error) {
+            setTenantId(data.id);
+            setTenantSlug(data.slug);
+            setTenantName(data.name);
+            setTenantPlan(data.plan || 'START');
+            setRole('TENANT');
+            setIsAuthenticated(true);
+            setCurrentView(View.DASHBOARD);
+            return;
+          }
+        } catch { /* RPC not available — fallback below */ }
+
+        // Fallback: direct DB query (for when RPC migration hasn't been run yet)
         const targetSlug = userSlug.toLowerCase().trim();
         const tenants = await db.getAllTenants();
 
         let myTenant = tenants.find(t => t.slug === targetSlug);
-
         if (!myTenant && userEmail) {
           myTenant = tenants.find(t => t.email?.toLowerCase() === userEmail.toLowerCase());
         }
-
         if (!myTenant) {
-          console.warn(`Barbearia não encontrada: ${targetSlug}`);
           alert("Barbearia não encontrada. Verifique o e-mail cadastrado ou entre em contato com o suporte.");
           return;
         }
-
         if (myTenant.password && userPassword && myTenant.password !== userPassword) {
           alert("Senha incorreta.");
           return;
         }
-
-        console.log(`Login bem-sucedido: ${myTenant.name}`);
         setTenantId(myTenant.id);
         setTenantSlug(myTenant.slug);
         setTenantName(myTenant.name);
