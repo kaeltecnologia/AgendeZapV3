@@ -2027,11 +2027,75 @@ async function _handleMessage(
     }
   }
 
+  // ─── TS-level date pre-extraction via day names / keywords ──────────
+  if (!session.data.date) {
+    const _normDate = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s\/]/g, '');
+    const _p2 = (n: number) => String(n).padStart(2, '0');
+
+    if (/\bhoje\b/.test(_normDate)) {
+      session.data.date = todayISO;
+      console.log('[Agent] TS pre-extracted date (hoje):', todayISO);
+    } else if (/\bamanha\b/.test(_normDate)) {
+      const _tom = new Date(_nowBrasilia.getTime() + 86400000);
+      session.data.date = `${_tom.getUTCFullYear()}-${_p2(_tom.getUTCMonth()+1)}-${_p2(_tom.getUTCDate())}`;
+      console.log('[Agent] TS pre-extracted date (amanhã):', session.data.date);
+    } else {
+      // Day-of-week: "segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"
+      const _dayMap: Record<string, number> = {
+        'domingo': 0, 'segunda': 1, 'terca': 2, 'quarta': 3,
+        'quinta': 4, 'sexta': 5, 'sabado': 6,
+      };
+      for (const [dayName, dayNum] of Object.entries(_dayMap)) {
+        if (new RegExp(`\\b${dayName}\\b`).test(_normDate)) {
+          const _todayDow2 = _nowBrasilia.getUTCDay();
+          let _daysAhead = dayNum - _todayDow2;
+          if (_daysAhead <= 0) _daysAhead += 7;
+          const _target = new Date(_nowBrasilia.getTime() + _daysAhead * 86400000);
+          session.data.date = `${_target.getUTCFullYear()}-${_p2(_target.getUTCMonth()+1)}-${_p2(_target.getUTCDate())}`;
+          console.log(`[Agent] TS pre-extracted date (${dayName}):`, session.data.date);
+          break;
+        }
+      }
+    }
+
+    // "dia X" or "dia X/Y" pattern
+    if (!session.data.date) {
+      const _diaMatch = _normDate.match(/\bdia\s+(\d{1,2})(?:\s*\/\s*(\d{1,2}))?\b/);
+      if (_diaMatch) {
+        const _day = parseInt(_diaMatch[1]);
+        const _month = _diaMatch[2] ? parseInt(_diaMatch[2]) : (_nowBrasilia.getUTCMonth() + 1);
+        const _year = _nowBrasilia.getUTCFullYear();
+        session.data.date = `${_year}-${_p2(_month)}-${_p2(_day)}`;
+        console.log('[Agent] TS pre-extracted date (dia X):', session.data.date);
+      }
+    }
+  }
+
+  // ─── TS-level period preference extraction ──────────────────────────
+  if (!session.data.time && !(session.data as any).preferredPeriod) {
+    const _normPer = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (/\b(tarde|a tarde|da tarde|pela tarde|parte da tarde)\b/.test(_normPer)) {
+      (session.data as any).preferredPeriod = 'tarde';
+      console.log('[Agent] TS pre-extracted period: tarde');
+    } else if (/\b(manha|de manha|pela manha|parte da manha)\b/.test(_normPer)) {
+      (session.data as any).preferredPeriod = 'manha';
+      console.log('[Agent] TS pre-extracted period: manha');
+    } else if (/\b(noite|a noite|da noite|pela noite)\b/.test(_normPer)) {
+      (session.data as any).preferredPeriod = 'noite';
+      console.log('[Agent] TS pre-extracted period: noite');
+    }
+  }
+
   // ─── Mark greeted for all early-return guards below ──────────────
   // Without this, shouldGreet stays true and next message triggers a greeting reset.
   const _markGreeted = () => {
     if (shouldGreet) { session.data.greetedAt = brasiliaDate; _greetedToday.set(_greetKey, brasiliaDate); }
   };
+
+  // ─── Greeting prefix for code-level guard responses ──────────────
+  const _greetPrefix = shouldGreet
+    ? `${brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1)}! Seja bem-vindo ao ${tenantName} 😊\n\n`
+    : '';
 
   // ─── Validate target date is open ─────────────────────────────────
   if (session.data.date) {
@@ -2040,7 +2104,7 @@ async function _handleMessage(
     const _targetDayCfg = settings.operatingHours?.[_targetDow];
     if (!_targetDayCfg?.active) {
       const _dayNames = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
-      const _closedMsg = `Não estamos abertos na ${_dayNames[_targetDow]} (${formatDate(session.data.date)}). 😕 Para qual outro dia você gostaria?`;
+      const _closedMsg = `${_greetPrefix}Não estamos abertos na ${_dayNames[_targetDow]} (${formatDate(session.data.date)}). 😕 Para qual outro dia você gostaria?`;
       session.data.date = undefined;
       _markGreeted();
       session.history.push({ role: 'bot', text: _closedMsg });
@@ -2055,9 +2119,9 @@ async function _handleMessage(
       `• ${s.name} (${s.durationMinutes}min — R$${(s.price || 0).toFixed(2)})`
     ).join('\n');
     const _ctxParts: string[] = [];
-    if (session.data.professionalName) _ctxParts.push(`com ${session.data.professionalName}`);
-    _ctxParts.push(`em ${formatDate(session.data.date)}`);
-    const _askSvc = `Para verificar os horários disponíveis ${_ctxParts.join(' ')}, qual procedimento você gostaria? 😊\n\n${_svcList}\n\nQual seria?`;
+    if (session.data.professionalName) _ctxParts.push(`com o ${session.data.professionalName}`);
+    _ctxParts.push(`pra ${formatDate(session.data.date)}`);
+    const _askSvc = `${_greetPrefix}Vou verificar os horários disponíveis ${_ctxParts.join(' ')}! Qual procedimento você gostaria? 😊\n\n${_svcList}`;
     _markGreeted();
     session.history.push({ role: 'bot', text: _askSvc });
     saveSession(session);
@@ -2067,7 +2131,7 @@ async function _handleMessage(
   // ─── Force date question when service known but date missing ──────────
   if (session.data.serviceId && !session.data.date) {
     const _svcName = session.data.serviceName || 'o procedimento';
-    const _askDate = `Ótimo, ${_svcName}! Para qual dia você gostaria de agendar? 😊`;
+    const _askDate = `${_greetPrefix}Ótimo, ${_svcName}! Para qual dia você gostaria de agendar? 😊`;
     _markGreeted();
     session.history.push({ role: 'bot', text: _askDate });
     saveSession(session);
