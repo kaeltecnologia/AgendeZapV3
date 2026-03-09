@@ -1198,9 +1198,15 @@ async function _handleMessage(
 
   // ─── Dedup ─────────────────────────────────────────────────────────
   const fp = makeFingerprint(tenantId, phone, text);
-  if (isLocalDuplicate(fp)) return null;
+  if (isLocalDuplicate(fp)) {
+    console.log(`[Agent] Blocked by local dedup: ${maskPhone(phone)} "${text.slice(0, 30)}"`);
+    return null;
+  }
   const claimed = await db.claimMessage(fp);
-  if (!claimed) return null;
+  if (!claimed) {
+    console.log(`[Agent] Blocked by DB dedup (msg_dedup): ${maskPhone(phone)} "${text.slice(0, 30)}"`);
+    return null;
+  }
 
   // ─── Load data ─────────────────────────────────────────────────────
   const [professionals, services, settings] = await Promise.all([
