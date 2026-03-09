@@ -129,13 +129,15 @@ function saveSession(session: Session): void {
   if (session.history.length > 20) session.history = session.history.slice(-20);
   sessions.set(sessionKey(session.tenantId, session.phone), session);
   // Persistir no Supabase para sobreviver ao fechamento do browser (fire & forget)
+  // NOTE: Supabase query builder is PromiseLike (has .then but NOT .catch) —
+  // must use .then(null, handler) instead of .catch(handler)
   supabase.from('agent_sessions').upsert({
     tenant_id: session.tenantId,
     phone: session.phone,
     data: session.data,
     history: session.history,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'tenant_id,phone' }).catch(e =>
+  }, { onConflict: 'tenant_id,phone' }).then(null, e =>
     console.error('[Agent] Supabase session save error:', e)
   );
 }
@@ -144,7 +146,7 @@ function clearSession(tenantId: string, phone: string): void {
   sessions.delete(sessionKey(tenantId, phone));
   supabase.from('agent_sessions')
     .delete().eq('tenant_id', tenantId).eq('phone', phone)
-    .catch(() => {});
+    .then(null, () => {});
 }
 
 function logConv(
@@ -160,7 +162,7 @@ function logConv(
     turns: history.filter(h => h.role === 'user').length,
     history,
     started_at: new Date().toISOString(),
-  }).then(() => {}).catch(() => {});
+  }).then(() => {}, () => {});
 }
 
 /** Loga quando o agente envia a mesma mensagem duas vezes seguidas para o mesmo lead. */
@@ -172,7 +174,7 @@ function logDuplicate(tenantId: string, phone: string, text: string): void {
     turns: 0,
     history: [{ role: 'bot', text, note: 'DUPLICATE_DETECTED' }],
     started_at: new Date().toISOString(),
-  }).then(() => {}).catch(() => {});
+  }).then(() => {}, () => {});
 }
 
 // ── Called by followUpService after each successful send ─────────────
