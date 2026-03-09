@@ -1985,8 +1985,13 @@ async function _handleMessage(
   const _hasProfSPA = !!session.data.professionalId;
   const _hasDateSPA = !!session.data.date;
   const _hasSvcSPA  = !!session.data.serviceId;
-  if (_hasProfSPA && _hasDateSPA && _hasSvcSPA) {
-    const _slotDuration = session.data.serviceDuration || 30;
+  // Fetch slots when professional + date are known (service optional).
+  // Without service → use shortest active service duration (conservative estimate).
+  if (_hasProfSPA && _hasDateSPA) {
+    const _slotDuration = session.data.serviceDuration
+      || (activeServices.length > 0
+          ? Math.min(...activeServices.map((s: any) => s.durationMinutes || 30))
+          : 30);
     prefetchedSlots = await getAvailableSlots(
       tenantId, session.data.professionalId!, session.data.date!,
       _slotDuration, settings
