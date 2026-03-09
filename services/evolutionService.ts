@@ -161,7 +161,7 @@ export const evolutionService = {
         headers,
         body: JSON.stringify({
           number: cleanNumber,
-          textMessage: { text },
+          text: text,
           options: { delay: 1200, presence: 'composing', linkPreview: false }
         })
       });

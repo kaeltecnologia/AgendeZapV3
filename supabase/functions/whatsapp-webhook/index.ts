@@ -566,7 +566,7 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
   // Send with composing presence (simulates typing before message)
   await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
     method: 'POST', headers: EVO_HEADERS,
-    body: JSON.stringify({ number: phone, textMessage: { text }, options: { delay: 1200, presence: 'composing', linkPreview: false } }),
+    body: JSON.stringify({ number: phone, text: text, options: { delay: 1200, presence: 'composing', linkPreview: false } }),
   }).catch(e => console.error('[sendMsg] error:', e));
   // Persist outgoing message so ConversationsView shows full history
   if (tenantId) {
