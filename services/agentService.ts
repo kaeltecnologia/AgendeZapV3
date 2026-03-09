@@ -128,18 +128,21 @@ function saveSession(session: Session): void {
   session.updatedAt = Date.now();
   if (session.history.length > 20) session.history = session.history.slice(-20);
   sessions.set(sessionKey(session.tenantId, session.phone), session);
-  // Persistir no Supabase para sobreviver ao fechamento do browser (fire & forget)
-  // NOTE: Supabase query builder is PromiseLike (has .then but NOT .catch) —
-  // must use .then(null, handler) instead of .catch(handler)
+  // Fallback: also save to localStorage so history survives even if Supabase is down
+  try {
+    const lsKey = `agz_sess_${sessionKey(session.tenantId, session.phone)}`;
+    localStorage.setItem(lsKey, JSON.stringify({
+      data: session.data, history: session.history, updatedAt: session.updatedAt,
+    }));
+  } catch { /* localStorage full or unavailable */ }
+  // Persistir no Supabase (fire & forget)
   supabase.from('agent_sessions').upsert({
     tenant_id: session.tenantId,
     phone: session.phone,
     data: session.data,
     history: session.history,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'tenant_id,phone' }).then(null, e =>
-    console.error('[Agent] Supabase session save error:', e)
-  );
+  }, { onConflict: 'tenant_id,phone' }).then(null, () => {});
 }
 
 function clearSession(tenantId: string, phone: string): void {
@@ -1269,8 +1272,9 @@ async function _handleMessage(
 
   // ─── New session — create, then let AI handle greeting + extraction ─
   let session = getSession(tenantId, phone);
-  // Tentar restaurar do Supabase se não estiver na memória (garante continuidade após fechar o browser)
+  // Tentar restaurar do Supabase ou localStorage se não estiver na memória
   if (!session) {
+    // 1. Try Supabase
     try {
       const { data: sbSess } = await supabase
         .from('agent_sessions')
@@ -1289,6 +1293,21 @@ async function _handleMessage(
         console.log('[Agent] Sessão restaurada do Supabase para', maskPhone(phone));
       }
     } catch { /* ignorar erro de restauração */ }
+    // 2. Fallback: try localStorage
+    if (!session) {
+      try {
+        const lsKey = `agz_sess_${sessionKey(tenantId, phone)}`;
+        const raw = localStorage.getItem(lsKey);
+        if (raw) {
+          const ls = JSON.parse(raw);
+          if (ls && Date.now() - (ls.updatedAt || 0) < SESSION_TIMEOUT_MS) {
+            session = { tenantId, phone, data: ls.data, history: ls.history || [], updatedAt: ls.updatedAt };
+            sessions.set(sessionKey(tenantId, phone), session);
+            console.log('[Agent] Sessão restaurada do localStorage para', maskPhone(phone));
+          }
+        }
+      } catch { /* ignore */ }
+    }
   }
   if (!session) {
     const { data: existing } = await supabase.from('customers').select('nome')
