@@ -166,8 +166,9 @@ export const evolutionService = {
         })
       });
       if (response.ok) return { success: true };
-      const errData = await response.json();
-      return { success: false, error: errData.message || "Falha ao enviar" };
+      const errData = await response.json().catch(() => ({}));
+      console.error(`[Evolution] sendText ${response.status}:`, JSON.stringify(errData).substring(0, 500), '| instance:', instanceName, '| number:', cleanNumber.slice(0, 4) + '***');
+      return { success: false, error: errData.message || `HTTP ${response.status}` };
     } catch (e: any) {
       return { success: false, error: e.message };
     }
