@@ -1575,11 +1575,9 @@ class DatabaseService {
   //   CREATE TABLE IF NOT EXISTS msg_dedup (fp text PRIMARY KEY, ts timestamptz DEFAULT now());
   async claimMessage(fp: string): Promise<boolean> {
     try {
-      // Prune stale entries BEFORE inserting — prevents old fingerprints
-      // from blocking messages after outages/deployments.
-      // TTL = 5 min (enough to dedup rapid-fire duplicates, short enough to
-      // not block retries after issues).
-      const cutoff = new Date(Date.now() - 5 * 60_000).toISOString();
+      // Prune entries older than 30 s — just enough to prevent cross-tab
+      // duplicates while allowing quick retries after send failures.
+      const cutoff = new Date(Date.now() - 30_000).toISOString();
       await supabase.from('msg_dedup').delete().lt('ts', cutoff)
         .then(() => {}, () => {});
       const { error } = await supabase.from('msg_dedup').insert({ fp });

@@ -924,10 +924,10 @@ function makeFingerprint(tenantId: string, phone: string, text: string): string 
 function isLocalDuplicate(fp: string): boolean {
   const now = Date.now();
   const last = _recentHandled.get(fp);
-  if (last !== undefined && now - last < 60_000) return true;
+  if (last !== undefined && now - last < 30_000) return true;
   _recentHandled.set(fp, now);
   for (const [k, t] of _recentHandled) {
-    if (now - t > 120_000) _recentHandled.delete(k);
+    if (now - t > 60_000) _recentHandled.delete(k);
   }
   return false;
 }
