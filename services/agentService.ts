@@ -1423,8 +1423,37 @@ async function _handleMessage(
       saveSession(session);
       return _vacReply;
     }
-    // Ambiguous — clear flag and fall through to AI
-    (session.data as any).pendingVacationOffer = undefined;
+    // Check if lead has scheduling intent (date, time, "agenda", "horário")
+    // e.g. "Vê a agenda dele pra amanhã às 18:30" or "horário pro dia 12/03"
+    const _schedIntentRe = /(?:agenda|horar|marca|agend|dia\s+\d|amanh|pr[oa]\s+(?:amanh|dia|seg|ter|qua|qui|sex|sab)|[012]?\d[:\sh]\s*\d{0,2})/i;
+    if (_schedIntentRe.test(_normVac)) {
+      // Lead wants to schedule — check if the requested date is after vacation
+      (session.data as any).pendingVacationOffer = undefined;
+      // Try to extract date from message for the vacation prof
+      const _vacReturnISO = _vacOffer.returnDate ? (() => {
+        // returnDate is formatted like "terça-feira, 10/03/2026" — extract ISO
+        const m = _vacOffer.returnDate.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+      })() : '';
+      // "dele/dela" refers to the vacation prof — check if date allows it
+      const _refersToVacProf = /\b(?:dele|dela|seu|sua|ele|ela|mesmo|mesma)\b/.test(_normVac);
+      if (_refersToVacProf && _vacReturnISO) {
+        // Check if message mentions "amanhã" or a specific date
+        // Let the main flow handle extraction, but re-set the vacation prof
+        // so the AI knows who "dele" refers to
+        session.data.professionalId = undefined; // will be re-extracted below
+        session.data.professionalName = undefined;
+        // Add context to history so AI understands
+        const _schedReply = `O ${_vacOffer.vacProfName} retorna ${_vacOffer.returnDate}. A partir dessa data posso verificar a agenda dele! 😊\n\nPara qual dia após o retorno você gostaria de agendar?`;
+        session.history.push({ role: 'bot', text: _schedReply });
+        saveSession(session);
+        return _schedReply;
+      }
+      // Not referring to vacation prof specifically — fall through to AI with context
+    } else {
+      // Ambiguous — clear flag and fall through to AI
+      (session.data as any).pendingVacationOffer = undefined;
+    }
   }
 
   // ─── Date-change during confirmation (TypeScript layer) ──────────────
@@ -1967,10 +1996,12 @@ async function _handleMessage(
           return !!vs && todayISO >= vs && todayISO <= ve;
         }));
       const _othersStr = _othersAvail.map((p: any) => p.name).join(' ou ');
-      const _vacMsg = `*${_vacProfName}* está de férias no momento!${_returnInfo2} 🏖️\n\n${_othersStr ? `Mas o ${_othersStr} pode te atender! Gostaria de agendar?` : 'Pode agendar quando o profissional retornar.'}`;
+      const _vacGreetPrefix = shouldGreet ? `${brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1)}! ` : '';
+      const _vacMsg = `${_vacGreetPrefix}*${_vacProfName}* está de férias no momento!${_returnInfo2} 🏖️\n\n${_othersStr ? `Mas o ${_othersStr} pode te atender! Gostaria de agendar?` : 'Pode agendar quando o profissional retornar.'}`;
       session.data.professionalId   = undefined;
       session.data.professionalName = undefined;
       session.data.date             = undefined;
+      if (shouldGreet) { session.data.greetedAt = brasiliaDate; _greetedToday.set(_greetKey, brasiliaDate); }
       if (_othersAvail.length > 0) {
         (session.data as any).pendingVacationOffer = {
           vacProfName: _vacProfName, returnDate: _returnDate2,
@@ -1995,6 +2026,12 @@ async function _handleMessage(
     }
   }
 
+  // ─── Mark greeted for all early-return guards below ──────────────
+  // Without this, shouldGreet stays true and next message triggers a greeting reset.
+  const _markGreeted = () => {
+    if (shouldGreet) { session.data.greetedAt = brasiliaDate; _greetedToday.set(_greetKey, brasiliaDate); }
+  };
+
   // ─── Validate target date is open ─────────────────────────────────
   if (session.data.date) {
     const _targetDateObj = new Date(session.data.date + 'T12:00:00');
@@ -2004,6 +2041,7 @@ async function _handleMessage(
       const _dayNames = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
       const _closedMsg = `Não estamos abertos na ${_dayNames[_targetDow]} (${formatDate(session.data.date)}). 😕 Para qual outro dia você gostaria?`;
       session.data.date = undefined;
+      _markGreeted();
       session.history.push({ role: 'bot', text: _closedMsg });
       saveSession(session);
       return _closedMsg;
@@ -2011,8 +2049,6 @@ async function _handleMessage(
   }
 
   // ─── Force service question when date known but service missing ──────
-  // Code-level guard: without service, can't calculate slot durations.
-  // The AI tends to hallucinate generic hours (e.g. "9h às 18h") — this prevents it.
   if (session.data.date && !session.data.serviceId) {
     const _svcList = activeServices.map((s: any) =>
       `• ${s.name} (${s.durationMinutes}min — R$${(s.price || 0).toFixed(2)})`
@@ -2021,16 +2057,17 @@ async function _handleMessage(
     if (session.data.professionalName) _ctxParts.push(`com ${session.data.professionalName}`);
     _ctxParts.push(`em ${formatDate(session.data.date)}`);
     const _askSvc = `Para verificar os horários disponíveis ${_ctxParts.join(' ')}, qual procedimento você gostaria? 😊\n\n${_svcList}\n\nQual seria?`;
+    _markGreeted();
     session.history.push({ role: 'bot', text: _askSvc });
     saveSession(session);
     return _askSvc;
   }
 
   // ─── Force date question when service known but date missing ──────────
-  // Without date, can't check appointments for the day.
   if (session.data.serviceId && !session.data.date) {
     const _svcName = session.data.serviceName || 'o procedimento';
     const _askDate = `Ótimo, ${_svcName}! Para qual dia você gostaria de agendar? 😊`;
+    _markGreeted();
     session.history.push({ role: 'bot', text: _askDate });
     saveSession(session);
     return _askDate;
