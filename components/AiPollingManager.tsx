@@ -173,16 +173,18 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
   if (!cleanPhone) return;
 
   try {
+    console.log(`[AiPolling] processarMensagem: phone=${maskPhone(cleanPhone)} text="${text.substring(0, 50)}" geminiKey=${!!tenant.gemini_api_key}`);
     const profReply = await handleProfessionalMessage(tenant, cleanPhone, text);
     const reply = profReply !== null
       ? profReply
       : await handleMessage(tenant, cleanPhone, text, msg.pushName || 'Cliente', { isAudio: wasTranscribed });
+    console.log(`[AiPolling] reply: ${reply ? `"${reply.substring(0, 60)}..."` : 'null'}`);
     if (reply) {
       const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
       await evolutionService.sendMessage(instanceName, cleanPhone, reply);
     }
   } catch (e: any) {
-    console.error('[AiPolling] Erro ao processar mensagem:', e.message);
+    console.error('[AiPolling] Erro ao processar mensagem:', e.message, e.stack);
   }
 }
 
@@ -221,6 +223,11 @@ async function poll(tenantId: string) {
     const sorted = [...messages].sort((a, b) => (a.messageTimestamp || 0) - (b.messageTimestamp || 0));
 
     const now = Date.now();
+    // Diagnostic: log new message candidates on each poll
+    const newMsgs = sorted.filter(m => m.key?.id && !_processedIds.has(m.key.id) && !m.key?.fromMe);
+    if (newMsgs.length > 0) {
+      console.log(`[AiPolling] ${sorted.length} msgs fetched, ${newMsgs.length} new (sessionStart=${_sessionStart})`);
+    }
 
     // ── Phase 1: accumulate new messages into the per-phone buffer ──
     for (const msg of sorted) {

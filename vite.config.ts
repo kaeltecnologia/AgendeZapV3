@@ -10,7 +10,12 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
       },
       plugins: [react()],
-      // Gemini API key is loaded per-tenant from DB — NOT embedded in client bundle
+      define: {
+        // Polyfill process.env for browser — some npm deps (e.g. @google/genai)
+        // reference process.env internally; without this, `process` is undefined
+        // in the browser and can cause silent ReferenceErrors.
+        'process.env': '{}',
+      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
