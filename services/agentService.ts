@@ -406,6 +406,11 @@ async function callBrain(
   settings?: any
 ): Promise<BrainOutput | null> {
 
+  // Compute todayISO locally (Brasília UTC-3)
+  const _brNowCB = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const _padCB = (n: number) => String(n).padStart(2, '0');
+  const todayISO = `${_brNowCB.getUTCFullYear()}-${_padCB(_brNowCB.getUTCMonth()+1)}-${_padCB(_brNowCB.getUTCDate())}`;
+
   const svcList = services.map(s =>
     `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`
   ).join('\n');
