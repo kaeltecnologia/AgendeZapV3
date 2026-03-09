@@ -813,6 +813,16 @@ function matchServiceByKeywords(
   const normText = norm(text);
   const STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado']);
 
+  // Stem: truncate to first 4+ chars to match verb conjugations (corta→cort, corte→cort)
+  const stem = (w: string) => w.length >= 5 ? w.slice(0, w.length - 1) : w;
+  const sharesStem = (a: string, b: string) => {
+    if (a === b) return true;
+    if (a.length < 4 || b.length < 4) return false;
+    const sa = stem(a), sb = stem(b);
+    return sa === sb || sa.startsWith(sb) || sb.startsWith(sa);
+  };
+
+  // Step 1: exact full-name substring match
   for (const svc of services) {
     if (normText.includes(norm(svc.name))) return svc;
   }
@@ -827,7 +837,9 @@ function matchServiceByKeywords(
   for (const svc of services) {
     const svcWords = norm(svc.name).split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
     if (svcWords.length === 0) continue;
-    const hits = msgWords.filter(mw => svcWords.some(sw => sw.includes(mw) || mw.includes(sw))).length;
+    const hits = msgWords.filter(mw => svcWords.some(sw =>
+      sw.includes(mw) || mw.includes(sw) || sharesStem(mw, sw)
+    )).length;
     const coverage = hits / svcWords.length;
     if (hits > bestHits || (hits === bestHits && coverage > bestCoverage)) {
       bestHits = hits;
