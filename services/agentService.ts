@@ -460,10 +460,11 @@ async function callBrain(
 
   const greetSection = shouldGreet
     ? `\n🌅 PRIMEIRA SAUDAÇÃO DO DIA:
-• Cumprimente com "${brasiliaGreeting}!" de forma calorosa e apresente o estabelecimento: "${tenantName}".
-• Pergunte apenas "Como posso te ajudar?" — nada mais.
-• ❌ NÃO liste serviços, profissionais, preços nem horários na saudação inicial.
-• ✅ Exemplo exato: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Como posso te ajudar?"\n`
+• Cumprimente BREVEMENTE com "${brasiliaGreeting}!" e "${tenantName}" no início da resposta.
+• Se o cliente JÁ informou dados (serviço, profissional, dia, horário) nesta mensagem → cumprimente em UMA frase curta e JÁ PROCESSE tudo que ele informou, avançando o fluxo normalmente.
+  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Vou verificar a agenda do [prof] pra [dia]! Qual procedimento você gostaria?"
+• Se o cliente NÃO informou nada além de saudação → cumprimente e pergunte "Como posso te ajudar?"
+  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Como posso te ajudar?"\n`
     : '';
 
   const groupSection = groupCtx
@@ -616,7 +617,7 @@ ${tomLine}
 • Emojis: use APENAS na saudação inicial ou ao confirmar agendamento. Na grande maioria das mensagens NÃO use emoji.
 • SEMPRE termine com pergunta curta ou confirmação
 
-${isFirstMessage && !shouldGreet ? '📥 PRIMEIRA MENSAGEM: processe tudo que o cliente já informou (nome, serviço, profissional, etc.) sem perguntar de novo.\n' : ''}
+${isFirstMessage ? '📥 PRIMEIRA MENSAGEM: processe TUDO que o cliente já informou (nome, serviço, profissional, dia, período, horário) sem perguntar de novo. Avance o fluxo para a próxima informação que faltar.\n' : ''}
 📅 AO OFERECER HORÁRIO (somente após profissional já definido no CONTEXTO ATUAL):
 • ❌ ERRADO: "Temos disponível às 15:00"
 • ✅ CERTO: "Com o [nome do profissional já escolhido] às 15:00 pode ser? 😊"
