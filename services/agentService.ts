@@ -503,7 +503,7 @@ async function callBrain(
 1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ PERÍODO (manhã/tarde) → 5️⃣ HORÁRIO → 6️⃣ CONFIRMAÇÃO
 ⛔ REGRAS ABSOLUTAS:
 • Se DIA não estiver no CONTEXTO ATUAL → pergunte "Tem algum dia de preferência?" ANTES de qualquer horário
-• EXCEÇÃO: se o cliente perguntar sobre horários SEM mencionar dia ("tem horário?", "como estão os horários?", "horário disponível", "tem vaga?") → assuma HOJE e mostre os horários disponíveis de hoje
+• EXCEÇÃO: se o cliente perguntar sobre horários SEM mencionar dia ("tem horário?", "como estão os horários?", "horário disponível", "tem vaga?") → assuma HOJE SOMENTE se hoje estiver aberto. Se hoje estiver FECHADO, diga "Hoje estamos fechados. Para qual dia você gostaria?" e NÃO extraia data
 • Se DIA definido mas PERÍODO não → pergunte "Prefere de manhã ou à tarde?"
 • ❌ JAMAIS mencione ou sugira horário específico (ex: "09:00", "15:00") sem ter DIA confirmado no CONTEXTO ATUAL
 
@@ -516,7 +516,7 @@ async function callBrain(
   const behaviorRules = `
 ⛔ ARMADILHAS — NUNCA FAÇA:
 • "Quero cortar amanhã" → NÃO agende sem profissional + horário confirmados
-• "Tem horário hoje?" / "Como estão os horários?" / "Horário disponível" / "Tem vaga?" SEM dia específico = assuma HOJE → mostre horários disponíveis de hoje + "Quer agendar? Qual serviço?"
+• "Tem horário hoje?" / "Como estão os horários?" / "Horário disponível" / "Tem vaga?" SEM dia específico = se hoje estiver ABERTO, assuma HOJE + "Quer agendar? Qual serviço?". Se hoje estiver FECHADO → "Hoje estamos fechados. Para qual dia você gostaria?"
 • "De manhã" / "de tarde" / "próxima semana" = tempo VAGO → mostre as opções daquele período/semana, nunca escolha por conta própria
 • "Mesmo de sempre" → sem memória histórica → "Pode confirmar o serviço e horário preferido?"
 • "Pode ser com o [prof]?" com SERVIÇO já no contexto → NÃO pergunte "sobre o que você quer falar" → confirme direto: "Ótimo, com o [prof]! Qual dia prefere?"
@@ -548,7 +548,7 @@ async function callBrain(
 • "Vocês trabalham domingo?" / "qual o horário de vocês?" → informar funcionamento; só depois oferecer agendar
 • "Quanto tempo demora um procedimento?" → informar duração; só depois oferecer agendar
 • "O [prof] tá disponível essa semana?" / "tá de folga?" → informar disponibilidade do profissional; só depois oferecer agendar
-• "Tem vaga hoje?" / "Como estão os horários?" / "Tem horário?" SEM dia → mostre os horários disponíveis de HOJE + "Quer agendar? Qual serviço?" — NÃO crie agendamento ainda
+• "Tem vaga hoje?" / "Como estão os horários?" / "Tem horário?" SEM dia → se hoje aberto, mostre horários de HOJE + "Quer agendar? Qual serviço?". Se fechado → "Hoje estamos fechados, para qual dia prefere?"
 • "Para hoje" / "quero pra hoje" no meio do fluxo → mude o DIA para hoje e consulte os horários disponíveis
 
 🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — quando o cliente usa termo informal que mapeia claramente para um serviço, preencha o serviço automaticamente NO extracted.service e NÃO pergunte "qual serviço?" — prossiga direto para data/horário:
@@ -576,11 +576,23 @@ ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
 • Se o cliente questionar uma escolha sua → "Desculpe! Com qual prefere? ${professionals.map(p => p.name).join(' ou ')}?" e retorne professionalId: null.\n`
     : '';
 
+  // Build operating days context so the AI knows which days are open/closed
+  const _dowNames = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const _opHours = settings.operatingHours || {};
+  const _todayDow = new Date(todayISO + 'T12:00:00').getDay();
+  const _todayOpen = !!_opHours[_todayDow]?.active;
+  const _openDays = _dowNames
+    .map((name, i) => _opHours[i]?.active ? `${name} (${_opHours[i].range})` : null)
+    .filter(Boolean).join(', ');
+  const _todayStatus = _todayOpen ? `HOJE (${_dowNames[_todayDow]}): ABERTO (${_opHours[_todayDow].range})` : `HOJE (${_dowNames[_todayDow]}): ❌ FECHADO`;
+
   const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}.
 ${introLinha}
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${followUpCtx}${audioNote}${greetSection}${groupSection}
 SERVIÇOS: ${svcList}
-PROFISSIONAIS: ${profList}${vacationCtx ? `\n${vacationCtx}` : ''}${slotsSection}
+PROFISSIONAIS: ${profList}${vacationCtx ? `\n${vacationCtx}` : ''}
+FUNCIONAMENTO: ${_openDays}
+${_todayStatus}${slotsSection}
 
 CONTEXTO ATUAL: ${known.length > 0 ? known.join(' | ') : 'nenhuma informação coletada ainda'}
 ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("sim","ok","pode","beleza","bora","fechou","isso","confirma") → "confirmed":true OBRIGATORIAMENTE.' : ''}
@@ -1976,8 +1988,36 @@ async function _handleMessage(
     }
   }
 
-  // ─── Fetch available slots when professional + date are known ──────
-  // When service is known → exact duration. When unknown → longest service (conservative).
+  // ─── Validate target date is open ─────────────────────────────────
+  if (session.data.date) {
+    const _targetDateObj = new Date(session.data.date + 'T12:00:00');
+    const _targetDow = _targetDateObj.getDay();
+    const _targetDayCfg = settings.operatingHours?.[_targetDow];
+    if (!_targetDayCfg?.active) {
+      const _dayNames = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+      const _closedMsg = `Não estamos abertos na ${_dayNames[_targetDow]} (${formatDate(session.data.date)}). 😕 Para qual outro dia você gostaria?`;
+      session.data.date = undefined;
+      session.history.push({ role: 'bot', text: _closedMsg });
+      saveSession(session);
+      return _closedMsg;
+    }
+  }
+
+  // ─── Force service question when prof+date known but service missing ──
+  // Code-level guard: the AI tends to hallucinate generic hours (e.g. "9h às 18h")
+  // when it doesn't have real slot data. This bypass prevents that entirely.
+  if (session.data.professionalId && session.data.date && !session.data.serviceId) {
+    const _profName = session.data.professionalName || 'o profissional';
+    const _svcList = activeServices.map((s: any) =>
+      `• ${s.name} (${s.durationMinutes}min — R$${(s.price || 0).toFixed(2)})`
+    ).join('\n');
+    const _askSvc = `Para ver os horários disponíveis com ${_profName} em ${formatDate(session.data.date)}, preciso saber qual procedimento você deseja 😊\n\n${_svcList}\n\nQual seria?`;
+    session.history.push({ role: 'bot', text: _askSvc });
+    saveSession(session);
+    return _askSvc;
+  }
+
+  // ─── Fetch available slots when professional + date + service are known ──
   // ── Clear stale availableSlots from session — always start fresh ──────────
   session.data.availableSlots = undefined;
 
@@ -1985,8 +2025,6 @@ async function _handleMessage(
   const _hasProfSPA = !!session.data.professionalId;
   const _hasDateSPA = !!session.data.date;
   const _hasSvcSPA  = !!session.data.serviceId;
-  // Fetch slots only when professional + date + service are all known.
-  // Without service the agent must ask which procedure first (duration matters).
   if (_hasProfSPA && _hasDateSPA && _hasSvcSPA) {
     const _slotDuration = session.data.serviceDuration || 30;
     prefetchedSlots = await getAvailableSlots(
