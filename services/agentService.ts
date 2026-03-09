@@ -507,10 +507,16 @@ async function callBrain(
 • Se DIA definido mas PERÍODO não → pergunte "Prefere de manhã ou à tarde?"
 • ❌ JAMAIS mencione ou sugira horário específico (ex: "09:00", "15:00") sem ter DIA confirmado no CONTEXTO ATUAL
 
-⚡ QUANDO NÃO HÁ HORÁRIO DISPONÍVEL — protocolo obrigatório (NUNCA apenas diga "que pena"):
-1. Tente MESMO DIA: "Esse horário não está disponível, mas hoje ainda tenho [lista de horários do mesmo dia]. Algum serve?"
-2. Se cliente recusar todos do mesmo dia (ou não houver mais): sugira o HORÁRIO DESEJADO no próximo dia disponível: "Amanhã às [hora desejada] está disponível. Serve?"
-3. Se o horário desejado não tiver no próximo dia: ofereça o horário mais próximo disponível nos próximos dias\n`;
+⚠️ REGRA ABSOLUTA — SEM SERVIÇO + DIA = SEM HORÁRIOS:
+• NUNCA mencione horários disponíveis sem ter SERVIÇO e DIA confirmados no CONTEXTO ATUAL
+• Se o cliente perguntar sobre horários sem ter informado o serviço → pergunte o serviço PRIMEIRO
+• Se o cliente perguntar sobre horários sem ter informado o dia → pergunte o dia PRIMEIRO
+• Só pergunte o que estiver faltando (se já informou o serviço, pergunte só o dia e vice-versa)
+
+⚡ QUANDO HORÁRIO DESEJADO ESTÁ OCUPADO — protocolo obrigatório:
+1. Ofereça o horário livre ANTERIOR mais próximo e o POSTERIOR mais próximo: "Às [hora] não está disponível, mas temos [anterior] e [posterior]. Qual prefere?"
+2. Se cliente recusar ambos: mostre TODOS os horários do dia para escolha
+3. Se não houver mais vagas no dia: sugira o próximo dia disponível\n`;
 
   // ── Behavioral rules covering 30 real-world scenarios ──────────────────
   const behaviorRules = `
@@ -2004,18 +2010,30 @@ async function _handleMessage(
     }
   }
 
-  // ─── Force service question when prof+date known but service missing ──
-  // Code-level guard: the AI tends to hallucinate generic hours (e.g. "9h às 18h")
-  // when it doesn't have real slot data. This bypass prevents that entirely.
-  if (session.data.professionalId && session.data.date && !session.data.serviceId) {
-    const _profName = session.data.professionalName || 'o profissional';
+  // ─── Force service question when date known but service missing ──────
+  // Code-level guard: without service, can't calculate slot durations.
+  // The AI tends to hallucinate generic hours (e.g. "9h às 18h") — this prevents it.
+  if (session.data.date && !session.data.serviceId) {
     const _svcList = activeServices.map((s: any) =>
       `• ${s.name} (${s.durationMinutes}min — R$${(s.price || 0).toFixed(2)})`
     ).join('\n');
-    const _askSvc = `Para ver os horários disponíveis com ${_profName} em ${formatDate(session.data.date)}, preciso saber qual procedimento você deseja 😊\n\n${_svcList}\n\nQual seria?`;
+    const _ctxParts: string[] = [];
+    if (session.data.professionalName) _ctxParts.push(`com ${session.data.professionalName}`);
+    _ctxParts.push(`em ${formatDate(session.data.date)}`);
+    const _askSvc = `Para verificar os horários disponíveis ${_ctxParts.join(' ')}, qual procedimento você gostaria? 😊\n\n${_svcList}\n\nQual seria?`;
     session.history.push({ role: 'bot', text: _askSvc });
     saveSession(session);
     return _askSvc;
+  }
+
+  // ─── Force date question when service known but date missing ──────────
+  // Without date, can't check appointments for the day.
+  if (session.data.serviceId && !session.data.date) {
+    const _svcName = session.data.serviceName || 'o procedimento';
+    const _askDate = `Ótimo, ${_svcName}! Para qual dia você gostaria de agendar? 😊`;
+    session.history.push({ role: 'bot', text: _askDate });
+    saveSession(session);
+    return _askDate;
   }
 
   // ─── Fetch available slots when professional + date + service are known ──
@@ -2264,11 +2282,33 @@ async function _handleMessage(
     }
   }
 
-  // Validate time against available slots
+  // Validate time against available slots — suggest nearest before/after if occupied
   const currentSlots = prefetchedSlots || [];
   if (ext.time && !session.data.time && currentSlots.length > 0) {
     const validTime = currentSlots.includes(ext.time) ? ext.time : quickTime(ext.time, currentSlots);
-    if (validTime) session.data.time = validTime;
+    if (validTime) {
+      session.data.time = validTime;
+    } else {
+      // Time is not available — find nearest before and after
+      const _reqTime = ext.time; // e.g. "11:00"
+      const _before = [...currentSlots].reverse().find(s => s < _reqTime);
+      const _after = currentSlots.find(s => s > _reqTime);
+      const _profName = session.data.professionalName || 'o profissional';
+      let _altMsg: string;
+      if (_before && _after) {
+        _altMsg = `O horário das ${_reqTime} não está disponível com ${_profName} 😕 Mas temos:\n\n• ${_before} (antes)\n• ${_after} (depois)\n\nQual você prefere?`;
+      } else if (_before) {
+        _altMsg = `O horário das ${_reqTime} não está disponível 😕 O mais próximo é às ${_before}. Serve pra você?`;
+      } else if (_after) {
+        _altMsg = `O horário das ${_reqTime} não está disponível 😕 O mais próximo é às ${_after}. Serve pra você?`;
+      } else {
+        _altMsg = `Infelizmente não temos horários disponíveis próximos das ${_reqTime}. 😕 Para qual outro horário ou dia você gostaria?`;
+        session.data.date = undefined;
+      }
+      session.history.push({ role: 'bot', text: _altMsg });
+      saveSession(session);
+      return _altMsg;
+    }
   }
 
   // ─── Group booking extractions ────────────────────────────────────────
