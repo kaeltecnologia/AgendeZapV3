@@ -2115,13 +2115,10 @@ async function _handleMessage(
 
   // ─── Force service question when date known but service missing ──────
   if (session.data.date && !session.data.serviceId) {
-    const _svcList = activeServices.map((s: any) =>
-      `• ${s.name} (${s.durationMinutes}min — R$${(s.price || 0).toFixed(2)})`
-    ).join('\n');
     const _ctxParts: string[] = [];
     if (session.data.professionalName) _ctxParts.push(`com o ${session.data.professionalName}`);
     _ctxParts.push(`pra ${formatDate(session.data.date)}`);
-    const _askSvc = `${_greetPrefix}Vou verificar os horários disponíveis ${_ctxParts.join(' ')}! Qual procedimento você gostaria? 😊\n\n${_svcList}`;
+    const _askSvc = `${_greetPrefix}Vou verificar os horários disponíveis ${_ctxParts.join(' ')}! Qual procedimento você gostaria? 😊`;
     _markGreeted();
     session.history.push({ role: 'bot', text: _askSvc });
     saveSession(session);
