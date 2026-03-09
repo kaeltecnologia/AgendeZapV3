@@ -655,6 +655,7 @@ ${nichoRulesSection}
 ════════════════════════════════
 EXTRAÇÃO DE DADOS:
 ════════════════════════════════
+• Datas SEMPRE em formato YYYY-MM-DD: "hoje"→"${todayISO}", "amanhã"→calcule o dia seguinte, "segunda"→calcule a próxima segunda. NUNCA retorne "hoje", "amanhã" ou "DD/MM" — SEMPRE YYYY-MM-DD.
 • Horários em texto: "nove horas"→"09:00", "dez da manhã"→"10:00", "três da tarde"→"15:00", "meio dia"→"12:00"
 • NUNCA repita perguntas sobre info já coletada no CONTEXTO ATUAL
 • Use horários SOMENTE da lista disponível — nunca invente
@@ -2188,6 +2189,31 @@ async function _handleMessage(
     ];
     if (!_cancelSPA.some(re => re.test(_normCancelSPA))) {
       session.data.date = ext.date;
+    }
+  }
+
+  // ── Normalize date to YYYY-MM-DD (fallback if AI returned "hoje", "amanhã", "DD/MM") ──
+  if (session.data.date && !/^\d{4}-\d{2}-\d{2}$/.test(session.data.date)) {
+    const _rawDate = session.data.date.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const _brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const _p = (n: number) => String(n).padStart(2, '0');
+    if (_rawDate === 'hoje') {
+      session.data.date = todayISO;
+    } else if (_rawDate === 'amanha') {
+      const _tom = new Date(_brNow.getTime() + 86400000);
+      session.data.date = `${_tom.getUTCFullYear()}-${_p(_tom.getUTCMonth()+1)}-${_p(_tom.getUTCDate())}`;
+    } else {
+      // Try DD/MM/YYYY or DD/MM
+      const _brMatch = session.data.date.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{4}))?$/);
+      if (_brMatch) {
+        const _dd = _brMatch[1].padStart(2, '0');
+        const _mm = _brMatch[2].padStart(2, '0');
+        const _yyyy = _brMatch[3] || String(_brNow.getUTCFullYear());
+        session.data.date = `${_yyyy}-${_mm}-${_dd}`;
+      } else {
+        console.log(`[Agent] Unparseable date "${session.data.date}" — clearing`);
+        session.data.date = undefined;
+      }
     }
   }
 
