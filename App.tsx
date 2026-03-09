@@ -593,7 +593,7 @@ const App: React.FC = () => {
 
           {/* ── Trial banner (active, non-expired) ──────────────────── */}
           {trialInfo?.active && !trialInfo.isExpired && role === 'TENANT' && (
-            <div className={`mx-6 mt-4 px-5 py-3 rounded-2xl flex items-center justify-between ${
+            <div className={`mx-4 md:mx-6 mt-4 px-4 md:px-5 py-3 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 ${
               trialInfo.daysLeft <= 1
                 ? 'bg-orange-50 border border-orange-200'
                 : 'bg-amber-50 border border-amber-100'
@@ -624,7 +624,7 @@ const App: React.FC = () => {
           {/* ── Main content / Expired overlay ─────────────────────── */}
           {trialInfo?.isExpired && role === 'TENANT'
             ? <TrialExpiredView tenantId={tenantId} />
-            : <div className="p-10">{renderView()}</div>
+            : <div className="p-4 md:p-10">{renderView()}</div>
           }
         </div>
       </main>

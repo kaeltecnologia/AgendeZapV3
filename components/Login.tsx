@@ -70,12 +70,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
     <div className="min-h-screen bg-white flex items-center justify-center p-6 relative overflow-hidden">
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'4\' height=\'4\' viewBox=\'0 0 4 4\'%3E%3Cpath fill=\'%23000000\' fill-opacity=\'1\' d=\'M1 3h1v1H1V3zm2-2h1v1H2V1z\'%3E%3C/path%3E%3C/svg%3E")' }}></div>
       
-      <div className="w-full max-w-[420px] space-y-12 animate-scaleUp z-10 bg-white/50 backdrop-blur-sm p-10 rounded-[60px] border-2 border-slate-50 shadow-2xl shadow-slate-200/50">
+      <div className="w-full max-w-[420px] space-y-8 sm:space-y-12 animate-scaleUp z-10 bg-white/50 backdrop-blur-sm p-6 sm:p-10 rounded-[40px] sm:rounded-[60px] border-2 border-slate-50 shadow-2xl shadow-slate-200/50">
         <div className="text-center space-y-4">
-          <div className="w-20 h-20 bg-orange-500 rounded-[30px] flex items-center justify-center text-4xl mx-auto shadow-xl shadow-orange-100 animate-bounce transition-all">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-orange-500 rounded-[20px] sm:rounded-[30px] flex items-center justify-center text-3xl sm:text-4xl mx-auto shadow-xl shadow-orange-100 animate-bounce transition-all">
             ✂️
           </div>
-          <h1 className="text-5xl font-black text-black italic tracking-tighter uppercase">AgendeZap</h1>
+          <h1 className="text-3xl sm:text-5xl font-black text-black italic tracking-tighter uppercase">AgendeZap</h1>
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em]">
             {isSignUp ? 'Crie sua conta multi-tenant' : 'Gestão de Barbearia Inteligente'}
           </p>
@@ -90,7 +90,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                 value={storeName}
                 onChange={(e) => setStoreName(e.target.value)}
                 placeholder="Ex: Barbearia do Centro"
-                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
+                className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
               />
             </div>
           )}
@@ -102,7 +102,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="sua-barbearia@agendezap.com"
-              className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
+              className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
               autoComplete="username"
             />
           </div>
@@ -114,7 +114,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
+              className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
               autoComplete="current-password"
             />
           </div>

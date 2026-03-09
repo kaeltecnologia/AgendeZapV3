@@ -233,12 +233,12 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-black text-black uppercase tracking-tight">Base de Clientes</h1>
+          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Base de Clientes</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Histórico e preferências</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {activeTab === 'lista' && importResult && (
             <span className="text-[9px] font-black uppercase tracking-widest text-green-600 bg-green-50 px-4 py-2 rounded-xl border border-green-100">
               ✅ {importResult.ok} importados {importResult.fail > 0 ? `/ ⚠️ ${importResult.fail} falhas` : ''}
@@ -250,7 +250,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 {importing ? 'Importando...' : '↑ Importar CSV'}
                 <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportCSV} disabled={importing} />
               </label>
-              <button onClick={() => setShowAddModal(true)} className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all">
+              <button onClick={() => setShowAddModal(true)} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all">
                 + Novo Cliente
               </button>
             </>
@@ -287,12 +287,12 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               const lembreteName = getModeName(c.lembreteModeId, lembreteModes);
               const reativacaoName = getModeName(c.reativacaoModeId, reativacaoModes);
               return (
-                <div key={c.id} className="bg-white p-10 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
-                  <div className="absolute top-10 right-10">
+                <div key={c.id} className="bg-white p-5 sm:p-8 md:p-10 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
+                  <div className="absolute top-5 right-5 sm:top-10 sm:right-10">
                     <button onClick={() => setEditingCustomer({ ...c })} className="text-slate-300 hover:text-orange-500 transition-all font-black text-xs uppercase tracking-widest">EDITAR</button>
                   </div>
                   <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:bg-orange-50 transition-all">👤</div>
-                  <h3 className="text-xl font-black text-black mb-1 pr-16 leading-tight uppercase tracking-tight">{c.name}</h3>
+                  <h3 className="text-base sm:text-xl font-black text-black mb-1 pr-16 leading-tight uppercase tracking-tight">{c.name}</h3>
                   <p className="text-xs font-black text-orange-500 mb-4">{c.phone}</p>
                   <div className="flex flex-wrap gap-2">
                     {planName && (() => {
@@ -340,32 +340,32 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {activeTab === 'retencao' && (
         <div className="space-y-6">
           {/* KPI cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl border border-slate-100 p-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Taxa de Retorno</p>
-              <p className="text-3xl font-black text-black leading-none">{returnRate}%</p>
+              <p className="text-xl sm:text-3xl font-black text-black leading-none">{returnRate}%</p>
               <p className="text-[10px] text-slate-400 mt-1">clientes com 2+ visitas</p>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-100 p-5">
+            <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Ticket Médio</p>
-              <p className="text-3xl font-black text-black leading-none">R$ {avgTicket.toFixed(0)}</p>
+              <p className="text-xl sm:text-3xl font-black text-black leading-none">R$ {avgTicket.toFixed(0)}</p>
               <p className="text-[10px] text-slate-400 mt-1">por atendimento finalizado</p>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-100 p-5">
+            <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Frequência Média</p>
-              <p className="text-3xl font-black text-black leading-none">{avgFrequency > 0 ? `${avgFrequency}d` : '—'}</p>
+              <p className="text-xl sm:text-3xl font-black text-black leading-none">{avgFrequency > 0 ? `${avgFrequency}d` : '—'}</p>
               <p className="text-[10px] text-slate-400 mt-1">dias entre visitas</p>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-100 p-5">
+            <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Inativos +60d</p>
-              <p className={`text-3xl font-black leading-none ${lostClients.length > 0 ? 'text-red-500' : 'text-black'}`}>{lostClients.length}</p>
+              <p className={`text-xl sm:text-3xl font-black leading-none ${lostClients.length > 0 ? 'text-red-500' : 'text-black'}`}>{lostClients.length}</p>
               <p className="text-[10px] text-slate-400 mt-1">clientes sem visitar</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {/* Clientes Perdidos */}
-            <div className="col-span-3 bg-white rounded-2xl border border-slate-100 overflow-hidden">
+            <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100">
                 <h3 className="font-black text-sm text-black">Clientes Inativos</h3>
                 <p className="text-xs text-slate-400">Sem visita há mais de 60 dias</p>
@@ -395,7 +395,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             </div>
 
             {/* Top Clientes */}
-            <div className="col-span-2 bg-white rounded-2xl border border-slate-100 overflow-hidden">
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100">
                 <h3 className="font-black text-sm text-black">Mais Frequentes</h3>
                 <p className="text-xs text-slate-400">Top 10 por visitas</p>

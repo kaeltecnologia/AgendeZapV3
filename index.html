@@ -67,6 +67,33 @@
         /* keep orange accent colors unchanged in dark mode */
         .dark .bg-orange-500, .dark .bg-orange-600 { background-color: inherit; }
         .dark .text-orange-500 { color: #f97316 !important; }
+
+        /* ── Mobile Responsiveness ────────────────────────────── */
+        @media (max-width: 640px) {
+            /* Reduce extreme border-radius on mobile */
+            [class*="rounded-\[40px\]"] { border-radius: 1rem !important; }
+            [class*="rounded-\[50px\]"] { border-radius: 1.25rem !important; }
+            [class*="rounded-\[30px\]"] { border-radius: 1rem !important; }
+            [class*="rounded-\[28px\]"] { border-radius: 0.875rem !important; }
+
+            /* Modal dialogs: reduce padding on mobile */
+            .animate-scaleUp { padding: 1.25rem !important; }
+
+            /* Make tables horizontally scrollable */
+            table { font-size: 0.8125rem; }
+            th, td { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+
+            /* Reduce large gap in grids */
+            .gap-8 { gap: 1rem !important; }
+            .gap-10 { gap: 1.25rem !important; }
+
+            /* Reduce extreme padding empty states */
+            .p-20 { padding: 2rem !important; }
+            .p-16 { padding: 1.5rem !important; }
+
+            /* Reduce fixed-width inputs */
+            input, textarea, select { max-width: 100% !important; }
+        }
     </style>
 <script type="importmap">
 {

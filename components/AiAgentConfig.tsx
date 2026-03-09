@@ -160,7 +160,7 @@ const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </div>
 
         {/* ─── Right column: prompt + API key config ─── */}
-        <div className="flex-1 bg-white p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-10">
+        <div className="flex-1 bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-10">
           <div className="space-y-3">
             <label className="text-[10px] font-black text-black uppercase tracking-[0.2em] ml-2">Personalidade do Atendente</label>
             <input value={agentName} onChange={e => setAgentName(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm uppercase tracking-tight focus:border-orange-500 transition-all" />

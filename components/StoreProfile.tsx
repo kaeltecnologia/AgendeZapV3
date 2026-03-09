@@ -40,7 +40,7 @@ const StoreProfile: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Configuração visual do seu Link de Agendamento</p>
       </div>
 
-      <div className="bg-white p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-12">
+      <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-8 sm:space-y-12">
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
              <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center text-xl">🖼️</div>

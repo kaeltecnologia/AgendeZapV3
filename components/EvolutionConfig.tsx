@@ -149,7 +149,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-        <div className="bg-white p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center space-y-10">
+        <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center space-y-6 sm:space-y-10">
           <div className="w-full">
             <h3 className="text-[10px] font-black text-black uppercase tracking-[0.2em] mb-4 border-b-2 border-orange-500 w-fit pb-1">Instruções de Emparelhamento</h3>
             <p className="text-xs text-slate-400 font-bold leading-relaxed">

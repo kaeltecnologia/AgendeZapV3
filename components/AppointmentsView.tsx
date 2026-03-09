@@ -655,12 +655,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-2xl font-black text-black">AGENDA OPERACIONAL</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-black">AGENDA OPERACIONAL</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Gestão de horários e períodos</p>
         </div>
-        <button onClick={openBookingModal} className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 active:scale-95 transition-all">
+        <button onClick={openBookingModal} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 active:scale-95 transition-all w-full sm:w-auto">
           + Novo Horário
         </button>
       </div>
@@ -690,7 +690,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           </div>
 
           {/* Period Filter */}
-          <div className="bg-white p-8 rounded-[35px] border-2 border-slate-100 shadow-lg">
+          <div className="bg-white p-4 sm:p-6 md:p-8 rounded-[35px] border-2 border-slate-100 shadow-lg">
             <h3 className="font-black text-black mb-6 text-xs uppercase tracking-widest">Filtros de Período</h3>
             <div className="grid grid-cols-2 gap-2 mb-6">
               <PresetBtn active={presetPeriod === 'today'} onClick={() => applyPreset('today')} label="Hoje" />
@@ -770,15 +770,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
           <div className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left min-w-[700px]">
               <thead>
                 <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b-2 border-slate-100">
-                  <th className="px-8 py-6">DATA / HORA</th>
-                  <th className="px-8 py-6">CLIENTE</th>
-                  <th className="px-8 py-6">SERVIÇO</th>
-                  <th className="px-8 py-6">PROFISSIONAL</th>
-                  <th className="px-8 py-6">STATUS</th>
-                  <th className="px-8 py-6 text-right">AÇÕES</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-6">DATA / HORA</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-6">CLIENTE</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-6">SERVIÇO</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-6">PROF.</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-6">STATUS</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-6 text-right">AÇÕES</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-slate-50">

@@ -819,9 +819,9 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-black text-black uppercase tracking-tight">WhatsApp</h1>
+          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">WhatsApp</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
             {instanceName || '...'}
             {connected
@@ -829,19 +829,19 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               : <span className="text-red-500 ml-2">● Offline</span>}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 w-full sm:w-auto">
           <button
             onClick={openBookingModal}
-            className="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all"
+            className="bg-orange-500 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all flex-1 sm:flex-none"
           >
             + Agendar
           </button>
           <button
             onClick={load}
             disabled={loading}
-            className="bg-black text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-500 transition-all disabled:opacity-50"
+            className="bg-black text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-500 transition-all disabled:opacity-50 flex-1 sm:flex-none"
           >
-            {loading ? 'Carregando...' : '↺ Atualizar'}
+            {loading ? '...' : '↺ Atualizar'}
           </button>
         </div>
       </div>
@@ -856,11 +856,11 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {connected && (
         <div
           className="bg-white border-2 border-slate-100 rounded-[30px] overflow-hidden shadow-xl shadow-slate-100/50"
-          style={{ height: 'calc(100vh - 240px)', minHeight: '500px' }}
+          style={{ height: 'calc(100vh - 240px)', minHeight: '400px' }}
         >
           <div className="flex h-full">
             {/* ── Sidebar ──────────────────────── */}
-            <div className="w-80 border-r-2 border-slate-100 flex flex-col flex-shrink-0">
+            <div className={`${selectedPhone ? 'hidden sm:flex' : 'flex'} w-full sm:w-72 md:w-80 border-r-2 border-slate-100 flex-col flex-shrink-0`}>
               <div className="p-4 border-b border-slate-100 space-y-2">
                 <input
                   placeholder="Buscar conversa..."
@@ -942,7 +942,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             </div>
 
             {/* ── Message Panel ────────────────── */}
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className={`${!selectedPhone ? 'hidden sm:flex' : 'flex'} flex-1 flex-col min-w-0`}>
               {!selectedConv ? (
                 <div className="flex-1 flex items-center justify-center text-slate-200">
                   <div className="text-center space-y-3">
@@ -954,7 +954,14 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               ) : (
                 <>
                   {/* Contact header */}
-                  <div className="px-6 py-4 border-b-2 border-slate-100 flex items-center gap-4 flex-shrink-0">
+                  <div className="px-3 sm:px-6 py-3 sm:py-4 border-b-2 border-slate-100 flex items-center gap-3 sm:gap-4 flex-shrink-0">
+                    {/* Back button - mobile only */}
+                    <button
+                      onClick={() => setSelectedPhone(null)}
+                      className="sm:hidden w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all shrink-0"
+                    >
+                      <svg className="w-4 h-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
                     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xl ${selectedConv.isProfessional ? 'bg-orange-100' : 'bg-slate-100'}`}>
                       {selectedConv.isProfessional ? '💈' : '👤'}
                     </div>

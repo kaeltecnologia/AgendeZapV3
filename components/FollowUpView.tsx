@@ -173,7 +173,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-slate-100 p-2 rounded-[30px] shadow-sm">
+      <div className="flex bg-slate-100 p-1 sm:p-2 rounded-[30px] shadow-sm overflow-x-auto">
         {(Object.entries(TAB_CONFIG) as [MainTab, typeof TAB_CONFIG[MainTab]][]).map(([key, c]) => (
           <Tab key={key} active={activeTab === key} onClick={() => setActiveTab(key)} label={c.label} icon={c.icon} />
         ))}
@@ -181,16 +181,16 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
 
       {/* Tab content */}
       <PlanGate feature="reativacao" tenantPlan={activeTab === 'reativacao' ? (tenantPlan ?? null) : 'ELITE'}>
-      <div className="bg-white p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-8">
+      <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="w-20 h-20 bg-black text-white rounded-[28px] flex items-center justify-center text-4xl shadow-xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3 sm:gap-6">
+            <div className="w-12 h-12 sm:w-20 sm:h-20 bg-black text-white rounded-xl sm:rounded-[28px] flex items-center justify-center text-2xl sm:text-4xl shadow-xl shrink-0">
               {cfg.icon}
             </div>
             <div>
-              <h3 className="text-2xl font-black text-black uppercase tracking-tight">{cfg.label}</h3>
+              <h3 className="text-lg sm:text-2xl font-black text-black uppercase tracking-tight">{cfg.label}</h3>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
                 {modes.length} modo{modes.length !== 1 ? 's' : ''} criado{modes.length !== 1 ? 's' : ''}
               </p>
@@ -198,7 +198,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
           </div>
           <button
             onClick={() => { setShowAddForm(v => !v); setEditingId(null); }}
-            className="px-8 py-4 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-orange-100"
+            className="px-5 sm:px-8 py-3 sm:py-4 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-orange-100 w-full sm:w-auto"
           >
             + Adicionar Modo
           </button>

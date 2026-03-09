@@ -229,12 +229,12 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   return (
     <>
     <div className="space-y-10 animate-fadeIn">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-black text-black uppercase tracking-tight">Equipe de Barbeiros</h1>
+          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Equipe de Barbeiros</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Gestão de performance individual</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all">
+        <button onClick={() => setShowModal(true)} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all w-full sm:w-auto">
           + Novo Barbeiro
         </button>
       </div>
@@ -244,7 +244,7 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           const lunch = getLunchInfo(p);
           const vac = getVacInfo(p);
           return (
-            <div key={p.id} className="bg-white p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-orange-500 transition-all">
+            <div key={p.id} className="bg-white p-5 sm:p-6 md:p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-orange-500 transition-all">
               <div className="flex items-center space-x-5 mb-6 cursor-pointer" onClick={() => { setSelectedProForReport(p); setReportTab('appointments'); }}>
                 <div className="w-16 h-16 bg-black text-white rounded-[24px] flex items-center justify-center text-2xl font-black group-hover:bg-orange-500 transition-all shadow-lg">
                   {p.name[0]}

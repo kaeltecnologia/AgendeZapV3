@@ -55,12 +55,12 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   return (
     <div className="space-y-10 animate-fadeIn">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-black text-black uppercase tracking-tight">Catálogo de Serviços</h1>
+          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Catálogo de Serviços</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Preços e tempos configurados</p>
         </div>
-        <button onClick={() => setModal({show: true, data: { durationMinutes: 30, active: true }})} className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all">
+        <button onClick={() => setModal({show: true, data: { durationMinutes: 30, active: true }})} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all w-full sm:w-auto">
           + Novo Serviço
         </button>
       </div>
@@ -73,8 +73,8 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           </div>
         ) : (
           services.map((svc) => (
-            <div key={svc.id} className="bg-white p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
-              <div className="absolute top-8 right-8 flex space-x-2">
+            <div key={svc.id} className="bg-white p-5 sm:p-6 md:p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
+              <div className="absolute top-5 right-5 sm:top-8 sm:right-8 flex space-x-2">
                 <button onClick={() => setModal({show: true, data: svc})} className="bg-slate-50 text-black px-3 py-2 rounded-xl font-black hover:bg-orange-500 hover:text-white transition-all text-[9px] uppercase tracking-widest">EDITAR</button>
               </div>
               
@@ -88,7 +88,7 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               <div className="flex items-end justify-between pt-6 border-t-2 border-slate-50">
                 <div>
                   <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Preço Final</p>
-                  <p className="text-2xl font-black text-black tracking-tighter">R$ {Number(svc.price).toFixed(2)}</p>
+                  <p className="text-lg sm:text-2xl font-black text-black tracking-tighter">R$ {Number(svc.price).toFixed(2)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Duração</p>
@@ -110,7 +110,7 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Procedimento</label>
                 <input value={modal.data?.name || ''} onChange={e=>setModal({...modal, data: {...modal.data, name: e.target.value}})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
               </div>
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Preço (R$)</label>
                   <input type="number" value={modal.data?.price || ''} onChange={e=>setModal({...modal, data: {...modal.data, price: Number(e.target.value)}})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-lg text-orange-600" />

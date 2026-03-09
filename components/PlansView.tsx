@@ -138,19 +138,19 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   return (
     <div className="space-y-10 animate-fadeIn max-w-5xl mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-black text-black uppercase tracking-tight">Planos & Pacotes</h1>
+          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Planos & Pacotes</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Assinaturas mensais com cobertura de serviços</p>
         </div>
-        <button onClick={openCreate} className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all">
+        <button onClick={openCreate} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all w-full sm:w-auto">
           + Novo Plano
         </button>
       </div>
 
       {/* Info card */}
-      <div className="bg-blue-50 border-2 border-blue-100 rounded-[30px] p-8 flex items-start gap-6">
-        <span className="text-3xl">📦</span>
+      <div className="bg-blue-50 border-2 border-blue-100 rounded-[30px] p-4 sm:p-6 md:p-8 flex items-start gap-3 sm:gap-6">
+        <span className="text-2xl sm:text-3xl">📦</span>
         <div>
           <p className="font-black text-blue-700 text-sm uppercase tracking-wider mb-1">Como funcionam os planos?</p>
           <p className="text-xs font-bold text-blue-500 leading-relaxed">
@@ -175,14 +175,14 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {plans.map(plan => {
             const subs = subscriberCount(plan.id);
             return (
-              <div key={plan.id} className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 p-10 space-y-6 hover:border-black transition-all group">
+              <div key={plan.id} className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 p-5 sm:p-8 md:p-10 space-y-6 hover:border-black transition-all group">
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="text-xl font-black text-black uppercase tracking-tight">{plan.name}</h3>
                     {plan.description && <p className="text-xs font-bold text-slate-400 mt-1">{plan.description}</p>}
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-black text-orange-500">R$ {plan.price.toFixed(2)}</p>
+                    <p className="text-xl sm:text-2xl font-black text-orange-500">R$ {plan.price.toFixed(2)}</p>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">/mês</p>
                   </div>
                 </div>

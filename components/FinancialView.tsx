@@ -242,24 +242,25 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 w-fit">
+      <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 overflow-x-auto w-full sm:w-fit">
         {([
-          { key: 'visao', label: 'Visão Financeira', gated: false },
-          { key: 'profissionais', label: 'Profissionais', gated: false },
-          { key: 'caixa', label: 'Caixa', gated: !hasCaixa },
-          { key: 'config', label: 'Configurações', gated: !hasCaixa },
+          { key: 'visao', label: 'Visão', labelFull: 'Visão Financeira', gated: false },
+          { key: 'profissionais', label: 'Profissionais', labelFull: 'Profissionais', gated: false },
+          { key: 'caixa', label: 'Caixa', labelFull: 'Caixa', gated: !hasCaixa },
+          { key: 'config', label: 'Config', labelFull: 'Configurações', gated: !hasCaixa },
         ] as const).map(t => (
           <button
             key={t.key}
             onClick={() => !t.gated && setActiveTab(t.key)}
             title={t.gated ? 'Disponível no plano Elite' : undefined}
-            className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+            className={`px-3 sm:px-5 py-2 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap shrink-0 ${
               t.gated
                 ? 'text-slate-300 cursor-not-allowed'
                 : activeTab === t.key ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'
             }`}
           >
-            {t.label}{t.gated ? ' 🔒' : ''}
+            <span className="sm:hidden">{t.label}{t.gated ? ' 🔒' : ''}</span>
+            <span className="hidden sm:inline">{t.labelFull}{t.gated ? ' 🔒' : ''}</span>
           </button>
         ))}
       </div>
@@ -268,23 +269,23 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       {activeTab === 'visao' && (
         <div className="space-y-8">
           {/* Filters */}
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <select value={selectedProfId} onChange={e => setSelectedProfId(e.target.value)}
-              className="p-3 bg-white border-2 border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none focus:border-black">
+              className="p-2.5 sm:p-3 bg-white border-2 border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none focus:border-black min-w-0">
               <option value="">Consolidado</option>
               {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             <div className="flex bg-slate-100 p-1 rounded-xl">
               {[7, 30, 90].map(d => (
                 <button key={d} onClick={() => setPeriod(d)}
-                  className={`px-4 py-2 text-[10px] font-black uppercase rounded-lg ${period === d ? 'bg-black text-white' : 'text-slate-400'}`}>
+                  className={`px-3 sm:px-4 py-2 text-[10px] font-black uppercase rounded-lg ${period === d ? 'bg-black text-white' : 'text-slate-400'}`}>
                   {d}D
                 </button>
               ))}
             </div>
             <button onClick={() => setShowExpModal(true)}
-              className="bg-black text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-500 transition-all">
-              − Registrar Despesa
+              className="bg-black text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-500 transition-all">
+              − Despesa
             </button>
           </div>
 
@@ -301,77 +302,77 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
 
           {/* Plan Revenue */}
           {planRevenue > 0 && (
-            <div className="bg-blue-50 border-2 border-blue-100 rounded-[30px] p-6 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-2xl">📦</span>
+            <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl sm:rounded-[30px] p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <span className="text-xl sm:text-2xl">📦</span>
                 <div>
                   <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Receita de Planos Ativos</p>
                   <p className="text-xs font-bold text-blue-400">{activePlanCount} {activePlanCount === 1 ? 'cliente' : 'clientes'} com plano ativo</p>
                 </div>
               </div>
-              <p className="text-2xl font-black text-blue-600">R$ {fmtBRL(planRevenue)}<span className="text-[10px] font-bold text-blue-400">/mês</span></p>
+              <p className="text-xl sm:text-2xl font-black text-blue-600">R$ {fmtBRL(planRevenue)}<span className="text-[10px] font-bold text-blue-400">/mês</span></p>
             </div>
           )}
 
           {/* Tables */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden h-[520px] flex flex-col">
-              <div className="p-8 border-b-2 border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
-                <h3 className="font-black text-black uppercase tracking-widest text-sm">Entradas (Vendas)</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
+            <div className="bg-white rounded-2xl sm:rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden h-[400px] sm:h-[520px] flex flex-col">
+              <div className="p-4 sm:p-8 border-b-2 border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
+                <h3 className="font-black text-black uppercase tracking-widest text-xs sm:text-sm">Entradas</h3>
                 <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-3 py-1.5 rounded-full uppercase tracking-widest">Receitas</span>
               </div>
               <div className="flex-1 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                    <tr><th className="px-8 py-4 text-left">DESCRIÇÃO</th><th className="px-8 py-4 text-right">VALOR</th></tr>
+                    <tr><th className="px-4 sm:px-8 py-3 sm:py-4 text-left">DESCRIÇÃO</th><th className="px-4 sm:px-8 py-3 sm:py-4 text-right">VALOR</th></tr>
                   </thead>
                   <tbody className="divide-y-2 divide-slate-50">
                     {revenuesList.map(a => (
                       <tr key={a.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-8 py-5">
-                          <p className="font-black text-black leading-tight">
+                        <td className="px-4 sm:px-8 py-3 sm:py-5">
+                          <p className="font-black text-black leading-tight text-xs sm:text-sm">
                             {professionals.find(p => p.id === a.professional_id)?.name || 'Profissional'}
                           </p>
                           <p className="text-[9px] font-bold text-slate-400 tracking-widest uppercase mt-1">
                             📅 {new Date(a.startTime).toLocaleDateString('pt-BR')} · {a.paymentMethod || '—'}
                           </p>
                         </td>
-                        <td className="px-8 py-5 text-right font-black text-orange-500 text-lg">R$ {fmtBRL(a.amountPaid || 0)}</td>
+                        <td className="px-4 sm:px-8 py-3 sm:py-5 text-right font-black text-orange-500 text-sm sm:text-lg whitespace-nowrap">R$ {fmtBRL(a.amountPaid || 0)}</td>
                       </tr>
                     ))}
                     {revenuesList.length === 0 && (
-                      <tr><td colSpan={2} className="px-8 py-12 text-center text-xs text-slate-400">Sem receitas no período</td></tr>
+                      <tr><td colSpan={2} className="px-4 sm:px-8 py-8 sm:py-12 text-center text-xs text-slate-400">Sem receitas no período</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <div className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden h-[520px] flex flex-col">
-              <div className="p-8 border-b-2 border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
-                <h3 className="font-black text-black uppercase tracking-widest text-sm">Saídas (Custos)</h3>
+            <div className="bg-white rounded-2xl sm:rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden h-[400px] sm:h-[520px] flex flex-col">
+              <div className="p-4 sm:p-8 border-b-2 border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
+                <h3 className="font-black text-black uppercase tracking-widest text-xs sm:text-sm">Saídas</h3>
                 <span className="text-[10px] font-black text-black bg-slate-100 px-3 py-1.5 rounded-full uppercase tracking-widest">Despesas</span>
               </div>
               <div className="flex-1 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                    <tr><th className="px-8 py-4 text-left">DESCRIÇÃO</th><th className="px-8 py-4 text-right">VALOR</th></tr>
+                    <tr><th className="px-4 sm:px-8 py-3 sm:py-4 text-left">DESCRIÇÃO</th><th className="px-4 sm:px-8 py-3 sm:py-4 text-right">VALOR</th></tr>
                   </thead>
                   <tbody className="divide-y-2 divide-slate-50">
                     {expensesList.map(e => (
                       <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-8 py-5">
-                          <p className="font-black text-black leading-tight">{e.description}</p>
+                        <td className="px-4 sm:px-8 py-3 sm:py-5">
+                          <p className="font-black text-black leading-tight text-xs sm:text-sm">{e.description}</p>
                           <p className="text-[9px] font-bold text-slate-400 tracking-widest uppercase mt-1">
                             {e.category === 'COMPANY' ? '🏢 Unidade' : `👤 ${professionals.find(p => p.id === e.professional_id)?.name || 'Profissional'}`}
                             {e.paymentMethod && <> · {e.paymentMethod}</>}
                           </p>
                         </td>
-                        <td className="px-8 py-5 text-right font-black text-black text-lg">R$ {fmtBRL(e.amount)}</td>
+                        <td className="px-4 sm:px-8 py-3 sm:py-5 text-right font-black text-black text-sm sm:text-lg whitespace-nowrap">R$ {fmtBRL(e.amount)}</td>
                       </tr>
                     ))}
                     {expensesList.length === 0 && (
-                      <tr><td colSpan={2} className="px-8 py-12 text-center text-xs text-slate-400">Sem despesas no período</td></tr>
+                      <tr><td colSpan={2} className="px-4 sm:px-8 py-8 sm:py-12 text-center text-xs text-slate-400">Sem despesas no período</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -415,18 +416,18 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
               <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Nenhum atendimento no período</p>
             </div>
           ) : (
-            <div className="bg-white rounded-[28px] border-2 border-slate-100 overflow-hidden">
-              <table className="w-full">
+            <div className="bg-white rounded-2xl sm:rounded-[28px] border-2 border-slate-100 overflow-x-auto">
+              <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Profissional</th>
-                    <th className="px-6 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Atend.</th>
-                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Receita</th>
-                    <th className="px-6 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão %</th>
-                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão R$</th>
-                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Ticket Médio</th>
-                    <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Top Procedimento</th>
-                    <th className="px-6 py-4" />
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Profissional</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Atend.</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Receita</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Com. %</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Com. R$</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Ticket</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Top Proc.</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4" />
                   </tr>
                 </thead>
                 <tbody>
@@ -781,10 +782,10 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
 };
 
 const FinCard = ({ title, val, icon, color, highlight, sub }: any) => (
-  <div className={`bg-white p-5 rounded-[28px] border-2 shadow-lg transition-all ${highlight ? 'border-orange-500 scale-105 shadow-orange-100/50' : 'border-slate-100 shadow-slate-100/50 hover:border-black'}`}>
-    <div className="text-xl mb-3">{icon}</div>
+  <div className={`bg-white p-4 sm:p-5 rounded-[20px] sm:rounded-[28px] border-2 shadow-lg transition-all ${highlight ? 'border-orange-500 sm:scale-105 shadow-orange-100/50' : 'border-slate-100 shadow-slate-100/50 hover:border-black'}`}>
+    <div className="text-lg sm:text-xl mb-2 sm:mb-3">{icon}</div>
     <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</h4>
-    <p className={`text-lg font-black ${color || 'text-black'}`}>{val}</p>
+    <p className={`text-base sm:text-lg font-black truncate ${color || 'text-black'}`}>{val}</p>
     {sub && <p className="text-[9px] text-slate-400 mt-1">{sub}</p>}
   </div>
 );

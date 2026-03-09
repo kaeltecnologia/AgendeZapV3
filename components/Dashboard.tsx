@@ -194,18 +194,18 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* Header + filters */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-black">Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-black">Dashboard</h1>
           <p className="text-xs text-slate-400 mt-0.5">Visão estratégica do negócio.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <select
             value={selectedProfId}
             onChange={e => setSelectedProfId(e.target.value)}
-            className="border border-slate-200 rounded-xl px-4 py-2 text-xs font-semibold bg-white text-slate-600 outline-none cursor-pointer"
+            className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold bg-white text-slate-600 outline-none cursor-pointer min-w-0 max-w-[160px]"
           >
-            <option value="">Todos Profissionais</option>
+            <option value="">Todos Prof.</option>
             {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
@@ -213,7 +213,7 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
               <button
                 key={d}
                 onClick={() => setPeriod(d)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${period === d ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}
+                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${period === d ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}
               >
                 {d}d
               </button>
@@ -237,7 +237,7 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
       {settings?.lastOptimizedAt && (
         <div
           onClick={() => onNavigate?.('OTIMIZACAO')}
-          className="cursor-pointer bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-100 rounded-2xl px-5 py-3 flex items-center justify-between hover:border-violet-300 transition-all"
+          className="cursor-pointer bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-100 rounded-2xl px-4 sm:px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 hover:border-violet-300 transition-all"
         >
           <div className="flex items-center gap-3">
             <span className="text-xl">🤖</span>
@@ -259,11 +259,11 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
       {/* KPIs estratégicos — linha 1 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Meta Mensal */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 col-span-2">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 col-span-2">
           <div className="flex items-start justify-between mb-3">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Meta Mensal</p>
-              <p className="text-2xl font-black text-black leading-none mt-1">R$ {fmtBRL(thisMonthRevenue)}</p>
+              <p className="text-lg sm:text-2xl font-black text-black leading-none mt-1 truncate">R$ {fmtBRL(thisMonthRevenue)}</p>
               {monthlyGoal > 0
                 ? <p className="text-xs text-slate-400 mt-0.5">de R$ {fmtBRL(monthlyGoal)}</p>
                 : <p className="text-xs text-slate-400 mt-0.5">Meta não configurada</p>
@@ -285,17 +285,17 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
         </div>
 
         {/* Projeção */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-5">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Projeção do Mês</p>
-          <p className="text-2xl font-black text-black leading-none">R$ {fmtBRL(projection)}</p>
+          <p className="text-lg sm:text-2xl font-black text-black leading-none truncate">R$ {fmtBRL(projection)}</p>
           <p className="text-xs text-slate-400 mt-0.5">Baseado nos {daysPassed} dias corridos</p>
           <p className="text-[10px] text-slate-300 mt-2">Média diária: R$ {fmtBRL(dailyAvg)}</p>
         </div>
 
         {/* Margem Real */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-5">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Margem Real</p>
-          <p className={`text-2xl font-black leading-none ${margin >= 50 ? 'text-green-600' : margin >= 20 ? 'text-orange-500' : 'text-red-500'}`}>
+          <p className={`text-lg sm:text-2xl font-black leading-none ${margin >= 50 ? 'text-green-600' : margin >= 20 ? 'text-orange-500' : 'text-red-500'}`}>
             {margin.toFixed(1)}%
           </p>
           <p className="text-xs text-slate-400 mt-0.5">Receita − Despesas</p>
@@ -331,7 +331,7 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
           onClick={onNavigate ? () => onNavigate('PROFISSIONAIS') : undefined}
         />
         {/* Dia mais forte */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-5">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
           <div className="flex items-start justify-between mb-4">
             <div className="w-9 h-9 bg-slate-50 rounded-xl flex items-center justify-center text-slate-500">
               <IcoStar />
@@ -344,8 +344,8 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
       </div>
 
       {/* Bar + Donut */}
-      <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-3 bg-white rounded-2xl border border-slate-100 p-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="md:col-span-3 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="flex items-start justify-between mb-5">
             <div>
               <h3 className="font-black text-sm text-black">Fluxo de Receitas</h3>
@@ -367,7 +367,7 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
           </ResponsiveContainer>
         </div>
 
-        <div className="col-span-2 bg-white rounded-2xl border border-slate-100 p-6">
+        <div className="md:col-span-2 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="mb-4">
             <h3 className="font-black text-sm text-black">Serviços Populares</h3>
             <p className="text-xs text-slate-400">Distribuição por categoria</p>
@@ -409,7 +409,7 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
       </div>
 
       {/* Weekly trend */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-6">
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
         <div className="mb-4">
           <h3 className="font-black text-sm text-black">Tendência Semanal</h3>
           <p className="text-xs text-slate-400">Comparativo receita × agendamentos</p>
@@ -429,8 +429,8 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
       </div>
 
       {/* Top profs + Today */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-100 p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="flex items-start justify-between mb-5">
             <div>
               <h3 className="font-black text-sm text-black">Top Profissionais</h3>
@@ -461,7 +461,7 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-100 p-6">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="flex items-start justify-between mb-5">
             <div>
               <h3 className="font-black text-sm text-black">Agendamentos de Hoje</h3>
@@ -519,18 +519,18 @@ const StatCard = ({ icon, title, value, trend, trendLabel, trendPos, sub, onClic
   const label = trendLabel ?? `${isPos ? '+' : ''}${trend?.toFixed(1)}%`;
   return (
     <div
-      className={`bg-white rounded-2xl border p-5 transition-all ${onClick ? 'cursor-pointer border-slate-100 hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5' : 'border-slate-100'}`}
+      className={`bg-white rounded-2xl border p-4 sm:p-5 transition-all ${onClick ? 'cursor-pointer border-slate-100 hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5' : 'border-slate-100'}`}
       onClick={onClick}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="w-9 h-9 bg-slate-50 rounded-xl flex items-center justify-center text-slate-500">{icon}</div>
+      <div className="flex items-start justify-between mb-3 sm:mb-4">
+        <div className="w-8 h-8 sm:w-9 sm:h-9 bg-slate-50 rounded-xl flex items-center justify-center text-slate-500">{icon}</div>
         <div className="flex items-center gap-1">
-          <span className={`text-[10px] font-bold ${isPos ? 'text-green-500' : 'text-red-400'}`}>{isPos ? '↑' : '↓'} {label}</span>
+          <span className={`text-[9px] sm:text-[10px] font-bold ${isPos ? 'text-green-500' : 'text-red-400'}`}>{isPos ? '↑' : '↓'} {label}</span>
           {onClick && <span className="text-[10px] text-slate-300">→</span>}
         </div>
       </div>
-      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">{title}</p>
-      <p className="text-2xl font-black text-black leading-none">{value}</p>
+      <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">{title}</p>
+      <p className="text-lg sm:text-2xl font-black text-black leading-none truncate">{value}</p>
       {sub && <p className="text-[10px] text-slate-400 mt-1">{sub}</p>}
     </div>
   );
