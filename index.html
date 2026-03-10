@@ -40,7 +40,17 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        // Check for updates every 2 minutes
+        setInterval(() => reg.update(), 2 * 60 * 1000);
+      }).catch(() => {});
+    });
+    // Auto-reload when SW pushes update
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data?.type === 'SW_UPDATED') {
+        console.log('[SW] Nova versão detectada, recarregando...');
+        window.location.reload();
+      }
     });
   }
 </script>
