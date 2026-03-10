@@ -858,7 +858,7 @@ function matchServiceByKeywords(
 ): { id: string; name: string; durationMinutes: number; price: number } | null {
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
   const normText = norm(text);
-  const STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado']);
+  const STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado', 'seria', 'ser']);
 
   // Stem: truncate to first 4+ chars to match verb conjugations (corta→cort, corte→cort)
   const stem = (w: string) => w.length >= 5 ? w.slice(0, w.length - 1) : w;
@@ -869,12 +869,18 @@ function matchServiceByKeywords(
     return sa === sb || sa.startsWith(sb) || sb.startsWith(sa);
   };
 
-  // Step 1: exact full-name substring match
-  for (const svc of services) {
-    if (normText.includes(norm(svc.name))) return svc;
+  // Strip leading quantity ("2 corte e barba" → "corte e barba")
+  const normTextNoQty = normText.replace(/^\s*\d+\s+/, '');
+
+  // Step 1: exact full-name substring match (try without leading number first, then original)
+  // Sort by name length DESC so combos like "corte e barba" match before single "barba"
+  const sortedByNameLen = [...services].sort((a, b) => b.name.length - a.name.length);
+  for (const svc of sortedByNameLen) {
+    const normName = norm(svc.name);
+    if (normTextNoQty.includes(normName) || normText.includes(normName)) return svc;
   }
 
-  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+  const msgWords = normTextNoQty.split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
   if (msgWords.length === 0) return null;
 
   let best: typeof services[0] | null = null;
@@ -888,7 +894,8 @@ function matchServiceByKeywords(
       sw.includes(mw) || mw.includes(sw) || sharesStem(mw, sw)
     )).length;
     const coverage = hits / svcWords.length;
-    if (hits > bestHits || (hits === bestHits && coverage > bestCoverage)) {
+    // Prefer matches that cover MORE service-name words (combos win over singles)
+    if (hits > bestHits || (hits === bestHits && coverage > bestCoverage) || (hits === bestHits && coverage === bestCoverage && svcWords.length > (best ? norm(best.name).split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w)).length : 0))) {
       bestHits = hits;
       bestCoverage = coverage;
       best = svc;
@@ -1296,6 +1303,11 @@ async function _handleMessage(
         ? `Show de bola! Aguardamos você às *${apptTime}*.`
         : `Show de bola! Aguardamos você.`;
       preSession.data.pendingFollowUpType = undefined;
+      // Mark greeted so the next buffered message doesn't trigger a fresh greeting
+      const _fuDateStr = getBrasiliaGreeting().dateStr;
+      const _fuGreetKey = `${tenantId}::${phone}`;
+      preSession.data.greetedAt = _fuDateStr;
+      _greetedToday.set(_fuGreetKey, _fuDateStr);
       preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
       saveSession(preSession);
       return reply;
@@ -1307,6 +1319,10 @@ async function _handleMessage(
       if (isLocalDuplicate(fp0)) return null;
       const reply = `Tudo bem! Quando precisar, é só chamar. 😊`;
       preSession.data.pendingFollowUpType = undefined;
+      const _fuDateStr2 = getBrasiliaGreeting().dateStr;
+      const _fuGreetKey2 = `${tenantId}::${phone}`;
+      preSession.data.greetedAt = _fuDateStr2;
+      _greetedToday.set(_fuGreetKey2, _fuDateStr2);
       preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
       saveSession(preSession);
       return reply;
@@ -1315,6 +1331,10 @@ async function _handleMessage(
     // ── Anything else (long msg, ambiguous, reativacao+positive):
     // Clear the flag and fall through — AI has full history context.
     preSession.data.pendingFollowUpType = undefined;
+    const _fuDateStr3 = getBrasiliaGreeting().dateStr;
+    const _fuGreetKey3 = `${tenantId}::${phone}`;
+    preSession.data.greetedAt = _fuDateStr3;
+    _greetedToday.set(_fuGreetKey3, _fuDateStr3);
     saveSession(preSession);
   }
 
@@ -2162,6 +2182,16 @@ async function _handleMessage(
     }
   }
 
+  // ─── TS-level: detect group quantity ("2 corte e barba" = 2 people) ─────
+  if (!session.data.groupBooking?.active) {
+    const _qtyMatch = lowerText.match(/^(?:seria\s+)?(\d)\s+(.+)/);
+    if (_qtyMatch && parseInt(_qtyMatch[1]) >= 2) {
+      const _qty = parseInt(_qtyMatch[1]);
+      console.log(`[Agent] TS detected group quantity: ${_qty} people`);
+      session.data.groupBooking = { active: true, companionDesc: `${_qty - 1} acompanhante(s)` };
+    }
+  }
+
   // ─── TS-level service pre-extraction via keywords ────────────────
   if (!session.data.serviceId) {
     const _matchedSvc = matchServiceByKeywords(lowerText, services);
@@ -2429,10 +2459,17 @@ async function _handleMessage(
   if (ext.serviceId && !session.data.serviceId) {
     const svc = activeServices.find((s: any) => s.id === ext.serviceId);
     if (svc) {
-      session.data.serviceId = svc.id;
-      session.data.serviceName = svc.name;
-      session.data.serviceDuration = svc.durationMinutes;
-      session.data.servicePrice = svc.price;
+      // Guard: verify the client actually mentioned a service keyword in their message
+      // Prevents AI from hallucinating a serviceId when the client didn't ask for one
+      const _tsMatchCheck = matchServiceByKeywords(lowerText, services);
+      if (_tsMatchCheck) {
+        session.data.serviceId = svc.id;
+        session.data.serviceName = svc.name;
+        session.data.serviceDuration = svc.durationMinutes;
+        session.data.servicePrice = svc.price;
+      } else {
+        console.log('[Agent] TS guard: blocked AI-hallucinated serviceId — client msg has no service keywords:', lowerText.slice(0, 60));
+      }
     }
   }
   if (ext.professionalId && !session.data.professionalId) {
@@ -2590,6 +2627,17 @@ async function _handleMessage(
       brain.reply = `Qual procedimento você gostaria? Temos: ${svcNames}`;
       brain.extracted.time = null;
       brain.extracted.confirmed = null;
+    }
+    // Guard: if LLM reply mentions a service name but we blocked it, ask properly
+    if (ext.serviceId) {
+      const _hallucinatedSvc = activeServices.find((s: any) => s.id === ext.serviceId);
+      if (_hallucinatedSvc) {
+        const _svcNameLower = _hallucinatedSvc.name.toLowerCase();
+        if (brain.reply.toLowerCase().includes(_svcNameLower)) {
+          console.log('[Agent] TS guard: LLM reply mentions blocked service, replacing reply');
+          brain.reply = `Como posso te ajudar? 😊`;
+        }
+      }
     }
   }
 
