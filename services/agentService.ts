@@ -1159,6 +1159,11 @@ async function _handleMessage(
     if (isLocalDuplicate(fp0)) return null;
     const sess = preSession || { tenantId, phone, data: {} as SessionData, history: [], updatedAt: Date.now() };
     sess.data.pendingCancelReason = true;
+    // Mark greeted so a concurrent 2nd message doesn't trigger a fresh greeting
+    sess.data.greetedAt = getBrasiliaGreeting().dateStr;
+    const _cancelGreetKey = `${tenantId}::${phone}`;
+    _greetedToday.set(_cancelGreetKey, sess.data.greetedAt);
+    sess.history.push({ role: 'user', text }, { role: 'bot', text: 'Que pena que precisou cancelar! 😕' });
     saveSession(sess as Session);
     return `Que pena que precisou cancelar! 😕\n\nPode nos contar o motivo? Isso nos ajuda a melhorar o atendimento. 🙏`;
   }

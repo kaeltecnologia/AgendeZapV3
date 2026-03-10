@@ -547,6 +547,23 @@ function _isWDuplicate(phone: string, text: string): boolean {
   return false;
 }
 
+// ── Per-phone rate limiter: max 1 bot response per 10s to prevent double replies ──
+const _phoneLastReply = new Map<string, number>();
+function _isPhoneRateLimited(phone: string): boolean {
+  const key = phone.replace(/\D/g, '');
+  const now = Date.now();
+  const last = _phoneLastReply.get(key);
+  if (last !== undefined && now - last < 10_000) {
+    console.log(`[sendMsg] Rate-limited: phone ${key.slice(0, 2)}***${key.slice(-4)} — last reply ${Math.round((now - last) / 1000)}s ago`);
+    return true;
+  }
+  _phoneLastReply.set(key, now);
+  if (_phoneLastReply.size > 500) {
+    for (const [k, t] of _phoneLastReply) { if (now - t > 60_000) _phoneLastReply.delete(k); }
+  }
+  return false;
+}
+
 // ── Send "typing..." presence indicator ──────────────────────────────
 async function sendTyping(instanceName: string, phone: string, delayMs = 3000) {
   try {
@@ -829,6 +846,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
   if (!apiKey) { console.warn('[Agent] no API key for tenant', tenant.id); return; }
 
+  // ── Rate limit: block concurrent runAgent for same phone within 10s ──
+  if (_isPhoneRateLimited(phone)) return;
+
   const lowerText = text.toLowerCase();
   const isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
   // isReset: only trigger on very short messages (≤40 chars) to prevent false positives.
@@ -922,8 +942,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (isCancellation) {
     const sess = preSession || { data: {}, history: [] };
     sess.data.pendingCancelReason = true;
+    sess.data.greetedAt = getBrasiliaGreeting().dateStr;
+    sess.history.push({ role: 'user', text }, { role: 'bot', text: 'Que pena que precisou cancelar! 😕' });
+    await saveSession(tenantId, phone, sess.data, sess.history);
     await sendMsg(instanceName, phone, `Que pena que precisou cancelar! 😕\n\nPode nos contar o motivo? Isso nos ajuda a melhorar o atendimento. 🙏`, tenantId);
-    saveSession(tenantId, phone, sess.data, sess.history).catch(e => console.error('[Agent] saveSession err:', e));
     return;
   }
 
