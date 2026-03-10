@@ -1913,8 +1913,12 @@ class DatabaseService {
   }
 
   async uploadSupportImage(tenantId: string, file: File): Promise<string> {
-    const path = `${tenantId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const { error } = await supabase.storage.from('support-images').upload(path, file, { upsert: false });
+    const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : `image-${Date.now()}.png`;
+    const path = `${tenantId}/${Date.now()}-${safeName}`;
+    const { error } = await supabase.storage.from('support-images').upload(path, file, {
+      upsert: false,
+      contentType: file.type || 'image/png',
+    });
     if (error) throw error;
     const { data } = supabase.storage.from('support-images').getPublicUrl(path);
     return data.publicUrl;

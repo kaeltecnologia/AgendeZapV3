@@ -81,15 +81,19 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.startsWith('image/')) {
         e.preventDefault();
-        const file = items[i].getAsFile();
-        if (!file || uploading) return;
+        const blob = items[i].getAsFile();
+        if (!blob || uploading) return;
+        // Clipboard images may have no name — create a proper File with extension
+        const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : 'png';
+        const file = new File([blob], `paste-${Date.now()}.${ext}`, { type: blob.type });
         setUploading(true);
         try {
           const url = await db.uploadSupportImage(tenantId, file);
           await db.sendTenantSupportMessage(tenantId, '', url);
           await load();
-        } catch {
-          alert('Erro ao enviar imagem colada.');
+        } catch (err: any) {
+          console.error('[SupportChat] paste upload error:', err);
+          alert('Erro ao enviar imagem. Verifique se o bucket "support-images" existe no Supabase.');
         } finally {
           setUploading(false);
         }
