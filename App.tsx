@@ -1,35 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import Dashboard from './components/Dashboard';
-import EvolutionConfig from './components/EvolutionConfig';
-import AIChatSimulator from './components/AIChatSimulator';
-import AppointmentsView from './components/AppointmentsView';
-import ServicesView from './components/ServicesView';
-import ProfessionalsView from './components/ProfessionalsView';
-import CustomersView from './components/CustomersView';
-import AiAgentConfig from './components/AiAgentConfig';
-import StoreProfile from './components/StoreProfile';
-import FinancialView from './components/FinancialView';
-import GeneralSettings from './components/GeneralSettings';
-import FollowUpView from './components/FollowUpView';
-import PlansView from './components/PlansView';
-import ConversationsView from './components/ConversationsView';
-import BroadcastView from './components/BroadcastView';
-import ConexoesView from './components/ConexoesView';
-import EstoqueView from './components/EstoqueView';
-import ProductsView from './components/ProductsView';
-import ComandasView from './components/ComandasView';
-import PerformanceView from './components/PerformanceView';
-import MarketingView from './components/MarketingView';
-import NotasFiscaisView from './components/NotasFiscaisView';
-import FolhaPagamentoView from './components/FolhaPagamentoView';
-import EstoqueProdutosView from './components/EstoqueProdutosView';
-import SuperAdminView from './components/SuperAdminView';
-import SupportChat from './components/SupportChat';
-import OtimizacaoView from './components/OtimizacaoView';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import Login from './components/Login';
 import AiPollingManager from './components/AiPollingManager';
-import TrialExpiredView from './components/TrialExpiredView';
-import BookingPage from './components/BookingPage';
+
+// Lazy-loaded views (code splitting — only loaded when needed)
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const EvolutionConfig = lazy(() => import('./components/EvolutionConfig'));
+const AIChatSimulator = lazy(() => import('./components/AIChatSimulator'));
+const AppointmentsView = lazy(() => import('./components/AppointmentsView'));
+const ServicesView = lazy(() => import('./components/ServicesView'));
+const ProfessionalsView = lazy(() => import('./components/ProfessionalsView'));
+const CustomersView = lazy(() => import('./components/CustomersView'));
+const AiAgentConfig = lazy(() => import('./components/AiAgentConfig'));
+const StoreProfile = lazy(() => import('./components/StoreProfile'));
+const FinancialView = lazy(() => import('./components/FinancialView'));
+const GeneralSettings = lazy(() => import('./components/GeneralSettings'));
+const FollowUpView = lazy(() => import('./components/FollowUpView'));
+const PlansView = lazy(() => import('./components/PlansView'));
+const ConversationsView = lazy(() => import('./components/ConversationsView'));
+const BroadcastView = lazy(() => import('./components/BroadcastView'));
+const ConexoesView = lazy(() => import('./components/ConexoesView'));
+const EstoqueView = lazy(() => import('./components/EstoqueView'));
+const ProductsView = lazy(() => import('./components/ProductsView'));
+const ComandasView = lazy(() => import('./components/ComandasView'));
+const PerformanceView = lazy(() => import('./components/PerformanceView'));
+const MarketingView = lazy(() => import('./components/MarketingView'));
+const NotasFiscaisView = lazy(() => import('./components/NotasFiscaisView'));
+const FolhaPagamentoView = lazy(() => import('./components/FolhaPagamentoView'));
+const EstoqueProdutosView = lazy(() => import('./components/EstoqueProdutosView'));
+const SuperAdminView = lazy(() => import('./components/SuperAdminView'));
+const SupportChat = lazy(() => import('./components/SupportChat'));
+const OtimizacaoView = lazy(() => import('./components/OtimizacaoView'));
+const TrialExpiredView = lazy(() => import('./components/TrialExpiredView'));
+const BookingPage = lazy(() => import('./components/BookingPage'));
+const MarketplacePage = lazy(() => import('./components/MarketplacePage'));
+const MarketplacePreview = lazy(() => import('./components/MarketplacePreview'));
+const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
 import { evolutionService } from './services/evolutionService';
@@ -63,10 +68,11 @@ enum View {
   ESTOQUE_PRODUTOS = 'ESTOQUE_PRODUTOS',
   SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD',
   OTIMIZACAO = 'OTIMIZACAO',
+  MARKETPLACE = 'MARKETPLACE',
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
-type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config';
+type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'wa_central';
 
 const SESSION_KEY = 'agz_session';
 
@@ -81,6 +87,14 @@ function sessionFingerprint(data: Record<string, any>): string {
 }
 
 const App: React.FC = () => {
+  // Hash-based routing: re-render on hash change
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const onHashChange = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState<Role>('TENANT');
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -352,10 +366,16 @@ const App: React.FC = () => {
   };
 
   const bookingSlug = (() => {
-    const m = window.location.hash.match(/^#\/agendar\/(.+)$/);
+    const m = hash.match(/^#\/agendar\/(.+)$/);
     return m ? m[1] : null;
   })();
-  if (bookingSlug) return <BookingPage slug={bookingSlug} />;
+  if (bookingSlug) return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" /></div>}><BookingPage slug={bookingSlug} /></Suspense>;
+
+  // Marketplace public page
+  if (hash.startsWith('#/marketplace')) return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" /></div>}><MarketplacePage /></Suspense>;
+
+  // Customer dashboard
+  if (hash === '#/minha-conta') return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" /></div>}><CustomerDashboard /></Suspense>;
 
   if (!isReady) {
     return (
@@ -421,6 +441,7 @@ const App: React.FC = () => {
       case View.FOLHA_PAGAMENTO: return <FolhaPagamentoView tenantId={tenantId} />;
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
+      case View.MARKETPLACE: return <MarketplacePreview tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
   };
@@ -462,10 +483,17 @@ const App: React.FC = () => {
               <NavItem active={superAdminTab === 'suporte'} onClick={navTo(() => setSuperAdminTab('suporte'))} icon={<IconChat />} label="Caixa de Entrada" />
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">WhatsApp Admin</p>
-                <NavItem active={superAdminTab === 'conversas'} onClick={navTo(() => setSuperAdminTab('conversas'))} icon={<IconChat />} label="Conversas" />
+                <NavItem active={superAdminTab === 'conversas'} onClick={navTo(() => setSuperAdminTab('conversas'))} icon={<IconChat />} label="WA Atendimento" />
                 <NavItem active={superAdminTab === 'disparo'} onClick={navTo(() => setSuperAdminTab('disparo'))} icon={<IconBroadcast />} label="Disparador" />
                 <NavItem active={superAdminTab === 'campanhas'} onClick={navTo(() => setSuperAdminTab('campanhas'))} icon={<IconBroadcast />} label="Campanhas" />
                 <NavItem active={superAdminTab === 'prospeccao'} onClick={navTo(() => setSuperAdminTab('prospeccao'))} icon={<IconUsers />} label="Prospecção" />
+              </div>
+              <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Central</p>
+                <NavItem active={superAdminTab === 'central'} onClick={navTo(() => setSuperAdminTab('central'))} icon={<IconBroadcast />} label="Central" />
+                <NavItem active={superAdminTab === 'wa_central'} onClick={navTo(() => setSuperAdminTab('wa_central'))} icon={<IconChat />} label="WA Central" />
+                <NavItem active={superAdminTab === 'leads'} onClick={navTo(() => setSuperAdminTab('leads'))} icon={<IconUsers />} label="Leads" />
+                <NavItem active={superAdminTab === 'cashback'} onClick={navTo(() => setSuperAdminTab('cashback'))} icon={<IconFinance />} label="Cashback" />
               </div>
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Sistema</p>
@@ -543,6 +571,7 @@ const App: React.FC = () => {
                 <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
                 <NavItem active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
                 <NavItem active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
+                <NavItem active={currentView === View.MARKETPLACE} onClick={navTo(() => setCurrentView(View.MARKETPLACE))} icon={<IconGlobe />} label="Marketplace" />
                 <NavItem active={currentView === View.OTIMIZACAO} onClick={navTo(() => setCurrentView(View.OTIMIZACAO))} icon={<IconTerminal />} label="Dados IA" />
               </div>
             </>
@@ -579,7 +608,7 @@ const App: React.FC = () => {
             <div className="w-1 h-6 rounded-full bg-orange-500" />
             <h2 className="text-sm font-black text-slate-700 tracking-widest uppercase">
               {role === 'SUPERADMIN'
-                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'Conversas Admin', disparo: 'Disparador Admin', campanhas: 'Campanhas em Andamento', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada', config: 'Configurações do Sistema' } as Record<SuperAdminTab, string>)[superAdminTab]
+                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'WA Atendimento', disparo: 'Disparador Admin', campanhas: 'Campanhas em Andamento', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada', config: 'Configurações do Sistema', central: 'Central WhatsApp', wa_central: 'WA Central', leads: 'Leads Marketplace', cashback: 'Cashback' } as Record<SuperAdminTab, string>)[superAdminTab]
                 : tenantName}
             </h2>
           </div>
@@ -661,10 +690,12 @@ const App: React.FC = () => {
           )}
 
           {/* ── Main content / Expired overlay ─────────────────────── */}
-          {trialInfo?.isExpired && role === 'TENANT'
-            ? <TrialExpiredView tenantId={tenantId} />
-            : <div className="p-4 md:p-10">{renderView()}</div>
-          }
+          <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
+            {trialInfo?.isExpired && role === 'TENANT'
+              ? <TrialExpiredView tenantId={tenantId} />
+              : <div className="p-4 md:p-10">{renderView()}</div>
+            }
+          </Suspense>
         </div>
       </main>
 
@@ -688,7 +719,21 @@ const App: React.FC = () => {
       )}
 
       {isAuthenticated && role === 'TENANT' && tenantId && (
-        <SupportChat tenantId={tenantId} tenantName={tenantName} />
+        <>
+          {/* Floating Marketplace button — opens in new tab */}
+          <div className="fixed bottom-24 right-6 z-50">
+            <button
+              onClick={() => window.open(`${window.location.origin}/#/marketplace?tid=${tenantId}&tn=${encodeURIComponent(tenantName)}`, '_blank')}
+              title="Visitar Marketplace"
+              className="w-14 h-14 bg-black rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:bg-orange-500 transition-all cursor-pointer"
+            >
+              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+            </button>
+          </div>
+          <SupportChat tenantId={tenantId} tenantName={tenantName} />
+        </>
       )}
     </div>
   );
@@ -870,6 +915,7 @@ const IconMarketing = () => <svg xmlns="http://www.w3.org/2000/svg" className="w
 const IconShoppingBag = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>;
 const IconGift = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>;
 const IconWhatsapp2 = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>;
+const IconGlobe = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
 const IconDoc = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>;
 const IconWallet = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>;
 

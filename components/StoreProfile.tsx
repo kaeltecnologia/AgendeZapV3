@@ -1,11 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDb';
+import { geocodeAddress } from '../services/geocodingService';
 
 const StoreProfile: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [themeColor, setThemeColor] = useState('#f97316');
   const [coverImage, setCoverImage] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Marketplace fields
+  const [mpVisible, setMpVisible] = useState(false);
+  const [endereco, setEndereco] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [estado, setEstado] = useState('');
+  const [cep, setCep] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [mpSaving, setMpSaving] = useState(false);
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
 
   useEffect(() => {
     const load = async () => {
@@ -15,10 +26,50 @@ const StoreProfile: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       ]);
       setThemeColor(settings.themeColor);
       setCoverImage(cover);
+      // Load tenant data for marketplace
+      try {
+        const tenants = await db.getAllTenants();
+        const t = tenants.find((x: any) => x.id === tenantId);
+        if (t) {
+          setMpVisible(t.marketplaceVisible || false);
+          setEndereco(t.endereco || '');
+          setCidade(t.cidade || '');
+          setEstado(t.estado || '');
+          setCep(t.cep || '');
+          setDescricao(t.descricao || '');
+        }
+      } catch {}
       setLoading(false);
     };
     load();
   }, [tenantId]);
+
+  const saveMarketplace = async () => {
+    setMpSaving(true);
+    setGeoStatus('idle');
+
+    // Geocode the full address to get lat/lng
+    let latitude: number | undefined;
+    let longitude: number | undefined;
+    if (endereco || cidade) {
+      const fullAddress = [endereco, cidade, estado, cep].filter(Boolean).join(', ');
+      const coords = await geocodeAddress(fullAddress);
+      if (coords) {
+        latitude = coords.lat;
+        longitude = coords.lng;
+        setGeoStatus('ok');
+      } else {
+        setGeoStatus('fail');
+      }
+    }
+
+    await db.updateTenant(tenantId, {
+      marketplaceVisible: mpVisible,
+      endereco, cidade, estado, cep, descricao,
+      latitude, longitude,
+    } as any);
+    setMpSaving(false);
+  };
   
   const handleColorChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -85,6 +136,63 @@ const StoreProfile: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             Salvar Layout
           </button>
         </div>
+      </div>
+
+      {/* ── Marketplace Central ──────────────────────────────── */}
+      <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center text-xl">📡</div>
+            <div>
+              <h3 className="font-black text-black uppercase tracking-widest text-sm">Marketplace Central</h3>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Apareça para clientes buscando serviços na sua região</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setMpVisible(v => !v)}
+            className={`px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${mpVisible ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'}`}
+          >
+            {mpVisible ? 'Visível' : 'Oculto'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {([
+            ['Endereço', endereco, setEndereco, 'Rua das Flores, 123'],
+            ['Cidade', cidade, setCidade, 'Maringá'],
+            ['Estado', estado, setEstado, 'PR'],
+            ['CEP', cep, setCep, '87000-000'],
+          ] as [string, string, (v: string) => void, string][]).map(([label, val, setter, ph]) => (
+            <div key={label} className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+              <input type="text" value={val} onChange={e => setter(e.target.value)} placeholder={ph}
+                className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Descrição</label>
+          <textarea value={descricao} onChange={e => setDescricao(e.target.value)}
+            placeholder="Descreva seu negócio em poucas palavras..."
+            className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400 resize-none" rows={3} />
+        </div>
+
+        <button onClick={saveMarketplace}
+          className="w-full bg-orange-500 text-white py-4 rounded-[20px] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-black transition-all">
+          {mpSaving ? 'Salvando...' : 'Salvar Marketplace'}
+        </button>
+
+        {geoStatus === 'ok' && (
+          <p className="text-center text-xs font-black text-green-600 mt-2">
+            Localização encontrada no mapa! Clientes próximos poderão te encontrar.
+          </p>
+        )}
+        {geoStatus === 'fail' && (
+          <p className="text-center text-xs font-black text-amber-600 mt-2">
+            Não foi possível localizar o endereço no mapa. Verifique se o endereço, cidade e estado estão corretos.
+          </p>
+        )}
       </div>
     </div>
   );

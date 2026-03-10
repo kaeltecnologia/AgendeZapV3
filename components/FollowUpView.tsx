@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
-import { FollowUpNamedMode } from '../types';
+import { FollowUpNamedMode, Review } from '../types';
 import PlanGate from './PlanGate';
 
-type MainTab = 'aviso' | 'lembrete' | 'reativacao';
+type ModeTab = 'aviso' | 'lembrete' | 'reativacao';
+type MainTab = ModeTab | 'avaliacao';
 
 function generateId(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID
@@ -12,7 +13,7 @@ function generateId(): string {
     : Math.random().toString(36).substring(2, 11);
 }
 
-const TAB_CONFIG: Record<MainTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days'; customerModeField: 'avisoModeId' | 'lembreteModeId' | 'reativacaoModeId' }> = {
+const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days'; customerModeField: 'avisoModeId' | 'lembreteModeId' | 'reativacaoModeId' }> = {
   aviso: { label: 'Check-in Diário', icon: '📢', tabKey: 'avisoModes', timingLabel: 'Horário de envio', timingType: 'fixed', customerModeField: 'avisoModeId' },
   lembrete: { label: 'Lembrete Próximo', icon: '🕒', tabKey: 'lembreteModes', timingLabel: 'Antecipar em (minutos)', timingType: 'minutes', customerModeField: 'lembreteModeId' },
   reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId' }
@@ -24,6 +25,11 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
   const [avisoModes, setAvisoModes] = useState<FollowUpNamedMode[]>([]);
   const [lembreteModes, setLembreteModes] = useState<FollowUpNamedMode[]>([]);
   const [reativacaoModes, setReativacaoModes] = useState<FollowUpNamedMode[]>([]);
+
+  // Rating tab state
+  const [ratingEnabled, setRatingEnabled] = useState(false);
+  const [ratingMessage, setRatingMessage] = useState('');
+  const [reviews, setReviews] = useState<Review[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +75,10 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
     setAvisoModes(s.avisoModes || []);
     setLembreteModes(s.lembreteModes || []);
     setReativacaoModes(s.reativacaoModes || []);
+    setRatingEnabled((s as any).ratingEnabled ?? false);
+    setRatingMessage((s as any).ratingMessage || '');
+    // Load reviews
+    db.getReviews(tenantId).then(r => setReviews(r)).catch(() => {});
     setLoading(false);
   }, [tenantId]);
 
@@ -174,13 +184,92 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
 
       {/* Tabs */}
       <div className="flex bg-slate-100 p-1 sm:p-2 rounded-[30px] shadow-sm overflow-x-auto">
-        {(Object.entries(TAB_CONFIG) as [MainTab, typeof TAB_CONFIG[MainTab]][]).map(([key, c]) => (
+        {(Object.entries(TAB_CONFIG) as [ModeTab, typeof TAB_CONFIG[ModeTab]][]).map(([key, c]) => (
           <Tab key={key} active={activeTab === key} onClick={() => setActiveTab(key)} label={c.label} icon={c.icon} />
         ))}
+        <Tab key="avaliacao" active={activeTab === 'avaliacao'} onClick={() => setActiveTab('avaliacao')} label="Avaliação" icon="⭐" />
       </div>
 
-      {/* Tab content */}
-      <PlanGate feature="reativacao" tenantPlan={activeTab === 'reativacao' ? (tenantPlan ?? null) : 'ELITE'}>
+      {/* ── Rating tab content ─────────────────────────────────────── */}
+      {activeTab === 'avaliacao' && (
+        <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-6">
+              <div className="w-12 h-12 sm:w-20 sm:h-20 bg-black text-white rounded-xl sm:rounded-[28px] flex items-center justify-center text-2xl sm:text-4xl shadow-xl shrink-0">⭐</div>
+              <div>
+                <h3 className="text-lg sm:text-2xl font-black text-black uppercase tracking-tight">Avaliação</h3>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  Pedido automático de nota pós-atendimento
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                const next = !ratingEnabled;
+                setRatingEnabled(next);
+                await db.updateSettings(tenantId, { ratingEnabled: next } as any);
+              }}
+              className={`px-5 sm:px-8 py-3 sm:py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl w-full sm:w-auto ${ratingEnabled ? 'bg-green-500 text-white hover:bg-red-500' : 'bg-slate-200 text-slate-500 hover:bg-green-500 hover:text-white'}`}
+            >
+              {ratingEnabled ? 'Ativo' : 'Desativado'}
+            </button>
+          </div>
+
+          {/* Message template */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Mensagem de avaliação</label>
+            <textarea
+              value={ratingMessage}
+              onChange={e => setRatingMessage(e.target.value)}
+              placeholder="Olá {nome}! Como foi seu {servico} hoje? Dê uma nota de 0 a 10!"
+              className="w-full border-2 border-slate-100 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-orange-400 resize-none"
+              rows={3}
+            />
+            <div className="flex gap-2 flex-wrap">
+              <Tag label="{nome}" onClick={() => setRatingMessage(v => v + '{nome}')} />
+              <Tag label="{servico}" onClick={() => setRatingMessage(v => v + '{servico}')} />
+              <Tag label="{profissional}" onClick={() => setRatingMessage(v => v + '{profissional}')} />
+            </div>
+            <button
+              onClick={async () => {
+                setSaving(true);
+                await db.updateSettings(tenantId, { ratingMessage } as any);
+                setSaving(false);
+              }}
+              className="px-6 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all"
+            >
+              {saving ? 'Salvando...' : 'Salvar Mensagem'}
+            </button>
+          </div>
+
+          {/* Reviews list */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-black text-black uppercase tracking-tight">Avaliações Recentes ({reviews.length})</h4>
+            {reviews.length === 0 && (
+              <p className="text-xs text-slate-400 font-bold">Nenhuma avaliação recebida ainda.</p>
+            )}
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {reviews.slice(0, 50).map(r => (
+                <div key={r.id} className="bg-slate-50 rounded-2xl p-4 flex items-start gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black shrink-0 ${r.rating >= 8 ? 'bg-green-100 text-green-700' : r.rating >= 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                    {r.rating}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-black">{r.customerName || r.customerPhone}</p>
+                    {r.comment && <p className="text-xs text-slate-500 font-bold mt-1 truncate">{r.comment}</p>}
+                    <p className="text-[10px] text-slate-400 font-bold mt-1">
+                      {new Date(r.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab content (named modes) */}
+      {activeTab !== 'avaliacao' && <PlanGate feature="reativacao" tenantPlan={activeTab === 'reativacao' ? (tenantPlan ?? null) : 'ELITE'}>
       <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
 
         {/* Header */}
@@ -387,7 +476,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
           ))}
         </div>
       </div>
-      </PlanGate>
+      </PlanGate>}
     </div>
   );
 };
@@ -399,7 +488,7 @@ const Tab = ({ active, onClick, label, icon }: any) => (
   </button>
 );
 
-const Tag = ({ label, onClick }: { label: string; onClick?: () => void }) => (
+const Tag: React.FC<{ label: string; onClick?: () => void }> = ({ label, onClick }) => (
   <button
     type="button"
     onClick={onClick}

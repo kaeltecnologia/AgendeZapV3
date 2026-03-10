@@ -147,11 +147,23 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
   const [selectedBarber, setSelectedBarber] = useState<any>(null);
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
-  const [rawPhone, setRawPhone] = useState('');
-  const [customerName, setCustomerName] = useState('');
+  const [rawPhone, setRawPhone] = useState(() => {
+    try {
+      const cust = JSON.parse(localStorage.getItem('agz_customer') || '');
+      return cust?.phone?.replace(/^55/, '') || '';
+    } catch { return ''; }
+  });
+  const [customerName, setCustomerName] = useState(() => {
+    try {
+      const cust = JSON.parse(localStorage.getItem('agz_customer') || '');
+      return cust?.name || '';
+    } catch { return ''; }
+  });
   const [submitting, setSubmitting] = useState(false);
   const [slots, setSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [tenantRating, setTenantRating] = useState<{ average: number; count: number } | null>(null);
+  const [rankPosition, setRankPosition] = useState<number | null>(null);
 
   const topRef = useRef<HTMLDivElement>(null);
 
@@ -159,8 +171,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
   useEffect(() => {
     (async () => {
       try {
-        const tenants = await db.getAllTenants();
-        const t = tenants.find((x: any) => x.slug === slug);
+        const t = await db.getTenantBySlug(slug || '');
         if (!t) { setError('Barbearia não encontrada.'); setLoading(false); return; }
         setTenant(t);
         const [svcs, profs, sett] = await Promise.all([
@@ -171,6 +182,14 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         setServices(svcs.filter((s: any) => s.active));
         setProfessionals(profs.filter((p: any) => p.active !== false));
         setSettings(sett);
+        // Load average rating + ranking (batch — no N+1)
+        db.getAverageRating(t.id).then(r => { if (r.count > 0) setTenantRating(r); }).catch(() => {});
+        db.getMarketplaceRankings().then(rankings => {
+          const me = rankings.find(r => r.tenantId === t.id);
+          if (me && me.position <= 10) setRankPosition(me.position);
+        }).catch(() => {});
+        // Track marketplace page view
+        db.incrementTenantView(t.id).catch(() => {});
       } catch {
         setError('Erro ao carregar dados da barbearia.');
       } finally {
@@ -347,6 +366,22 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Agendamento Online</p>
             <h1 className="text-xl font-black uppercase tracking-tight">{tenant?.name || 'Barbearia'}</h1>
+            {tenantRating && (
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-orange-400 text-xs">{'★'.repeat(Math.round(tenantRating.average / 2))}</span>
+                <span className="text-[10px] text-slate-400 font-bold">{tenantRating.average}/10 ({tenantRating.count} avaliações)</span>
+              </div>
+            )}
+            {rankPosition && (
+              <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[9px] font-black ${
+                rankPosition === 1 ? 'bg-yellow-500/20 text-yellow-300' :
+                rankPosition <= 3 ? 'bg-orange-500/20 text-orange-300' :
+                'bg-blue-500/20 text-blue-300'
+              }`}>
+                {rankPosition === 1 ? '🏆' : rankPosition === 2 ? '🥈' : rankPosition === 3 ? '🥉' : '⭐'}
+                {' '}#{rankPosition} da região
+              </span>
+            )}
           </div>
           <div className="text-3xl">💈</div>
         </div>

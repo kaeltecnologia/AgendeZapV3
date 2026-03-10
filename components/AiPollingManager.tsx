@@ -5,6 +5,7 @@ import { supabase } from '../services/supabase';
 import { handleMessage } from '../services/agentService';
 import { handleProfessionalMessage } from '../services/professionalAgentService';
 import { runFollowUp, runDailyProfessionalAgenda } from '../services/followUpService';
+import { runRatingRequests } from '../services/ratingService';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
 import { maskPhone } from '../services/security';
 
@@ -368,6 +369,7 @@ const AiPollingManager: React.FC<{
         const tenant = (tenants || []).find((t: any) => t.id === tenantId);
         if (tenant) await runFollowUp(tenant);
         if (tenant) await runDailyProfessionalAgenda(tenant);
+        if (tenant) await runRatingRequests(tenant);
 
         // ── Trial Day 6 warning ─────────────────────────────────────
         const settings = await db.getSettings(tenantId);

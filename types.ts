@@ -263,6 +263,11 @@ export interface TenantSettings {
   notasFiscais?: NotaFiscal[];          // NFS-e history
   lastOptimizedAt?: string;             // ISO datetime of last IA optimization
   lastOptimizationSummary?: string;     // summary of last IA optimization
+  ratingEnabled?: boolean;              // toggle for post-service rating requests
+  ratingSent?: Record<string, string>;  // tracks sent rating requests: "rating::apptId" → "YYYY-MM-DD"
+  ratingMessage?: string;               // custom rating message template
+  logoUrl?: string;                     // marketplace logo URL
+  galleryPhotos?: string[];             // marketplace gallery photo URLs (up to 3)
 }
 
 export interface Appointment {
@@ -314,6 +319,15 @@ export interface Tenant {
   status: TenantStatus;
   monthlyFee: number;
   createdAt: string;
+  // ── Central / Marketplace fields ──
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  latitude?: number;
+  longitude?: number;
+  descricao?: string;
+  marketplaceVisible?: boolean;
 }
 
 export interface Professional {
@@ -403,5 +417,86 @@ export interface ConversationLog {
   turns: number;
   history: Array<{ role: 'user' | 'bot'; text: string }>;
   startedAt?: string;
+  createdAt: string;
+}
+
+// ── Central / Marketplace ───────────────────────────────────────────
+
+export interface Review {
+  id: string;
+  tenantId: string;
+  customerPhone: string;
+  customerName?: string;
+  appointmentId?: string;
+  rating: number;       // 0-10
+  comment?: string;
+  createdAt: string;
+}
+
+export interface MarketplaceLead {
+  id: string;
+  phone: string;
+  name?: string;
+  city?: string;
+  nichoInterest?: string;
+  latitude?: number;
+  longitude?: number;
+  source: 'marketplace' | 'central_whatsapp' | 'ads';
+  createdAt: string;
+}
+
+export interface CentralBooking {
+  id: string;
+  leadPhone: string;
+  tenantId: string;
+  appointmentId: string;
+  cashbackEarned: number;
+  createdAt: string;
+}
+
+export interface CashbackBalance {
+  phone: string;
+  balance: number;
+  totalEarned: number;
+  totalUsed: number;
+  bookingsCount: number;
+  updatedAt: string;
+}
+
+export interface CustomerAccount {
+  id: string;
+  phone: string;
+  name: string;
+  city?: string;
+  createdAt: string;
+}
+
+export interface CustomerFavorite {
+  id: string;
+  customerPhone: string;
+  tenantId: string;
+  createdAt: string;
+}
+
+// ── Marketplace Posts (Social Feed) ──────────────────────────────────
+
+export interface MarketplacePost {
+  id: string;
+  tenantId: string;
+  imageUrl: string;
+  caption?: string;
+  cidade?: string;
+  nicho?: string;
+  likesCount: number;
+  createdAt: string;
+  tenantName?: string;
+  tenantSlug?: string;
+}
+
+export interface MarketplacePostComment {
+  id: string;
+  postId: string;
+  authorName: string;
+  content: string;
   createdAt: string;
 }

@@ -73,6 +73,13 @@ interface SessionData {
   pendingRescheduleSearch?: {
     attempt: number;   // 1 = asked for more info, 2 = second lookup failed → guide to new booking
   };
+  // Rating flow: set when system sends rating request after a FINISHED appointment
+  pendingRating?: {
+    apptId: string;
+    serviceName: string;
+    customerName: string;
+    professionalName: string;
+  };
 }
 
 interface Session {
@@ -216,6 +223,40 @@ export function registerFollowUpContext(
   console.log(`[Agent] Follow-up context registered: ${type} → ${maskPhone(phone)}`);
 }
 
+/**
+ * Register rating context — called by ratingService after sending rating request.
+ * The next reply from this phone will be intercepted as a 0-10 rating.
+ */
+export function registerRatingContext(
+  tenantId: string,
+  phone: string,
+  sentMessage: string,
+  ctx: {
+    apptId: string;
+    serviceName: string;
+    customerName: string;
+    professionalName: string;
+  }
+): void {
+  const key = sessionKey(tenantId, phone);
+  let sess = sessions.get(key);
+  if (!sess) {
+    sess = { tenantId, phone, data: {} as SessionData, history: [], updatedAt: Date.now() };
+  }
+  sess.data.pendingRating = {
+    apptId: ctx.apptId,
+    serviceName: ctx.serviceName,
+    customerName: ctx.customerName,
+    professionalName: ctx.professionalName,
+  };
+  sess.history.push({ role: 'bot', text: sentMessage });
+  if (sess.history.length > 20) sess.history = sess.history.slice(-20);
+  sess.updatedAt = Date.now();
+  sessions.set(key, sess);
+  saveSession(sess as Session);
+  console.log(`[Agent] Rating context registered → ${maskPhone(phone)}`);
+}
+
 // =====================================================================
 // FORMATTING HELPERS
 // =====================================================================
@@ -280,7 +321,7 @@ function quickTime(text: string, slots: string[]): string | null {
 // AVAILABILITY — respects operating hours and break periods
 // =====================================================================
 
-async function getAvailableSlots(
+export async function getAvailableSlots(
   tenantId: string,
   professionalId: string,
   date: string,
@@ -995,6 +1036,45 @@ async function _handleMessage(
   const isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
   const isReset = ['sair', 'reiniciar', 'recomeçar', 'recomecar', 'esquece', 'esquecer', 'restart', 'voltar ao início', 'voltar ao inicio'].some(k => lowerText.includes(k));
 
+  // ─── Restore session from Supabase/localStorage if not in memory ────
+  // This MUST happen before all preSession checks (follow-up, rating, cancel, etc.)
+  if (!getSession(tenantId, phone)) {
+    try {
+      const { data: sbSess } = await supabase
+        .from('agent_sessions')
+        .select('data, history, updated_at')
+        .eq('tenant_id', tenantId)
+        .eq('phone', phone)
+        .maybeSingle();
+      if (sbSess && Date.now() - new Date(sbSess.updated_at).getTime() < SESSION_TIMEOUT_MS) {
+        const restored: Session = {
+          tenantId, phone,
+          data: sbSess.data as SessionData,
+          history: sbSess.history as HistoryEntry[],
+          updatedAt: new Date(sbSess.updated_at).getTime(),
+        };
+        sessions.set(sessionKey(tenantId, phone), restored);
+        console.log('[Agent] Sessão restaurada (early) do Supabase para', maskPhone(phone));
+      }
+    } catch { /* ignorar */ }
+    // Fallback: localStorage
+    if (!getSession(tenantId, phone)) {
+      try {
+        const lsKey = `agz_sess_${sessionKey(tenantId, phone)}`;
+        const raw = localStorage.getItem(lsKey);
+        if (raw) {
+          const ls = JSON.parse(raw);
+          if (ls && Date.now() - (ls.updatedAt || 0) < SESSION_TIMEOUT_MS) {
+            sessions.set(sessionKey(tenantId, phone), {
+              tenantId, phone, data: ls.data, history: ls.history || [], updatedAt: ls.updatedAt,
+            });
+            console.log('[Agent] Sessão restaurada (early) do localStorage para', maskPhone(phone));
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
   // ─── Check if user is providing their cancel reason (2nd step) ─────
   const preSession = getSession(tenantId, phone);
   if (preSession?.data?.pendingCancelReason) {
@@ -1042,6 +1122,55 @@ async function _handleMessage(
     sess.data.pendingCancelReason = true;
     saveSession(sess as Session);
     return `Que pena que precisou cancelar! 😕\n\nPode nos contar o motivo? Isso nos ajuda a melhorar o atendimento. 🙏`;
+  }
+
+  // ─── Rating context reply ───────────────────────────────────────────
+  // When ratingService sends a rating request, the next reply is intercepted here.
+  // Expects a number 0-10. If valid, saves the review and thanks the customer.
+  if (preSession?.data?.pendingRating) {
+    const ratingCtx = preSession.data.pendingRating;
+    const normR = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+
+    // Try to extract a number 0-10
+    const numMatch = normR.match(/\b(10|[0-9])\b/);
+    if (numMatch) {
+      const rating = parseInt(numMatch[1], 10);
+      try {
+        const { db: dbImport } = await import('./mockDb');
+        await dbImport.addReview({
+          tenantId,
+          customerPhone: phone,
+          customerName: ratingCtx.customerName,
+          appointmentId: ratingCtx.apptId,
+          rating,
+          comment: normR !== numMatch[1] ? text.trim() : undefined,
+        });
+        console.log(`[Rating] Nota ${rating} salva de ${maskPhone(phone)} para appt ${ratingCtx.apptId}`);
+      } catch (e) {
+        console.error('[Rating] Erro ao salvar review:', e);
+      }
+
+      preSession.data.pendingRating = undefined;
+      saveSession(preSession);
+
+      if (rating >= 8) {
+        return `Muito obrigado pela nota *${rating}*! 🌟 Ficamos felizes que você gostou! Até a próxima! 😊`;
+      } else if (rating >= 5) {
+        return `Obrigado pela nota *${rating}*! Vamos trabalhar para melhorar cada vez mais. Até breve! 🙏`;
+      } else {
+        return `Obrigado pela nota *${rating}*. Lamentamos que a experiência não tenha sido ideal. Vamos melhorar! 💪`;
+      }
+    }
+
+    // If they sent text without a number, ask again gently
+    const hasBookingIntent = ['agendar', 'marcar', 'horario', 'hora'].some(k => normR.includes(k));
+    if (hasBookingIntent) {
+      // They want to book — clear rating and let normal flow continue
+      preSession.data.pendingRating = undefined;
+      saveSession(preSession);
+    } else {
+      return `Por favor, envie uma nota de *0 a 10* para avaliar seu atendimento. ⭐`;
+    }
   }
 
   // ─── Follow-up context reply ─────────────────────────────────────────
@@ -1556,7 +1685,7 @@ async function _handleMessage(
           } else {
             // No upcoming appointment found — ask for more info (attempt 1)
             session.data.pendingRescheduleSearch = { attempt: 1 };
-            await saveSession(tenantId, phone, session);
+            saveSession(session as Session);
             return '😕 Não identifiquei nenhum agendamento ativo no seu número.\n\nPode me confirmar seu *nome completo* e o *dia que estava agendado*? Assim consigo verificar melhor!';
           }
         }
@@ -1604,7 +1733,7 @@ async function _handleMessage(
         } else if (attempt >= 1) {
           // Second attempt also failed → no appointment, guide to new booking
           session.data.pendingRescheduleSearch = undefined;
-          await saveSession(tenantId, phone, session);
+          saveSession(session as Session);
           return '😕 Não encontrei nenhum agendamento no sistema com essas informações.\n\nQuer que eu agende um *novo horário* pra você? É só me dizer o serviço e o dia! 😊';
         }
       }

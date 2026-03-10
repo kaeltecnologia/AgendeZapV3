@@ -23,6 +23,8 @@ import {
   TenantStatus, BookingSource, Expense, BreakPeriod, Plan, PlanQuota,
   FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product,
   NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog,
+  Review, MarketplaceLead, CentralBooking, CashbackBalance, CustomerAccount, CustomerFavorite,
+  MarketplacePost, MarketplacePostComment,
   parseServiceIds, encodeServiceIds
 } from '../types';
 
@@ -92,7 +94,15 @@ class DatabaseService {
         plan: t.plan || 'START',
         status: t.status as TenantStatus,
         monthlyFee: Number(t.mensalidade || 0),
-        createdAt: t.created_at
+        createdAt: t.created_at,
+        endereco: t.endereco,
+        cidade: t.cidade,
+        estado: t.estado,
+        cep: t.cep,
+        latitude: t.latitude ? Number(t.latitude) : undefined,
+        longitude: t.longitude ? Number(t.longitude) : undefined,
+        descricao: t.descricao,
+        marketplaceVisible: t.marketplace_visible ?? false,
       }));
     } catch (err) {
       console.error("Error fetching tenants:", err);
@@ -103,6 +113,40 @@ class DatabaseService {
   async getTenant(id: string): Promise<Tenant | null> {
     try {
       const { data, error } = await supabase.from('tenants').select('*').eq('id', id).maybeSingle();
+      if (error) { console.error('[getTenant] Supabase error for id:', id, error); return null; }
+      if (!data) { console.warn('[getTenant] No data found for id:', id); return null; }
+      return {
+        id: data.id,
+        name: data.nome || 'Sem Nome',
+        slug: data.slug,
+        email: data.email,
+        password: data.password,
+        phone: data.telefone ?? undefined,
+        due_day: data.due_day ? Number(data.due_day) : undefined,
+        evolution_instance: data.evolution_instance,
+        nicho: data.nicho ?? undefined,
+        plan: data.plano || data.plan || 'START',
+        status: data.status as TenantStatus,
+        monthlyFee: Number(data.mensalidade || 0),
+        createdAt: data.created_at,
+        endereco: data.endereco,
+        cidade: data.cidade,
+        estado: data.estado,
+        cep: data.cep,
+        latitude: data.latitude ? Number(data.latitude) : undefined,
+        longitude: data.longitude ? Number(data.longitude) : undefined,
+        descricao: data.descricao,
+        marketplaceVisible: data.marketplace_visible ?? false,
+      };
+    } catch (err) {
+      console.error("Error fetching tenant:", err);
+      return null;
+    }
+  }
+
+  async getTenantBySlug(slug: string): Promise<Tenant | null> {
+    try {
+      const { data, error } = await supabase.from('tenants').select('*').eq('slug', slug).maybeSingle();
       if (error || !data) return null;
       return {
         id: data.id,
@@ -110,16 +154,25 @@ class DatabaseService {
         slug: data.slug,
         email: data.email,
         password: data.password,
-        phone: data.phone,
+        phone: data.telefone ?? undefined,
         due_day: data.due_day ? Number(data.due_day) : undefined,
         evolution_instance: data.evolution_instance,
-        plan: data.plan || 'START',
+        nicho: data.nicho ?? undefined,
+        plan: data.plano || data.plan || 'START',
         status: data.status as TenantStatus,
         monthlyFee: Number(data.mensalidade || 0),
-        createdAt: data.created_at
+        createdAt: data.created_at,
+        endereco: data.endereco,
+        cidade: data.cidade,
+        estado: data.estado,
+        cep: data.cep,
+        latitude: data.latitude ? Number(data.latitude) : undefined,
+        longitude: data.longitude ? Number(data.longitude) : undefined,
+        descricao: data.descricao,
+        marketplaceVisible: data.marketplace_visible ?? false,
       };
     } catch (err) {
-      console.error("Error fetching tenant:", err);
+      console.error("Error fetching tenant by slug:", err);
       return null;
     }
   }
@@ -169,6 +222,14 @@ class DatabaseService {
       if (updates.phone !== undefined) payload.phone = updates.phone;
       if (updates.due_day !== undefined) payload.due_day = updates.due_day;
       if (updates.nicho !== undefined) payload.nicho = updates.nicho;
+      if (updates.endereco !== undefined) payload.endereco = updates.endereco;
+      if (updates.cidade !== undefined) payload.cidade = updates.cidade;
+      if (updates.estado !== undefined) payload.estado = updates.estado;
+      if (updates.cep !== undefined) payload.cep = updates.cep;
+      if (updates.latitude !== undefined) payload.latitude = updates.latitude;
+      if (updates.longitude !== undefined) payload.longitude = updates.longitude;
+      if (updates.descricao !== undefined) payload.descricao = updates.descricao;
+      if (updates.marketplaceVisible !== undefined) payload.marketplace_visible = updates.marketplaceVisible;
       const { error } = await supabase.from('tenants').update(payload).eq('id', id);
       if (error) throw error;
     } catch (e) {
@@ -189,9 +250,12 @@ class DatabaseService {
 
   // ─── APPOINTMENTS ───────────────────────────────────────────────────
 
-  async getAppointments(tenantId: string): Promise<Appointment[]> {
+  async getAppointments(tenantId: string, daysBack: number = 90): Promise<Appointment[]> {
     try {
-      const { data, error } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId);
+      const since = new Date();
+      since.setDate(since.getDate() - daysBack);
+      const sinceISO = since.toISOString().slice(0, 10) + 'T00:00:00';
+      const { data, error } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId).gte('inicio', sinceISO);
       if (error) throw error;
       return (data || []).map(a => {
         const start = new Date(a.inicio);
@@ -790,6 +854,11 @@ class DatabaseService {
           notasFiscais: fu._notasFiscais ?? [],
           lastOptimizedAt: fu._lastOptimizedAt ?? undefined,
           lastOptimizationSummary: fu._lastOptimizationSummary ?? undefined,
+          ratingEnabled: fu._ratingEnabled ?? false,
+          ratingSent: fu._ratingSent ?? {},
+          ratingMessage: fu._ratingMessage ?? '',
+          logoUrl: fu._logoUrl ?? '',
+          galleryPhotos: fu._galleryPhotos ?? [],
         };
       }
     } catch (e) {
@@ -836,6 +905,11 @@ class DatabaseService {
         _notasFiscais: newS.notasFiscais ?? curr.notasFiscais ?? [],
         _lastOptimizedAt: newS.lastOptimizedAt !== undefined ? newS.lastOptimizedAt : (curr.lastOptimizedAt ?? null),
         _lastOptimizationSummary: newS.lastOptimizationSummary !== undefined ? newS.lastOptimizationSummary : (curr.lastOptimizationSummary ?? null),
+        _ratingEnabled: newS.ratingEnabled ?? curr.ratingEnabled ?? false,
+        _ratingSent: newS.ratingSent ?? curr.ratingSent ?? {},
+        _ratingMessage: newS.ratingMessage ?? curr.ratingMessage ?? '',
+        _logoUrl: newS.logoUrl ?? curr.logoUrl ?? '',
+        _galleryPhotos: newS.galleryPhotos ?? curr.galleryPhotos ?? [],
       };
 
       const { error } = await supabase.from('tenant_settings').upsert(
@@ -1844,6 +1918,565 @@ class DatabaseService {
     if (error) throw error;
     const { data } = supabase.storage.from('support-images').getPublicUrl(path);
     return data.publicUrl;
+  }
+
+  // ─── Reviews (Avaliações) ──────────────────────────────────────────
+
+  async addReview(review: Omit<Review, 'id' | 'createdAt'>): Promise<Review> {
+    const { data, error } = await supabase.from('reviews').insert({
+      tenant_id: review.tenantId,
+      customer_phone: review.customerPhone,
+      customer_name: review.customerName ?? null,
+      appointment_id: review.appointmentId ?? null,
+      rating: review.rating,
+      comment: review.comment ?? null,
+    }).select().single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      tenantId: data.tenant_id,
+      customerPhone: data.customer_phone,
+      customerName: data.customer_name ?? undefined,
+      appointmentId: data.appointment_id ?? undefined,
+      rating: data.rating,
+      comment: data.comment ?? undefined,
+      createdAt: data.created_at,
+    };
+  }
+
+  async getReviews(tenantId: string): Promise<Review[]> {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(r => ({
+      id: r.id,
+      tenantId: r.tenant_id,
+      customerPhone: r.customer_phone,
+      customerName: r.customer_name ?? undefined,
+      appointmentId: r.appointment_id ?? undefined,
+      rating: r.rating,
+      comment: r.comment ?? undefined,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async getAverageRating(tenantId: string): Promise<{ average: number; count: number }> {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('rating')
+      .eq('tenant_id', tenantId);
+    if (error) throw error;
+    const ratings = data || [];
+    if (ratings.length === 0) return { average: 0, count: 0 };
+    const sum = ratings.reduce((acc, r) => acc + r.rating, 0);
+    return { average: Math.round((sum / ratings.length) * 10) / 10, count: ratings.length };
+  }
+
+  /** Batch: get average ratings for ALL tenants in one query (avoids N+1) */
+  private _ratingsCache: { data: Map<string, { average: number; count: number }>; ts: number } | null = null;
+  async getAllRatings(): Promise<Map<string, { average: number; count: number }>> {
+    if (this._ratingsCache && Date.now() - this._ratingsCache.ts < 120_000) return this._ratingsCache.data;
+    const { data, error } = await supabase.from('reviews').select('tenant_id, rating');
+    if (error) throw error;
+    const map = new Map<string, { sum: number; count: number }>();
+    for (const r of (data || [])) {
+      const existing = map.get(r.tenant_id);
+      if (existing) { existing.sum += r.rating; existing.count++; }
+      else map.set(r.tenant_id, { sum: r.rating, count: 1 });
+    }
+    const result = new Map<string, { average: number; count: number }>();
+    for (const [tid, { sum, count }] of map) {
+      result.set(tid, { average: Math.round((sum / count) * 10) / 10, count });
+    }
+    this._ratingsCache = { data: result, ts: Date.now() };
+    return result;
+  }
+
+  /** Get marketplace rankings in one batch (1 query instead of N+1) */
+  async getMarketplaceRankings(): Promise<Array<{ tenantId: string; average: number; count: number; position: number }>> {
+    const [mpTenants, allRatings] = await Promise.all([
+      this.getMarketplaceTenants(),
+      this.getAllRatings(),
+    ]);
+    const ranked = mpTenants.map(t => {
+      const r = allRatings.get(t.id) || { average: 0, count: 0 };
+      return { tenantId: t.id, average: r.average, count: r.count, position: 0 };
+    });
+    ranked.sort((a, b) => b.average - a.average);
+    ranked.forEach((r, i) => { r.position = i + 1; });
+    return ranked;
+  }
+
+  async hasReview(appointmentId: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id')
+      .eq('appointment_id', appointmentId)
+      .limit(1);
+    if (error) throw error;
+    return (data || []).length > 0;
+  }
+
+  // ─── Marketplace Leads ─────────────────────────────────────────────
+
+  async addMarketplaceLead(lead: Omit<MarketplaceLead, 'id' | 'createdAt'>): Promise<MarketplaceLead> {
+    const { data, error } = await supabase.from('marketplace_leads').upsert({
+      phone: lead.phone,
+      name: lead.name ?? null,
+      city: lead.city ?? null,
+      nicho_interest: lead.nichoInterest ?? null,
+      latitude: lead.latitude ?? null,
+      longitude: lead.longitude ?? null,
+      source: lead.source,
+    }, { onConflict: 'phone' }).select().single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      phone: data.phone,
+      name: data.name ?? undefined,
+      city: data.city ?? undefined,
+      nichoInterest: data.nicho_interest ?? undefined,
+      latitude: data.latitude ?? undefined,
+      longitude: data.longitude ?? undefined,
+      source: data.source as MarketplaceLead['source'],
+      createdAt: data.created_at,
+    };
+  }
+
+  async getAllMarketplaceLeads(): Promise<MarketplaceLead[]> {
+    const { data, error } = await supabase
+      .from('marketplace_leads')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(r => ({
+      id: r.id,
+      phone: r.phone,
+      name: r.name ?? undefined,
+      city: r.city ?? undefined,
+      nichoInterest: r.nicho_interest ?? undefined,
+      latitude: r.latitude ?? undefined,
+      longitude: r.longitude ?? undefined,
+      source: r.source as MarketplaceLead['source'],
+      createdAt: r.created_at,
+    }));
+  }
+
+  async getMarketplaceLeadByPhone(phone: string): Promise<MarketplaceLead | null> {
+    const { data, error } = await supabase
+      .from('marketplace_leads')
+      .select('*')
+      .eq('phone', phone)
+      .single();
+    if (error || !data) return null;
+    return {
+      id: data.id,
+      phone: data.phone,
+      name: data.name ?? undefined,
+      city: data.city ?? undefined,
+      nichoInterest: data.nicho_interest ?? undefined,
+      latitude: data.latitude ?? undefined,
+      longitude: data.longitude ?? undefined,
+      source: data.source as MarketplaceLead['source'],
+      createdAt: data.created_at,
+    };
+  }
+
+  // ─── Central Bookings ──────────────────────────────────────────────
+
+  async addCentralBooking(booking: Omit<CentralBooking, 'id' | 'createdAt'>): Promise<CentralBooking> {
+    const { data, error } = await supabase.from('central_bookings').insert({
+      lead_phone: booking.leadPhone,
+      tenant_id: booking.tenantId,
+      appointment_id: booking.appointmentId,
+      cashback_earned: booking.cashbackEarned,
+    }).select().single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      leadPhone: data.lead_phone,
+      tenantId: data.tenant_id,
+      appointmentId: data.appointment_id,
+      cashbackEarned: Number(data.cashback_earned),
+      createdAt: data.created_at,
+    };
+  }
+
+  async getCentralBookings(tenantId?: string): Promise<CentralBooking[]> {
+    let query = supabase.from('central_bookings').select('*').order('created_at', { ascending: false });
+    if (tenantId) query = query.eq('tenant_id', tenantId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(r => ({
+      id: r.id,
+      leadPhone: r.lead_phone,
+      tenantId: r.tenant_id,
+      appointmentId: r.appointment_id,
+      cashbackEarned: Number(r.cashback_earned),
+      createdAt: r.created_at,
+    }));
+  }
+
+  // ─── Cashback Balance ──────────────────────────────────────────────
+
+  async getCashbackBalance(phone: string): Promise<CashbackBalance | null> {
+    const { data, error } = await supabase
+      .from('cashback_balance')
+      .select('*')
+      .eq('phone', phone)
+      .single();
+    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows
+    if (!data) return null;
+    return {
+      phone: data.phone,
+      balance: Number(data.balance),
+      totalEarned: Number(data.total_earned),
+      totalUsed: Number(data.total_used),
+      bookingsCount: data.bookings_count,
+      updatedAt: data.updated_at,
+    };
+  }
+
+  async addCashback(phone: string, amount: number): Promise<CashbackBalance> {
+    // Upsert: create if not exists, otherwise increment
+    const existing = await this.getCashbackBalance(phone);
+    if (existing) {
+      const { data, error } = await supabase
+        .from('cashback_balance')
+        .update({
+          balance: existing.balance + amount,
+          total_earned: existing.totalEarned + amount,
+          bookings_count: existing.bookingsCount + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('phone', phone)
+        .select()
+        .single();
+      if (error) throw error;
+      return {
+        phone: data.phone,
+        balance: Number(data.balance),
+        totalEarned: Number(data.total_earned),
+        totalUsed: Number(data.total_used),
+        bookingsCount: data.bookings_count,
+        updatedAt: data.updated_at,
+      };
+    } else {
+      const { data, error } = await supabase
+        .from('cashback_balance')
+        .insert({
+          phone,
+          balance: amount,
+          total_earned: amount,
+          total_used: 0,
+          bookings_count: 1,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return {
+        phone: data.phone,
+        balance: Number(data.balance),
+        totalEarned: Number(data.total_earned),
+        totalUsed: Number(data.total_used),
+        bookingsCount: data.bookings_count,
+        updatedAt: data.updated_at,
+      };
+    }
+  }
+
+  async useCashback(phone: string, amount: number): Promise<CashbackBalance | null> {
+    const existing = await this.getCashbackBalance(phone);
+    if (!existing || existing.balance < amount) return null;
+    const { data, error } = await supabase
+      .from('cashback_balance')
+      .update({
+        balance: existing.balance - amount,
+        total_used: existing.totalUsed + amount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('phone', phone)
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      phone: data.phone,
+      balance: Number(data.balance),
+      totalEarned: Number(data.total_earned),
+      totalUsed: Number(data.total_used),
+      bookingsCount: data.bookings_count,
+      updatedAt: data.updated_at,
+    };
+  }
+
+  // ─── Marketplace Tenants (public listing) ──────────────────────────
+
+  private _mpTenantsCache: { data: any[]; ts: number } | null = null;
+  async getMarketplaceTenants(filters?: { cidade?: string; nicho?: string }): Promise<Tenant[]> {
+    // Fetch visible tenants with cache (2 min TTL) and only needed columns
+    let raw: any[];
+    if (this._mpTenantsCache && Date.now() - this._mpTenantsCache.ts < 120_000) {
+      raw = this._mpTenantsCache.data;
+    } else {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, nome, slug, nicho, status, mensalidade, plano, created_at, endereco, cidade, estado, cep, latitude, longitude, descricao, marketplace_visible, evolution_instance, email')
+        .eq('marketplace_visible', true)
+        .eq('status', 'ATIVA');
+      if (error) throw error;
+      raw = data || [];
+      this._mpTenantsCache = { data: raw, ts: Date.now() };
+    }
+    return raw.map((t: any) => ({
+      id: t.id,
+      name: t.nome,
+      slug: t.slug || '',
+      email: t.email,
+      evolution_instance: t.evolution_instance,
+      nicho: t.nicho ?? undefined,
+      plan: t.plano,
+      status: t.status as TenantStatus,
+      monthlyFee: Number(t.mensalidade || 0),
+      createdAt: t.created_at,
+      endereco: t.endereco,
+      cidade: t.cidade,
+      estado: t.estado,
+      cep: t.cep,
+      latitude: t.latitude,
+      longitude: t.longitude,
+      descricao: t.descricao,
+      marketplaceVisible: t.marketplace_visible ?? false,
+    })).filter(t => {
+      // Accent-insensitive filtering (e.g. "maringa" matches "Maringá")
+      const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+      if (filters?.cidade && !norm(t.cidade || '').includes(norm(filters.cidade))) return false;
+      if (filters?.nicho && !norm(t.nicho || '').includes(norm(filters.nicho))) return false;
+      return true;
+    });
+  }
+  // ─── Customer Accounts ──────────────────────────────────────────────
+
+  async customerRegister(phone: string, name: string, password: string, city?: string): Promise<CustomerAccount | { error: string }> {
+    const { data, error } = await supabase.rpc('customer_register', {
+      p_phone: phone, p_name: name, p_password: password, p_city: city || null,
+    });
+    if (error) throw error;
+    if (data?.error) return { error: data.error };
+    return { id: data.id, phone: data.phone, name: data.name, city: data.city ?? undefined, createdAt: new Date().toISOString() };
+  }
+
+  async customerLogin(phone: string, password: string): Promise<CustomerAccount | { error: string }> {
+    const { data, error } = await supabase.rpc('customer_login', {
+      p_phone: phone, p_password: password,
+    });
+    if (error) throw error;
+    if (data?.error) return { error: data.error };
+    return { id: data.id, phone: data.phone, name: data.name, city: data.city ?? undefined, createdAt: '' };
+  }
+
+  async getCustomerAccount(phone: string): Promise<CustomerAccount | null> {
+    const { data, error } = await supabase.from('customer_accounts').select('*').eq('phone', phone).maybeSingle();
+    if (error || !data) return null;
+    return { id: data.id, phone: data.phone, name: data.name, city: data.city ?? undefined, createdAt: data.created_at };
+  }
+
+  async updateCustomerAccount(phone: string, updates: Partial<{ name: string; city: string }>): Promise<void> {
+    const payload: any = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.city !== undefined) payload.city = updates.city;
+    await supabase.from('customer_accounts').update(payload).eq('phone', phone);
+  }
+
+  // ─── Customer Favorites ────────────────────────────────────────────
+
+  async getCustomerFavorites(phone: string): Promise<CustomerFavorite[]> {
+    const { data, error } = await supabase.from('customer_favorites').select('*').eq('customer_phone', phone).order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(r => ({ id: r.id, customerPhone: r.customer_phone, tenantId: r.tenant_id, createdAt: r.created_at }));
+  }
+
+  async addCustomerFavorite(phone: string, tenantId: string): Promise<void> {
+    await supabase.from('customer_favorites').upsert({ customer_phone: phone, tenant_id: tenantId }, { onConflict: 'customer_phone,tenant_id' });
+  }
+
+  async removeCustomerFavorite(phone: string, tenantId: string): Promise<void> {
+    await supabase.from('customer_favorites').delete().eq('customer_phone', phone).eq('tenant_id', tenantId);
+  }
+
+  // ─── Marketplace Gallery (bulk) ────────────────────────────────────
+
+  async getMarketplaceGalleries(tenantIds: string[]): Promise<Map<string, string[]>> {
+    const result = new Map<string, string[]>();
+    if (tenantIds.length === 0) return result;
+    try {
+      const { data } = await supabase.from('tenant_settings').select('tenant_id, follow_up').in('tenant_id', tenantIds);
+      for (const row of (data || [])) {
+        const photos = row.follow_up?._galleryPhotos;
+        if (Array.isArray(photos) && photos.length > 0) {
+          result.set(row.tenant_id, photos);
+        }
+      }
+    } catch (e) { console.error('[getMarketplaceGalleries]', e); }
+    return result;
+  }
+
+  // ─── Marketplace Views ─────────────────────────────────────────────
+
+  async incrementTenantView(tenantId: string): Promise<void> {
+    try {
+      const { data } = await supabase.from('tenants').select('marketplace_views').eq('id', tenantId).maybeSingle();
+      await supabase.from('tenants').update({ marketplace_views: ((data?.marketplace_views) || 0) + 1 }).eq('id', tenantId);
+    } catch (e) { console.error('[incrementTenantView]', e); }
+  }
+
+  async getTenantViewCount(tenantId: string): Promise<number> {
+    try {
+      const { data } = await supabase.from('tenants').select('marketplace_views').eq('id', tenantId).maybeSingle();
+      return data?.marketplace_views || 0;
+    } catch { return 0; }
+  }
+
+  // ─── Marketplace Posts (Social Feed) ────────────────────────────────
+
+  async createPost(tenantId: string, imageUrl: string, caption?: string): Promise<MarketplacePost> {
+    const tenant = await this.getTenant(tenantId);
+    const { data, error } = await supabase.from('marketplace_posts').insert({
+      tenant_id: tenantId,
+      image_url: imageUrl,
+      caption: caption || null,
+      cidade: tenant?.cidade || null,
+      nicho: tenant?.nicho || null,
+    }).select().single();
+    if (error) throw error;
+    return {
+      id: data.id, tenantId: data.tenant_id, imageUrl: data.image_url,
+      caption: data.caption ?? undefined, cidade: data.cidade ?? undefined,
+      nicho: data.nicho ?? undefined, likesCount: data.likes_count || 0,
+      createdAt: data.created_at, tenantName: tenant?.name, tenantSlug: tenant?.slug,
+    };
+  }
+
+  async getPostsFeed(filters?: { cidade?: string; nicho?: string }, limit = 30, offset = 0): Promise<MarketplacePost[]> {
+    let query = supabase.from('marketplace_posts').select('*').order('created_at', { ascending: false }).range(offset, offset + limit - 1);
+    if (filters?.nicho) query = query.eq('nicho', filters.nicho);
+    if (filters?.cidade) query = query.ilike('cidade', `%${filters.cidade}%`);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map((r: any) => ({
+      id: r.id, tenantId: r.tenant_id, imageUrl: r.image_url,
+      caption: r.caption ?? undefined, cidade: r.cidade ?? undefined,
+      nicho: r.nicho ?? undefined, likesCount: r.likes_count || 0, createdAt: r.created_at,
+    }));
+  }
+
+  async getPostsByTenant(tenantId: string): Promise<MarketplacePost[]> {
+    const { data, error } = await supabase.from('marketplace_posts').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map((r: any) => ({
+      id: r.id, tenantId: r.tenant_id, imageUrl: r.image_url,
+      caption: r.caption ?? undefined, cidade: r.cidade ?? undefined,
+      nicho: r.nicho ?? undefined, likesCount: r.likes_count || 0, createdAt: r.created_at,
+    }));
+  }
+
+  async deletePost(postId: string, tenantId: string): Promise<void> {
+    await supabase.from('marketplace_posts').delete().eq('id', postId).eq('tenant_id', tenantId);
+  }
+
+  async togglePostLike(postId: string, likerId: string): Promise<{ liked: boolean; likesCount: number }> {
+    const { data: existing } = await supabase.from('marketplace_post_likes').select('id').eq('post_id', postId).eq('liker_id', likerId).maybeSingle();
+    if (existing) {
+      await supabase.from('marketplace_post_likes').delete().eq('id', existing.id);
+      const { data: post } = await supabase.from('marketplace_posts').select('likes_count').eq('id', postId).single();
+      const newCount = Math.max(0, (post?.likes_count || 1) - 1);
+      await supabase.from('marketplace_posts').update({ likes_count: newCount }).eq('id', postId);
+      return { liked: false, likesCount: newCount };
+    } else {
+      await supabase.from('marketplace_post_likes').insert({ post_id: postId, liker_id: likerId });
+      const { data: post } = await supabase.from('marketplace_posts').select('likes_count').eq('id', postId).single();
+      const newCount = (post?.likes_count || 0) + 1;
+      await supabase.from('marketplace_posts').update({ likes_count: newCount }).eq('id', postId);
+      return { liked: true, likesCount: newCount };
+    }
+  }
+
+  async getPostLikesByUser(likerId: string, postIds: string[]): Promise<Set<string>> {
+    if (postIds.length === 0) return new Set();
+    const { data } = await supabase.from('marketplace_post_likes').select('post_id').eq('liker_id', likerId).in('post_id', postIds);
+    return new Set((data || []).map((r: any) => r.post_id));
+  }
+
+  async addPostComment(postId: string, authorName: string, content: string): Promise<MarketplacePostComment> {
+    const { data, error } = await supabase.from('marketplace_post_comments').insert({
+      post_id: postId, author_name: authorName, content,
+    }).select().single();
+    if (error) throw error;
+    return { id: data.id, postId: data.post_id, authorName: data.author_name, content: data.content, createdAt: data.created_at };
+  }
+
+  async getPostComments(postId: string): Promise<MarketplacePostComment[]> {
+    const { data, error } = await supabase.from('marketplace_post_comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map((r: any) => ({ id: r.id, postId: r.post_id, authorName: r.author_name, content: r.content, createdAt: r.created_at }));
+  }
+
+  async enrichPostsWithTenantInfo(posts: MarketplacePost[]): Promise<MarketplacePost[]> {
+    const tenantIds = [...new Set(posts.map(p => p.tenantId))];
+    if (tenantIds.length === 0) return posts;
+    const { data } = await supabase.from('tenants').select('id, nome, slug').in('id', tenantIds);
+    const map = new Map((data || []).map((t: any) => [t.id, { name: t.nome, slug: t.slug }]));
+    return posts.map(p => ({ ...p, tenantName: map.get(p.tenantId)?.name, tenantSlug: map.get(p.tenantId)?.slug }));
+  }
+
+  // ─── Customer Booking History (cross-tenant) ───────────────────────
+
+  async getCustomerBookingHistory(phone: string): Promise<any[]> {
+    // Find all customer records across tenants by phone
+    const { data: custRows } = await supabase.from('customers').select('id, tenant_id').eq('telefone', phone);
+    if (!custRows || custRows.length === 0) return [];
+
+    const customerIds = custRows.map(c => c.id);
+    const tenantIds = [...new Set(custRows.map(c => c.tenant_id))];
+
+    // Fetch appointments for these customers (last 50)
+    const { data: appts } = await supabase.from('appointments').select('*').in('customer_id', customerIds).order('inicio', { ascending: false }).limit(50);
+    if (!appts || appts.length === 0) return [];
+
+    // Batch fetch enrichment data
+    const svcIds = [...new Set(appts.map(a => a.service_id).filter(Boolean))];
+    const profIds = [...new Set(appts.map(a => a.professional_id).filter(Boolean))];
+
+    const [tenantsRes, svcsRes, profsRes] = await Promise.all([
+      supabase.from('tenants').select('id, nome, nicho').in('id', tenantIds),
+      svcIds.length > 0 ? supabase.from('services').select('id, nome').in('id', svcIds) : { data: [] },
+      profIds.length > 0 ? supabase.from('professionals').select('id, nome').in('id', profIds) : { data: [] },
+    ]);
+
+    const tenantMap = new Map((tenantsRes.data || []).map(t => [t.id, t]));
+    const svcMap = new Map(((svcsRes as any).data || []).map((s: any) => [s.id, s.nome]));
+    const profMap = new Map(((profsRes as any).data || []).map((p: any) => [p.id, p.nome]));
+    const custTenantMap = new Map(custRows.map(c => [c.id, c.tenant_id]));
+
+    return appts.map(a => {
+      const tid = custTenantMap.get(a.customer_id) || '';
+      const tenant = tenantMap.get(tid);
+      return {
+        id: a.id,
+        tenantName: tenant?.nome || 'Estabelecimento',
+        tenantNicho: tenant?.nicho,
+        tenantId: tid,
+        serviceName: svcMap.get(a.service_id) || 'Serviço',
+        professionalName: profMap.get(a.professional_id) || 'Profissional',
+        date: a.inicio?.slice(0, 10) || '',
+        time: a.inicio?.slice(11, 16) || '',
+        status: a.status,
+        price: Number(a.amount_paid || 0),
+      };
+    });
   }
 }
 

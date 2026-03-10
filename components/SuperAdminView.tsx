@@ -13,6 +13,8 @@ import AdminConversasPanel from './AdminConversasPanel';
 import AdminProspeccaoPanel from './AdminProspeccaoPanel';
 import AdminDisparoPanel from './AdminDisparoPanel';
 import CampaignsStatusView from './CampaignsStatusView';
+import CentralPollingManager from './CentralPollingManager';
+import { MarketplaceLead, CashbackBalance } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -40,7 +42,7 @@ interface AdminLog {
   detail: string;
 }
 
-type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config';
+type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback';
 
 const STATUS_COLORS: Record<string, string> = {
   [TenantStatus.ACTIVE]: '#22c55e',
@@ -190,6 +192,10 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [adminInstanceName, setAdminInstanceName] = useState(() => loadAdminInstance());
   const [adminConnected, setAdminConnected] = useState(false);
   const [prospectCampaigns, setProspectCampaigns] = useState<ProspectCampaign[]>(() => loadCampaigns());
+
+  // Central WhatsApp instance
+  const [centralInstanceName, setCentralInstanceName] = useState('central_AgendeZap');
+  const [centralConnected, setCentralConnected] = useState(false);
   const [disparoCampaignId, setDisparoCampaignId] = useState<string | undefined>(undefined);
 
   // Support inbox (legacy upgrade requests)
@@ -272,6 +278,16 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
         setCfgEmail(cfg['admin_email'] || '');
         setCfgPlatformName(cfg['platform_name'] || 'AgendeZap');
         setCfgSupportEmail(cfg['support_email'] || '');
+      });
+    }
+  }, [tab]);
+
+  // Load central instance name from global config
+  useEffect(() => {
+    if (tab === 'central' || tab === 'wa_central') {
+      db.getGlobalConfig().then(cfg => {
+        const name = cfg['central_instance'] || 'central_AgendeZap';
+        setCentralInstanceName(name);
       });
     }
   }, [tab]);
@@ -1977,6 +1993,36 @@ END $$;`.trim();
         </div>
       )}
 
+      {/* ══════════════════════ CENTRAL ══════════════════════ */}
+      {tab === 'central' && (
+        <CentralTab
+          instanceName={centralInstanceName}
+          setInstanceName={setCentralInstanceName}
+          connected={centralConnected}
+          setConnected={setCentralConnected}
+        />
+      )}
+
+      {/* ══════════════════════ WA CENTRAL (Conversas) ══════════════════════ */}
+      {tab === 'wa_central' && (
+        <AdminConversasPanel
+          instanceName={centralInstanceName}
+          setInstanceName={(v: string) => setCentralInstanceName(v)}
+          connected={centralConnected}
+          setConnected={setCentralConnected}
+        />
+      )}
+
+      {/* ══════════════════════ LEADS ══════════════════════ */}
+      {tab === 'leads' && (
+        <LeadsTab />
+      )}
+
+      {/* ══════════════════════ CASHBACK ══════════════════════ */}
+      {tab === 'cashback' && (
+        <CashbackTab />
+      )}
+
       {/* ══════════════════════ MODALS ══════════════════════ */}
 
       {/* New tenant modal */}
@@ -2210,5 +2256,424 @@ const StatCard = ({ label, value, icon, sub, color, highlight }: {
     {sub && <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1">{sub}</p>}
   </div>
 );
+
+// ── Central Tab ─────────────────────────────────────────────────────────────
+
+interface CentralTabProps {
+  instanceName: string;
+  setInstanceName: (v: string) => void;
+  connected: boolean;
+  setConnected: (v: boolean) => void;
+}
+
+const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, connected, setConnected }) => {
+  const [centralActive, setCentralActive] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [bookingsCount, setBookingsCount] = useState(0);
+
+  // QR code flow
+  const [qr, setQr] = useState<string | null>(null);
+  const [connectingQr, setConnectingQr] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+
+  // Cashback config
+  const [cbActive, setCbActive] = useState(false);
+  const [cbMode, setCbMode] = useState<'percentual' | 'fidelidade'>('percentual');
+  const [cbPercent, setCbPercent] = useState(5);
+  const [cbThreshold, setCbThreshold] = useState(10);
+
+  // Heartbeat — check connection every 30s
+  useEffect(() => {
+    if (!instanceName) return;
+    const tick = () => evolutionService.checkStatus(instanceName).then(s => setConnected(s === 'open')).catch(() => {});
+    tick();
+    const interval = setInterval(tick, 30_000);
+    return () => clearInterval(interval);
+  }, [instanceName, setConnected]);
+
+  useEffect(() => {
+    (async () => {
+      const cfg = await db.getGlobalConfig();
+      setCentralActive(cfg['central_active'] === 'true');
+      // Cashback config
+      if (cfg['cashback_config']) {
+        try {
+          const cb = JSON.parse(cfg['cashback_config']);
+          setCbActive(cb.active || false);
+          setCbMode(cb.mode || 'percentual');
+          setCbPercent(cb.percent || 5);
+          setCbThreshold(cb.threshold || 10);
+        } catch {}
+      }
+      // Count bookings
+      try {
+        const bookings = await db.getCentralBookings();
+        setBookingsCount(bookings.length);
+      } catch {}
+    })();
+  }, []);
+
+  const handleConnect = async () => {
+    if (!instanceName.trim()) return;
+    setConnectingQr(true);
+    setQr(null);
+    try {
+      const result = await evolutionService.createAndFetchQr(instanceName.trim());
+      if (result.status === 'success' && result.qrcode) {
+        setQr(result.qrcode);
+      } else if (result.status === 'success' && !result.qrcode) {
+        setConnected(true);
+        setQr(null);
+      } else {
+        alert(result.message || 'Erro ao gerar QR Code');
+      }
+    } finally {
+      setConnectingQr(false);
+    }
+  };
+
+  const checkConnectionStatus = async () => {
+    setCheckingStatus(true);
+    try {
+      const s = await evolutionService.checkStatus(instanceName);
+      setConnected(s === 'open');
+      if (s === 'open') setQr(null);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  const save = async () => {
+    setSaving(true);
+    await db.saveGlobalConfig({
+      central_instance: instanceName,
+      central_active: String(centralActive),
+      cashback_config: JSON.stringify({
+        active: cbActive,
+        mode: cbMode,
+        percent: cbPercent,
+        threshold: cbThreshold,
+      }),
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <CentralPollingManager instanceName={instanceName} active={centralActive} />
+
+      {/* ── Conexão / QR Code ── */}
+      <div className="bg-white rounded-3xl border-2 border-slate-100 p-8 space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-black text-white rounded-2xl flex items-center justify-center text-2xl">📡</div>
+            <div>
+              <h2 className="text-xl font-black uppercase tracking-tight">Central WhatsApp</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Agente multi-tenant para leads de anúncios</p>
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 ${connected ? 'bg-green-50 border-green-100 text-green-600' : 'bg-red-50 border-red-100 text-red-500'}`}>
+            <div className={`w-2 h-2 rounded-full animate-pulse ${connected ? 'bg-green-500' : 'bg-red-400'}`} />
+            <span className="text-[10px] font-black uppercase tracking-widest">{connected ? 'Conectado' : 'Desconectado'}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between bg-slate-50 rounded-2xl p-4">
+          <span className="text-sm font-black">Central Ativa</span>
+          <button
+            onClick={() => setCentralActive(v => !v)}
+            className={`px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${centralActive ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'}`}
+          >
+            {centralActive ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome da instância Evolution</label>
+          <input
+            type="text"
+            value={instanceName}
+            onChange={e => setInstanceName(e.target.value)}
+            placeholder="central_AgendeZap"
+            className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400"
+          />
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={handleConnect}
+            disabled={connectingQr || !instanceName.trim()}
+            className="px-5 py-2.5 bg-black text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-500 transition-all disabled:opacity-40"
+          >
+            {connectingQr ? 'Gerando...' : connected ? '↺ Reconectar' : '📱 Conectar'}
+          </button>
+          <button
+            onClick={checkConnectionStatus}
+            disabled={checkingStatus}
+            className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all disabled:opacity-40"
+          >
+            {checkingStatus ? '...' : '⟳ Status'}
+          </button>
+        </div>
+
+        {qr && (
+          <div className="flex flex-col items-center gap-4 pt-2 border-t border-slate-100">
+            <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Escaneie o QR Code com o WhatsApp da Central</p>
+            <div className="p-3 bg-white border-2 border-orange-200 rounded-2xl shadow-xl shadow-orange-100">
+              <img
+                src={qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`}
+                alt="QR Code"
+                className="w-56 h-56 object-contain"
+              />
+            </div>
+            <button
+              onClick={checkConnectionStatus}
+              className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-orange-500 transition-all"
+            >
+              ✓ Já escaneei — verificar conexão
+            </button>
+          </div>
+        )}
+
+        <div className="bg-slate-50 rounded-2xl p-4">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Geocodificação</p>
+          <p className="text-xs font-bold text-slate-500 mt-1">OpenStreetMap (Nominatim) — gratuito, sem API key necessária</p>
+        </div>
+
+        <button onClick={save} className="px-8 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">
+          {saving ? 'Salvando...' : 'Salvar Configuração'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard label="Agendamentos via Central" value={String(bookingsCount)} icon="📋" />
+        <StatCard label="Status" value={connected ? 'Conectada' : 'Desconectada'} icon={connected ? '🟢' : '🔴'} />
+      </div>
+
+      {/* ── Cashback / Fidelidade ── */}
+      <div className="bg-white rounded-3xl border-2 border-green-100 p-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-green-100 text-green-700 rounded-2xl flex items-center justify-center text-2xl">💰</div>
+            <div>
+              <h2 className="text-xl font-black uppercase tracking-tight">Cashback / Fidelidade</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recompensa para leads que agendam via Central</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setCbActive(v => !v)}
+            className={`px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${cbActive ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'}`}
+          >
+            {cbActive ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        {cbActive && (
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCbMode('percentual')}
+                className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${cbMode === 'percentual' ? 'bg-black text-white' : 'bg-slate-100 text-slate-500'}`}
+              >
+                Percentual (R$)
+              </button>
+              <button
+                onClick={() => setCbMode('fidelidade')}
+                className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${cbMode === 'fidelidade' ? 'bg-black text-white' : 'bg-slate-100 text-slate-500'}`}
+              >
+                Fidelidade (grátis)
+              </button>
+            </div>
+
+            {cbMode === 'percentual' ? (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Percentual de cashback (%)</label>
+                <input
+                  type="number"
+                  value={cbPercent}
+                  onChange={e => setCbPercent(Number(e.target.value))}
+                  min={1} max={50}
+                  className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-green-400"
+                />
+                <p className="text-[9px] text-slate-300 font-bold">Ex: 5% = R$ 2,50 de cashback em um serviço de R$ 50</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">A cada quantos agendamentos ganha 1 grátis?</label>
+                <input
+                  type="number"
+                  value={cbThreshold}
+                  onChange={e => setCbThreshold(Number(e.target.value))}
+                  min={2} max={50}
+                  className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-green-400"
+                />
+                <p className="text-[9px] text-slate-300 font-bold">Ex: A cada 10 agendamentos via Central, o cliente ganha 1 grátis</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <button onClick={save} className="px-8 py-3 bg-green-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">
+          {saving ? 'Salvando...' : 'Salvar Cashback'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── Leads Tab ────────────────────────────────────────────────────────────────
+
+const LeadsTab: React.FC = () => {
+  const [leads, setLeads] = useState<MarketplaceLead[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await db.getAllMarketplaceLeads();
+        setLeads(data);
+      } catch {}
+      setLoading(false);
+    })();
+  }, []);
+
+  const filtered = leads.filter(l => {
+    const q = search.toLowerCase();
+    return !q || (l.name || '').toLowerCase().includes(q) || l.phone.includes(q) || (l.city || '').toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black uppercase tracking-tight">Leads do Marketplace</h2>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{leads.length} leads capturados</p>
+        </div>
+      </div>
+
+      <input
+        type="text"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Buscar por nome, telefone ou cidade..."
+        className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400"
+      />
+
+      {loading ? (
+        <p className="text-sm text-slate-400 font-bold">Carregando...</p>
+      ) : (
+        <div className="bg-white rounded-3xl border-2 border-slate-100 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome</th>
+                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Telefone</th>
+                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cidade</th>
+                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nicho</th>
+                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Origem</th>
+                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0, 100).map(l => (
+                <tr key={l.id} className="border-t border-slate-50 hover:bg-slate-50/50">
+                  <td className="p-4 font-bold">{l.name || '-'}</td>
+                  <td className="p-4 font-mono text-xs">{l.phone}</td>
+                  <td className="p-4">{l.city || '-'}</td>
+                  <td className="p-4">{l.nichoInterest || '-'}</td>
+                  <td className="p-4">
+                    <span className="text-[8px] font-black px-2 py-1 rounded-full bg-blue-50 text-blue-600 uppercase">{l.source}</span>
+                  </td>
+                  <td className="p-4 text-xs text-slate-400">{new Date(l.createdAt).toLocaleDateString('pt-BR')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <p className="p-8 text-center text-slate-400 font-bold text-sm">Nenhum lead encontrado.</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Cashback Tab ──────────────────────────────────────────────────────────────
+
+const CashbackTab: React.FC = () => {
+  const [searchPhone, setSearchPhone] = useState('');
+  const [result, setResult] = useState<CashbackBalance | null | 'not_found'>(null);
+  const [searching, setSearching] = useState(false);
+
+  const search = async () => {
+    if (!searchPhone.trim()) return;
+    setSearching(true);
+    setResult(null);
+    try {
+      const balance = await db.getCashbackBalance(searchPhone.replace(/\D/g, ''));
+      setResult(balance || 'not_found');
+    } catch {
+      setResult('not_found');
+    }
+    setSearching(false);
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div>
+        <h2 className="text-xl font-black uppercase tracking-tight">Cashback / Fidelidade</h2>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Consulte o saldo de cashback por telefone</p>
+      </div>
+
+      <div className="flex gap-3">
+        <input
+          type="text"
+          value={searchPhone}
+          onChange={e => setSearchPhone(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          placeholder="Telefone do cliente (ex: 5544999999999)"
+          className="flex-1 border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400"
+        />
+        <button
+          onClick={search}
+          className="px-6 py-3 bg-orange-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all"
+        >
+          {searching ? '...' : 'Buscar'}
+        </button>
+      </div>
+
+      {result && result !== 'not_found' && (
+        <div className="bg-white rounded-3xl border-2 border-green-100 p-8 space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-green-100 text-green-700 rounded-2xl flex items-center justify-center text-2xl font-black">$</div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{result.phone}</p>
+              <p className="text-3xl font-black text-green-600">R$ {result.balance.toFixed(2)}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 mt-4">
+            <div className="text-center">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Ganho</p>
+              <p className="text-lg font-black">R$ {result.totalEarned.toFixed(2)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Usado</p>
+              <p className="text-lg font-black">R$ {result.totalUsed.toFixed(2)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Agendamentos</p>
+              <p className="text-lg font-black">{result.bookingsCount}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {result === 'not_found' && (
+        <div className="bg-slate-50 rounded-2xl p-6 text-center">
+          <p className="text-sm font-bold text-slate-400">Nenhum saldo encontrado para este telefone.</p>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default SuperAdminView;
