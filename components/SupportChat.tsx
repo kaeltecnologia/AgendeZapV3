@@ -75,6 +75,29 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
     }
   };
 
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (!file || uploading) return;
+        setUploading(true);
+        try {
+          const url = await db.uploadSupportImage(tenantId, file);
+          await db.sendTenantSupportMessage(tenantId, '', url);
+          await load();
+        } catch {
+          alert('Erro ao enviar imagem colada.');
+        } finally {
+          setUploading(false);
+        }
+        return;
+      }
+    }
+  };
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -194,6 +217,7 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
               value={text}
               onChange={e => setText(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder="Digite sua mensagem..."
               rows={1}
               className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-300 transition-all leading-snug"

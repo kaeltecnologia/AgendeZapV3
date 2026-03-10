@@ -451,6 +451,7 @@ async function callBrain(
   const _brNowCB = new Date(Date.now() - 3 * 60 * 60 * 1000);
   const _padCB = (n: number) => String(n).padStart(2, '0');
   const todayISO = `${_brNowCB.getUTCFullYear()}-${_padCB(_brNowCB.getUTCMonth()+1)}-${_padCB(_brNowCB.getUTCDate())}`;
+  const _currentTime = `${_padCB(_brNowCB.getUTCHours())}:${_padCB(_brNowCB.getUTCMinutes())}`;
 
   const svcList = services.map(s =>
     `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`
@@ -552,7 +553,10 @@ async function callBrain(
 ⛔ REGRAS ABSOLUTAS:
 • Se DIA não estiver no CONTEXTO ATUAL → pergunte "Tem algum dia de preferência?" ANTES de qualquer horário
 • EXCEÇÃO: se o cliente perguntar sobre horários SEM mencionar dia ("tem horário?", "como estão os horários?", "horário disponível", "tem vaga?") → assuma HOJE SOMENTE se hoje estiver aberto. Se hoje estiver FECHADO, diga "Hoje estamos fechados. Para qual dia você gostaria?" e NÃO extraia data
-• Se DIA definido mas PERÍODO não → pergunte "Prefere de manhã ou à tarde?"
+• Se DIA = HOJE e PERÍODO não definido → pergunte apenas períodos FUTUROS (consulte a hora atual acima):
+  - Agora após 12:00 → NÃO ofereça manhã → "Prefere à tarde ou à noite?"
+  - Agora após 18:00 → NÃO ofereça manhã/tarde → vá direto para horários da noite
+• Se DIA ≠ HOJE e PERÍODO não definido → pergunte "Prefere de manhã ou à tarde?"
 • ❌ JAMAIS mencione ou sugira horário específico (ex: "09:00", "15:00") sem ter DIA confirmado no CONTEXTO ATUAL
 
 ⚠️ REGRA ABSOLUTA — SEM SERVIÇO + DIA = SEM HORÁRIOS:
@@ -568,6 +572,13 @@ async function callBrain(
 
   // ── Behavioral rules covering 30 real-world scenarios ──────────────────
   const behaviorRules = `
+⚠️ REGRA SOBRE PERÍODOS E FUNCIONAMENTO:
+• NUNCA diga "não trabalhamos à [período]" se o FUNCIONAMENTO listado acima cobre esse período
+  Ex: Funcionamento até 20:00 → NÃO diga "não trabalhamos à noite"
+• Se não há SLOTS disponíveis num período → diga "Não temos horário disponível à [período], mas temos [alternativas]"
+• Se o FUNCIONAMENTO realmente NÃO cobre o período → aí sim: "Nosso horário vai até [hora]"
+• Sempre consulte o FUNCIONAMENTO acima antes de dizer algo sobre períodos
+
 ⛔ ARMADILHAS — NUNCA FAÇA:
 • "Quero cortar amanhã" → NÃO agende sem profissional + horário confirmados
 • "Tem horário hoje?" / "Como estão os horários?" / "Horário disponível" / "Tem vaga?" SEM dia específico = se hoje estiver ABERTO, assuma HOJE + "Quer agendar? Qual serviço?". Se hoje estiver FECHADO → "Hoje estamos fechados. Para qual dia você gostaria?"
@@ -640,7 +651,7 @@ ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
     .filter(Boolean).join(', ');
   const _todayStatus = _todayOpen ? `HOJE (${_dowNames[_todayDow]}): ABERTO (${_opHours[_todayDow].range})` : `HOJE (${_dowNames[_todayDow]}): ❌ FECHADO`;
 
-  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}.
+  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}. Agora são ${_currentTime} (Brasília).
 ${introLinha}
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${followUpCtx}${audioNote}${greetSection}${groupSection}
 SERVIÇOS: ${svcList}
@@ -675,9 +686,15 @@ ${isFirstMessage ? '📥 PRIMEIRA MENSAGEM: processe TUDO que o cliente já info
 2. Ofereça o mais próximo: "Mas teria amanhã às 17:00"
 3. Pergunte: "Serve??" — NUNCA assuma aceitação
 
+📅 AO RESUMIR PARA CONFIRMAÇÃO (todos os dados completos):
+• OBRIGATÓRIO incluir: [Serviço] + [Profissional] + [Data] + [Horário]
+• Formato: "Vou confirmar: [Serviço] com [Profissional] dia [Data] às [Horário]. Confirma?"
+• Aguarde "sim/ok/pode" antes de confirmed:true
+
 ✅ QUANDO CLIENTE CONFIRMA (sim/ok/pode/beleza/bora/isso):
 • Defina "confirmed":true — o sistema gravará automaticamente
-• Responda apenas: "Agendado! Te esperamos 😊" ou "Fechou! 👍"
+• Responda: "Agendado! [Serviço] com [Profissional], [Data] às [Horário]. Te esperamos! 😊"
+• SEMPRE inclua todos os detalhes na confirmação final
 
 🔄 QUANDO CLIENTE MUDA DE IDEIA OU DESISTE:
 ${farewellLine}
@@ -2765,6 +2782,18 @@ async function _handleMessage(
   if (brain.extracted.confirmed === true && session.data.time && !_bookConfirmRe.test(lowerText)) {
     brain.extracted.confirmed = false;
     console.log('[Agent] TS guard: blocked hallucinated booking confirmation — client msg:', lowerText.slice(0, 80));
+  }
+
+  // ── TS guard: prevent confirming a time NOT in available slots ────────
+  if (brain.extracted.confirmed === true && session.data.time &&
+      session.data.availableSlots?.length &&
+      !session.data.availableSlots.includes(session.data.time)) {
+    const slotsDisplay = session.data.availableSlots.slice(0, 6).map((s: string) => `• ${s}`).join('\n');
+    brain.reply = `O horário das ${session.data.time} não está disponível. Temos:\n${slotsDisplay}\nQual você prefere?`;
+    session.data.time = undefined;
+    session.data.pendingConfirm = false;
+    brain.extracted.confirmed = false;
+    console.log('[Agent] TS guard: blocked confirmation for unavailable slot');
   }
 
   // ─── Handle confirmation ────────────────────────────────────────────
