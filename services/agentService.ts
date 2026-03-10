@@ -1082,6 +1082,21 @@ async function _handleMessage(
     }
   }
 
+  // ─── Per-lead AI pause check (early — before any processing) ───────
+  // If the admin paused IA for this specific lead, silently skip.
+  {
+    const _earlySettings = await db.getSettings(tenantId);
+    if (_earlySettings.customerData) {
+      const { data: _custPause } = await supabase
+        .from('customers').select('id')
+        .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+      if (_custPause && _earlySettings.customerData[_custPause.id]?.aiPaused) {
+        console.log('[Agent] AI paused for lead', maskPhone(phone), '— skipping');
+        return null;
+      }
+    }
+  }
+
   // ─── Check if user is providing their cancel reason (2nd step) ─────
   const preSession = getSession(tenantId, phone);
   if (preSession?.data?.pendingCancelReason) {
