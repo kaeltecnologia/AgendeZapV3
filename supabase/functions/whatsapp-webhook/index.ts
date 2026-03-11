@@ -547,23 +547,6 @@ function _isWDuplicate(phone: string, text: string): boolean {
   return false;
 }
 
-// ── Per-phone rate limiter: max 1 bot response per 10s to prevent double replies ──
-const _phoneLastReply = new Map<string, number>();
-function _isPhoneRateLimited(phone: string): boolean {
-  const key = phone.replace(/\D/g, '');
-  const now = Date.now();
-  const last = _phoneLastReply.get(key);
-  if (last !== undefined && now - last < 10_000) {
-    console.log(`[sendMsg] Rate-limited: phone ${key.slice(0, 2)}***${key.slice(-4)} — last reply ${Math.round((now - last) / 1000)}s ago`);
-    return true;
-  }
-  _phoneLastReply.set(key, now);
-  if (_phoneLastReply.size > 500) {
-    for (const [k, t] of _phoneLastReply) { if (now - t > 60_000) _phoneLastReply.delete(k); }
-  }
-  return false;
-}
-
 // ── Send "typing..." presence indicator ──────────────────────────────
 async function sendTyping(instanceName: string, phone: string, delayMs = 3000) {
   try {
@@ -845,9 +828,6 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     apiKey = sharedKey || (tenant.gemini_api_key || '').trim();
   }
   if (!apiKey) { console.warn('[Agent] no API key for tenant', tenant.id); return; }
-
-  // ── Rate limit: block concurrent runAgent for same phone within 10s ──
-  if (_isPhoneRateLimited(phone)) return;
 
   const lowerText = text.toLowerCase();
   const isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
