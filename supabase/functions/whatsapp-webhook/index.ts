@@ -2131,6 +2131,21 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     console.log('[Agent] TS auto-selected only professional:', professionals[0].name);
   }
 
+  // ── Auto-assume TODAY when client asks about availability without specifying day ──
+  // The flowSection tells the AI to assume today in these cases, but without setting
+  // date in TS the slot prefetch never runs and AI hallucinates times (incl. past ones).
+  if (!session.data.date) {
+    const _normAvail = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const _availKws = ['tem horario', 'tem vaga', 'horario disponivel', 'horarios disponiveis',
+      'como estao os horarios', 'tem horario hoje', 'tem vaga hoje', 'horario livre',
+      'tem horario disponivel', 'quais horarios', 'que horarios', 'horario para hoje'];
+    const _asksAvailToday = _availKws.some(kw => _normAvail.includes(kw));
+    if (_asksAvailToday) {
+      session.data.date = todayISO;
+      console.log('[Agent] TS auto-set date=today (availability inquiry)');
+    }
+  }
+
   // ── Clear stale availableSlots from session — always start fresh ──────────
   // Old slots from previous turns must never leak into the AI context.
   session.data.availableSlots = undefined;
