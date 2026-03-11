@@ -4,6 +4,7 @@ import { evolutionService, EVOLUTION_API_URL, EVOLUTION_API_KEY } from '../servi
 import { supabase } from '../services/supabase';
 import { Customer, Service, Professional, AppointmentStatus, BookingSource, encodeServiceIds } from '../types';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
+import Confetti from './Confetti';
 
 interface ConvMessage {
   id: string;
@@ -73,7 +74,7 @@ function savePicCache(cache: Record<string, { url: string; ts: number }>) {
   try { localStorage.setItem(PIC_CACHE_KEY, JSON.stringify(cache)); } catch {}
 }
 
-const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number) => void }> = ({ tenantId, onUnreadCount }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -134,6 +135,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [bookingTime, setBookingTime] = useState('');
   const [bookingSaving, setBookingSaving] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [bookingSlots, setBookingSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -144,6 +146,10 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Track message count per phone to detect only genuine new messages
   const prevMsgCountRef = useRef<Record<string, number>>({});
+  // IDs of messages that should animate in
+  const [newMsgIds, setNewMsgIds] = useState<Set<string>>(new Set());
+  // AI typing indicator
+  const [aiTyping, setAiTyping] = useState(false);
 
   const extrairNumero = (msg: any): string | null => {
     const candidatos = [
@@ -373,6 +379,13 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const prev = prevMsgCountRef.current[selectedPhone] ?? count;
     if (count > prev) {
       prevMsgCountRef.current[selectedPhone] = count;
+      // Mark new messages for animation
+      const newMsgs = conv?.messages.slice(prev) ?? [];
+      if (newMsgs.length > 0) {
+        const ids = new Set(newMsgs.map(m => m.id));
+        setNewMsgIds(ids);
+        setTimeout(() => setNewMsgIds(new Set()), 600);
+      }
       const el = messagesContainerRef.current;
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
       if (nearBottom) messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -446,10 +459,12 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const sendReply = async () => {
     if (!replyText.trim() || !selectedPhone || !instanceName || sending) return;
     setSending(true);
+    setAiTyping(true);
     const msgText = replyText.trim();
     setReplyText('');
     try {
       await evolutionService.sendMessage(instanceName, selectedPhone, msgText);
+      setTimeout(() => setAiTyping(false), 2000);
       const ts = Math.floor(Date.now() / 1000);
       const msgId = `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const newMsg: ConvMessage = {
@@ -474,6 +489,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } catch (e) {
       console.error('Send error:', e);
       setReplyText(msgText); // restore on error
+      setAiTyping(false);
     } finally {
       setSending(false);
       textareaRef.current?.focus();
@@ -506,6 +522,13 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const seen = seenAt[conv.phone] ?? 0;
     return conv.lastTimestamp > seen && conv.messages.some(m => !m.fromMe);
   };
+
+  // Report unread count to parent (for sidebar badge)
+  useEffect(() => {
+    const count = conversations.filter(c => isUnread(c)).length;
+    onUnreadCount?.(count);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, seenAt]);
 
   // Fetch profile pics via batch endpoint (findContacts) — single call for all contacts
   useEffect(() => {
@@ -727,6 +750,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         isPlan: isPlanAppt,
       });
       setBookingSuccess(true);
+      setShowConfetti(true);
       setTimeout(() => setShowBooking(false), 1500);
     } catch (e: any) {
       setBookingError(e?.message || 'Erro ao agendar.');
@@ -818,6 +842,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   return (
     <div className="space-y-6 animate-fadeIn">
+      <Confetti active={showConfetti} onDone={() => setShowConfetti(false)} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
@@ -860,7 +885,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         >
           <div className="flex h-full">
             {/* ── Sidebar ──────────────────────── */}
-            <div className={`${selectedPhone ? 'hidden sm:flex' : 'flex'} w-full sm:w-72 md:w-80 border-r-2 border-slate-100 flex-col flex-shrink-0`}>
+            <div className={`${selectedPhone ? 'hidden sm:flex' : 'flex'} w-full sm:w-72 md:w-80 border-r-2 border-slate-100 flex-col flex-shrink-0 relative z-10 shadow-[2px_0_12px_rgba(0,0,0,0.08)]`}>
               <div className="p-4 border-b border-slate-100 space-y-2">
                 <input
                   placeholder="Buscar conversa..."
@@ -905,7 +930,9 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                           </div>
                         )}
                         {isUnread(conv) && selectedPhone !== conv.phone && (
-                          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-500 rounded-full border-2 border-white" />
+                          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-500 rounded-full border-2 border-white">
+                            <span className="unread-ping bg-orange-500" />
+                          </span>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -1011,7 +1038,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   })()}
 
                   {/* Messages */}
-                  <div ref={messagesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-2 bg-slate-50/30">
+                  <div ref={messagesContainerRef} className="chat-wallpaper flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1">
                     {selectedConv.messages.length === 0 && (
                       <div className="h-full flex items-center justify-center">
                         <p className="text-xs font-black text-slate-200 uppercase">Nenhuma mensagem ainda. Envie a primeira!</p>
@@ -1039,52 +1066,80 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       return (
                         <React.Fragment key={msg.id || i}>
                           {showDateSep && msg.timestamp > 0 && (
-                            <div className="flex justify-center py-3">
-                              <span className="bg-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-wider px-4 py-1 rounded-full shadow-sm">
+                            <div className="flex justify-center py-2">
+                              <span className="msg-date-pill text-[11px] font-semibold px-4 py-1 rounded-full shadow-sm">
                                 {dateSepLabel}
                               </span>
                             </div>
                           )}
-                          <div className={`flex ${msg.fromMe ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[72%] px-4 py-2.5 rounded-2xl text-xs font-medium shadow-sm ${
-                              msg.fromMe
-                                ? 'bg-orange-500 text-white rounded-br-sm'
-                                : 'bg-white text-black border border-slate-100 rounded-bl-sm'
-                            }`}>
-                              {msg.isImage ? (
-                                <ImageBubble msg={msg} />
-                              ) : msg.isAudio ? (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 py-0.5">
-                                    <span className="text-base">🎵</span>
-                                    {transcriptions[msg.id] ? (
-                                      <p className="whitespace-pre-wrap leading-relaxed break-words text-xs">{transcriptions[msg.id]}</p>
-                                    ) : transcribing.has(msg.id) ? (
-                                      <span className={`text-[10px] font-black italic ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`}>transcrevendo...</span>
-                                    ) : (
-                                      <button
-                                        onClick={() => transcribeMsg(msg)}
-                                        className={`text-[10px] font-black uppercase tracking-widest underline ${msg.fromMe ? 'text-orange-100 hover:text-white' : 'text-slate-400 hover:text-orange-500'}`}
-                                      >Transcrever</button>
-                                    )}
-                                  </div>
-                                </div>
+                          <div className={`flex ${msg.fromMe ? 'justify-end' : 'justify-start'} px-1 py-0.5`}>
+                            <div className={`relative max-w-[72%] ${newMsgIds.has(msg.id) ? 'animate-msgIn' : ''}`}>
+                              {/* WhatsApp tail */}
+                              {msg.fromMe ? (
+                                <svg style={{ position: 'absolute', bottom: 0, right: -7, display: 'block', pointerEvents: 'none' }} width="8" height="11" viewBox="0 0 8 11">
+                                  <path d="M0 0 L0 11 L8 11 Z" fill="#f97316"/>
+                                </svg>
                               ) : (
-                                <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.text}</p>
+                                <svg style={{ position: 'absolute', bottom: 0, left: -7, display: 'block', pointerEvents: 'none' }} width="8" height="11" viewBox="0 0 8 11">
+                                  <path d="M8 0 L8 11 L0 11 Z" fill="var(--bubble-in-bg)"/>
+                                </svg>
                               )}
-                              <p className={`text-[9px] mt-1 text-right font-bold ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`}>
-                                {formatTime(msg.timestamp)}
-                              </p>
+                              {/* Bubble */}
+                              <div className={`px-3 py-2 rounded-lg text-xs shadow-sm ${
+                                msg.fromMe
+                                  ? 'bg-orange-500 text-white rounded-br-none'
+                                  : 'msg-bubble-in rounded-bl-none'
+                              }`}>
+                                {msg.isImage ? (
+                                  <ImageBubble msg={msg} />
+                                ) : msg.isAudio ? (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 py-0.5">
+                                      <span className="text-base">🎵</span>
+                                      {transcriptions[msg.id] ? (
+                                        <p className="whitespace-pre-wrap leading-relaxed break-words text-xs">{transcriptions[msg.id]}</p>
+                                      ) : transcribing.has(msg.id) ? (
+                                        <span className={`text-[10px] italic ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`}>transcrevendo...</span>
+                                      ) : (
+                                        <button
+                                          onClick={() => transcribeMsg(msg)}
+                                          className={`text-[10px] uppercase tracking-widest underline ${msg.fromMe ? 'text-orange-100 hover:text-white' : 'text-slate-400 hover:text-orange-500'}`}
+                                        >Transcrever</button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.text}</p>
+                                )}
+                                <p className={`text-[10px] mt-0.5 text-right ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`} style={{ color: msg.fromMe ? undefined : 'var(--bubble-in-ts)' }}>
+                                  {formatTime(msg.timestamp)}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </React.Fragment>
                       );
                     })}
+                    {/* AI Typing indicator */}
+                    {aiTyping && (
+                      <div className="flex justify-start px-1 py-0.5 animate-msgIn">
+                        <div className="relative max-w-[72%]">
+                          <svg style={{ position: 'absolute', bottom: 0, left: -7, display: 'block', pointerEvents: 'none' }} width="8" height="11" viewBox="0 0 8 11">
+                            <path d="M8 0 L8 11 L0 11 Z" fill="var(--bubble-in-bg)"/>
+                          </svg>
+                          <div className="msg-bubble-in rounded-lg rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-1.5">
+                            <span className="typing-dot" />
+                            <span className="typing-dot" />
+                            <span className="typing-dot" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div ref={messagesEndRef} />
                   </div>
 
                   {/* Reply box */}
-                  <div className="flex-shrink-0 px-4 py-3 border-t-2 border-slate-100 bg-white">
+                  <div className="flex-shrink-0 px-4 py-3 border-t-2 border-slate-200 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
                     <div className="flex gap-2 items-end">
                       <textarea
                         ref={textareaRef}
@@ -1103,7 +1158,7 @@ const ConversationsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       <button
                         onClick={sendReply}
                         disabled={!replyText.trim() || sending}
-                        className="px-5 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-all disabled:opacity-40 flex-shrink-0 self-end"
+                        className="px-6 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-all disabled:opacity-40 flex-shrink-0 self-end shadow-md shadow-orange-500/30"
                       >
                         {sending ? '...' : 'Enviar'}
                       </button>

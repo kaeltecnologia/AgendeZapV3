@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import Login from './components/Login';
 import AiPollingManager from './components/AiPollingManager';
 
@@ -42,6 +42,9 @@ import { TenantStatus } from './types';
 import PlanGate from './components/PlanGate';
 import PlanUpgradeModal from './components/PlanUpgradeModal';
 import { hasFeature, FeatureKey } from './config/planConfig';
+import Toast, { ToastMessage } from './components/Toast';
+import WhatsNew from './components/WhatsNew';
+export const ToastContext = React.createContext<(msg: Omit<ToastMessage, 'id'>) => void>(() => {});
 
 enum View {
   DASHBOARD = 'DASHBOARD',
@@ -105,9 +108,82 @@ const App: React.FC = () => {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('dashboard');
   const [tenantPlan, setTenantPlan] = useState<string>('START');
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('agz_dark') === '1');
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('agz_dark') !== '0');
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
+  const [unreadConvCount, setUnreadConvCount] = useState(0);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
+    setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
+  }, []);
+  const removeToast = React.useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+  // Appointment arrival alert
+  type ApptAlert = { id: string; clientName: string; service: string; profName: string; time: string };
+  const [apptAlert, setApptAlert] = useState<ApptAlert | null>(null);
+  const alertedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!tenantId || role !== 'TENANT') return;
+    const check = async () => {
+      try {
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+        const { data } = await supabase
+          .from('appointments')
+          .select('id, inicio, status, customers(nome), professionals(nome), services(nome)')
+          .eq('tenant_id', tenantId)
+          .eq('status', 'CONFIRMED')
+          .gte('inicio', `${todayStr}T00:00:00`)
+          .lte('inicio', `${todayStr}T23:59:59`);
+        for (const a of (data || [])) {
+          if (alertedRef.current.has(a.id)) continue;
+          const apptTime = new Date(a.inicio);
+          const diffMs = apptTime.getTime() - now.getTime();
+          if (diffMs >= -60000 && diffMs <= 180000) {
+            alertedRef.current.add(a.id);
+            setApptAlert({
+              id: a.id,
+              clientName: (a.customers as any)?.nome || 'Cliente',
+              service:    (a.services as any)?.nome  || 'Serviço',
+              profName:   (a.professionals as any)?.nome || '',
+              time: a.inicio.slice(11, 16),
+            });
+            break;
+          }
+        }
+      } catch {}
+    };
+    check();
+    const t = setInterval(check, 60000);
+    return () => clearInterval(t);
+  }, [tenantId, role]);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarAutoExpanded, setSidebarAutoExpanded] = useState(false);
+  const expandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSidebarEnter = () => {
+    if (collapseTimerRef.current) { clearTimeout(collapseTimerRef.current); collapseTimerRef.current = null; }
+    if (sidebarCollapsed) {
+      expandTimerRef.current = setTimeout(() => { setSidebarCollapsed(false); setSidebarAutoExpanded(true); }, 1000);
+    }
+  };
+  const handleSidebarLeave = () => {
+    if (expandTimerRef.current) { clearTimeout(expandTimerRef.current); expandTimerRef.current = null; }
+    if (sidebarAutoExpanded) {
+      collapseTimerRef.current = setTimeout(() => { setSidebarCollapsed(true); setSidebarAutoExpanded(false); }, 1000);
+    }
+  };
+  const toggleSidebar = () => {
+    if (expandTimerRef.current) { clearTimeout(expandTimerRef.current); expandTimerRef.current = null; }
+    if (collapseTimerRef.current) { clearTimeout(collapseTimerRef.current); collapseTimerRef.current = null; }
+    setSidebarAutoExpanded(false);
+    setSidebarCollapsed(v => !v);
+  };
+
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [relatoriosOpen, setRelatoriosOpen] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
@@ -413,7 +489,7 @@ const App: React.FC = () => {
           <AIChatSimulator tenantId={tenantId} />
         </PlanGate>
       );
-      case View.CONVERSAS: return <ConversationsView tenantId={tenantId} />;
+      case View.CONVERSAS: return <ConversationsView tenantId={tenantId} onUnreadCount={setUnreadConvCount} />;
       case View.DISPARADOR: return (
         <PlanGate feature="disparo" tenantPlan={tenantPlan}>
           <BroadcastView tenantId={tenantId} />
@@ -450,7 +526,10 @@ const App: React.FC = () => {
 
   return (
     // ✅ CORREÇÃO: sem overflow nem transform aqui — deixa fixed dos modais escapar para a viewport
+    <ToastContext.Provider value={showToast}>
     <div className="flex h-screen bg-slate-50/30">
+      <Toast toasts={toasts} onRemove={removeToast} />
+      {role === 'TENANT' && <WhatsNew />}
       {tenantId && (
         <AiPollingManager
           tenantId={tenantId}
@@ -467,40 +546,61 @@ const App: React.FC = () => {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed md:relative inset-y-0 left-0 w-64 bg-white flex flex-col shrink-0 border-r border-slate-200 z-50 h-screen md:sticky md:top-0 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="p-8 flex flex-col space-y-2">
-          <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">AgendeZap</h1>
-          {role === 'SUPERADMIN' && <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full w-fit tracking-widest uppercase">SUPER ADMIN</span>}
+      <aside
+        onMouseEnter={handleSidebarEnter}
+        onMouseLeave={handleSidebarLeave}
+        className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${sidebarCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-50 h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+      >
+        {/* Logo / toggle */}
+        <div className={`flex ${sidebarCollapsed ? 'flex-col items-center py-5 px-2 gap-3' : 'flex-row items-center justify-between p-8'} transition-all duration-300`}>
+          {sidebarCollapsed ? (
+            <>
+              <span className="text-lg font-black text-orange-500 uppercase italic leading-none tracking-tighter">AGZ</span>
+              <button onClick={toggleSidebar} title="Expandir menu" className="text-slate-300 hover:text-orange-500 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
+              </button>
+            </>
+          ) : (
+            <>
+              <div>
+                <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">AgendeZap</h1>
+                {role === 'SUPERADMIN' && <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full w-fit tracking-widest uppercase mt-1 block">SUPER ADMIN</span>}
+              </div>
+              <button onClick={toggleSidebar} title="Minimizar menu" className="text-slate-300 hover:text-slate-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100 shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
+              </button>
+            </>
+          )}
         </div>
 
-        <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-2 py-2 space-y-1 overflow-y-auto custom-scrollbar">
           {role === 'SUPERADMIN' ? (
             <>
-              <NavItem active={superAdminTab === 'dashboard'} onClick={navTo(() => setSuperAdminTab('dashboard'))} icon={<IconDashboard />} label="Dashboard" />
-              <NavItem active={superAdminTab === 'clients'} onClick={navTo(() => setSuperAdminTab('clients'))} icon={<IconUsers />} label="Clientes SaaS" />
-              <NavItem active={superAdminTab === 'avisos'} onClick={navTo(() => setSuperAdminTab('avisos'))} icon={<IconBroadcast />} label="Avisos" />
-              <NavItem active={superAdminTab === 'cobranca'} onClick={navTo(() => setSuperAdminTab('cobranca'))} icon={<IconFinance />} label="Cobrança" />
-              <NavItem active={superAdminTab === 'suporte'} onClick={navTo(() => setSuperAdminTab('suporte'))} icon={<IconChat />} label="Caixa de Entrada" />
+              <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'dashboard'} onClick={navTo(() => setSuperAdminTab('dashboard'))} icon={<IconDashboard />} label="Dashboard" />
+              <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'clients'} onClick={navTo(() => setSuperAdminTab('clients'))} icon={<IconUsers />} label="Clientes SaaS" />
+              <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'avisos'} onClick={navTo(() => setSuperAdminTab('avisos'))} icon={<IconBroadcast />} label="Avisos" />
+              <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'cobranca'} onClick={navTo(() => setSuperAdminTab('cobranca'))} icon={<IconFinance />} label="Cobrança" />
+              <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'suporte'} onClick={navTo(() => setSuperAdminTab('suporte'))} icon={<IconChat />} label="Caixa de Entrada" />
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">WhatsApp Admin</p>
-                <NavItem active={superAdminTab === 'conversas'} onClick={navTo(() => setSuperAdminTab('conversas'))} icon={<IconChat />} label="WA Atendimento" />
-                <NavItem active={superAdminTab === 'disparo'} onClick={navTo(() => setSuperAdminTab('disparo'))} icon={<IconBroadcast />} label="Disparador" />
-                <NavItem active={superAdminTab === 'campanhas'} onClick={navTo(() => setSuperAdminTab('campanhas'))} icon={<IconBroadcast />} label="Campanhas" />
-                <NavItem active={superAdminTab === 'prospeccao'} onClick={navTo(() => setSuperAdminTab('prospeccao'))} icon={<IconUsers />} label="Prospecção" />
+                {!sidebarCollapsed && <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">WhatsApp Admin</p>}
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'conversas'} onClick={navTo(() => setSuperAdminTab('conversas'))} icon={<IconChat />} label="WA Atendimento" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'disparo'} onClick={navTo(() => setSuperAdminTab('disparo'))} icon={<IconBroadcast />} label="Disparador" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'campanhas'} onClick={navTo(() => setSuperAdminTab('campanhas'))} icon={<IconBroadcast />} label="Campanhas" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'prospeccao'} onClick={navTo(() => setSuperAdminTab('prospeccao'))} icon={<IconUsers />} label="Prospecção" />
               </div>
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Central</p>
-                <NavItem active={superAdminTab === 'central'} onClick={navTo(() => setSuperAdminTab('central'))} icon={<IconBroadcast />} label="Central" />
-                <NavItem active={superAdminTab === 'wa_central'} onClick={navTo(() => setSuperAdminTab('wa_central'))} icon={<IconChat />} label="WA Central" />
-                <NavItem active={superAdminTab === 'leads'} onClick={navTo(() => setSuperAdminTab('leads'))} icon={<IconUsers />} label="Leads" />
-                <NavItem active={superAdminTab === 'cashback'} onClick={navTo(() => setSuperAdminTab('cashback'))} icon={<IconFinance />} label="Cashback" />
+                {!sidebarCollapsed && <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Central</p>}
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'central'} onClick={navTo(() => setSuperAdminTab('central'))} icon={<IconBroadcast />} label="Central" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'wa_central'} onClick={navTo(() => setSuperAdminTab('wa_central'))} icon={<IconChat />} label="WA Central" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'leads'} onClick={navTo(() => setSuperAdminTab('leads'))} icon={<IconUsers />} label="Leads" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'cashback'} onClick={navTo(() => setSuperAdminTab('cashback'))} icon={<IconFinance />} label="Cashback" />
               </div>
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Sistema</p>
-                <NavItem active={superAdminTab === 'logs'} onClick={navTo(() => setSuperAdminTab('logs'))} icon={<IconTerminal />} label="Logs" />
-                <NavItem active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
-                <NavItem active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
-                <NavItem active={superAdminTab === 'config'} onClick={navTo(() => setSuperAdminTab('config'))} icon={<IconSettings />} label="Configurações" />
+                {!sidebarCollapsed && <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Sistema</p>}
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'logs'} onClick={navTo(() => setSuperAdminTab('logs'))} icon={<IconTerminal />} label="Logs" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'config'} onClick={navTo(() => setSuperAdminTab('config'))} icon={<IconSettings />} label="Configurações" />
               </div>
             </>
           ) : (
@@ -508,85 +608,84 @@ const App: React.FC = () => {
               {/* ── Convidar Parceiro ── */}
               <button
                 onClick={navTo(() => setShowInviteModal(true))}
-                className="w-full flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-3"
+                className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-3`}
               >
                 <IconGift />
-                <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>
+                {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>}
               </button>
 
               {/* ── Operacional ── */}
               <div className="space-y-0.5">
-                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operacional</p>
-                <NavItem active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
-                <NavItem active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
-                <NavItem active={currentView === View.COMANDAS} onClick={navTo(() => setCurrentView(View.COMANDAS))} icon={<IconScissors />} label="Comandas" />
-                <NavItem active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" />
+                {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operacional</p>}
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => setCurrentView(View.COMANDAS))} icon={<IconScissors />} label="Comandas" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />
               </div>
 
               {/* ── Operação ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
-                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operação</p>
-                <NavItem active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />
-                <NavItem active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
-                <NavItem active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
-                <NavItem active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />
-                <NavItem active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
+                {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operação</p>}
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
               </div>
 
               {/* ── Financeiro & Vendas ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
-                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>
-                <NavItem active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
-                <NavItem active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => setCurrentView(View.NOTAS_FISCAIS))} icon={<IconDoc />} label="Notas Fiscais" />
-                <NavItem active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => setCurrentView(View.FOLHA_PAGAMENTO))} icon={<IconWallet />} label="Folha Pgto." />
-                {/* Relatórios — item expansível */}
-                <button
-                  onClick={() => setRelatoriosOpen(v => !v)}
-                  className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${
-                    currentView === View.MARKETING || currentView === View.PERFORMANCE
-                      ? 'bg-black text-white shadow-xl scale-105'
-                      : 'text-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className={`text-xl mr-3 ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}>
-                    <IconMarketing />
-                  </span>
-                  <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : ''}`}>
-                    Relatórios
-                  </span>
-                  <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-300'}`}>▶</span>
-                </button>
-                {relatoriosOpen && (
-                  <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
-                    <NavItem active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
-                    <NavItem active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
-                  </div>
+                {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>}
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => setCurrentView(View.NOTAS_FISCAIS))} icon={<IconDoc />} label="Notas Fiscais" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => setCurrentView(View.FOLHA_PAGAMENTO))} icon={<IconWallet />} label="Folha Pgto." />
+                {/* Relatórios */}
+                {sidebarCollapsed ? (
+                  <NavItem collapsed={true} active={currentView === View.MARKETING || currentView === View.PERFORMANCE} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Relatórios" />
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setRelatoriosOpen(v => !v)}
+                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'bg-black text-white shadow-xl scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
+                    >
+                      <span className={`text-xl mr-3 ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}><IconMarketing /></span>
+                      <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : ''}`}>Relatórios</span>
+                      <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-300'}`}>▶</span>
+                    </button>
+                    {relatoriosOpen && (
+                      <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
+                        <NavItem collapsed={false} active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
+                        <NavItem collapsed={false} active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
               {/* ── Base ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
-                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Base</p>
-                <NavItem active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
-                <NavItem active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
-                <NavItem active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
-                <NavItem active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
-                <NavItem active={currentView === View.MARKETPLACE} onClick={navTo(() => setCurrentView(View.MARKETPLACE))} icon={<IconGlobe />} label="Marketplace" />
-                <NavItem active={currentView === View.OTIMIZACAO} onClick={navTo(() => setCurrentView(View.OTIMIZACAO))} icon={<IconTerminal />} label="Dados IA" />
+                {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Base</p>}
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.MARKETPLACE} onClick={navTo(() => setCurrentView(View.MARKETPLACE))} icon={<IconGlobe />} label="Marketplace" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.OTIMIZACAO} onClick={navTo(() => setCurrentView(View.OTIMIZACAO))} icon={<IconTerminal />} label="Dados IA" />
               </div>
             </>
           )}
-
         </nav>
 
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 space-y-2">
+        <div className={`${sidebarCollapsed ? 'px-2 py-4 flex flex-col items-center gap-2' : 'p-6 space-y-2'} border-t border-slate-100 bg-slate-50/50 transition-all duration-300`}>
           {isImpersonating && (
-            <button onClick={handleExitImpersonation} className="flex items-center gap-2 w-full bg-orange-500 text-white px-4 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-black transition-all">
-              <span>↩</span><span>Sair da conta</span>
+            <button onClick={handleExitImpersonation} className={`flex items-center gap-2 w-full bg-orange-500 text-white ${sidebarCollapsed ? 'justify-center px-2 py-2' : 'px-4 py-2.5'} rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-black transition-all`}>
+              <span>↩</span>
+              {!sidebarCollapsed && <span>Sair da conta</span>}
             </button>
           )}
-          <button onClick={handleLogout} className="flex items-center space-x-3 w-full text-slate-400 hover:text-red-500 transition-all font-bold text-xs uppercase tracking-widest">
-            <IconLogout /> <span>Sair</span>
+          <button onClick={handleLogout} className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-3'} w-full text-slate-400 hover:text-red-500 transition-all font-bold text-xs uppercase tracking-widest`}>
+            <IconLogout />
+            {!sidebarCollapsed && <span>Sair</span>}
           </button>
         </div>
       </aside>
@@ -735,7 +834,38 @@ const App: React.FC = () => {
           <SupportChat tenantId={tenantId} tenantName={tenantName} />
         </>
       )}
+
+      {/* ── Appointment arrival alert ────────────────────── */}
+      {apptAlert && (
+        <div className="fixed bottom-6 right-6 z-[9997] w-80 bg-white dark:bg-[#132040] rounded-2xl shadow-2xl border border-slate-100 dark:border-[#1e3a5f] p-5 animate-toastIn">
+          <div className="flex items-start gap-3 mb-3">
+            <span className="text-2xl">⏰</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-sm text-black dark:text-white">Horário do atendimento!</p>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">{apptAlert.clientName} · {apptAlert.service}</p>
+              {apptAlert.profName && <p className="text-[10px] text-orange-500 font-bold mt-0.5">{apptAlert.profName} · {apptAlert.time}</p>}
+            </div>
+            <button onClick={() => setApptAlert(null)} className="text-slate-300 hover:text-slate-500 font-black text-sm leading-none">✕</button>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mb-4">O cliente chegou? Deseja abrir a comanda?</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setApptAlert(null); setCurrentView(View.COMANDAS); }}
+              className="flex-1 py-2.5 bg-orange-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-all"
+            >
+              Abrir Comanda
+            </button>
+            <button
+              onClick={() => setApptAlert(null)}
+              className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+    </ToastContext.Provider>
   );
 };
 
@@ -888,11 +1018,34 @@ const InvitePartnerModal: React.FC<{
   );
 };
 
-const NavItem = ({ active, onClick, icon, label, color }: any) => (
-  <button onClick={onClick} className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${active ? 'bg-black text-white shadow-xl scale-105' : `text-slate-500 hover:bg-slate-100 ${color || ''}`}`}>
-    <span className={`text-xl mr-3 ${active ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}>{icon}</span>
-    <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>
-  </button>
+const NavItem = ({ active, onClick, icon, label, color, collapsed, badge }: any) => (
+  <div className="relative group/ni">
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center ${collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3'} rounded-xl transition-all group ${
+        active ? 'bg-black text-white shadow-xl scale-105' : `text-slate-500 hover:bg-slate-100 ${color || ''}`
+      }`}
+    >
+      <span className={`text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}>{icon}</span>
+      {!collapsed && <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>}
+      {!collapsed && badge > 0 && (
+        <span className="ml-auto bg-orange-500 text-white text-[9px] font-black rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
+    </button>
+    {collapsed && badge > 0 && (
+      <span className="absolute top-0.5 right-0.5 bg-orange-500 text-white text-[8px] font-black rounded-full w-4 h-4 flex items-center justify-center z-10 pointer-events-none">
+        {badge > 9 ? '9+' : badge}
+      </span>
+    )}
+    {collapsed && (
+      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg opacity-0 group-hover/ni:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-[100] shadow-xl">
+        <div className="absolute right-full top-1/2 -translate-y-1/2 border-[5px] border-transparent border-r-gray-900" />
+        {label}
+      </div>
+    )}
+  </div>
 );
 
 const IconDashboard = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>;

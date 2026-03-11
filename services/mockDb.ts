@@ -1915,6 +1915,8 @@ class DatabaseService {
   async uploadSupportImage(tenantId: string, file: File): Promise<string> {
     const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : `image-${Date.now()}.png`;
     const path = `${tenantId}/${Date.now()}-${safeName}`;
+    // Ensure bucket exists (creates it if missing, ignores error if it already exists)
+    await supabase.storage.createBucket('support-images', { public: true }).catch(() => {});
     const { error } = await supabase.storage.from('support-images').upload(path, file, {
       upsert: false,
       contentType: file.type || 'image/png',

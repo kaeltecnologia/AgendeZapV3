@@ -13,6 +13,23 @@ const fmtBRL = (n: number) =>
 const DONUT_COLORS = ['#0f172a', '#475569', '#94a3b8', '#cbd5e1', '#e2e8f0'];
 const DAY_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+// Animated counter
+const AnimatedNumber: React.FC<{ value: number; prefix?: string; suffix?: string }> = ({ value, prefix = '', suffix = '' }) => {
+  const [display, setDisplay] = React.useState(0);
+  React.useEffect(() => {
+    if (value === 0) { setDisplay(0); return; }
+    let start = 0;
+    const step = Math.ceil(value / 20);
+    const t = setInterval(() => {
+      start = Math.min(start + step, value);
+      setDisplay(start);
+      if (start >= value) clearInterval(t);
+    }, 30);
+    return () => clearInterval(t);
+  }, [value]);
+  return <span className="animate-countUp">{prefix}{display}{suffix}</span>;
+};
+
 const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => void }> = ({ tenantId, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -132,6 +149,21 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
     .filter(a => a.startTime?.startsWith(todayStr))
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
   const pendingCount = todayAppts.filter(a => a.status === AppointmentStatus.PENDING).length;
+  const todayFinished = todayAppts.filter(a => a.status === AppointmentStatus.FINISHED).length;
+
+  // Streak: consecutive days with at least 1 finished appointment
+  const streakDays = React.useMemo(() => {
+    let streak = 0;
+    for (let i = 0; i < 365; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const s = d.toISOString().split('T')[0];
+      const hasAppt = appointments.some(a => a.startTime?.startsWith(s) && a.status === AppointmentStatus.FINISHED);
+      if (hasAppt) streak++;
+      else if (i > 0) break; // today can be 0 (still early)
+    }
+    return streak;
+  }, [appointments]);
 
   // Bar chart — last 7 days
   const barData = Array.from({ length: 7 }, (_, i) => {
@@ -255,6 +287,40 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
           </span>
         </div>
       )}
+
+      {/* Streak + Hoje */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-4 sm:p-5 flex items-center gap-4 shadow-lg shadow-orange-500/20">
+          <span className="text-3xl">🔥</span>
+          <div>
+            <p className="text-[10px] font-black text-orange-100 uppercase tracking-widest">Sequência</p>
+            <p className="text-2xl font-black text-white leading-none">
+              <AnimatedNumber value={streakDays} suffix=" dias" />
+            </p>
+            <p className="text-[10px] text-orange-200 mt-0.5">dias seguidos com atendimento</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 flex items-center gap-4">
+          <span className="text-3xl">📅</span>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hoje</p>
+            <p className="text-2xl font-black text-black leading-none">
+              <AnimatedNumber value={todayAppts.length} />
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5">agendamentos · <span className="text-green-600 font-bold">{todayFinished} concluídos</span></p>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 flex items-center gap-4">
+          <span className="text-3xl">⏳</span>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pendentes</p>
+            <p className={`text-2xl font-black leading-none ${pendingCount > 0 ? 'text-orange-500' : 'text-slate-300'}`}>
+              <AnimatedNumber value={pendingCount} />
+            </p>
+            <p className="text-[10px] text-slate-400 mt-0.5">aguardando confirmação</p>
+          </div>
+        </div>
+      </div>
 
       {/* KPIs estratégicos — linha 1 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -530,7 +596,7 @@ const StatCard = ({ icon, title, value, trend, trendLabel, trendPos, sub, onClic
         </div>
       </div>
       <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">{title}</p>
-      <p className="text-lg sm:text-2xl font-black text-black leading-none truncate">{value}</p>
+      <p className="text-lg sm:text-2xl font-black text-black leading-none truncate animate-countUp">{value}</p>
       {sub && <p className="text-[10px] text-slate-400 mt-1">{sub}</p>}
     </div>
   );
