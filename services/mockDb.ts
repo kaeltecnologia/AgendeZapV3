@@ -1913,17 +1913,30 @@ class DatabaseService {
   }
 
   async uploadSupportImage(tenantId: string, file: File): Promise<string> {
-    const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : `image-${Date.now()}.png`;
-    const path = `${tenantId}/${Date.now()}-${safeName}`;
-    // Ensure bucket exists (creates it if missing, ignores error if it already exists)
-    await supabase.storage.createBucket('support-images', { public: true }).catch(() => {});
-    const { error } = await supabase.storage.from('support-images').upload(path, file, {
-      upsert: false,
-      contentType: file.type || 'image/png',
-    });
-    if (error) throw error;
-    const { data } = supabase.storage.from('support-images').getPublicUrl(path);
-    return data.publicUrl;
+    // Helper: convert file to base64 data URL (fallback universal)
+    const toBase64 = (f: File): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      });
+
+    try {
+      const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : `image-${Date.now()}.png`;
+      const path = `${tenantId}/${Date.now()}-${safeName}`;
+      await supabase.storage.createBucket('support-images', { public: true }).catch(() => {});
+      const { error } = await supabase.storage.from('support-images').upload(path, file, {
+        upsert: false,
+        contentType: file.type || 'image/png',
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from('support-images').getPublicUrl(path);
+      return data.publicUrl;
+    } catch {
+      // Bucket unavailable — fallback to base64 data URL (always works)
+      return toBase64(file);
+    }
   }
 
   // ─── Reviews (Avaliações) ──────────────────────────────────────────

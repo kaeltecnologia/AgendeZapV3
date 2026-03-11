@@ -93,7 +93,6 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
           await load();
         } catch (err: any) {
           console.error('[SupportChat] paste upload error:', err);
-          alert('Erro ao enviar imagem. Verifique se o bucket "support-images" existe no Supabase.');
         } finally {
           setUploading(false);
         }
@@ -110,8 +109,8 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
       const url = await db.uploadSupportImage(tenantId, file);
       await db.sendTenantSupportMessage(tenantId, '', url);
       await load();
-    } catch {
-      alert('Erro ao enviar imagem. Verifique se o bucket support-images existe no Supabase.');
+    } catch (err) {
+      console.error('[SupportChat] file upload error:', err);
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
