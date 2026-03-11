@@ -167,18 +167,48 @@ const App: React.FC = () => {
 
   const handleClientArrived = async () => {
     if (!apptAlert) return;
+    const snap = apptAlert;
     setApptAlert(null);
     try {
       // 1. Update appointment status → ARRIVED
-      await db.updateAppointmentStatus(apptAlert.id, AppointmentStatus.ARRIVED, {});
-      // 2. Send WhatsApp notification to the professional
+      await db.updateAppointmentStatus(snap.id, AppointmentStatus.ARRIVED, {});
+
+      // 2. Create comanda if one doesn't already exist for this appointment
+      const [existingComandas, services] = await Promise.all([
+        db.getComandas(tenantId),
+        db.getServices(tenantId),
+      ]);
+      const alreadyHasComanda = existingComandas.some(c => c.appointment_id === snap.id);
+      if (!alreadyHasComanda) {
+        const svc = services.find(s => s.id === snap.serviceId);
+        await db.createComanda({
+          tenant_id: tenantId,
+          appointment_id: snap.id,
+          professional_id: snap.professionalId,
+          customer_id: snap.customerId,
+          status: 'open',
+          items: svc ? [{
+            id: crypto.randomUUID(),
+            type: 'service' as const,
+            itemId: svc.id,
+            name: svc.name,
+            qty: 1,
+            unitPrice: svc.price,
+            discountType: 'value' as const,
+            discount: 0,
+            professionalId: snap.professionalId,
+          }] : [],
+        });
+      }
+
+      // 3. Send WhatsApp notification to the professional (best-effort)
       sendClientArrivedNotification({
-        id: apptAlert.id,
+        id: snap.id,
         tenant_id: tenantId,
-        professional_id: apptAlert.professionalId,
-        service_id: apptAlert.serviceId,
-        customer_id: apptAlert.customerId,
-        startTime: apptAlert.inicio,
+        professional_id: snap.professionalId,
+        service_id: snap.serviceId,
+        customer_id: snap.customerId,
+        startTime: snap.inicio,
         durationMinutes: 0,
         status: AppointmentStatus.ARRIVED,
         source: 'AI' as any,
@@ -186,8 +216,8 @@ const App: React.FC = () => {
     } catch (e) {
       console.error('[handleClientArrived]', e);
     }
-    // 3. Open COMANDAS view on this appointment
-    setInitialApptId(apptAlert.id);
+    // 4. Open COMANDAS view on this appointment
+    setInitialApptId(snap.id);
     setCurrentView(View.COMANDAS);
   };
 
