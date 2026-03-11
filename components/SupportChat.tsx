@@ -192,7 +192,14 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
                     )}
                     {msg.content && <span>{msg.content}</span>}
                   </div>
-                  <span className="text-[10px] text-slate-300 font-bold px-1">{formatTime(msg.createdAt)}</span>
+                  <div className="flex items-center gap-1 px-1">
+                    <span className="text-[10px] text-slate-300 font-bold">{formatTime(msg.createdAt)}</span>
+                    {msg.sender === 'tenant' && (
+                      <span className={`text-[9px] font-black ${msg.read ? 'text-orange-400' : 'text-slate-300'}`}>
+                        {msg.read ? '✓✓ Visualizada' : '✓'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))

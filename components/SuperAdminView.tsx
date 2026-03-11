@@ -1811,10 +1811,17 @@ END $$;`.trim();
                             )}
                             {msg.content && <span>{msg.content}</span>}
                           </div>
-                          <span className="text-[9px] text-slate-300 font-bold px-1">
-                            {msg.sender === 'support' ? '🎧 Suporte · ' : ''}
-                            {(() => { try { return new Date(msg.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
-                          </span>
+                          <div className="flex items-center gap-1 px-1">
+                            <span className="text-[9px] text-slate-300 font-bold">
+                              {msg.sender === 'support' ? '🎧 Suporte · ' : ''}
+                              {(() => { try { return new Date(msg.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+                            </span>
+                            {msg.sender === 'support' && (
+                              <span className={`text-[9px] font-black ${msg.read ? 'text-orange-400' : 'text-slate-300'}`}>
+                                {msg.read ? '✓✓ Visualizada' : '✓'}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))
