@@ -321,7 +321,7 @@ async function callBrain(
       ? (data.serviceId
         ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia.'
         : '\n🚫 SERVIÇO NÃO DEFINIDO — ⛔ PROIBIDO mencionar ou sugerir QUALQUER horário específico (ex: "16:00", "17:00"). Pergunte APENAS: "Qual procedimento/serviço você gostaria?" — a disponibilidade depende da duração do serviço.')
-      : '');
+      : '\n⛔ HORÁRIOS NÃO VERIFICADOS — os horários reais AINDA NÃO foram buscados. NUNCA mencione, sugira ou cite horários específicos (ex: "15:00", "16:00", "17:00"). Colete primeiro o serviço e o dia para então verificar a disponibilidade real.');
 
   const histStr = history.slice(-10).map((h: any) => `${h.role === 'user' ? 'Cliente' : 'Agente'}: ${h.text}`).join('\n');
   const isFirst = history.filter((h: any) => h.role === 'bot').length === 0;
@@ -2120,6 +2120,15 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       session.data.servicePrice = _matchedSvc.price;
       console.log('[Agent] TS pre-extracted service:', _matchedSvc.name);
     }
+  }
+
+  // ── Auto-select single professional (TS layer) ───────────────────────────
+  // When there's exactly 1 active professional, select them automatically so
+  // slot prefetch can run without the AI needing to ask "qual profissional?".
+  if (!session.data.professionalId && professionals.length === 1) {
+    session.data.professionalId   = professionals[0].id;
+    session.data.professionalName = professionals[0].name;
+    console.log('[Agent] TS auto-selected only professional:', professionals[0].name);
   }
 
   // ── Clear stale availableSlots from session — always start fresh ──────────
