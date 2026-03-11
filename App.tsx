@@ -38,7 +38,8 @@ const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
 import { evolutionService } from './services/evolutionService';
-import { TenantStatus } from './types';
+import { TenantStatus, AppointmentStatus } from './types';
+import { sendClientArrivedNotification } from './services/notificationService';
 import PlanGate from './components/PlanGate';
 import PlanUpgradeModal from './components/PlanUpgradeModal';
 import { hasFeature, FeatureKey } from './config/planConfig';
@@ -119,8 +120,9 @@ const App: React.FC = () => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
   // Appointment arrival alert
-  type ApptAlert = { id: string; clientName: string; service: string; profName: string; time: string };
+  type ApptAlert = { id: string; clientName: string; service: string; profName: string; time: string; professionalId: string; serviceId: string; customerId: string; inicio: string };
   const [apptAlert, setApptAlert] = useState<ApptAlert | null>(null);
+  const [initialApptId, setInitialApptId] = useState<string | undefined>(undefined);
   const alertedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!tenantId || role !== 'TENANT') return;
@@ -131,7 +133,7 @@ const App: React.FC = () => {
         const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
         const { data } = await supabase
           .from('appointments')
-          .select('id, inicio, status, customers(nome), professionals(nome), services(nome)')
+          .select('id, inicio, status, professional_id, service_id, customer_id, customers(nome), professionals(nome), services(nome)')
           .eq('tenant_id', tenantId)
           .eq('status', 'CONFIRMED')
           .gte('inicio', `${todayStr}T00:00:00`)
@@ -144,10 +146,14 @@ const App: React.FC = () => {
             alertedRef.current.add(a.id);
             setApptAlert({
               id: a.id,
-              clientName: (a.customers as any)?.nome || 'Cliente',
-              service:    (a.services as any)?.nome  || 'Serviço',
-              profName:   (a.professionals as any)?.nome || '',
-              time: a.inicio.slice(11, 16),
+              clientName:     (a.customers as any)?.nome || 'Cliente',
+              service:        (a.services as any)?.nome  || 'Serviço',
+              profName:       (a.professionals as any)?.nome || '',
+              time:           a.inicio.slice(11, 16),
+              professionalId: (a as any).professional_id || '',
+              serviceId:      (a as any).service_id || '',
+              customerId:     (a as any).customer_id || '',
+              inicio:         a.inicio,
             });
             break;
           }
@@ -158,6 +164,32 @@ const App: React.FC = () => {
     const t = setInterval(check, 60000);
     return () => clearInterval(t);
   }, [tenantId, role]);
+
+  const handleClientArrived = async () => {
+    if (!apptAlert) return;
+    setApptAlert(null);
+    try {
+      // 1. Update appointment status → ARRIVED
+      await db.updateAppointmentStatus(apptAlert.id, AppointmentStatus.ARRIVED, {});
+      // 2. Send WhatsApp notification to the professional
+      sendClientArrivedNotification({
+        id: apptAlert.id,
+        tenant_id: tenantId,
+        professional_id: apptAlert.professionalId,
+        service_id: apptAlert.serviceId,
+        customer_id: apptAlert.customerId,
+        startTime: apptAlert.inicio,
+        durationMinutes: 0,
+        status: AppointmentStatus.ARRIVED,
+        source: 'AI' as any,
+      }).catch(console.error);
+    } catch (e) {
+      console.error('[handleClientArrived]', e);
+    }
+    // 3. Open COMANDAS view on this appointment
+    setInitialApptId(apptAlert.id);
+    setCurrentView(View.COMANDAS);
+  };
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -506,7 +538,7 @@ const App: React.FC = () => {
           <EstoqueProdutosView tenantId={tenantId} />
         </PlanGate>
       );
-      case View.COMANDAS: return <ComandasView tenantId={tenantId} />;
+      case View.COMANDAS: return <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} />;
       case View.PERFORMANCE: return (
         <PlanGate feature="performance" tenantPlan={tenantPlan}>
           <PerformanceView tenantId={tenantId} />
@@ -850,10 +882,10 @@ const App: React.FC = () => {
           <p className="text-xs text-slate-600 dark:text-slate-400 mb-4">O cliente chegou? Deseja abrir a comanda?</p>
           <div className="flex gap-2">
             <button
-              onClick={() => { setApptAlert(null); setCurrentView(View.COMANDAS); }}
+              onClick={handleClientArrived}
               className="flex-1 py-2.5 bg-orange-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-all"
             >
-              Abrir Comanda
+              Cliente Chegou!
             </button>
             <button
               onClick={() => setApptAlert(null)}

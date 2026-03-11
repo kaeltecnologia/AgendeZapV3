@@ -23,7 +23,7 @@ const itemTotal = (item: ComandaItem) => {
 
 const comandaTotal = (c: Comanda) => c.items.reduce((s, i) => s + itemTotal(i), 0);
 
-const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptOpened?: () => void }> = ({ tenantId, initialApptId, onApptOpened }) => {
   const [activeTab, setActiveTab] = useState<'abertas' | 'finalizadas'>('abertas');
   const [comandas, setComandas] = useState<Comanda[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -93,6 +93,23 @@ const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }, [tenantId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const [highlightId, setHighlightId] = useState<string | undefined>(undefined);
+
+  // Auto-open comanda when arriving via appointment alert
+  useEffect(() => {
+    if (!initialApptId || loading || comandas.length === 0) return;
+    const target = comandas.find(c => c.appointment_id === initialApptId && c.status === 'open');
+    if (target) {
+      setActiveTab('abertas');
+      setHighlightId(target.id);
+      onApptOpened?.();
+      // Scroll to comanda card after render
+      setTimeout(() => {
+        document.getElementById(`comanda-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    }
+  }, [initialApptId, loading, comandas, onApptOpened]);
 
   const profName = (id: string) => professionals.find(p => p.id === id)?.name ?? '—';
   const custName = (id: string) => customers.find(c => c.id === id)?.name ?? '—';
@@ -290,9 +307,12 @@ const ComandasView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const renderOpenCard = (c: Comanda) => {
     const total = comandaTotal(c);
     const isNew = c.id === newestOpenId;
+    const isHighlighted = c.id === highlightId;
     return (
-      <div key={c.id} className={`bg-white rounded-[28px] border-2 p-6 space-y-4 transition-all ${
-        isNew
+      <div id={`comanda-${c.id}`} key={c.id} className={`bg-white rounded-[28px] border-2 p-6 space-y-4 transition-all ${
+        isHighlighted
+          ? 'border-orange-400 shadow-xl shadow-orange-100 ring-2 ring-orange-300 ring-offset-2'
+          : isNew
           ? 'border-emerald-400 shadow-xl shadow-emerald-100 ring-2 ring-emerald-300 ring-offset-2'
           : 'border-emerald-100 shadow-lg shadow-emerald-50'
       }`}>

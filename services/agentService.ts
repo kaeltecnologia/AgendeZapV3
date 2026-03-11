@@ -36,6 +36,7 @@ interface SessionData {
   date?: string;        // YYYY-MM-DD
   time?: string;        // HH:MM
   preferredTime?: string; // HH:MM — preserved when date is reset so "next available" queries can filter by it
+  minTime?: string;       // HH:MM — minimum time preference ("depois das 18h") used to filter available slots
   availableSlots?: string[];
   pendingConfirm?: boolean;       // summary shown, waiting for yes/no
   pendingCancelReason?: boolean;  // asked for cancel reason, waiting for it
@@ -297,6 +298,19 @@ function getTimePref(norm: string): { from: string; to: string } | null {
   return null;
 }
 
+// Detect explicit minimum-time preference: "depois das 18h", "após as 17:00", "a partir das 19h"
+function getMinTimePref(norm: string): string | null {
+  // Match "depois das X", "apos as X", "a partir das X", "partir das X", "só a partir das X"
+  const re = /(?:depois\s+das?|apos\s+as?|a\s+partir\s+das?|partir\s+das?|so\s+(?:a\s+partir\s+)?das?)\s+(\d{1,2})(?:[h:]\s*(\d{2}))?/;
+  const m = norm.match(re);
+  if (m) {
+    const hh = m[1].padStart(2, '0');
+    const mm = (m[2] || '00').padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+  return null;
+}
+
 // Try to extract a time from free text against a list of available slots
 function quickTime(text: string, slots: string[]): string | null {
   const t = text.trim();
@@ -490,8 +504,12 @@ async function callBrain(
 • NÃO inicie novo agendamento a menos que o cliente peça explicitamente.\n`
     : '';
 
+  const _minTimeNote = data.minTime
+    ? `\n⏰ PREFERÊNCIA DE HORÁRIO MÍNIMO: cliente quer horários a partir das ${data.minTime} — NÃO sugira horários antes deste horário`
+    : '';
+
   const slotsSection = availableSlots && availableSlots.length > 0
-    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
+    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):${_minTimeNote}\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
         ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia.'
@@ -625,6 +643,7 @@ COLORAÇÃO → "pintar o cabelo" / "colorir" / "loiro" / "mechas" / "ombré" / 
 ALISAMENTO → "alisar" / "relaxar" / "progressiva" / "escova progressiva" / "botox capilar"
 ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
 • REGRA GERAL: se o cliente menciona qualquer parte do corpo ou gíria de serviço que claramente identifica UM serviço da lista, assuma esse serviço — NÃO peça confirmação do serviço, peça data/horário diretamente
+⛔ NUNCA liste todos os serviços da seção SERVIÇOS quando perguntar qual o cliente quer — pergunte APENAS: "Qual procedimento você gostaria?" sem enumerar a lista
 
 🔀 AMBÍGUO — não assuma, pergunte com contexto:
 • Saudação simples ("oi", "tudo bem?", "boa tarde") → cumprimentar + "Como posso te ajudar?"
@@ -2349,6 +2368,15 @@ async function _handleMessage(
     return _askDate;
   }
 
+  // ─── Detect minimum time preference from client message (e.g. "depois das 18h") ──
+  {
+    const _normMinT = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const _detectedMin = getMinTimePref(_normMinT);
+    if (_detectedMin) {
+      session.data.minTime = _detectedMin;
+    }
+  }
+
   // ─── Fetch available slots when professional + date + service are known ──
   // ── Clear stale availableSlots from session — always start fresh ──────────
   session.data.availableSlots = undefined;
@@ -2359,10 +2387,18 @@ async function _handleMessage(
   const _hasSvcSPA  = !!session.data.serviceId;
   if (_hasProfSPA && _hasDateSPA && _hasSvcSPA) {
     const _slotDuration = session.data.serviceDuration || 30;
-    prefetchedSlots = await getAvailableSlots(
+    const _allSlots = await getAvailableSlots(
       tenantId, session.data.professionalId!, session.data.date!,
       _slotDuration, settings
     );
+    // Filter by minTime preference if set (client said "depois das X")
+    prefetchedSlots = session.data.minTime
+      ? _allSlots.filter(s => s >= session.data.minTime!)
+      : _allSlots;
+    // If filtered result is empty but there are slots overall, include them (so AI can explain)
+    if (prefetchedSlots.length === 0 && _allSlots.length > 0) {
+      prefetchedSlots = _allSlots;
+    }
     session.data.availableSlots = prefetchedSlots;
 
     // Empty slots = vacation or truly fully booked — handle before calling brain
@@ -2611,7 +2647,11 @@ async function _handleMessage(
     } else {
       // Time is not available — find nearest before and after
       const _reqTime = ext.time; // e.g. "11:00"
-      const _before = [...currentSlots].reverse().find(s => s < _reqTime);
+      const _minPref = session.data.minTime; // e.g. "18:00" if client said "depois das 18h"
+      // If client expressed a minimum time, never suggest slots before it
+      const _before = _minPref
+        ? null
+        : [...currentSlots].reverse().find(s => s < _reqTime);
       const _after = currentSlots.find(s => s > _reqTime);
       const _profName = session.data.professionalName || 'o profissional';
       let _altMsg: string;
@@ -2682,10 +2722,16 @@ async function _handleMessage(
   // Re-fetch slots when all 3 are now set but weren't before the LLM call
   const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date && session.data.serviceId;
   if (justGotProfAndDate) {
-    const newSlots = await getAvailableSlots(
+    const _allNewSlots = await getAvailableSlots(
       tenantId, session.data.professionalId!, session.data.date!,
       session.data.serviceDuration || 30, settings
     );
+    // Apply minTime filter if client expressed a time preference
+    const newSlots = session.data.minTime
+      ? (_allNewSlots.filter(s => s >= session.data.minTime!).length > 0
+          ? _allNewSlots.filter(s => s >= session.data.minTime!)
+          : _allNewSlots)
+      : _allNewSlots;
     session.data.availableSlots = newSlots;
 
     if (newSlots.length === 0) {
