@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
-import { Customer, Plan, PlanStatus, Service, FollowUpNamedMode, Professional, RecurringSchedule, AppointmentStatus } from '../types';
+import { Customer, Plan, PlanStatus, Service, FollowUpNamedMode, Professional, RecurringEntry, RecurringFrequency, AppointmentStatus } from '../types';
 
 const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [activeTab, setActiveTab] = useState<'lista' | 'retencao'>('lista');
@@ -22,8 +22,26 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [addSlotDay, setAddSlotDay] = useState<number>(1);
-  const [addSlotTime, setAddSlotTime] = useState<string>('09:00');
+  const [showAddEntry, setShowAddEntry] = useState(false);
+  const [addEntry, setAddEntry] = useState<{
+    professionalId: string;
+    serviceId: string;
+    dayOfWeek: number;
+    time: string;
+    repeat: boolean;
+    frequency: RecurringFrequency;
+    weekOffset: number;
+    price: string;
+  }>({
+    professionalId: '',
+    serviceId: '',
+    dayOfWeek: 1,
+    time: '09:00',
+    repeat: true,
+    frequency: 'weekly',
+    weekOffset: 0,
+    price: '',
+  });
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ ok: number; fail: number } | null>(null);
   const [planBalance, setPlanBalance] = useState<Record<string, { total: number; used: number; remaining: number }>>({});
@@ -99,7 +117,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         planId: editingCustomer.planId,
         planStatus: editingCustomer.planStatus as PlanStatus | undefined,
         planServiceId: editingCustomer.planServiceId,
-        recurringSchedule: editingCustomer.recurringSchedule
+        recurringEntries: editingCustomer.recurringEntries
       });
       await load();
       setEditingCustomer(null);
@@ -319,12 +337,13 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         ♻️ {reativacaoName}
                       </span>
                     )}
-                    {c.recurringSchedule?.enabled && (() => {
-                      const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-                      const slotsText = (c.recurringSchedule?.slots || []).map(s => `${dayNames[s.dayOfWeek]} ${s.time}`).join(', ');
+                    {((c.recurringEntries || []).filter(e => e.active).length > 0) && (() => {
+                      const activeEntries = (c.recurringEntries || []).filter(e => e.active);
+                      const svcNames = [...new Set(activeEntries.map(e => services.find(s => s.id === e.serviceId)?.name).filter(Boolean))];
+                      const label = svcNames.length > 0 ? svcNames.join(' / ') : `${activeEntries.length} recorrência(s)`;
                       return (
                         <span className="text-[8px] font-black px-3 py-1 rounded-full bg-blue-100 text-blue-700 uppercase tracking-widest">
-                          🔄 Recorrente {slotsText ? `(${slotsText})` : ''}
+                          🔄 {label}
                         </span>
                       );
                     })()}
@@ -570,122 +589,204 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     </div>
                   )}
 
-                  {/* ─── Agendamento Recorrente ─── */}
-                  {editingCustomer.planId && (
-                    <div className="border-t-2 border-blue-100 pt-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">🔄 Agendamento Recorrente</p>
-                        <button
-                          type="button"
-                          onClick={() => setEditingCustomer({
-                            ...editingCustomer,
-                            recurringSchedule: {
-                              enabled: !(editingCustomer.recurringSchedule?.enabled),
-                              professionalId: editingCustomer.recurringSchedule?.professionalId || professionals[0]?.id || '',
-                              serviceId: editingCustomer.recurringSchedule?.serviceId,
-                              slots: editingCustomer.recurringSchedule?.slots || []
-                            }
-                          })}
-                          className={`relative w-12 h-6 rounded-full transition-all ${editingCustomer.recurringSchedule?.enabled ? 'bg-blue-500' : 'bg-slate-200'}`}
-                        >
-                          <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${editingCustomer.recurringSchedule?.enabled ? 'left-7' : 'left-1'}`} />
-                        </button>
-                      </div>
+                  {/* ─── Recorrências ─── */}
+                  {editingCustomer.planId && (() => {
+                    const DAY_NAMES = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+                    const DAY_FULL  = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+                    const FREQ_LABELS: Record<RecurringFrequency, string> = {
+                      weekly:      'Toda semana',
+                      biweekly:    'A cada 2 semanas',
+                      triweekly:   'A cada 3 semanas',
+                      alternating: 'Alternada',
+                    };
+                    const maxOffset = addEntry.frequency === 'triweekly' ? 3 : 2;
+                    const offsetLabels = ['A','B','C'];
+                    const entries: RecurringEntry[] = editingCustomer.recurringEntries || [];
 
-                      {editingCustomer.recurringSchedule?.enabled && (
-                        <div className="space-y-3">
-                          {/* Professional */}
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Profissional</label>
-                            <select
-                              value={editingCustomer.recurringSchedule.professionalId || ''}
-                              onChange={e => setEditingCustomer({
-                                ...editingCustomer,
-                                recurringSchedule: { ...editingCustomer.recurringSchedule!, professionalId: e.target.value }
-                              })}
-                              className="w-full p-3 bg-white border-2 border-blue-100 rounded-xl font-bold text-sm outline-none focus:border-blue-500"
-                            >
-                              <option value="">Selecione o profissional</option>
-                              {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </select>
-                          </div>
+                    const removeEntry = (id: string) =>
+                      setEditingCustomer({ ...editingCustomer, recurringEntries: entries.filter(e => e.id !== id) });
 
-                          {/* Override service (optional) */}
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Serviço (opcional — usa o do plano se vazio)</label>
-                            <select
-                              value={editingCustomer.recurringSchedule.serviceId || ''}
-                              onChange={e => setEditingCustomer({
-                                ...editingCustomer,
-                                recurringSchedule: { ...editingCustomer.recurringSchedule!, serviceId: e.target.value || undefined }
-                              })}
-                              className="w-full p-3 bg-white border-2 border-blue-100 rounded-xl font-bold text-sm outline-none focus:border-blue-500"
-                            >
-                              <option value="">Usar serviço do plano</option>
-                              {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                          </div>
+                    const handleAddEntry = () => {
+                      if (!addEntry.professionalId || !addEntry.serviceId || !addEntry.time) return;
+                      const newEntry: RecurringEntry = {
+                        id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+                        professionalId: addEntry.professionalId,
+                        serviceId: addEntry.serviceId,
+                        dayOfWeek: addEntry.dayOfWeek,
+                        time: addEntry.time,
+                        repeat: addEntry.repeat,
+                        frequency: addEntry.repeat ? addEntry.frequency : undefined,
+                        weekOffset: (addEntry.repeat && addEntry.frequency !== 'weekly') ? addEntry.weekOffset : undefined,
+                        price: addEntry.price ? Number(addEntry.price) : undefined,
+                        active: true,
+                      };
+                      setEditingCustomer({ ...editingCustomer, recurringEntries: [...entries, newEntry] });
+                      setShowAddEntry(false);
+                      setAddEntry({ professionalId: professionals[0]?.id || '', serviceId: '', dayOfWeek: 1, time: '09:00', repeat: true, frequency: 'weekly', weekOffset: 0, price: '' });
+                    };
 
-                          {/* Configured slots */}
-                          {(editingCustomer.recurringSchedule.slots || []).length > 0 && (
-                            <div className="space-y-2">
-                              <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Horários Fixos</label>
-                              {editingCustomer.recurringSchedule.slots.map((slot, idx) => {
-                                const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-                                return (
-                                  <div key={idx} className="flex items-center justify-between bg-blue-50 px-4 py-2 rounded-xl border border-blue-100">
-                                    <span className="text-xs font-black text-blue-700">{dayNames[slot.dayOfWeek]} · {slot.time}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const newSlots = editingCustomer.recurringSchedule!.slots.filter((_, i) => i !== idx);
-                                        setEditingCustomer({ ...editingCustomer, recurringSchedule: { ...editingCustomer.recurringSchedule!, slots: newSlots } });
-                                      }}
-                                      className="text-red-400 hover:text-red-600 font-black text-xs ml-3"
-                                    >✕</button>
+                    return (
+                      <div className="border-t-2 border-blue-100 pt-4 space-y-3">
+                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">🔄 Recorrências</p>
+
+                        {/* Entry list */}
+                        {entries.length > 0 && (
+                          <div className="space-y-2">
+                            {entries.map(e => {
+                              const prof = professionals.find(p => p.id === e.professionalId);
+                              const svc  = services.find(s => s.id === e.serviceId);
+                              const freqLabel = e.repeat && e.frequency
+                                ? (e.weekOffset !== undefined && e.frequency !== 'weekly'
+                                    ? `${FREQ_LABELS[e.frequency]} · Sem.${offsetLabels[e.weekOffset] ?? 'A'}`
+                                    : FREQ_LABELS[e.frequency])
+                                : 'Única vez';
+                              return (
+                                <div key={e.id} className="flex items-start justify-between bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-black text-blue-800 truncate">
+                                      {prof?.name || '—'} · {svc?.name || '—'}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-blue-500 mt-0.5">
+                                      {DAY_NAMES[e.dayOfWeek]} {e.time} · {freqLabel}
+                                      {e.price ? ` · R$ ${e.price.toFixed(2)}` : ''}
+                                    </p>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {/* Add slot form */}
-                          <div className="flex gap-2 items-end">
-                            <div className="flex-1 space-y-1">
-                              <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Dia</label>
-                              <select
-                                value={addSlotDay}
-                                onChange={e => setAddSlotDay(Number(e.target.value))}
-                                className="w-full p-3 bg-white border-2 border-blue-100 rounded-xl font-bold text-sm outline-none"
-                              >
-                                {['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'].map((d, i) => (
-                                  <option key={i} value={i}>{d}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Hora</label>
-                              <input
-                                type="time"
-                                value={addSlotTime}
-                                onChange={e => setAddSlotTime(e.target.value)}
-                                className="p-3 bg-white border-2 border-blue-100 rounded-xl font-bold text-sm outline-none"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!addSlotTime) return;
-                                const newSlots = [...(editingCustomer.recurringSchedule?.slots || []), { dayOfWeek: addSlotDay, time: addSlotTime }];
-                                setEditingCustomer({ ...editingCustomer, recurringSchedule: { ...editingCustomer.recurringSchedule!, slots: newSlots } });
-                              }}
-                              className="py-3 px-4 bg-blue-500 text-white rounded-xl font-black text-xs hover:bg-blue-600 transition-all whitespace-nowrap"
-                            >+ Add</button>
+                                  <button type="button" onClick={() => removeEntry(e.id)} className="text-red-400 hover:text-red-600 font-black text-sm flex-shrink-0">✕</button>
+                                </div>
+                              );
+                            })}
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        )}
+
+                        {/* Add entry form */}
+                        {showAddEntry ? (
+                          <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-4 space-y-3">
+                            <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Nova recorrência</p>
+
+                            {/* Prof + Service */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Profissional</label>
+                                <select value={addEntry.professionalId}
+                                  onChange={e => setAddEntry(p => ({ ...p, professionalId: e.target.value }))}
+                                  className="w-full p-2.5 bg-white border-2 border-blue-100 rounded-xl font-bold text-xs outline-none focus:border-blue-400">
+                                  <option value="">Selecione</option>
+                                  {professionals.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Serviço</label>
+                                <select value={addEntry.serviceId}
+                                  onChange={e => setAddEntry(p => ({ ...p, serviceId: e.target.value }))}
+                                  className="w-full p-2.5 bg-white border-2 border-blue-100 rounded-xl font-bold text-xs outline-none focus:border-blue-400">
+                                  <option value="">Selecione</option>
+                                  {services.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Day + Time */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Dia</label>
+                                <select value={addEntry.dayOfWeek}
+                                  onChange={e => setAddEntry(p => ({ ...p, dayOfWeek: Number(e.target.value) }))}
+                                  className="w-full p-2.5 bg-white border-2 border-blue-100 rounded-xl font-bold text-xs outline-none focus:border-blue-400">
+                                  {DAY_FULL.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Horário</label>
+                                <input type="time" value={addEntry.time}
+                                  onChange={e => setAddEntry(p => ({ ...p, time: e.target.value }))}
+                                  className="w-full p-2.5 bg-white border-2 border-blue-100 rounded-xl font-bold text-xs outline-none focus:border-blue-400" />
+                              </div>
+                            </div>
+
+                            {/* Repeat toggle */}
+                            <div className="flex items-center gap-3">
+                              <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Repetir</p>
+                              {['Não','Sim'].map((label, i) => (
+                                <button key={i} type="button"
+                                  onClick={() => setAddEntry(p => ({ ...p, repeat: i === 1 }))}
+                                  className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${addEntry.repeat === (i === 1) ? 'bg-blue-500 text-white' : 'bg-white text-blue-400 border border-blue-200'}`}>
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+
+                            {addEntry.repeat && (
+                              <>
+                                {/* Frequency */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Frequência</label>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(['weekly','biweekly','triweekly','alternating'] as RecurringFrequency[]).map(f => (
+                                      <button key={f} type="button"
+                                        onClick={() => setAddEntry(p => ({ ...p, frequency: f, weekOffset: 0 }))}
+                                        className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${addEntry.frequency === f ? 'bg-blue-500 text-white' : 'bg-white text-blue-400 border border-blue-200 hover:border-blue-400'}`}>
+                                        {FREQ_LABELS[f]}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Week offset (for biweekly, triweekly, alternating) */}
+                                {addEntry.frequency !== 'weekly' && (
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">
+                                      Semana (para intercalar com outras recorrências)
+                                    </label>
+                                    <div className="flex gap-1.5">
+                                      {Array.from({ length: maxOffset }, (_, i) => (
+                                        <button key={i} type="button"
+                                          onClick={() => setAddEntry(p => ({ ...p, weekOffset: i }))}
+                                          className={`w-10 h-10 rounded-xl text-xs font-black transition-all ${addEntry.weekOffset === i ? 'bg-blue-500 text-white' : 'bg-white text-blue-400 border border-blue-200 hover:border-blue-400'}`}>
+                                          {offsetLabels[i]}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <p className="text-[9px] text-blue-400 ml-1">
+                                      Ex: Cabelo+Barba na Sem.A, Cabelo na Sem.B → alternância automática
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Price */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1">Valor por sessão (R$)</label>
+                                  <input type="number" min="0" step="0.01" placeholder="0,00"
+                                    value={addEntry.price}
+                                    onChange={e => setAddEntry(p => ({ ...p, price: e.target.value }))}
+                                    className="w-full p-2.5 bg-white border-2 border-blue-100 rounded-xl font-bold text-xs outline-none focus:border-blue-400" />
+                                </div>
+                              </>
+                            )}
+
+                            <div className="flex gap-2 pt-1">
+                              <button type="button" onClick={handleAddEntry}
+                                disabled={!addEntry.professionalId || !addEntry.serviceId || !addEntry.time}
+                                className="flex-1 py-2.5 bg-blue-500 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-40">
+                                Adicionar
+                              </button>
+                              <button type="button" onClick={() => setShowAddEntry(false)}
+                                className="px-4 py-2.5 bg-white border-2 border-slate-200 text-slate-500 rounded-xl font-black text-xs hover:border-slate-400 transition-all">
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => {
+                            setShowAddEntry(true);
+                            setAddEntry(p => ({ ...p, professionalId: professionals[0]?.id || '' }));
+                          }}
+                            className="w-full py-2.5 border-2 border-dashed border-blue-200 text-blue-500 rounded-xl font-black text-xs uppercase tracking-widest hover:border-blue-400 hover:bg-blue-50 transition-all">
+                            + Adicionar recorrência
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

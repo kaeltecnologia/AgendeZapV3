@@ -43,18 +43,36 @@ export interface FollowUpConfig {
   fixedTime?: string; // For "Aviso do Dia" (HH:mm)
 }
 
-// One slot in a customer's recurring schedule (e.g. every Tuesday at 15:00)
+/** @deprecated use RecurringEntry[] instead */
 export interface RecurringSlot {
-  dayOfWeek: number; // 0=Sunday … 6=Saturday
-  time: string;      // "HH:MM"
+  dayOfWeek: number;
+  time: string;
 }
 
-// Recurring appointment schedule — attached to a plan customer
+/** @deprecated use RecurringEntry[] instead */
 export interface RecurringSchedule {
   enabled: boolean;
   professionalId: string;
-  serviceId?: string;       // override plan service if needed
-  slots: RecurringSlot[];   // one or more day/time combinations
+  serviceId?: string;
+  slots: RecurringSlot[];
+}
+
+// ── New recurring system ─────────────────────────────────────────────
+// weekly = toda semana | biweekly = a cada 2 semanas
+// triweekly = a cada 3 semanas | alternating = uma semana sim, outra não
+export type RecurringFrequency = 'weekly' | 'biweekly' | 'triweekly' | 'alternating';
+
+export interface RecurringEntry {
+  id: string;
+  professionalId: string;
+  serviceId: string;
+  dayOfWeek: number;          // 0=Dom … 6=Sáb
+  time: string;               // "HH:MM"
+  repeat: boolean;            // false = agendamento único; true = recorrente
+  frequency?: RecurringFrequency; // só quando repeat=true
+  weekOffset?: number;        // 0=Semana A | 1=Semana B | 2=Semana C (intercalação)
+  price?: number;             // valor cobrado por sessão
+  active: boolean;
 }
 
 // Break / interval period — blocks agent from booking during this window
@@ -234,7 +252,8 @@ export interface TenantSettings {
     avisoModeId?: string;
     lembreteModeId?: string;
     reativacaoModeId?: string;
-    recurringSchedule?: RecurringSchedule;
+    recurringSchedule?: RecurringSchedule;  // @deprecated
+    recurringEntries?: RecurringEntry[];    // new multi-entry recurring system
     aiPaused?: boolean;                  // true = IA desativada manualmente para este lead
     waitlistAlert?: boolean;             // true = lead pediu lista de espera (alerta para operador)
   }>;
@@ -367,7 +386,8 @@ export interface Customer {
   planId?: string | null;     // active plan id
   planStatus?: PlanStatus;    // 'ativo' | 'pendente' | 'cancelado'
   planServiceId?: string | null; // LEGACY — specific service covered by plan
-  recurringSchedule?: RecurringSchedule; // auto-scheduling config for plan customers
+  recurringSchedule?: RecurringSchedule;  // @deprecated
+  recurringEntries?: RecurringEntry[];    // new multi-entry recurring system
 }
 
 // ── Comanda (ordem de serviço) ─────────────────────────────────────────────

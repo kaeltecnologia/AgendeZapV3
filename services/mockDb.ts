@@ -21,7 +21,7 @@ import {
   Tenant, Professional, Service, Appointment,
   Customer, AppointmentStatus, PaymentMethod, TenantSettings,
   TenantStatus, BookingSource, Expense, BreakPeriod, Plan, PlanQuota,
-  FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product,
+  FollowUpNamedMode, InventoryItem, RecurringSchedule, RecurringEntry, RecurringFrequency, Comanda, Product,
   NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog,
   Review, MarketplaceLead, CentralBooking, CashbackBalance, CustomerAccount, CustomerFavorite,
   MarketplacePost, MarketplacePostComment, MarketplaceStory,
@@ -566,7 +566,8 @@ class DatabaseService {
       planId: cData.planId || null,
       planStatus: cData.planStatus || (cData.planId ? 'ativo' : undefined),
       planServiceId: cData.planServiceId || null,
-      recurringSchedule: cData.recurringSchedule
+      recurringSchedule: cData.recurringSchedule,
+      recurringEntries: cData.recurringEntries || [],
     };
   }
 
@@ -629,6 +630,7 @@ class DatabaseService {
         'planStatus' in updates ||
         'planServiceId' in updates ||
         'recurringSchedule' in updates ||
+        'recurringEntries' in updates ||
         updates.avisoModeId !== undefined ||
         updates.lembreteModeId !== undefined ||
         updates.reativacaoModeId !== undefined;
@@ -645,7 +647,8 @@ class DatabaseService {
           avisoModeId: updates.avisoModeId !== undefined ? updates.avisoModeId : prev.avisoModeId,
           lembreteModeId: updates.lembreteModeId !== undefined ? updates.lembreteModeId : prev.lembreteModeId,
           reativacaoModeId: updates.reativacaoModeId !== undefined ? updates.reativacaoModeId : prev.reativacaoModeId,
-          recurringSchedule: 'recurringSchedule' in updates ? (updates.recurringSchedule as RecurringSchedule | undefined) : prev.recurringSchedule
+          recurringSchedule: 'recurringSchedule' in updates ? (updates.recurringSchedule as RecurringSchedule | undefined) : prev.recurringSchedule,
+          recurringEntries: 'recurringEntries' in updates ? (updates.recurringEntries as RecurringEntry[] | undefined) : prev.recurringEntries,
         };
         await this.updateSettings(tenantId, { customerData: allCData });
       }
@@ -1155,15 +1158,44 @@ class DatabaseService {
 
   // ─── RECURRING APPOINTMENT GENERATOR ────────────────────────────────
   // Called periodically (every 60 s) to pre-create plan appointments
-  // for customers who have a recurringSchedule configured.
+  // for customers with recurringEntries (new) or recurringSchedule (legacy).
 
   async generateRecurringAppointments(tenantId: string): Promise<number> {
+    // Fixed epoch: Monday 2024-01-01 at Brasília midnight (UTC-3)
+    const EPOCH_MS = new Date('2024-01-01T03:00:00Z').getTime();
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+    /** Returns the absolute week number from the epoch for a given date */
+    function absoluteWeek(date: Date): number {
+      return Math.floor((date.getTime() - EPOCH_MS) / WEEK_MS);
+    }
+
+    /**
+     * Determines if a recurring entry should generate an appointment
+     * for the given absolute week number.
+     * weekly    → every week
+     * biweekly  → every 2 weeks (offset 0=A, 1=B)
+     * triweekly → every 3 weeks (offset 0=A, 1=B, 2=C)
+     * alternating → same as biweekly (emphasizes interleaving pattern)
+     */
+    function isEntryActiveForWeek(entry: RecurringEntry, targetAbsWeek: number): boolean {
+      const offset = entry.weekOffset ?? 0;
+      const adjusted = targetAbsWeek - offset;
+      if (adjusted < 0) return false;
+      switch (entry.frequency) {
+        case 'weekly':      return true;
+        case 'biweekly':    return adjusted % 2 === 0;
+        case 'triweekly':   return adjusted % 3 === 0;
+        case 'alternating': return adjusted % 2 === 0;
+        default:            return false;
+      }
+    }
+
     try {
-      const [customers, appointments, services, plans] = await Promise.all([
+      const [customers, appointments, services] = await Promise.all([
         this.getCustomers(tenantId),
         this.getAppointments(tenantId),
         this.getServices(tenantId),
-        this.getPlans(tenantId),
       ]);
 
       const now = new Date();
@@ -1176,39 +1208,111 @@ class DatabaseService {
 
       for (const customer of customers) {
         // Only generate for customers with active plans
-        if (customer.planStatus && customer.planStatus !== 'ativo') continue;
+        if (customer.planStatus !== 'ativo') continue;
 
+        const entries: RecurringEntry[] = customer.recurringEntries || [];
+
+        // ── New path: RecurringEntry[] ──────────────────────────────
+        if (entries.length > 0) {
+          for (const entry of entries) {
+            if (!entry.active) continue;
+            if (!entry.professionalId || !entry.serviceId) continue;
+
+            const service = services.find(s => s.id === entry.serviceId && s.active);
+            if (!service) continue;
+
+            if (!entry.repeat) {
+              // One-time: create only the next upcoming occurrence (within 7 days)
+              const target = new Date(now);
+              const daysUntil = ((entry.dayOfWeek - target.getDay()) + 7) % 7 || 7;
+              target.setDate(target.getDate() + daysUntil);
+              const [h, m] = entry.time.split(':').map(Number);
+              target.setHours(h, m, 0, 0);
+              if (target <= now) continue;
+
+              const dateStr = toDateStr(target);
+              const exists = appointments.some(a =>
+                a.customer_id === customer.id &&
+                a.startTime.slice(0, 10) === dateStr &&
+                a.startTime.slice(11, 16) === entry.time &&
+                a.status !== AppointmentStatus.CANCELLED
+              );
+              if (exists) continue;
+
+              await this.addAppointment({
+                tenant_id: tenantId,
+                customer_id: customer.id,
+                professional_id: entry.professionalId,
+                service_id: entry.serviceId,
+                startTime: `${dateStr}T${entry.time}:00`,
+                durationMinutes: service.durationMinutes,
+                status: AppointmentStatus.CONFIRMED,
+                source: BookingSource.PLAN,
+                isPlan: true,
+              });
+              created++;
+              console.log(`[RecurSched] Único: ${customer.name} → ${dateStr} ${entry.time}`);
+            } else {
+              // Recurring: check 4 weeks ahead using frequency + weekOffset
+              for (let week = 0; week < weeksAhead; week++) {
+                const target = new Date(now);
+                const daysUntil = ((entry.dayOfWeek - target.getDay()) + 7) % 7;
+                target.setDate(target.getDate() + daysUntil + week * 7);
+                const [h, m] = entry.time.split(':').map(Number);
+                target.setHours(h, m, 0, 0);
+                if (target <= now) continue;
+
+                const absWeek = absoluteWeek(target);
+                if (!isEntryActiveForWeek(entry, absWeek)) continue;
+
+                const dateStr = toDateStr(target);
+                const exists = appointments.some(a =>
+                  a.customer_id === customer.id &&
+                  a.startTime.slice(0, 10) === dateStr &&
+                  a.startTime.slice(11, 16) === entry.time &&
+                  a.status !== AppointmentStatus.CANCELLED
+                );
+                if (exists) continue;
+
+                await this.addAppointment({
+                  tenant_id: tenantId,
+                  customer_id: customer.id,
+                  professional_id: entry.professionalId,
+                  service_id: entry.serviceId,
+                  startTime: `${dateStr}T${entry.time}:00`,
+                  durationMinutes: service.durationMinutes,
+                  status: AppointmentStatus.CONFIRMED,
+                  source: BookingSource.PLAN,
+                  isPlan: true,
+                });
+                created++;
+                const freqLabel = entry.frequency === 'alternating' ? `Alt.Sem${(entry.weekOffset ?? 0) === 0 ? 'A' : 'B'}` : entry.frequency;
+                console.log(`[RecurSched] ${freqLabel}: ${customer.name} → ${dateStr} ${entry.time}`);
+              }
+            }
+          }
+          continue; // skip legacy path if new entries exist
+        }
+
+        // ── Legacy path: RecurringSchedule ──────────────────────────
         const sched = customer.recurringSchedule;
         if (!sched?.enabled || !sched.professionalId || !sched.slots?.length) continue;
 
-        // Resolve serviceId: explicit override → legacy planServiceId → first plan quota service
         let serviceId = sched.serviceId || customer.planServiceId || '';
-        if (!serviceId && customer.planId) {
-          const plan = plans.find(p => p.id === customer.planId);
-          if (plan?.quotas?.length) serviceId = plan.quotas[0].serviceId;
-          else if (plan?.serviceId) serviceId = plan.serviceId;
-        }
         if (!serviceId) continue;
-
         const service = services.find(s => s.id === serviceId && s.active);
         if (!service) continue;
 
         for (const slot of sched.slots) {
           for (let week = 0; week < weeksAhead; week++) {
-            // Find next occurrence of slot.dayOfWeek from today
             const target = new Date(now);
             const daysUntil = ((slot.dayOfWeek - target.getDay()) + 7) % 7;
             target.setDate(target.getDate() + daysUntil + week * 7);
-
             const [h, m] = slot.time.split(':').map(Number);
             target.setHours(h, m, 0, 0);
-
-            // Skip past moments
             if (target <= now) continue;
 
             const dateStr = toDateStr(target);
-
-            // Skip if appointment already exists for this customer at this date/time
             const exists = appointments.some(a =>
               a.customer_id === customer.id &&
               a.startTime.slice(0, 10) === dateStr &&
@@ -1229,7 +1333,7 @@ class DatabaseService {
               isPlan: true,
             });
             created++;
-            console.log(`[RecurSched] Criado: ${customer.name} → ${dateStr} ${slot.time}`);
+            console.log(`[RecurSched] Legacy: ${customer.name} → ${dateStr} ${slot.time}`);
           }
         }
       }
