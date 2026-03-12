@@ -1096,15 +1096,22 @@ async function _handleMessage(
         .eq('tenant_id', tenantId)
         .eq('phone', phone)
         .maybeSingle();
-      if (sbSess && Date.now() - new Date(sbSess.updated_at).getTime() < SESSION_TIMEOUT_MS) {
-        const restored: Session = {
-          tenantId, phone,
-          data: sbSess.data as SessionData,
-          history: sbSess.history as HistoryEntry[],
-          updatedAt: new Date(sbSess.updated_at).getTime(),
-        };
-        sessions.set(sessionKey(tenantId, phone), restored);
-        console.log('[Agent] Sessão restaurada (early) do Supabase para', maskPhone(phone));
+      if (sbSess) {
+        const age = Date.now() - new Date(sbSess.updated_at).getTime();
+        const hasPendingFollowUp = !!(sbSess.data as any)?.pendingFollowUpType;
+        // Always restore if within normal timeout; OR if session has pending follow-up
+        // context (client may respond hours later to a follow-up message)
+        const FOLLOWUP_MAX_AGE = 18 * 60 * 60 * 1000; // 18h
+        if (age < SESSION_TIMEOUT_MS || (hasPendingFollowUp && age < FOLLOWUP_MAX_AGE)) {
+          const restored: Session = {
+            tenantId, phone,
+            data: sbSess.data as SessionData,
+            history: sbSess.history as HistoryEntry[],
+            updatedAt: Date.now(), // refresh so it doesn't expire mid-conversation
+          };
+          sessions.set(sessionKey(tenantId, phone), restored);
+          console.log(`[Agent] Sessão restaurada do Supabase para ${maskPhone(phone)} (age=${Math.round(age/60000)}min, followUp=${hasPendingFollowUp})`);
+        }
       }
     } catch { /* ignorar */ }
     // Fallback: localStorage
