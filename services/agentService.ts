@@ -1135,10 +1135,19 @@ async function _handleMessage(
       if (sbSess) {
         const age = Date.now() - new Date(sbSess.updated_at).getTime();
         const hasPendingFollowUp = !!(sbSess.data as any)?.pendingFollowUpType;
+        const sd = sbSess.data as any;
+        // Session has in-progress booking data (prof, date, service, or name already collected)
+        const hasBookingData = !!(sd?.professionalId || sd?.date || sd?.serviceId || sd?.clientName);
         // Always restore if within normal timeout; OR if session has pending follow-up
-        // context (client may respond hours later to a follow-up message)
-        const FOLLOWUP_MAX_AGE = 18 * 60 * 60 * 1000; // 18h
-        if (age < SESSION_TIMEOUT_MS || (hasPendingFollowUp && age < FOLLOWUP_MAX_AGE)) {
+        // context (client may respond hours later to a follow-up message); OR if booking
+        // was in progress (client may take time to choose service/date — extend to 4h)
+        const FOLLOWUP_MAX_AGE  = 18 * 60 * 60 * 1000; // 18h — for follow-up responses
+        const BOOKING_MAX_AGE   =  4 * 60 * 60 * 1000; //  4h — for in-progress bookings
+        if (
+          age < SESSION_TIMEOUT_MS ||
+          (hasPendingFollowUp && age < FOLLOWUP_MAX_AGE) ||
+          (hasBookingData && age < BOOKING_MAX_AGE)
+        ) {
           const restored: Session = {
             tenantId, phone,
             data: sbSess.data as SessionData,
