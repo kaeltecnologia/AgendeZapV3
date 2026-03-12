@@ -284,10 +284,28 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
     return { ...fallback, intent: 'COUNT_PROCEDURES', dateRef, targetProfName: extractedProfName };
   }
 
-  // Book — also extract target professional ("com Gil", "para o Gil", "pro Gil")
+  // Book — extract clientName, time, and target professional
   if (/\bmarca\b|\bmarcar\b|\bagendar\b|reserv|\bcadastra\b|anota|registra/.test(lower)) {
     const bookProfMatchFb = lower.match(/(?:\bcom\s+(?:o|a)?\s*|\bpara\s+(?:o|a)\s*|\bpro\s+)([a-záéíóúàèìòùâêîôûãõçäëïöü]+)/i);
-    return { ...fallback, intent: 'BOOK', dateRef, targetProfName: bookProfMatchFb ? bookProfMatchFb[1].trim() : '' };
+    const targetProfFb = bookProfMatchFb ? bookProfMatchFb[1].trim() : '';
+    // Extract time (supports: 8h, 8:30, 8h30, 8.30, 20:40, 20h40)
+    const timeFbM = lower.match(/\b(\d{1,2})[h:.](\d{2})\b/) || lower.match(/\b(\d{1,2})h\b/);
+    const timeFb = timeFbM
+      ? timeFbM[2]
+        ? `${timeFbM[1].padStart(2, '0')}:${timeFbM[2]}`
+        : `${timeFbM[1].padStart(2, '0')}:00`
+      : '';
+    // Extract clientName: strip trigger, time, date keywords, prof reference, prepositions
+    const clientFb = lower
+      .replace(/\b(marca|marcar|agendar|reservar|cadastrar|anotar|registrar)\b/gi, '')
+      .replace(/\b(\d{1,2})[h:.](\d{2})\b/g, '')
+      .replace(/\b(\d{1,2})h\b/gi, '')
+      .replace(/\b(amanha|amanhã|hoje|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b/gi, '')
+      .replace(bookProfMatchFb?.[0] ?? '\x00', '')
+      .replace(/\b(as|às|pra|para|no|na|de|do|da|pro|pros)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return { ...fallback, intent: 'BOOK', clientName: clientFb, time: timeFb, dateRef, targetProfName: targetProfFb };
   }
 
   // Financial (total barbearia)
@@ -555,6 +573,8 @@ async function handleBook(
   }
 
   let parsedTime = time?.trim() || '';
+  // Normalize dot notation: "8.30" → "8:30", "20.30" → "20:30"
+  parsedTime = parsedTime.replace(/^(\d{1,2})\.(\d{2})$/, '$1:$2');
   if (!parsedTime || !parsedTime.includes(':')) {
     const m = parsedTime.match(/^(\d{1,2})h?(\d{2})?$/);
     if (m) parsedTime = `${m[1].padStart(2, '0')}:${(m[2] || '00').padStart(2, '0')}`;
