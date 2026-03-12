@@ -2203,6 +2203,47 @@ async function _handleMessage(
     }
   }
 
+  // ─── Pre-appointment window check ──────────────────────────────────────────
+  // If customer messages within 3h of a confirmed appointment today (without
+  // explicit new-booking intent), acknowledge the appointment instead of
+  // starting a new scheduling flow.
+  if (!session.data.pendingConfirm && !session.data.pendingReschedule) {
+    const normPreAppt = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, ' ').trim();
+    const NEW_BOOKING_KW = ['agendar', 'marcar', 'reservar', 'quero horario', 'quero um horario',
+      'para outra data', 'outro dia', 'proxima semana', 'semana que vem', 'amanha', 'amanha'];
+    const hasNewBookingIntent = NEW_BOOKING_KW.some(k => normPreAppt.includes(k));
+    if (!hasNewBookingIntent) {
+      try {
+        const { data: custPre } = await supabase.from('customers').select('id')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        if (custPre) {
+          const _brNowPre = new Date(Date.now() - 3 * 60 * 60 * 1000);
+          const _padPre = (n: number) => String(n).padStart(2, '0');
+          const nowPreStr = `${todayISO}T${_padPre(_brNowPre.getUTCHours())}:${_padPre(_brNowPre.getUTCMinutes())}:00`;
+          const threeHLater = new Date(_brNowPre.getTime() + 3 * 60 * 60 * 1000);
+          const threeHStr = `${todayISO}T${_padPre(threeHLater.getUTCHours())}:${_padPre(threeHLater.getUTCMinutes())}:00`;
+          const { data: preAppts } = await supabase.from('appointments')
+            .select('id, inicio, service_id, professional_id')
+            .eq('tenant_id', tenantId).eq('customer_id', custPre.id)
+            .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
+            .gte('inicio', nowPreStr)
+            .lte('inicio', threeHStr)
+            .order('inicio', { ascending: true }).limit(1);
+          if (preAppts && preAppts.length > 0) {
+            const apptPre = preAppts[0];
+            const apptTimeP = (apptPre.inicio as string).substring(11, 16);
+            const profP = profOptions.find((p: any) => p.id === apptPre.professional_id);
+            const svcP  = services.find((s: any) => s.id === apptPre.service_id);
+            const reply = `Perfeito! Te esperamos às *${apptTimeP}*${svcP ? ` para ${svcP.name}` : ''}${profP ? ` com ${profP.name}` : ''}. Até já! 😊`;
+            session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+            saveSession(session);
+            return reply;
+          }
+        }
+      } catch (ePre) { console.error('[Agent] pre-appointment window check error:', ePre); }
+    }
+  }
+
   // ─── TypeScript-layer professional name pre-extraction ─────────────
   // Runs BEFORE calling LLM. Checks vacation first (for any # of professionals),
   // then for multiple-prof setups either starts a booking flow or personal-contact flow.
