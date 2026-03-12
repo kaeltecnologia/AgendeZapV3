@@ -1968,7 +1968,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // ─── Follow-up fallback: session may have expired but appointment exists today ──
   // When no pendingFollowUpType (session expired) but client sends short affirmative
-  // and has an appointment today → respond as follow-up confirmation instead of greeting.
+  // OR signals they're on their way → respond as context-aware confirmation instead of greeting.
   if (!session.data.pendingFollowUpType && shouldGreet) {
     const normFb = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?\u{1F4AA}\u{1F44D}\u{2705}\u{1F64F}]/gu, '').trim();
     const FB_AFFIRM = [
@@ -1983,7 +1983,18 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       FB_AFFIRM.some(a => fbWords.includes(a)) ||
       FB_PHRASES.some(p => normFb.includes(p))
     ));
-    if (isShortAffirm) {
+    // Detect "on the way" signals — client informing they're heading to the appointment
+    const OTW_SIGNALS = [
+      /\b(saindo|saio|sai da|sai do)\b/,
+      /\b(chegando|chego|chegar)\b/,
+      /\b(to\s+indo|vou\s+indo|indo\s+ai|indo\s+la)\b/,
+      /\b(a\s+caminho|em\s+caminho)\b/,
+      /\b(ja\s+to\s+ai|ja\s+to\s+la|to\s+ai|to\s+la)\b/,
+      /\b(em\s+breve|logo\s+chego|ja\s+chego|chego\s+ja)\b/,
+      /\b(saindo\s+agora|saindo\s+de|saindo\s+do|saindo\s+da)\b/,
+    ];
+    const isOnTheWay = OTW_SIGNALS.some(re => re.test(normFb));
+    if (isShortAffirm || isOnTheWay) {
       try {
         const { data: custFb } = await supabase.from('customers').select('id, nome')
           .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
@@ -2000,7 +2011,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             .order('inicio', { ascending: true }).limit(1);
           if (apptsFb && apptsFb.length > 0) {
             const apptTime = (apptsFb[0].inicio as string).substring(11, 16);
-            const reply = `Show de bola! Aguardamos você às *${apptTime}*. 😊`;
+            const reply = isOnTheWay
+              ? `Perfeito! Te aguardamos às *${apptTime}* 😊`
+              : `Show de bola! Aguardamos você às *${apptTime}*. 😊`;
             session.history.push({ role: 'user', text: text }, { role: 'bot', text: reply });
             session.data.greetedAt = brasiliaDate;
             await saveSession(tenantId, phone, session.data, session.history);
