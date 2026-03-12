@@ -32,6 +32,11 @@ import { AppointmentStatus, BookingSource } from '../types';
 
 const ACCESS_DENIED = 'Você não possui permissão para consultar esse tipo de informação.';
 
+// ── In-process dedup: prevents double-responses when both Edge Function
+// webhook AND polling manager process the same message simultaneously ──
+const _profDedup = new Map<string, number>(); // key → timestamp
+const _PROF_DEDUP_TTL = 30_000; // 30 seconds
+
 // Intents that are exclusively for admin
 const ADMIN_ONLY_INTENTS: ProfIntentType[] = ['FINANCIAL', 'EXPENSES', 'PROFIT', 'RANKING', 'GOALS'];
 
@@ -941,6 +946,19 @@ export async function handleProfessionalMessage(
   const geminiKey: string = tenant.gemini_api_key || '';
   const text = messageText.trim();
   if (!text) return null;
+
+  // ── Dedup: skip if same message already processed in the last 30s ──
+  // Prevents double responses when Edge Function webhook and polling
+  // manager process the same message concurrently.
+  const dedupKey = `${tenantId}::${phone}::${text.slice(0, 100)}`;
+  const now = Date.now();
+  // Purge stale entries
+  for (const [k, t] of _profDedup) { if (now - t > _PROF_DEDUP_TTL) _profDedup.delete(k); }
+  if (_profDedup.has(dedupKey)) {
+    console.log('[ProfAgent] Dedup: skipping duplicate message from', phone);
+    return null;
+  }
+  _profDedup.set(dedupKey, now);
 
   // ── Regra 1: Identificação pelo telefone ──────────────────────────
   const professionals = await db.getProfessionals(tenantId);
