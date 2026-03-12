@@ -148,8 +148,8 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-        <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center space-y-6 sm:space-y-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-4 sm:p-6 md:p-8 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center space-y-6">
           <div className="w-full">
             <h3 className="text-[10px] font-black text-black uppercase tracking-[0.2em] mb-4 border-b-2 border-orange-500 w-fit pb-1">Instruções de Emparelhamento</h3>
             <p className="text-xs text-slate-400 font-bold leading-relaxed">
@@ -220,7 +220,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
           )}
         </div>
 
-        <div className="bg-black p-10 rounded-[50px] shadow-2xl flex flex-col h-[600px] border-4 border-slate-900">
+        <div className="bg-black p-6 rounded-[50px] shadow-2xl flex flex-col h-[560px] border-4 border-slate-900">
            <div className="flex justify-between items-center mb-8">
               <div className="flex items-center space-x-3">
                 <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>

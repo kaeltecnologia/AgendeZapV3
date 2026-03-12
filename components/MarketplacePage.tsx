@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
-import { Tenant, CustomerAccount, MarketplacePost, MarketplacePostComment } from '../types';
+import { Tenant, CustomerAccount, MarketplacePost, MarketplacePostComment, MarketplaceStory } from '../types';
 
 interface TenantCard extends Tenant {
   rating: number;
@@ -28,8 +28,16 @@ const MarketplacePage: React.FC = () => {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [galleries, setGalleries] = useState<Map<string, string[]>>(new Map());
 
-  // Lead capture / registration
-  const [showCapture, setShowCapture] = useState(!localStorage.getItem('agz_customer') && !localStorage.getItem('agz_session'));
+  // Lead capture / registration — skip entirely for tenant sessions
+  const [showCapture, setShowCapture] = useState(() => {
+    if (localStorage.getItem('agz_customer')) return false;
+    if (localStorage.getItem('agz_session')) return false;
+    try {
+      const hq = window.location.hash.split('?')[1];
+      if (hq && new URLSearchParams(hq).get('tid')) return false;
+    } catch {}
+    return true;
+  });
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadCity, setLeadCity] = useState('');
@@ -60,9 +68,13 @@ const MarketplacePage: React.FC = () => {
 
   // Tenant Detail view
   const [selectedTenant, setSelectedTenant] = useState<TenantCard | null>(null);
-  const [detailTab, setDetailTab] = useState<'agendar' | 'posts'>('agendar');
+  const [detailTab, setDetailTab] = useState<'grid' | 'agendar'>('grid');
   const [detailPosts, setDetailPosts] = useState<MarketplacePost[]>([]);
   const [loadingDetailPosts, setLoadingDetailPosts] = useState(false);
+
+  // Follow system
+  const [tenantFollowersMap, setTenantFollowersMap] = useState<Map<string, number>>(new Map());
+  const [followedTenants, setFollowedTenants] = useState<Set<string>>(new Set());
 
   // Filters
   const [searchCity, setSearchCity] = useState('');
@@ -83,6 +95,24 @@ const MarketplacePage: React.FC = () => {
   const [newPostFile, setNewPostFile] = useState<File | null>(null);
   const [creatingPost, setCreatingPost] = useState(false);
   const postFileRef = useRef<HTMLInputElement>(null);
+  const lastTapRef = useRef<Map<string, number>>(new Map());
+
+  // Stories
+  const storyFileRef = useRef<HTMLInputElement>(null);
+  const storyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [activeStoriesMap, setActiveStoriesMap] = useState<Map<string, MarketplaceStory[]>>(new Map());
+  const [storyViewer, setStoryViewer] = useState<{ tenantId: string; stories: MarketplaceStory[]; idx: number } | null>(null);
+  const [showCreateStory, setShowCreateStory] = useState(false);
+  const [newStoryFile, setNewStoryFile] = useState<File | null>(null);
+  const [newStoryPreview, setNewStoryPreview] = useState('');
+  const [newStoryCaption, setNewStoryCaption] = useState('');
+  const [creatingStory, setCreatingStory] = useState(false);
+  const [storyProgressPct, setStoryProgressPct] = useState(0);
+
+  // Dopamine animations
+  const [likeAnims, setLikeAnims] = useState<Set<string>>(new Set());
+  const [doubleTapAnims, setDoubleTapAnims] = useState<Set<string>>(new Set());
+  const [bookingConfetti, setBookingConfetti] = useState(false);
 
   // Liker ID
   const [likerId] = useState<string>(() => {
@@ -115,6 +145,7 @@ const MarketplacePage: React.FC = () => {
         setTenants(withRatings);
         setFilteredTenants(withRatings);
         db.getMarketplaceGalleries(withRatings.map(t => t.id)).then(g => setGalleries(g)).catch(() => {});
+        db.getActiveStories(withRatings.map(t => t.id)).then(sm => setActiveStoriesMap(sm)).catch(() => {});
         if (customerSession?.phone) {
           db.getCustomerFavorites(customerSession.phone).then(favs => {
             setFavorites(new Set(favs.map(f => f.tenantId)));
@@ -265,7 +296,22 @@ const MarketplacePage: React.FC = () => {
       const { liked, likesCount } = await db.togglePostLike(postId, likerId);
       setPosts(prev => prev.map(p => p.id === postId ? { ...p, likesCount } : p));
       setUserLikes(prev => { const n = new Set(prev); liked ? n.add(postId) : n.delete(postId); return n; });
+      if (liked) {
+        setLikeAnims(prev => new Set(prev).add(postId));
+        setTimeout(() => setLikeAnims(prev => { const n = new Set(prev); n.delete(postId); return n; }), 900);
+      }
     } catch (e) { console.error('[Marketplace] Like error:', e); }
+  };
+
+  const handleImageTap = (postId: string) => {
+    const now = Date.now();
+    const last = lastTapRef.current.get(postId) || 0;
+    if (now - last < 320) {
+      if (!userLikes.has(postId)) handleLike(postId);
+      setDoubleTapAnims(prev => new Set(prev).add(postId));
+      setTimeout(() => setDoubleTapAnims(prev => { const n = new Set(prev); n.delete(postId); return n; }), 900);
+    }
+    lastTapRef.current.set(postId, now);
   };
 
   const toggleComments = async (postId: string) => {
@@ -300,19 +346,111 @@ const MarketplacePage: React.FC = () => {
     } catch (e) { console.error('[Marketplace] Delete error:', e); }
   };
 
+  // ── Followers helper ─────────────────────────────────────────────
+  const fmtCount = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace('.0', '')}k` : String(n);
+
+  const handleFollow = async () => {
+    if (!selectedTenant) return;
+    try {
+      const { followed, followersCount } = await db.toggleTenantFollow(selectedTenant.id, likerId);
+      setTenantFollowersMap(prev => new Map(prev).set(selectedTenant.id, followersCount));
+      setFollowedTenants(prev => { const n = new Set(prev); followed ? n.add(selectedTenant.id) : n.delete(selectedTenant.id); return n; });
+    } catch (e) { console.error('[Marketplace] Follow error:', e); }
+  };
+
+  // ── Stories ──────────────────────────────────────────────────────
+  const openStory = (tenantId: string) => {
+    const stories = activeStoriesMap.get(tenantId);
+    if (!stories?.length) return;
+    setStoryViewer({ tenantId, stories, idx: 0 });
+  };
+
+  const advanceStory = (dir: 1 | -1) => {
+    setStoryViewer(prev => {
+      if (!prev) return null;
+      const newIdx = prev.idx + dir;
+      if (newIdx < 0 || newIdx >= prev.stories.length) return null;
+      return { ...prev, idx: newIdx };
+    });
+  };
+
+  const handleStoryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Selecione uma imagem.'); return; }
+    if (file.size > 5 * 1024 * 1024) { alert('Máximo 5MB.'); return; }
+    setNewStoryFile(file);
+    setNewStoryPreview(URL.createObjectURL(file));
+  };
+
+  const handleCreateStory = async () => {
+    if (!newStoryFile || !myTenantId) return;
+    setCreatingStory(true);
+    try {
+      const ext = newStoryFile.name.split('.').pop() || 'jpg';
+      const path = `stories/${myTenantId}_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('marketplace').upload(path, newStoryFile, { upsert: true, contentType: newStoryFile.type });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from('marketplace').getPublicUrl(path);
+      const url = data.publicUrl + '?t=' + Date.now();
+      const story = await db.createStory(myTenantId, url, newStoryCaption.trim() || undefined);
+      const prevStories = activeStoriesMap.get(myTenantId) || [];
+      const updatedStories = [...prevStories, story];
+      setActiveStoriesMap(prev => new Map(prev).set(myTenantId, updatedStories));
+      setNewStoryFile(null); setNewStoryPreview(''); setNewStoryCaption('');
+      setShowCreateStory(false);
+      if (storyFileRef.current) storyFileRef.current.value = '';
+      setStoryViewer({ tenantId: myTenantId, stories: updatedStories, idx: updatedStories.length - 1 });
+    } catch (err) {
+      console.error('[Marketplace] Create story error:', err);
+      alert('Erro ao publicar story. Tente novamente.');
+    }
+    setCreatingStory(false);
+  };
+
+  // Auto-advance story
+  const currentStoryKey = storyViewer ? storyViewer.stories[storyViewer.idx]?.id : null;
+  useEffect(() => {
+    if (storyTimerRef.current) clearInterval(storyTimerRef.current);
+    if (!currentStoryKey) { setStoryProgressPct(0); return; }
+    setStoryProgressPct(0);
+    let elapsed = 0;
+    const total = 5000;
+    const step = 50;
+    storyTimerRef.current = setInterval(() => {
+      elapsed += step;
+      setStoryProgressPct(Math.min(100, (elapsed / total) * 100));
+      if (elapsed >= total) {
+        clearInterval(storyTimerRef.current!);
+        setStoryViewer(prev => {
+          if (!prev) return null;
+          const newIdx = prev.idx + 1;
+          if (newIdx >= prev.stories.length) return null;
+          return { ...prev, idx: newIdx };
+        });
+      }
+    }, step);
+    return () => { if (storyTimerRef.current) clearInterval(storyTimerRef.current); };
+  }, [currentStoryKey]);
+
   // ── Tenant Detail ────────────────────────────────────────────────
   const openTenantDetail = async (t: TenantCard) => {
     setSelectedTenant(t);
-    setDetailTab('agendar');
+    setDetailTab('grid');
     setDetailPosts([]);
     setLoadingDetailPosts(true);
     try {
-      let tPosts = await db.getPostsByTenant(t.id);
-      tPosts = await db.enrichPostsWithTenantInfo(tPosts);
+      const [tPosts, followersCount, followedSet] = await Promise.all([
+        db.getPostsByTenant(t.id).then(p => db.enrichPostsWithTenantInfo(p)),
+        db.getTenantFollowersCount(t.id),
+        db.getFollowedTenants(likerId, [t.id]),
+      ]);
       setDetailPosts(tPosts);
+      setTenantFollowersMap(prev => new Map(prev).set(t.id, followersCount));
+      setFollowedTenants(prev => { const n = new Set(prev); followedSet.has(t.id) ? n.add(t.id) : n.delete(t.id); return n; });
       const likedSet = await db.getPostLikesByUser(likerId, tPosts.map(p => p.id));
       setUserLikes(prev => { const n = new Set(prev); likedSet.forEach(id => n.add(id)); return n; });
-    } catch (e) { console.error('[Marketplace] Detail posts error:', e); }
+    } catch (e) { console.error('[Marketplace] Detail error:', e); }
     setLoadingDetailPosts(false);
   };
 
@@ -328,6 +466,16 @@ const MarketplacePage: React.FC = () => {
   // ── Render ─────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-white">
+      <style>{`
+        @keyframes heartBurst { 0% { transform:scale(0); opacity:1; } 15% { transform:scale(1.5); opacity:1; } 80% { transform:scale(1.1); opacity:1; } 100% { transform:scale(0.9); opacity:0; } }
+        @keyframes flyUp1 { 0% { opacity:1; transform:translate(0,0) scale(0.5); } 100% { opacity:0; transform:translate(-28px,-60px) scale(1); } }
+        @keyframes flyUp2 { 0% { opacity:1; transform:translate(0,0) scale(0.5); } 100% { opacity:0; transform:translate(22px,-72px) scale(0.8); } }
+        @keyframes flyUp3 { 0% { opacity:1; transform:translate(0,0) scale(0.5); } 100% { opacity:0; transform:translate(-8px,-84px) scale(0.6); } }
+        @keyframes flyUp4 { 0% { opacity:1; transform:translate(0,0) scale(0.5); } 100% { opacity:0; transform:translate(40px,-55px) scale(0.9); } }
+        @keyframes flyUp5 { 0% { opacity:1; transform:translate(0,0) scale(0.5); } 100% { opacity:0; transform:translate(-44px,-40px) scale(0.7); } }
+        @keyframes confettiFly { 0% { opacity:1; transform:translateY(0) rotate(0deg) scale(1); } 60% { opacity:1; } 100% { opacity:0; transform:translateY(-90px) rotate(720deg) scale(0.5); } }
+        @keyframes storyFadeIn { 0% { opacity:0; transform:scale(1.03); } 100% { opacity:1; transform:scale(1); } }
+      `}</style>
 
       {/* ── Lead Capture Modal ──────────────────────────────────────── */}
       {showCapture && !leadCaptured && (
@@ -392,6 +540,38 @@ const MarketplacePage: React.FC = () => {
         </div>
       )}
 
+      {/* ── Create Story Overlay ────────────────────────────────────── */}
+      {myTenantId && showCreateStory && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[150] flex items-end sm:items-center justify-center">
+          <div className="bg-white rounded-t-[32px] sm:rounded-[32px] w-full max-w-[470px] p-6 space-y-4 animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-black text-sm uppercase tracking-widest">Novo Story</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Visível por 24 horas</p>
+              </div>
+              <button onClick={() => { setShowCreateStory(false); setNewStoryFile(null); setNewStoryPreview(''); setNewStoryCaption(''); }} className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase tracking-widest">Cancelar</button>
+            </div>
+            <input ref={storyFileRef} type="file" accept="image/*" onChange={handleStoryFileSelect} className="hidden" />
+            {newStoryPreview ? (
+              <div className="relative rounded-2xl overflow-hidden">
+                <img src={newStoryPreview} alt="Preview" className="w-full aspect-[9/16] object-cover" />
+                <button onClick={() => { setNewStoryFile(null); setNewStoryPreview(''); if (storyFileRef.current) storyFileRef.current.value = ''; }} className="absolute top-3 right-3 w-8 h-8 bg-black/60 text-white rounded-full flex items-center justify-center font-black text-sm hover:bg-red-500 transition-all">✕</button>
+              </div>
+            ) : (
+              <button onClick={() => storyFileRef.current?.click()} className="w-full aspect-[9/16] rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 hover:border-orange-400 transition-all">
+                <span className="text-4xl text-slate-200">📱</span>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selecionar foto</span>
+                <span className="text-[9px] text-slate-300">Formato vertical recomendado · Max 5MB</span>
+              </button>
+            )}
+            <textarea value={newStoryCaption} onChange={e => setNewStoryCaption(e.target.value)} placeholder="Legenda do story... (opcional)" rows={2} className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400 resize-none" />
+            <button onClick={handleCreateStory} disabled={!newStoryFile || creatingStory} className="w-full bg-orange-500 text-white py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+              {creatingStory ? 'Publicando...' : 'Publicar Story'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── App Shell ───────────────────────────────────────────────── */}
       <div className="max-w-[470px] mx-auto min-h-screen bg-white relative">
 
@@ -426,21 +606,25 @@ const MarketplacePage: React.FC = () => {
                   </svg>
                 </button>
               )}
-              <a href="#/minha-conta" className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 transition-all">
-                {customerSession ? (
-                  <div className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-black">
-                    {customerSession.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                ) : tenantSession ? (
+              {tenantSession ? (
+                <button onClick={() => { const t = tenants.find(x => x.id === myTenantId); if (t) openTenantDetail(t); }} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 transition-all">
                   <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center text-white text-[10px] font-black">
                     {tenantSession.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
-                ) : (
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                )}
-              </a>
+                </button>
+              ) : (
+                <a href="#/minha-conta" className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 transition-all">
+                  {customerSession ? (
+                    <div className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-black">
+                      {customerSession.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                  ) : (
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  )}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -455,22 +639,34 @@ const MarketplacePage: React.FC = () => {
               {!loading && filteredTenants.length > 0 && (
                 <div className="overflow-x-auto border-b border-slate-100" style={{ scrollbarWidth: 'none' }}>
                   <div className="flex gap-3 px-4 py-3" style={{ width: 'max-content' }}>
-                    {filteredTenants.slice(0, 14).map(t => (
-                      <button key={t.id} onClick={() => openTenantDetail(t)} className="flex flex-col items-center gap-1.5 shrink-0">
-                        <div className="w-[62px] h-[62px] rounded-full p-[2.5px]" style={{ background: 'linear-gradient(45deg, #f97316, #ea580c, #1c1917)' }}>
-                          <div className="w-full h-full rounded-full bg-white p-[2px]">
-                            {galleries.get(t.id)?.[0] ? (
-                              <img src={galleries.get(t.id)![0]} alt={t.name} className="w-full h-full rounded-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full rounded-full bg-black flex items-center justify-center text-white text-xs font-black">
-                                {t.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
-                              </div>
+                    {filteredTenants.slice(0, 14).map(t => {
+                      const hasStory = activeStoriesMap.has(t.id);
+                      const isOwn = t.id === myTenantId;
+                      const handleStoryClick = () => {
+                        if (hasStory) openStory(t.id);
+                        else if (isOwn) setShowCreateStory(true);
+                        else openTenantDetail(t);
+                      };
+                      return (
+                        <button key={t.id} onClick={handleStoryClick} className="flex flex-col items-center gap-1.5 shrink-0">
+                          <div className="w-[62px] h-[62px] rounded-full p-[2.5px] relative" style={hasStory ? { background: 'linear-gradient(45deg, #f97316, #ea580c, #1c1917)' } : { background: '#e2e8f0' }}>
+                            <div className="w-full h-full rounded-full bg-white p-[2px]">
+                              {galleries.get(t.id)?.[0] ? (
+                                <img src={galleries.get(t.id)![0]} alt={t.name} className="w-full h-full rounded-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full rounded-full bg-black flex items-center justify-center text-white text-xs font-black">
+                                  {t.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                            </div>
+                            {isOwn && !hasStory && (
+                              <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-orange-500 rounded-full border-2 border-white flex items-center justify-center text-white font-black" style={{ fontSize: '11px', lineHeight: 1 }}>+</div>
                             )}
                           </div>
-                        </div>
-                        <span className="text-[10px] font-semibold text-slate-600 w-[66px] text-center truncate">{t.name.split(' ')[0]}</span>
-                      </button>
-                    ))}
+                          <span className="text-[10px] font-semibold text-slate-600 w-[66px] text-center truncate">{t.name.split(' ')[0]}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -518,21 +714,40 @@ const MarketplacePage: React.FC = () => {
                       </div>
 
                       {/* Image */}
-                      <div className="relative select-none" onContextMenu={e => e.preventDefault()} style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}>
+                      <div className="relative select-none" onContextMenu={e => e.preventDefault()} onClick={() => handleImageTap(post.id)} style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}>
                         <img src={post.imageUrl} alt="" className="w-full aspect-square object-cover pointer-events-none" draggable={false} style={{ WebkitUserDrag: 'none' } as React.CSSProperties} />
                         <div className="absolute inset-0" />
+                        {post.likesCount >= 3 && (
+                          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white text-[9px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 select-none">
+                            <span>🔥</span><span>Em alta</span>
+                          </div>
+                        )}
+                        {doubleTapAnims.has(post.id) && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <span style={{ fontSize: '80px', animation: 'heartBurst 0.9s ease-out forwards', display: 'block' }}>❤️</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Actions + Caption */}
                       <div className="px-3 pt-3 pb-4 space-y-2">
                         <div className="flex items-center gap-3">
-                          <button onClick={() => handleLike(post.id)} className="transition-transform active:scale-75">
-                            {userLikes.has(post.id) ? (
-                              <svg className="w-7 h-7 fill-red-500" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
-                            ) : (
-                              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+                          <div className="relative inline-flex">
+                            <button onClick={() => handleLike(post.id)} className="transition-transform active:scale-75">
+                              {userLikes.has(post.id) ? (
+                                <svg className="w-7 h-7 fill-red-500" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+                              ) : (
+                                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+                              )}
+                            </button>
+                            {likeAnims.has(post.id) && (
+                              <div style={{ position: 'absolute', top: '50%', left: '50%', pointerEvents: 'none', overflow: 'visible' }}>
+                                {['flyUp1','flyUp2','flyUp3','flyUp4','flyUp5'].map((anim, i) => (
+                                  <span key={i} style={{ position: 'absolute', marginTop: '-8px', marginLeft: '-8px', fontSize: '14px', color: '#ef4444', animation: `${anim} 0.75s ease-out forwards`, animationDelay: `${i * 0.04}s` }}>♥</span>
+                                ))}
+                              </div>
                             )}
-                          </button>
+                          </div>
                           <button onClick={() => toggleComments(post.id)}>
                             <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
                           </button>
@@ -671,42 +886,119 @@ const MarketplacePage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Tenant Detail Modal ──────────────────────────────────────── */}
+      {/* ── Tenant Detail Modal — Instagram Profile ──────────────────── */}
       {selectedTenant && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[300] flex items-end sm:items-center justify-center">
           <div className="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-[470px] overflow-hidden animate-scaleUp max-h-[92vh] flex flex-col">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-black via-slate-800 to-orange-500 p-5 relative shrink-0">
-              <button onClick={() => setSelectedTenant(null)} className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/40 text-white rounded-full flex items-center justify-center font-black text-sm transition-all">✕</button>
-              <div className="flex items-center gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-white text-black flex items-center justify-center text-lg font-black shrink-0">
-                  {selectedTenant.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+
+            {/* ── Profile header (non-scrolling) ─────────────────── */}
+            <div className="px-4 pt-4 pb-0 shrink-0">
+              {/* Top nav: close + username */}
+              <div className="flex items-center justify-between mb-4">
+                <button onClick={() => setSelectedTenant(null)} className="p-1 -ml-1 text-black hover:text-slate-500 transition-colors">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                </button>
+                <span className="text-[13px] font-black text-black">{selectedTenant.name.split(' ').slice(0, 2).join(' ')}</span>
+                <div className="w-6" />
+              </div>
+
+              {/* Avatar + stats row */}
+              <div className="flex items-center gap-4 mb-3">
+                <div className="w-[82px] h-[82px] rounded-full shrink-0 overflow-hidden bg-black flex items-center justify-center" style={{ border: '3px solid #f97316' }}>
+                  {galleries.get(selectedTenant.id)?.[0] ? (
+                    <img src={galleries.get(selectedTenant.id)![0]} alt={selectedTenant.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white text-xl font-black">{selectedTenant.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
+                  )}
                 </div>
-                <div>
-                  <h2 className="text-lg font-black text-white uppercase tracking-tight">{selectedTenant.name}</h2>
-                  {selectedTenant.nicho && <span className="inline-block mt-0.5 text-[8px] font-black px-2 py-0.5 rounded-full bg-orange-500 text-white uppercase tracking-widest">{selectedTenant.nicho}</span>}
-                  {selectedTenant.rating > 0 && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-orange-400 text-xs">{stars(selectedTenant.rating)}</span>
-                      <span className="text-[10px] font-black text-slate-300">{selectedTenant.rating}/10 ({selectedTenant.reviewCount})</span>
+                <div className="flex gap-4 flex-1 justify-around">
+                  <div className="text-center">
+                    <p className="text-[17px] font-black text-black leading-none">{loadingDetailPosts ? '—' : detailPosts.length}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">posts</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[17px] font-black text-black leading-none">{fmtCount(tenantFollowersMap.get(selectedTenant.id) || 0)}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">seguidores</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Name + nicho + rating + bio */}
+              <div className="mb-3 space-y-0.5">
+                <p className="text-[13px] font-black text-black">{selectedTenant.name}</p>
+                <div className="flex items-center flex-wrap gap-1.5 mt-0.5">
+                  {selectedTenant.nicho && <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 uppercase tracking-wider">{selectedTenant.nicho}</span>}
+                  {selectedTenant.cidade && <span className="text-[10px] text-slate-400">📍 {selectedTenant.cidade}{selectedTenant.estado ? `, ${selectedTenant.estado}` : ''}</span>}
+                </div>
+                {selectedTenant.rating > 0 && (
+                  <p className="text-[11px] text-orange-500 font-black">★ {selectedTenant.rating.toFixed(1)} · {selectedTenant.reviewCount} avaliações</p>
+                )}
+                {selectedTenant.descricao && (
+                  <p className="text-[12px] text-black leading-snug pt-1">{selectedTenant.descricao}</p>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-2 pb-3">
+                <button onClick={handleFollow} className={`flex-1 py-2 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all ${followedTenants.has(selectedTenant.id) ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-black text-white hover:bg-slate-800'}`}>
+                  {followedTenants.has(selectedTenant.id) ? 'Seguindo ✓' : 'Seguir'}
+                </button>
+                <div className="relative flex-1">
+                  <a href={`#/agendar/${selectedTenant.slug}`} onClick={() => { setBookingConfetti(true); setTimeout(() => setBookingConfetti(false), 1400); }} className="block w-full py-2 rounded-xl font-black text-[11px] uppercase tracking-wider bg-orange-500 text-white hover:bg-orange-600 transition-all text-center">Agendar</a>
+                  {bookingConfetti && (
+                    <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, height: 0, pointerEvents: 'none', overflow: 'visible' }}>
+                      {['🎉','✨','⭐','🌟','💫','🎊','🔥','❤️'].map((emoji, i) => (
+                        <span key={i} style={{ position: 'absolute', bottom: 0, fontSize: '20px', animation: `confettiFly 1.2s ease-out forwards`, animationDelay: `${i * 0.08}s`, left: `${4 + i * 12}%` }}>{emoji}</span>
+                      ))}
                     </div>
                   )}
                 </div>
+                <button onClick={e => { e.stopPropagation(); toggleFavorite(selectedTenant.id); }} className="w-11 py-2 rounded-xl bg-slate-100 hover:bg-red-50 transition-all flex items-center justify-center text-lg shrink-0">
+                  {favorites.has(selectedTenant.id) ? '❤️' : '🤍'}
+                </button>
               </div>
-              {selectedTenant.endereco && <p className="text-xs text-slate-300 font-bold mt-2">📍 {selectedTenant.endereco}{selectedTenant.cidade ? `, ${selectedTenant.cidade}` : ''}{selectedTenant.estado ? ` - ${selectedTenant.estado}` : ''}</p>}
-              {selectedTenant.descricao && <p className="text-xs text-slate-300 mt-1">{selectedTenant.descricao}</p>}
             </div>
 
-            {/* Detail Tabs */}
-            <div className="flex gap-2 px-4 py-3 border-b border-slate-100 shrink-0">
-              <button onClick={() => setDetailTab('agendar')} className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${detailTab === 'agendar' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Agendar</button>
-              <button onClick={() => setDetailTab('posts')} className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${detailTab === 'posts' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Posts {detailPosts.length > 0 && `(${detailPosts.length})`}</button>
+            {/* ── Tab strip (posts grid / agendar) ───────────────── */}
+            <div className="flex border-t border-slate-100 shrink-0">
+              <button onClick={() => setDetailTab('grid')} className={`flex-1 py-2.5 flex justify-center items-center border-t-2 transition-colors ${detailTab === 'grid' ? 'border-black' : 'border-transparent'}`}>
+                <svg className={`w-5 h-5 ${detailTab === 'grid' ? 'text-black' : 'text-slate-300'}`} fill="currentColor" viewBox="0 0 24 24"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" /></svg>
+              </button>
+              <button onClick={() => setDetailTab('agendar')} className={`flex-1 py-2.5 flex justify-center items-center border-t-2 transition-colors ${detailTab === 'agendar' ? 'border-black' : 'border-transparent'}`}>
+                <svg className={`w-5 h-5 ${detailTab === 'agendar' ? 'text-black' : 'text-slate-300'}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" /></svg>
+              </button>
             </div>
 
-            {/* Content */}
-            <div className="overflow-y-auto flex-1 p-4">
+            {/* ── Content (scrollable) ────────────────────────────── */}
+            <div className="overflow-y-auto flex-1">
+
+              {/* Posts grid tab */}
+              {detailTab === 'grid' && (
+                loadingDetailPosts ? (
+                  <div className="text-center py-16"><div className="w-8 h-8 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>
+                ) : detailPosts.length === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-4xl mb-3">📷</p>
+                    <p className="text-sm font-black text-slate-400">Nenhum post ainda</p>
+                    {myTenantId === selectedTenant.id && <p className="text-xs text-slate-300 mt-1">Publique o primeiro post!</p>}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-[1.5px] mt-[1.5px]">
+                    {detailPosts.map(post => (
+                      <div key={post.id} className="aspect-square overflow-hidden relative group bg-slate-100">
+                        <img src={post.imageUrl} alt="" className="w-full h-full object-cover group-hover:opacity-80 transition-opacity pointer-events-none" draggable={false} />
+                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                          <span className="text-white text-[13px] font-black">❤️ {post.likesCount}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+
+              {/* Agendar tab */}
               {detailTab === 'agendar' && (
-                <div className="space-y-4">
+                <div className="p-5 space-y-5">
                   {(galleries.get(selectedTenant.id) || []).length > 0 && (
                     <div className={`grid ${(galleries.get(selectedTenant.id) || []).length === 1 ? 'grid-cols-1' : (galleries.get(selectedTenant.id) || []).length === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-2 rounded-2xl overflow-hidden`}>
                       {(galleries.get(selectedTenant.id) || []).map((url: string, i: number) => (
@@ -714,65 +1006,113 @@ const MarketplacePage: React.FC = () => {
                       ))}
                     </div>
                   )}
-                  <div className="text-center py-4 space-y-3">
-                    <p className="text-sm font-bold text-slate-500">Agende agora com {selectedTenant.name}</p>
-                    <a href={`#/agendar/${selectedTenant.slug}`} className="block w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all text-center">Agendar Horário</a>
-                    <button onClick={e => { e.stopPropagation(); toggleFavorite(selectedTenant.id); }} className="inline-flex items-center gap-2 px-6 py-2 rounded-full bg-slate-100 hover:bg-red-50 transition-all text-sm font-bold text-slate-600">
-                      <span className="text-lg">{favorites.has(selectedTenant.id) ? '❤️' : '🤍'}</span>
-                      {favorites.has(selectedTenant.id) ? 'Favoritado' : 'Favoritar'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {detailTab === 'posts' && (
-                <div className="space-y-4">
-                  {loadingDetailPosts ? (
-                    <div className="text-center py-12"><div className="w-8 h-8 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>
-                  ) : detailPosts.length === 0 ? (
-                    <div className="text-center py-12"><p className="text-4xl mb-3">📷</p><p className="text-sm font-black text-slate-400">Nenhum post ainda</p></div>
-                  ) : (
-                    detailPosts.map(post => (
-                      <div key={post.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-                        <div className="relative select-none" onContextMenu={e => e.preventDefault()} style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}>
-                          <img src={post.imageUrl} alt="" className="w-full aspect-square object-cover pointer-events-none" draggable={false} style={{ WebkitUserDrag: 'none' } as React.CSSProperties} />
-                          <div className="absolute inset-0" />
-                        </div>
-                        <div className="px-4 py-3 space-y-2">
-                          <div className="flex items-center gap-4">
-                            <button onClick={() => handleLike(post.id)} className="flex items-center gap-1.5 transition-transform active:scale-75">
-                              <span className="text-xl">{userLikes.has(post.id) ? '❤️' : '🤍'}</span>
-                              <span className="text-xs font-black text-slate-600">{post.likesCount}</span>
-                            </button>
-                            <button onClick={() => toggleComments(post.id)} className="flex items-center gap-1.5">
-                              <span className="text-xl">💬</span>
-                              <span className="text-xs font-black text-slate-400">{(commentsByPost.get(post.id) || []).length || ''}</span>
-                            </button>
-                            <span className="text-[10px] font-bold text-slate-300 ml-auto">{timeAgo(post.createdAt)}</span>
-                          </div>
-                          {post.caption && <p className="text-sm text-black"><span className="font-black">{post.tenantName?.split(' ')[0]} </span>{post.caption}</p>}
-                          {expandedComments.has(post.id) && (
-                            <div className="space-y-2 pt-2 border-t border-slate-100">
-                              {(commentsByPost.get(post.id) || []).map(c => (
-                                <div key={c.id} className="text-sm"><span className="font-black">{c.authorName} </span><span className="text-slate-600">{c.content}</span><span className="text-[9px] text-slate-300 ml-2">{timeAgo(c.createdAt)}</span></div>
-                              ))}
-                              <div className="flex gap-2 pt-1">
-                                <input type="text" value={commentInputs.get(post.id)?.name || ''} onChange={e => updateCommentInput(post.id, 'name', e.target.value)} placeholder="Nome" className="w-24 border-b border-slate-200 text-xs font-bold focus:outline-none focus:border-orange-400 py-1" />
-                                <input type="text" value={commentInputs.get(post.id)?.text || ''} onChange={e => updateCommentInput(post.id, 'text', e.target.value)} placeholder="Comentar..." className="flex-1 border-b border-slate-200 text-xs focus:outline-none focus:border-orange-400 py-1" onKeyDown={e => { if (e.key === 'Enter') submitComment(post.id); }} />
-                                <button onClick={() => submitComment(post.id)} className="text-[11px] font-black text-orange-500 hover:text-orange-600">Publicar</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))
+                  {selectedTenant.endereco && (
+                    <p className="text-xs text-slate-500 font-bold">📍 {selectedTenant.endereco}{selectedTenant.cidade ? `, ${selectedTenant.cidade}` : ''}</p>
                   )}
+                  <a href={`#/agendar/${selectedTenant.slug}`} onClick={() => { setBookingConfetti(true); setTimeout(() => setBookingConfetti(false), 1400); }} className="block w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all text-center">
+                    Agendar Horário
+                  </a>
                 </div>
               )}
             </div>
           </div>
         </div>
       )}
+      {/* ── Story Viewer ─────────────────────────────────────────────── */}
+      {storyViewer && (() => {
+        const story = storyViewer.stories[storyViewer.idx];
+        const tenant = tenants.find(t => t.id === storyViewer.tenantId);
+        if (!story) return null;
+        const isOwnStory = storyViewer.tenantId === myTenantId;
+        return (
+          <div className="fixed inset-0 z-[500] bg-black flex items-center justify-center select-none">
+            {/* Image */}
+            <img
+              src={story.imageUrl} alt="" key={story.id}
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{ animation: 'storyFadeIn 0.25s ease-out' }}
+            />
+            {/* Gradient overlays */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/70 pointer-events-none" />
+
+            {/* Progress bars */}
+            <div className="absolute top-3 left-0 right-0 flex gap-1 px-3 z-20">
+              {storyViewer.stories.map((s, i) => (
+                <div key={s.id} className="flex-1 rounded-full overflow-hidden" style={{ height: '2.5px', background: 'rgba(255,255,255,0.3)' }}>
+                  <div className="h-full bg-white rounded-full" style={{ width: i < storyViewer.idx ? '100%' : i === storyViewer.idx ? `${storyProgressPct}%` : '0%' }} />
+                </div>
+              ))}
+            </div>
+
+            {/* Header */}
+            <div className="absolute top-8 left-0 right-0 flex items-center px-3 z-20">
+              <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-white shrink-0 bg-black flex items-center justify-center mr-2">
+                {galleries.get(storyViewer.tenantId)?.[0] ? (
+                  <img src={galleries.get(storyViewer.tenantId)![0]} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-white text-[10px] font-black">{tenant?.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '??'}</span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-[13px] font-black leading-none">{tenant?.name || 'Profissional'}</p>
+                <p className="text-white/60 text-[10px] mt-0.5">{timeAgo(story.createdAt)}</p>
+              </div>
+              {isOwnStory && (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await db.deleteStory(story.id, myTenantId!);
+                    setActiveStoriesMap(prev => {
+                      const m = new Map<string, MarketplaceStory[]>(prev);
+                      const arr = (m.get(myTenantId!) || []).filter(s => s.id !== story.id);
+                      if (arr.length === 0) m.delete(myTenantId!); else m.set(myTenantId!, arr);
+                      return m;
+                    });
+                    setStoryViewer(prev => {
+                      if (!prev) return null;
+                      const newStories = prev.stories.filter(s => s.id !== story.id);
+                      if (newStories.length === 0) return null;
+                      return { ...prev, stories: newStories, idx: Math.min(prev.idx, newStories.length - 1) };
+                    });
+                  }}
+                  className="mr-2 bg-black/40 text-white text-[10px] font-black px-3 py-1.5 rounded-full hover:bg-red-500/80 transition-all"
+                >
+                  Excluir
+                </button>
+              )}
+              <button onClick={() => setStoryViewer(null)} className="p-1.5 text-white bg-black/30 rounded-full hover:bg-black/50 transition-all">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Caption */}
+            {story.caption && (
+              <div className="absolute bottom-24 left-4 right-4 z-20">
+                <p className="text-white text-sm leading-snug drop-shadow-md">{story.caption}</p>
+              </div>
+            )}
+
+            {/* Agendar button */}
+            {tenant && (
+              <div className="absolute bottom-6 left-4 right-4 z-20">
+                <a
+                  href={`#/agendar/${tenant.slug}`}
+                  onClick={e => e.stopPropagation()}
+                  className="block w-full bg-white text-black py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest text-center hover:bg-orange-500 hover:text-white transition-all"
+                >
+                  Agendar Horário
+                </a>
+              </div>
+            )}
+
+            {/* Tap zones: left = prev, right = next */}
+            <div className="absolute inset-0 flex z-10">
+              <div className="flex-1 cursor-pointer" onClick={() => advanceStory(-1)} />
+              <div className="flex-1 cursor-pointer" onClick={() => advanceStory(1)} />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -665,9 +665,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         </button>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-10">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* ─── Sidebar ─────────────────────────────── */}
-        <div className="w-full lg:w-80 shrink-0 space-y-6">
+        <div className="w-full lg:w-72 shrink-0 space-y-6">
 
           {/* Barbeiro Filter */}
           <div className="bg-white p-6 rounded-[30px] border-2 border-slate-100 shadow-lg space-y-4">
@@ -770,15 +770,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
           <div className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[700px]">
+            <table className="w-full text-left min-w-[580px]">
               <thead>
                 <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b-2 border-slate-100">
-                  <th className="px-4 sm:px-8 py-4 sm:py-6">DATA / HORA</th>
-                  <th className="px-4 sm:px-8 py-4 sm:py-6">CLIENTE</th>
-                  <th className="px-4 sm:px-8 py-4 sm:py-6">SERVIÇO</th>
-                  <th className="px-4 sm:px-8 py-4 sm:py-6">PROF.</th>
-                  <th className="px-4 sm:px-8 py-4 sm:py-6">STATUS</th>
-                  <th className="px-4 sm:px-8 py-4 sm:py-6 text-right">AÇÕES</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-5">DATA / HORA</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-5">CLIENTE</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-5">SERVIÇO</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-5">PROF.</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-5">STATUS</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-5 text-right">AÇÕES</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-slate-50">

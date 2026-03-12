@@ -24,7 +24,7 @@ import {
   FollowUpNamedMode, InventoryItem, RecurringSchedule, Comanda, Product,
   NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog,
   Review, MarketplaceLead, CentralBooking, CashbackBalance, CustomerAccount, CustomerFavorite,
-  MarketplacePost, MarketplacePostComment,
+  MarketplacePost, MarketplacePostComment, MarketplaceStory,
   parseServiceIds, encodeServiceIds
 } from '../types';
 
@@ -2449,6 +2449,68 @@ class DatabaseService {
     const { data } = await supabase.from('tenants').select('id, nome, slug').in('id', tenantIds);
     const map = new Map((data || []).map((t: any) => [t.id, { name: t.nome, slug: t.slug }]));
     return posts.map(p => ({ ...p, tenantName: map.get(p.tenantId)?.name, tenantSlug: map.get(p.tenantId)?.slug }));
+  }
+
+  // ─── Marketplace Follows ───────────────────────────────────────────
+  // Requires table: marketplace_follows (id, tenant_id, follower_id, created_at)
+  // with UNIQUE(tenant_id, follower_id)
+
+  async toggleTenantFollow(tenantId: string, followerId: string): Promise<{ followed: boolean; followersCount: number }> {
+    const { data: existing } = await supabase.from('marketplace_follows').select('id').eq('tenant_id', tenantId).eq('follower_id', followerId).maybeSingle();
+    if (existing) {
+      await supabase.from('marketplace_follows').delete().eq('id', existing.id);
+    } else {
+      await supabase.from('marketplace_follows').insert({ tenant_id: tenantId, follower_id: followerId });
+    }
+    const { count } = await supabase.from('marketplace_follows').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId);
+    return { followed: !existing, followersCount: count || 0 };
+  }
+
+  async getTenantFollowersCount(tenantId: string): Promise<number> {
+    const { count } = await supabase.from('marketplace_follows').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId);
+    return count || 0;
+  }
+
+  async getFollowedTenants(followerId: string, tenantIds: string[]): Promise<Set<string>> {
+    if (tenantIds.length === 0) return new Set();
+    const { data } = await supabase.from('marketplace_follows').select('tenant_id').eq('follower_id', followerId).in('tenant_id', tenantIds);
+    return new Set((data || []).map((r: any) => r.tenant_id));
+  }
+
+  // ─── Marketplace Stories ───────────────────────────────────────────
+  // Requires table: marketplace_stories (id, tenant_id, image_url, caption, created_at, expires_at)
+
+  async createStory(tenantId: string, imageUrl: string, caption?: string): Promise<MarketplaceStory> {
+    const { data, error } = await supabase.from('marketplace_stories').insert({
+      tenant_id: tenantId,
+      image_url: imageUrl,
+      caption: caption || null,
+    }).select().single();
+    if (error) throw error;
+    return { id: data.id, tenantId: data.tenant_id, imageUrl: data.image_url, caption: data.caption || undefined, createdAt: data.created_at, expiresAt: data.expires_at };
+  }
+
+  async getActiveStories(tenantIds: string[]): Promise<Map<string, MarketplaceStory[]>> {
+    if (tenantIds.length === 0) return new Map();
+    const now = new Date().toISOString();
+    const { data, error } = await supabase.from('marketplace_stories')
+      .select('*')
+      .in('tenant_id', tenantIds)
+      .gt('expires_at', now)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    const result = new Map<string, MarketplaceStory[]>();
+    for (const r of (data || [])) {
+      const s: MarketplaceStory = { id: r.id, tenantId: r.tenant_id, imageUrl: r.image_url, caption: r.caption || undefined, createdAt: r.created_at, expiresAt: r.expires_at };
+      const arr = result.get(r.tenant_id) || [];
+      arr.push(s);
+      result.set(r.tenant_id, arr);
+    }
+    return result;
+  }
+
+  async deleteStory(storyId: string, tenantId: string): Promise<void> {
+    await supabase.from('marketplace_stories').delete().eq('id', storyId).eq('tenant_id', tenantId);
   }
 
   // ─── Customer Booking History (cross-tenant) ───────────────────────

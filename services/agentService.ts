@@ -1270,7 +1270,8 @@ async function _handleMessage(
     const hasBookingIntent = wantsReschedule ||
       ['agendar', 'marcar', 'horario', 'horário', 'mudar', 'trocar', 'reagendar'].some(k => norm.includes(k));
 
-    const isAffirm = !hasBookingIntent && AFFIRM.some(a => wds.includes(a) || norm === a);
+    const isEmojiAffirmFU = /[👍✅👌✔️🤙]/u.test(text);
+    const isAffirm = !hasBookingIntent && (isEmojiAffirmFU || AFFIRM.some(a => wds.includes(a) || norm === a));
     const isDeny   = DENY.some(d => wds.includes(d));
     // Brazilian "Não, [affirmative]" filler: "nao" used as emphasis before affirming
     // e.g. "Não, tá confirmado, mais que confirmado, preciso cortar o cabelo"
@@ -1280,6 +1281,8 @@ async function _handleMessage(
     if ((fType === 'aviso' || fType === 'lembrete') && wantsReschedule) {
       const fp0 = makeFingerprint(tenantId, phone, text);
       if (isLocalDuplicate(fp0)) return null;
+      const claimed0s = await db.claimMessage(fp0);
+      if (!claimed0s) { console.log('[Agent] Follow-up reschedule blocked by DB dedup'); return null; }
 
       const ANY_PROF = ['qualquer', 'quem estiver', 'tanto faz', 'quem tiver', 'qualquer um', 'pode ser qualquer'];
       const wantsAnyProf = ANY_PROF.some(k => norm.includes(k));
@@ -1354,6 +1357,8 @@ async function _handleMessage(
     if ((fType === 'aviso' || fType === 'lembrete') && ((isAffirm && wds.length <= 8) || denyAsFiller)) {
       const fp0 = makeFingerprint(tenantId, phone, text);
       if (isLocalDuplicate(fp0)) return null;
+      const claimed0 = await db.claimMessage(fp0);
+      if (!claimed0) { console.log('[Agent] Follow-up aviso/lembrete blocked by DB dedup'); return null; }
       const apptTime = preSession.data.followUpApptTime;
       const reply = apptTime
         ? `Show de bola! Aguardamos você às *${apptTime}*.`
@@ -1373,6 +1378,8 @@ async function _handleMessage(
     if (fType === 'reativacao' && isDeny && wds.length <= 6) {
       const fp0 = makeFingerprint(tenantId, phone, text);
       if (isLocalDuplicate(fp0)) return null;
+      const claimed0r = await db.claimMessage(fp0);
+      if (!claimed0r) { console.log('[Agent] Follow-up reativacao blocked by DB dedup'); return null; }
       const reply = `Tudo bem! Quando precisar, é só chamar. 😊`;
       preSession.data.pendingFollowUpType = undefined;
       const _fuDateStr2 = getBrasiliaGreeting().dateStr;
@@ -2818,11 +2825,12 @@ async function _handleMessage(
   }
 
   // ─── Fallback: force confirmed if pendingConfirm + affirmative message ─
+  const _isEmojiAffirm = /[👍✅👌✔️🤙]/u.test(text);
   if (session.data.pendingConfirm && brain.extracted.confirmed === null) {
     const affirmWords = ['sim', 'ok', 'pode', 'confirmo', 'isso', 'exato', 'correto', 'com certeza', 'quero', 'bora', 'ta', 'tá', 'beleza', 'certo', 'fechado', 'feito', 'vamos', 'positivo', 'claro', 'confirmado', 'confirmar', 'yes', 'perfeito'];
     const normalized = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
     const words = normalized.split(/\s+/);
-    if (affirmWords.some(a => words.includes(a) || normalized === a)) {
+    if (_isEmojiAffirm || affirmWords.some(a => words.includes(a) || normalized === a)) {
       console.log('[Agent] Affirmative fallback → forced confirmed=true');
       brain.extracted.confirmed = true;
     }
@@ -2830,7 +2838,7 @@ async function _handleMessage(
 
   // ── TS guard: prevent AI from hallucinating booking confirmation ──────────
   const _bookConfirmRe = /(?:\d{1,2}\s*[:\sh]\s*\d{0,2}|\d{1,2}\s*(?:hora|hrs?|h\b)|(?:^|\s)(?:sim|s|ss|ok|pode|confirma|quero|isso|esse|essa|beleza|bora|vamos|fechar|fechado|agendar|marcar|primeiro|segundo|terceiro|ultimo|última|1º|2º|3º)(?:\s|$|[!.,?]))/i;
-  if (brain.extracted.confirmed === true && session.data.time && !_bookConfirmRe.test(lowerText)) {
+  if (brain.extracted.confirmed === true && session.data.time && !_bookConfirmRe.test(lowerText) && !_isEmojiAffirm) {
     brain.extracted.confirmed = false;
     console.log('[Agent] TS guard: blocked hallucinated booking confirmation — client msg:', lowerText.slice(0, 80));
   }

@@ -111,6 +111,8 @@ const App: React.FC = () => {
   const [tenantPlan, setTenantPlan] = useState<string>('START');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('agz_dark') !== '0');
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
+  const UPDATE_KEY = 'agz_update_seen_v3';
+  const [showUpdateNotice, setShowUpdateNotice] = useState(false);
   const [unreadConvCount, setUnreadConvCount] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
@@ -262,6 +264,13 @@ const App: React.FC = () => {
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
     }
   }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, isImpersonating, currentView, superAdminTab]);
+
+  // Show one-time update notice for tenants
+  useEffect(() => {
+    if (isAuthenticated && role === 'TENANT' && !localStorage.getItem(UPDATE_KEY)) {
+      setShowUpdateNotice(true);
+    }
+  }, [isAuthenticated, role]);
 
   // Close sidebar on mobile after any nav action
   const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
@@ -614,7 +623,7 @@ const App: React.FC = () => {
         className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${sidebarCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-50 h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
         {/* Logo / toggle */}
-        <div className={`flex ${sidebarCollapsed ? 'flex-col items-center py-5 px-2 gap-3' : 'flex-row items-center justify-between p-8'} transition-all duration-300`}>
+        <div className={`flex ${sidebarCollapsed ? 'flex-col items-center py-4 px-2 gap-3' : 'flex-row items-center justify-between px-5 py-5'} transition-all duration-300`}>
           {sidebarCollapsed ? (
             <>
               <span className="text-lg font-black text-orange-500 uppercase italic leading-none tracking-tighter">AGZ</span>
@@ -754,7 +763,7 @@ const App: React.FC = () => {
 
       {/* ✅ CORREÇÃO PRINCIPAL: main sem overflow-auto — o scroll fica no div interno */}
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="px-4 md:px-10 py-5 flex items-center justify-between shrink-0 bg-slate-50 z-40 border-b border-slate-200 sticky top-0">
+        <header className="px-4 md:px-6 py-4 flex items-center justify-between shrink-0 bg-slate-50 z-40 border-b border-slate-200 sticky top-0">
           <div className="flex items-center gap-3">
             {/* Hamburger — mobile only */}
             <button
@@ -854,7 +863,7 @@ const App: React.FC = () => {
           <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
             {trialInfo?.isExpired && role === 'TENANT'
               ? <TrialExpiredView tenantId={tenantId} />
-              : <div className="p-4 md:p-10">{renderView()}</div>
+              : <div className="p-4 md:p-6">{renderView()}</div>
             }
           </Suspense>
         </div>
@@ -895,6 +904,34 @@ const App: React.FC = () => {
           </div>
           <SupportChat tenantId={tenantId} tenantName={tenantName} />
         </>
+      )}
+
+      {/* ── One-time update notice ───────────────────────── */}
+      {showUpdateNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 space-y-5 animate-toastIn">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">🚀</span>
+              <div>
+                <p className="font-black text-base text-black">Novidades do AgendeZap</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Atualização de hoje</p>
+              </div>
+            </div>
+            <ul className="space-y-3 text-sm text-slate-700">
+              <li className="flex gap-2"><span>👍</span><span>O agente agora reconhece <strong>joinha</strong> como confirmação de agendamento</span></li>
+              <li className="flex gap-2"><span>🕐</span><span>O agente sabe a <strong>hora atual</strong> — não oferece mais manhã se já passou do meio-dia</span></li>
+              <li className="flex gap-2"><span>📋</span><span>Confirmação de agendamento agora mostra <strong>serviço + profissional + data + horário</strong></span></li>
+              <li className="flex gap-2"><span>🔕</span><span>Corrigido: follow-up não enviava mais a <strong>mesma mensagem duas vezes</strong></span></li>
+              <li className="flex gap-2"><span>📸</span><span>Novo: poste <strong>stories de 24h</strong> no AZ Marketplace pelo seu perfil</span></li>
+            </ul>
+            <button
+              onClick={() => { localStorage.setItem(UPDATE_KEY, '1'); setShowUpdateNotice(false); }}
+              className="w-full py-3 bg-black text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-500 transition-all"
+            >
+              Entendido! ✓
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Appointment arrival alert ────────────────────── */}

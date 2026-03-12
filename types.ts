@@ -500,3 +500,12 @@ export interface MarketplacePostComment {
   content: string;
   createdAt: string;
 }
+
+export interface MarketplaceStory {
+  id: string;
+  tenantId: string;
+  imageUrl: string;
+  caption?: string;
+  createdAt: string;
+  expiresAt: string;
+}

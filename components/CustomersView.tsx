@@ -287,8 +287,8 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               const lembreteName = getModeName(c.lembreteModeId, lembreteModes);
               const reativacaoName = getModeName(c.reativacaoModeId, reativacaoModes);
               return (
-                <div key={c.id} className="bg-white p-5 sm:p-8 md:p-10 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
-                  <div className="absolute top-5 right-5 sm:top-10 sm:right-10">
+                <div key={c.id} className="bg-white p-5 sm:p-6 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
+                  <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
                     <button onClick={() => setEditingCustomer({ ...c })} className="text-slate-300 hover:text-orange-500 transition-all font-black text-xs uppercase tracking-widest">EDITAR</button>
                   </div>
                   <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:bg-orange-50 transition-all">👤</div>

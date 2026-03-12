@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Escala base 14px para o layout caber em 90% de zoom sem cortes */
+html { font-size: 14px; }
+
 body {
     font-family: 'Inter', sans-serif;
     background-color: #dce6f5;

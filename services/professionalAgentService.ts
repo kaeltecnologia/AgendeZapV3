@@ -165,11 +165,15 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
         ? `${timeMatch[1].padStart(2, '0')}:${(timeMatch[2] || '00').padStart(2, '0')}`
         : '';
       const bookDateRef = resolveDateRefFromText(rest);
+      // Extract target professional: "com Gil", "para o Gil", "pro Gil"
+      const bookProfMatch = rest.match(/(?:\bcom\s+(?:o|a)?\s*|\bpara\s+(?:o|a)\s*|\bpro\s+)([a-záéíóúàèìòùâêîôûãõçäëïöü]+)/i);
+      const targetProfNameBook = bookProfMatch ? bookProfMatch[1].trim() : '';
       const clientName = rest
         .replace(/(\d{1,2})[h:]\d{0,2}/g, '')
         .replace(/\b(amanha|amanhã|hoje|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo|essa semana|esta semana)\b/gi, '')
+        .replace(bookProfMatch?.[0] || '\x00', '')
         .trim();
-      return { ...fallback, intent: 'BOOK', clientName, time: parsedTime, dateRef: bookDateRef };
+      return { ...fallback, intent: 'BOOK', clientName, time: parsedTime, dateRef: bookDateRef, targetProfName: targetProfNameBook };
     }
   }
 
@@ -199,7 +203,7 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
           `- LIST_APPOINTMENTS: agenda/horários ocupados (ex: "quem atendo hoje?", "minha agenda amanhã", "horários do Gil amanhã", "agenda da Maria hoje")\n` +
           `- AVAILABLE_SLOTS: horários LIVRES/disponíveis (ex: "horários disponíveis do Gil", "que horas tem livre hoje?", "vagas do Carlos amanhã", "horários vagos")\n` +
           `- COUNT_PROCEDURES: contagem de procedimentos/faturamento próprio (ex: "quantos cortes fiz?", "quanto eu faturei?")\n` +
-          `- BOOK: agendar cliente (ex: "marca João sexta às 10h")\n` +
+          `- BOOK: agendar cliente (ex: "marca João sexta às 10h", "marca João sexta às 10h com Gil", "marca João sexta às 10h pro Carlos")\n` +
           `- FINANCIAL: faturamento total da barbearia (ex: "faturamento do mês", "quanto faturamos?")\n` +
           `- COMMISSION: comissão do profissional (ex: "qual minha comissão?", "comissão do Carlos")\n` +
           `- EXPENSES: despesas/gastos (ex: "quais as despesas?", "quanto gastamos em produto?")\n` +
@@ -208,7 +212,7 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
           `- GOALS: metas de desempenho (ex: "como estão as metas?", "qual minha meta?", "atingimos a meta?")\n` +
           `- HELP: quando não identificar claramente\n` +
           `dateRef: 'today','tomorrow','this_week','last_week','this_month','last_month' ou YYYY-MM-DD.\n` +
-          `targetProfName: nome do profissional alvo extraído da mensagem (ex: "do Gil"→"Gil", "da Maria"→"Maria", "do Carlos"→"Carlos"). Vazio se for consulta própria, '__ALL__' se for todos/geral.`,
+          `targetProfName: nome do profissional alvo extraído da mensagem (ex: "do Gil"→"Gil", "da Maria"→"Maria", "com o Carlos"→"Carlos", "pro Gil"→"Gil"). Vazio se for próprio, '__ALL__' se for todos/geral.`,
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -280,9 +284,10 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
     return { ...fallback, intent: 'COUNT_PROCEDURES', dateRef, targetProfName: extractedProfName };
   }
 
-  // Book
+  // Book — also extract target professional ("com Gil", "para o Gil", "pro Gil")
   if (/\bmarca\b|\bmarcar\b|\bagendar\b|reserv|\bcadastra\b|anota|registra/.test(lower)) {
-    return { ...fallback, intent: 'BOOK', dateRef };
+    const bookProfMatchFb = lower.match(/(?:\bcom\s+(?:o|a)?\s*|\bpara\s+(?:o|a)\s*|\bpro\s+)([a-záéíóúàèìòùâêîôûãõçäëïöü]+)/i);
+    return { ...fallback, intent: 'BOOK', dateRef, targetProfName: bookProfMatchFb ? bookProfMatchFb[1].trim() : '' };
   }
 
   // Financial (total barbearia)
@@ -540,12 +545,13 @@ async function handleCountProcedures(
 }
 
 async function handleBook(
-  tenantId: string, prof: any, intent: ProfIntent, settings: any, phone: string
+  tenantId: string, callerProf: any, targetProf: any, intent: ProfIntent, settings: any, phone: string
 ): Promise<string> {
   const { clientName, time, serviceRef } = intent;
 
   if (!clientName.trim()) {
-    return `Para marcar, informe o nome do cliente.\nEx: _"marca João quinta às 10h"_`;
+    const profHint = targetProf.id !== callerProf.id ? ` com ${targetProf.name}` : '';
+    return `Para marcar, informe o nome do cliente.\nEx: _"marca João quinta às 10h${profHint}"_`;
   }
 
   let parsedTime = time?.trim() || '';
@@ -568,10 +574,10 @@ async function handleBook(
   const startTimeStr = `${date}T${parsedTime}:00`;
   const startTime = new Date(startTimeStr);
 
-  const { available, reason } = await db.isSlotAvailable(tenantId, prof.id, startTime, service.durationMinutes);
+  const { available, reason } = await db.isSlotAvailable(tenantId, targetProf.id, startTime, service.durationMinutes);
 
   if (!available) {
-    const slots = await getAvailableSlots(tenantId, prof.id, date, service.durationMinutes, settings);
+    const slots = await getAvailableSlots(tenantId, targetProf.id, date, service.durationMinutes, settings);
     const nearest = slots.find(s => s >= parsedTime) || slots[0];
 
     if (!nearest) {
@@ -590,13 +596,14 @@ async function handleBook(
         serviceId: service.id,
         serviceName: service.name,
         serviceDuration: service.durationMinutes,
-        profId: prof.id
+        profId: targetProf.id
       },
       updatedAt: Date.now()
     });
 
+    const forWhom = targetProf.id !== callerProf.id ? ` com *${targetProf.name}*` : '';
     return (
-      `❌ *${parsedTime}* ocupado em *${datePT(date)}*.\n\n` +
+      `❌ *${parsedTime}* ocupado em *${datePT(date)}*${forWhom}.\n\n` +
       `Próximo horário disponível: *${nearest}*.\n` +
       `Responda *"sim"* para confirmar *${clientName}* às *${nearest}*.`
     );
@@ -606,7 +613,7 @@ async function handleBook(
   await db.addAppointment({
     tenant_id: tenantId,
     customer_id: customer.id,
-    professional_id: prof.id,
+    professional_id: targetProf.id,
     service_id: service.id,
     startTime: startTimeStr,
     durationMinutes: service.durationMinutes,
@@ -615,12 +622,13 @@ async function handleBook(
   });
 
   clearProfSession(tenantId, phone);
+  const profLine = targetProf.id !== callerProf.id ? `\n💈 *Profissional:* ${targetProf.name}` : '';
   return (
     `✅ *Agendamento confirmado*\n\n` +
     `👤 *Cliente:* ${clientName}\n` +
     `📅 *Dia:* ${datePT(date)}\n` +
     `⏰ *Horário:* ${parsedTime}\n` +
-    `✂️ *Serviço:* ${service.name}`
+    `✂️ *Serviço:* ${service.name}${profLine}`
   );
 }
 
@@ -981,8 +989,14 @@ export async function handleProfessionalMessage(
     case 'COUNT_PROCEDURES':
       return handleCountProcedures(tenantId, targetProfId, range);
 
-    case 'BOOK':
-      return handleBook(tenantId, prof, intent, settings, phone);
+    case 'BOOK': {
+      // Admin can book for another professional; colab always books for self
+      const bookTargetProf = (isAdmin && targetProfId && targetProfId !== prof.id)
+        ? (professionals.find(p => p.id === targetProfId) || prof)
+        : prof;
+      // Non-admin trying to book for someone else is already blocked above by ACCESS_DENIED
+      return handleBook(tenantId, prof, bookTargetProf, intent, settings, phone);
+    }
 
     case 'FINANCIAL':
       // admin only (já bloqueado acima para colabs)
@@ -1011,26 +1025,28 @@ export async function handleProfessionalMessage(
 
     default: {
       // ── Menu de ajuda (HELP) — personalizado por perfil ─────────
+      const profNames = professionals.filter(p => p.active && p.id !== prof.id).map(p => p.name);
+      const otherProfExample = profNames[0] || 'Carlos';
       if (isAdmin) {
         return (
-          `Olá, *${prof.name}*! O que deseja consultar?\n\n` +
-          `*1 -* Agenda: _hoje / amanhã / sexta / [nome]_\n` +
-          `*2 -* Procedimentos: _esta semana / mês passado / [nome]_\n` +
-          `*3 -* Marcar: _[cliente] [data] às [hora]_\n` +
-          `*4 -* Faturamento: _este mês / semana passada_\n` +
-          `*5 -* Comissão: _[nome] / todos / este mês_\n` +
-          `*6 -* Despesas: _este mês / semana passada_\n` +
-          `*7 -* Lucro: _este mês / semana passada_\n` +
-          `*8 -* Ranking: _este mês / esta semana_\n` +
-          `*9 -* Metas: _este mês / [nome]_`
+          `Olá, *${prof.name}*! Basta enviar o comando direto. Exemplos:\n\n` +
+          `📅 Para ver agenda: _"agenda hoje"_ ou _"agenda do ${otherProfExample} amanhã"_\n` +
+          `✂️ Para ver procedimentos: _"procedimentos esta semana"_ ou _"procedimentos do ${otherProfExample} mês passado"_\n` +
+          `➕ Para marcar cliente: _"marca João quinta às 10h"_ ou _"marca João quinta às 10h com ${otherProfExample}"_\n` +
+          `💰 Para ver faturamento: _"faturamento este mês"_\n` +
+          `💵 Para ver comissão: _"comissão do ${otherProfExample} este mês"_ ou _"comissão todos"_\n` +
+          `📉 Para ver despesas: _"despesas este mês"_\n` +
+          `📈 Para ver lucro: _"lucro este mês"_\n` +
+          `🏆 Para ver ranking: _"ranking este mês"_\n` +
+          `🎯 Para ver metas: _"metas este mês"_`
         );
       } else {
         return (
-          `Olá, *${prof.name}*! O que deseja consultar?\n\n` +
-          `*1 -* Minha agenda: _hoje / amanhã / sexta_\n` +
-          `*2 -* Meus procedimentos: _esta semana / mês passado_\n` +
-          `*3 -* Marcar cliente: _[nome] [data] às [hora]_\n` +
-          `*4 -* Minha comissão: _este mês / semana passada_`
+          `Olá, *${prof.name}*! Basta enviar o comando direto. Exemplos:\n\n` +
+          `📅 Para ver sua agenda: _"agenda hoje"_ ou _"agenda amanhã"_\n` +
+          `✂️ Para ver procedimentos: _"procedimentos esta semana"_ ou _"procedimentos mês passado"_\n` +
+          `➕ Para marcar cliente: _"marca João quinta às 10h"_\n` +
+          `💰 Para ver sua comissão: _"comissão este mês"_ ou _"comissão semana passada"_`
         );
       }
     }

@@ -90,11 +90,11 @@ const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-10">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* ─── Left column: status + mode toggles ─── */}
-        <div className="w-full lg:w-80 space-y-6">
+        <div className="w-full lg:w-72 space-y-6">
           {/* Main on/off */}
-          <div className="bg-white p-10 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 text-center flex flex-col items-center">
+          <div className="bg-white p-6 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 text-center flex flex-col items-center">
             <div className={`w-24 h-24 rounded-[30px] flex items-center justify-center text-5xl mb-6 transition-all shadow-xl ${active ? 'bg-orange-500 text-white animate-pulse' : 'bg-slate-50 text-slate-300'}`}>🤖</div>
             <h3 className="font-black text-black uppercase tracking-tight mb-2">Status do Robô</h3>
             <p className={`text-[10px] uppercase font-black tracking-widest mb-10 ${active ? 'text-orange-500' : 'text-slate-400'}`}>
@@ -160,7 +160,7 @@ const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </div>
 
         {/* ─── Right column: prompt + API key config ─── */}
-        <div className="flex-1 bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-10">
+        <div className="flex-1 bg-white p-4 sm:p-6 md:p-8 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6">
           <div className="space-y-3">
             <label className="text-[10px] font-black text-black uppercase tracking-[0.2em] ml-2">Personalidade do Atendente</label>
             <input value={agentName} onChange={e => setAgentName(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm uppercase tracking-tight focus:border-orange-500 transition-all" />

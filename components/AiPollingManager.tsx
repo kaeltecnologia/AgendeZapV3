@@ -15,6 +15,10 @@ import { maskPhone } from '../services/security';
 // are never reprocessed even if the component re-renders.
 const _processedIds = new Set<string>();
 const _sessionStart = Math.floor(Date.now() / 1000);
+// _processAfter: only process messages newer than this timestamp.
+// Updated every poll cycle while AI is OFF, so when AI is re-enabled all
+// "stale" messages (received while AI was off) are naturally skipped.
+let _processAfter = _sessionStart;
 let _isBusy = false;
 
 // ── Status callback — shared with App.tsx for header badge ────────────
@@ -204,6 +208,10 @@ async function poll(tenantId: string) {
   try {
     const settings = await db.getSettings(tenantId);
     if (!settings.aiActive) {
+      // Advance _processAfter while AI is off so that when it's re-enabled,
+      // all messages received during the off period are treated as "already past"
+      // and won't trigger stale responses.
+      _processAfter = Math.floor(Date.now() / 1000);
       _statusCallback?.(false, false);
       return;
     }
@@ -230,6 +238,22 @@ async function poll(tenantId: string) {
       console.log(`[AiPolling] ${sorted.length} msgs fetched, ${newMsgs.length} new (sessionStart=${_sessionStart})`);
     }
 
+    // ── Pre-filter: skip messages already handled by Edge Function webhook ──
+    // The Edge Function claims "wh::<msgId>" in msg_dedup for every message it processes.
+    // If found, add to _processedIds so Phase 1 skips them (and future polls too).
+    const candidateIds = newMsgs.map(m => m.key?.id as string).filter(Boolean);
+    if (candidateIds.length > 0) {
+      try {
+        const fps = candidateIds.map(id => `wh::${id}`);
+        const { data: handled } = await supabase.from('msg_dedup').select('fp').in('fp', fps);
+        for (const row of (handled || [])) {
+          const msgId = (row.fp as string).replace(/^wh::/, '');
+          _persistId(msgId);
+          broadcastProcessed(msgId);
+        }
+      } catch { /* non-fatal — polling continues normally if check fails */ }
+    }
+
     // ── Phase 1: accumulate new messages into the per-phone buffer ──
     for (const msg of sorted) {
       const msgId = msg.key?.id;
@@ -242,8 +266,10 @@ async function poll(tenantId: string) {
 
       const msgTimestamp = msg.messageTimestamp || msg.timestamp || 0;
 
-      // Skip messages sent before this session started
-      if (msgTimestamp > 0 && msgTimestamp < _sessionStart) continue;
+      // Skip messages older than _processAfter.
+      // _processAfter = session start, but gets bumped to "now" every poll
+      // cycle while AI is off — so stale messages from the AI-off period are skipped.
+      if (msgTimestamp > 0 && msgTimestamp < _processAfter) continue;
 
       // Skip own messages
       if (msg.key?.fromMe) continue;

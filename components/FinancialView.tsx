@@ -290,7 +290,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
           </div>
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
             <FinCard title="Faturamento Bruto" val={`R$ ${fmtBRL(summary.totalRevenue)}`} icon="📈" color="text-orange-500"
               sub={revGrowth ? `${Number(revGrowth) >= 0 ? '+' : ''}${revGrowth}% vs anterior` : undefined} />
             <FinCard title="Despesas" val={`R$ ${fmtBRL(summary.totalExpenses)}`} icon="📉" color="text-black" />
@@ -417,7 +417,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
             </div>
           ) : (
             <div className="bg-white rounded-2xl sm:rounded-[28px] border-2 border-slate-100 overflow-x-auto">
-              <table className="w-full min-w-[700px]">
+              <table className="w-full min-w-[560px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
                     <th className="px-4 sm:px-6 py-3 sm:py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Profissional</th>
