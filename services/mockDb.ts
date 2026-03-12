@@ -1649,14 +1649,11 @@ class DatabaseService {
   //   CREATE TABLE IF NOT EXISTS msg_dedup (fp text PRIMARY KEY, ts timestamptz DEFAULT now());
   async claimMessage(fp: string): Promise<boolean> {
     try {
-      // Prune entries older than 30 s
+      // Prune entries older than 30 s (best-effort — don't bail if it fails)
       const cutoff = new Date(Date.now() - 30_000).toISOString();
-      const { error: pruneErr } = await supabase.from('msg_dedup').delete().lt('ts', cutoff);
+      await supabase.from('msg_dedup').delete().lt('ts', cutoff);
 
-      // If prune failed (RLS / permissions), stale entries remain — cannot
-      // trust the table state, so skip DB dedup entirely (fail open).
-      if (pruneErr) return true;
-
+      // The INSERT is the actual atomic dedup gate — PRIMARY KEY rejects duplicates
       const { error } = await supabase.from('msg_dedup').insert({ fp });
       if (error?.code === '23505') return false; // unique violation — already claimed
       if (error) return true; // table missing or other error — fail open
