@@ -265,27 +265,36 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Serviços Inclusos (Quotas)</label>
 
                 {formQuotas.map((q, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <select
-                      value={q.serviceId}
-                      onChange={e => updateQuota(idx, 'serviceId', e.target.value)}
-                      className="flex-1 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500 text-sm"
-                    >
-                      {services.map(s => (
-                        <option key={s.id} value={s.id} disabled={usedServiceIds.has(s.id) && q.serviceId !== s.id}>
-                          {s.name} — R$ {s.price.toFixed(2)}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min="1"
-                      value={q.quantity}
-                      onChange={e => updateQuota(idx, 'quantity', parseInt(e.target.value) || 1)}
-                      className="w-20 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-center focus:border-orange-500"
-                    />
-                    <span className="text-[9px] font-black text-slate-400 whitespace-nowrap">/ mês</span>
-                    <button onClick={() => removeQuota(idx)} className="p-2 text-slate-300 hover:text-red-500 font-black text-lg transition-colors">✕</button>
+                  <div key={idx} className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <select
+                        value={q.serviceId}
+                        onChange={e => updateQuota(idx, 'serviceId', e.target.value)}
+                        className="flex-1 bg-transparent font-bold outline-none text-sm text-black"
+                      >
+                        {services.map(s => (
+                          <option key={s.id} value={s.id} disabled={usedServiceIds.has(s.id) && q.serviceId !== s.id}>
+                            {s.name} — R$ {s.price.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                      <button onClick={() => removeQuota(idx)} className="ml-2 w-7 h-7 flex items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-500 hover:text-white font-black text-xs transition-all flex-shrink-0">✕</button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Qtd/mês:</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => updateQuota(idx, 'quantity', Math.max(1, q.quantity - 1))}
+                          className="w-7 h-7 rounded-xl bg-slate-200 hover:bg-orange-500 hover:text-white font-black text-sm transition-all flex items-center justify-center"
+                        >−</button>
+                        <span className="w-8 text-center font-black text-sm">{q.quantity}</span>
+                        <button
+                          onClick={() => updateQuota(idx, 'quantity', q.quantity + 1)}
+                          className="w-7 h-7 rounded-xl bg-slate-200 hover:bg-orange-500 hover:text-white font-black text-sm transition-all flex items-center justify-center"
+                        >+</button>
+                      </div>
+                      <span className="text-[9px] font-bold text-slate-400">por mês</span>
+                    </div>
                   </div>
                 ))}
 
