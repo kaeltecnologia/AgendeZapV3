@@ -238,8 +238,8 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
       if (parsed.intent && parsed.intent !== 'HELP') {
         return { ...fallback, ...parsed };
       }
-    } catch {
-      // Gemini failed — fall through to rules
+    } catch (err) {
+      console.warn('[ProfAgent] Gemini classifyIntent failed, falling back to rules:', err);
     }
   }
 
@@ -380,7 +380,8 @@ function resolveDateRange(dateRef: string): DateRange {
       if (WEEKDAY_NAMES[dateRef] !== undefined) {
         const target = WEEKDAY_NAMES[dateRef];
         const d = new Date();
-        const diff = ((target - d.getDay() + 7) % 7) || 7;
+        // If today IS that weekday (diff=0), use today; otherwise next occurrence
+        const diff = (target - d.getDay() + 7) % 7;
         d.setDate(d.getDate() + diff);
         const iso = `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
         return { start: iso, end: iso, label: datePT(iso) };
@@ -671,8 +672,19 @@ async function handleConfirmBook(
   const { available } = await db.isSlotAvailable(tenantId, profId, startTime, serviceDuration);
 
   if (!available) {
+    // Slot got taken — search for next available and offer it
+    const settings = await db.getSettings(tenantId);
+    const slots = await getAvailableSlots(tenantId, profId, date, serviceDuration, settings);
+    const next = slots.find(s => s > suggestedTime) || slots[0];
+    if (next) {
+      saveProfSession(tenantId, phone, {
+        pendingBook: { ...session.pendingBook, suggestedTime: next },
+        updatedAt: Date.now()
+      });
+      return `⚠️ *${suggestedTime}* acabou de ser ocupado.\n\nPróximo disponível: *${next}*.\nResponda *"sim"* para confirmar *${clientName}* às *${next}*.`;
+    }
     clearProfSession(tenantId, phone);
-    return `⚠️ O horário *${suggestedTime}* foi ocupado. Tente novamente com outro horário.`;
+    return `⚠️ *${suggestedTime}* foi ocupado e não há mais horários disponíveis em *${datePT(date)}*.\nTente outro dia.`;
   }
 
   const customer = await db.findOrCreateCustomerByName(tenantId, clientName);
@@ -946,6 +958,11 @@ export async function handleProfessionalMessage(
   const geminiKey: string = tenant.gemini_api_key || '';
   const text = messageText.trim();
   if (!text) return null;
+
+  // ── Saudações curtas: resposta amigável sem mostrar menu completo ──
+  if (/^(oi|olá|ola|hey|ei|eai|e aí|bom dia|boa tarde|boa noite|salve|tudo bem|tudo bom|td bem|td bom)[\s!.?]*$/i.test(text)) {
+    return null; // ignora saudações — não responde nada para não poluir o chat
+  }
 
   // ── Dedup: skip if same message already processed in the last 30s ──
   // Prevents double responses when Edge Function webhook and polling
