@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import Login from './components/Login';
 import AiPollingManager from './components/AiPollingManager';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Lazy-loaded views (code splitting — only loaded when needed)
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -854,10 +855,12 @@ const App: React.FC = () => {
 
           {/* ── Main content / Expired overlay ─────────────────────── */}
           <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
-            {trialInfo?.isExpired && role === 'TENANT'
-              ? <TrialExpiredView tenantId={tenantId} />
-              : <div className="p-4 md:p-6">{renderView()}</div>
-            }
+            <ErrorBoundary key={currentView}>
+              {trialInfo?.isExpired && role === 'TENANT'
+                ? <TrialExpiredView tenantId={tenantId} />
+                : <div className="p-4 md:p-6">{renderView()}</div>
+              }
+            </ErrorBoundary>
           </Suspense>
         </div>
       </main>
