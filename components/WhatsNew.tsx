@@ -28,8 +28,8 @@ const WhatsNew: React.FC = () => {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9995] flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-[#132040] rounded-[28px] w-full max-w-md shadow-2xl animate-scaleUp flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9995] flex items-center justify-center p-4" onClick={dismiss}>
+      <div className="bg-white dark:bg-[#132040] rounded-[28px] w-full max-w-md shadow-2xl animate-scaleUp flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-7 pt-7 pb-4 border-b border-slate-100 dark:border-[#1e3a5f] flex-shrink-0">
           <div className="flex items-start justify-between">

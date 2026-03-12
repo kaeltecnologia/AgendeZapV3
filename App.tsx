@@ -613,7 +613,7 @@ const App: React.FC = () => {
       <aside
         onMouseEnter={handleSidebarEnter}
         onMouseLeave={handleSidebarLeave}
-        className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${sidebarCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-50 h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+        className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${sidebarCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-[500] h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
         {/* Logo / toggle */}
         <div className={`flex ${sidebarCollapsed ? 'flex-col items-center py-4 px-2 gap-3' : 'flex-row items-center justify-between px-5 py-5'} transition-all duration-300`}>
@@ -901,8 +901,8 @@ const App: React.FC = () => {
 
       {/* ── One-time update notice ───────────────────────── */}
       {showUpdateNotice && role === 'TENANT' && isAuthenticated && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 space-y-5 animate-toastIn">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4" onClick={() => { localStorage.setItem(UPDATE_KEY, '1'); setShowUpdateNotice(false); }}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 space-y-5 animate-toastIn" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
               <span className="text-3xl">🚀</span>
               <div>
