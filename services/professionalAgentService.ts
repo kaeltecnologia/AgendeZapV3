@@ -77,23 +77,33 @@ interface PendingBook {
   profId: string;
 }
 
+interface HistoryEntry { role: 'user' | 'bot'; text: string; }
+
 interface ProfSession {
   pendingBook: PendingBook | null;
+  history: HistoryEntry[];   // últimas mensagens da conversa (contexto)
   updatedAt: number;
 }
 
 const profSessions = new Map<string, ProfSession>();
-const PROF_SESSION_TTL = 5 * 60 * 1000; // 5 minutes
+const PROF_SESSION_TTL = 15 * 60 * 1000; // 15 minutes
+const HISTORY_MAX = 6; // últimos 3 pares usuário/bot
 
 function getProfSession(tenantId: string, phone: string): ProfSession {
   const key = `${tenantId}::${phone}`;
   const s = profSessions.get(key);
-  if (!s || Date.now() - s.updatedAt > PROF_SESSION_TTL) return { pendingBook: null, updatedAt: 0 };
+  if (!s || Date.now() - s.updatedAt > PROF_SESSION_TTL) return { pendingBook: null, history: [], updatedAt: 0 };
   return s;
 }
 
 function saveProfSession(tenantId: string, phone: string, session: ProfSession) {
   profSessions.set(`${tenantId}::${phone}`, { ...session, updatedAt: Date.now() });
+}
+
+function appendHistory(tenantId: string, phone: string, userText: string, botText: string) {
+  const session = getProfSession(tenantId, phone);
+  const history = [...session.history, { role: 'user' as const, text: userText.slice(0, 200) }, { role: 'bot' as const, text: botText.slice(0, 300) }];
+  saveProfSession(tenantId, phone, { ...session, history: history.slice(-HISTORY_MAX) });
 }
 
 function clearProfSession(tenantId: string, phone: string) {
@@ -141,7 +151,7 @@ function resolveDateRefFromText(lower: string): string {
   return 'today';
 }
 
-async function classifyIntent(text: string, apiKey: string, today: string): Promise<ProfIntent> {
+async function classifyIntent(text: string, apiKey: string, today: string, history: HistoryEntry[] = []): Promise<ProfIntent> {
   const fallback: ProfIntent = { intent: 'HELP', dateRef: 'today', clientName: '', time: '', serviceRef: '', targetProfName: '' };
   const lower = text.toLowerCase().trim();
 
@@ -203,7 +213,12 @@ async function classifyIntent(text: string, apiKey: string, today: string): Prom
       const resp = await ai.models.generateContent({
         model: 'gemini-1.5-flash',
         contents:
-          `Hoje é ${today}. Um profissional de barbearia enviou: "${text}"\n` +
+          `Hoje é ${today}.\n` +
+          (history.length > 0
+            ? `Histórico recente da conversa:\n${history.map(h => `${h.role === 'user' ? 'Profissional' : 'Bot'}: ${h.text}`).join('\n')}\n\n`
+            : '') +
+          `Profissional enviou agora: "${text}"\n` +
+          `Use o histórico para resolver referências como "e amanhã?", "e o Carlos?", "cancela esse", "e a semana passada?".\n` +
           `Classifique a intenção. Intents disponíveis:\n` +
           `- LIST_APPOINTMENTS: agenda/horários ocupados (ex: "quem atendo hoje?", "minha agenda amanhã", "horários do Gil amanhã", "agenda da Maria hoje")\n` +
           `- AVAILABLE_SLOTS: horários LIVRES/disponíveis (ex: "horários disponíveis do Gil", "que horas tem livre hoje?", "vagas do Carlos amanhã", "horários vagos")\n` +
@@ -615,6 +630,7 @@ async function handleBook(
     }
 
     saveProfSession(tenantId, phone, {
+      ...getProfSession(tenantId, phone),
       pendingBook: {
         clientName: clientName.trim(),
         date,
@@ -678,6 +694,7 @@ async function handleConfirmBook(
     const next = slots.find(s => s > suggestedTime) || slots[0];
     if (next) {
       saveProfSession(tenantId, phone, {
+        ...session,
         pendingBook: { ...session.pendingBook, suggestedTime: next },
         updatedAt: Date.now()
       });
@@ -989,7 +1006,8 @@ export async function handleProfessionalMessage(
   });
 
   // ── Classificação de intenção ────────────────────────────────────
-  const intent = await classifyIntent(text, geminiKey, `${today} (${todayFull})`);
+  const session = getProfSession(tenantId, phone);
+  const intent = await classifyIntent(text, geminiKey, `${today} (${todayFull})`, session.history);
 
   // ── Regra 2/4/5/6: Controle de acesso por perfil ────────────────
 
@@ -1033,16 +1051,23 @@ export async function handleProfessionalMessage(
   const range = resolveDateRange(intent.dateRef || 'today');
 
   // ── Roteamento por intenção ──────────────────────────────────────
+  // Helper: salva no histórico e retorna a resposta
+  const reply = async (fn: Promise<string>): Promise<string> => {
+    const response = await fn;
+    appendHistory(tenantId, phone, text, response);
+    return response;
+  };
+
   switch (intent.intent) {
 
     case 'LIST_APPOINTMENTS':
-      return handleListAppointments(tenantId, targetProfId, range, customers, services, professionals);
+      return reply(handleListAppointments(tenantId, targetProfId, range, customers, services, professionals));
 
     case 'AVAILABLE_SLOTS':
-      return handleAvailableSlots(tenantId, targetProfId, range, settings, professionals);
+      return reply(handleAvailableSlots(tenantId, targetProfId, range, settings, professionals));
 
     case 'COUNT_PROCEDURES':
-      return handleCountProcedures(tenantId, targetProfId, range);
+      return reply(handleCountProcedures(tenantId, targetProfId, range));
 
     case 'BOOK': {
       // Admin can book for another professional; colab always books for self
@@ -1050,33 +1075,26 @@ export async function handleProfessionalMessage(
         ? (professionals.find(p => p.id === targetProfId) || prof)
         : prof;
       // Non-admin trying to book for someone else is already blocked above by ACCESS_DENIED
-      return handleBook(tenantId, prof, bookTargetProf, intent, settings, phone);
+      return reply(handleBook(tenantId, prof, bookTargetProf, intent, settings, phone));
     }
 
     case 'FINANCIAL':
-      // admin only (já bloqueado acima para colabs)
-      return handleFinancial(tenantId, range, professionals);
+      return reply(handleFinancial(tenantId, range, professionals));
 
     case 'COMMISSION':
-      // Colab: apenas própria (targetProfId = prof.id, targetProfName era vazio)
-      // Admin: qualquer (targetProfId já resolvido)
-      return handleCommission(tenantId, targetProfId, range, settings, professionals);
+      return reply(handleCommission(tenantId, targetProfId, range, settings, professionals));
 
     case 'EXPENSES':
-      // admin only
-      return handleExpenses(tenantId, range);
+      return reply(handleExpenses(tenantId, range));
 
     case 'PROFIT':
-      // admin only
-      return handleProfit(tenantId, range);
+      return reply(handleProfit(tenantId, range));
 
     case 'RANKING':
-      // admin only
-      return handleRanking(tenantId, range, professionals);
+      return reply(handleRanking(tenantId, range, professionals));
 
     case 'GOALS':
-      // admin only — targetProfId: null = todos, ou id específico
-      return handleGoals(tenantId, targetProfId, range, settings, professionals);
+      return reply(handleGoals(tenantId, targetProfId, range, settings, professionals));
 
     default: {
       // ── Menu de ajuda (HELP) — personalizado por perfil ─────────
