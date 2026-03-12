@@ -269,10 +269,13 @@ async function poll(tenantId: string) {
       // Skip messages older than _processAfter.
       // _processAfter = session start, but gets bumped to "now" every poll
       // cycle while AI is off — so stale messages from the AI-off period are skipped.
-      if (msgTimestamp > 0 && msgTimestamp < _processAfter) continue;
+      // Also skip messages with no timestamp (0) — they are likely echoes of bot-sent
+      // messages that Evolution API returned without a proper timestamp.
+      if (msgTimestamp === 0 || msgTimestamp < _processAfter) continue;
 
-      // Skip own messages
-      if (msg.key?.fromMe) continue;
+      // Skip own messages — check both key.fromMe and top-level fromMe (Evolution API
+      // may place the field at different depths depending on the message type/version)
+      if (msg.key?.fromMe || (msg as any).fromMe) continue;
 
       // Skip group messages
       const remoteJid = msg.key?.remoteJid || '';
