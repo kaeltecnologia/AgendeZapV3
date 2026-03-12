@@ -524,6 +524,13 @@ async function callBrain(
 
   const isFirstMessage = history.filter(h => h.role === 'bot').length === 0;
 
+  // Detect if last bot message was a question, to inject a "extract the answer" instruction
+  const _lastBot = [...history].reverse().find(h => h.role === 'bot')?.text || '';
+  const _lastBotQAsked = _lastBot.includes('?') && history.length > 0;
+  const _answerCtx = _lastBotQAsked
+    ? `\n⚡ ATENÇÃO: Sua última mensagem foi uma PERGUNTA. A mensagem atual do cliente É A RESPOSTA. Extraia a informação diretamente — NÃO repita a pergunta.\n`
+    : '';
+
   const greetSection = shouldGreet
     ? `\n🌅 PRIMEIRA SAUDAÇÃO DO DIA:
 • Cumprimente BREVEMENTE com "${brasiliaGreeting}!" e "${tenantName}" no início da resposta.
@@ -694,7 +701,7 @@ ${tomLine}
 • Emojis: use APENAS na saudação inicial ou ao confirmar agendamento. Na grande maioria das mensagens NÃO use emoji.
 • SEMPRE termine com pergunta curta ou confirmação
 
-${isFirstMessage ? '📥 PRIMEIRA MENSAGEM: processe TUDO que o cliente já informou (nome, serviço, profissional, dia, período, horário) sem perguntar de novo. Avance o fluxo para a próxima informação que faltar.\n' : ''}
+${isFirstMessage ? '📥 PRIMEIRA MENSAGEM: processe TUDO que o cliente já informou (nome, serviço, profissional, dia, período, horário) sem perguntar de novo. Avance o fluxo para a próxima informação que faltar.\n' : ''}${_answerCtx}
 📅 AO OFERECER HORÁRIO (somente após profissional já definido no CONTEXTO ATUAL):
 • ❌ ERRADO: "Temos disponível às 15:00"
 • ✅ CERTO: "Com o [nome do profissional já escolhido] às 15:00 pode ser? 😊"
@@ -2359,26 +2366,43 @@ async function _handleMessage(
     }
   }
 
+  // ─── Check last bot message to avoid repeating the same question ──────
+  const _lastBotMsg = [...session.history].reverse().find(h => h.role === 'bot')?.text || '';
+  const _lastBotAskedSvc  = /procedimento|servi[çc]o|qual.*serv|que.*serv/i.test(_lastBotMsg);
+  const _lastBotAskedDate = /qual.*dia|dia.*prefer|que.*dia|para.*qual.*dia/i.test(_lastBotMsg);
+  const _lastBotAskedTime = /qual.*hor[aá]rio|que.*hor[aá]rio|hor[aá]rio.*prefer/i.test(_lastBotMsg);
+
   // ─── Force service question when date known but service missing ──────
   if (session.data.date && !session.data.serviceId) {
-    const _ctxParts: string[] = [];
-    if (session.data.professionalName) _ctxParts.push(`com o ${session.data.professionalName}`);
-    _ctxParts.push(`pra ${formatDate(session.data.date)}`);
-    const _askSvc = `${_greetPrefix}Vou verificar os horários disponíveis ${_ctxParts.join(' ')}! Qual procedimento você gostaria? 😊`;
-    _markGreeted();
-    session.history.push({ role: 'bot', text: _askSvc });
-    saveSession(session);
-    return _askSvc;
+    // If we already asked for service last turn, don't repeat — let AI extract the answer
+    if (_lastBotAskedSvc) {
+      // Fall through to AI with extra context injected via slotsSection/flowSection
+      console.log('[Agent] Skip forceServiceQuestion — bot already asked last turn, letting AI extract');
+    } else {
+      const _ctxParts: string[] = [];
+      if (session.data.professionalName) _ctxParts.push(`com o ${session.data.professionalName}`);
+      _ctxParts.push(`pra ${formatDate(session.data.date)}`);
+      const _askSvc = `${_greetPrefix}Vou verificar os horários disponíveis ${_ctxParts.join(' ')}! Qual procedimento você gostaria? 😊`;
+      _markGreeted();
+      session.history.push({ role: 'bot', text: _askSvc });
+      saveSession(session);
+      return _askSvc;
+    }
   }
 
   // ─── Force date question when service known but date missing ──────────
   if (session.data.serviceId && !session.data.date) {
-    const _svcName = session.data.serviceName || 'o procedimento';
-    const _askDate = `${_greetPrefix}Ótimo, ${_svcName}! Para qual dia você gostaria de agendar? 😊`;
-    _markGreeted();
-    session.history.push({ role: 'bot', text: _askDate });
-    saveSession(session);
-    return _askDate;
+    // If we already asked for date last turn, don't repeat — let AI extract the answer
+    if (_lastBotAskedDate) {
+      console.log('[Agent] Skip forceDateQuestion — bot already asked last turn, letting AI extract');
+    } else {
+      const _svcName = session.data.serviceName || 'o procedimento';
+      const _askDate = `${_greetPrefix}Ótimo, ${_svcName}! Para qual dia você gostaria de agendar? 😊`;
+      _markGreeted();
+      session.history.push({ role: 'bot', text: _askDate });
+      saveSession(session);
+      return _askDate;
+    }
   }
 
   // ─── Detect minimum time preference from client message (e.g. "depois das 18h") ──
