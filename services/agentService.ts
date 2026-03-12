@@ -667,26 +667,22 @@ async function callBrain(
 • "Tem vaga hoje?" / "Como estão os horários?" / "Tem horário?" SEM dia → se hoje aberto, mostre horários de HOJE + "Quer agendar? Qual serviço?". Se fechado → "Hoje estamos fechados, para qual dia prefere?"
 • "Para hoje" / "quero pra hoje" no meio do fluxo → mude o DIA para hoje e consulte os horários disponíveis
 
-🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — quando o cliente usa termo informal que mapeia claramente para um serviço, preencha o serviço automaticamente NO extracted.service e NÃO pergunte "qual serviço?" — prossiga direto para data/horário:
-CORTE DE CABELO → "cabelo" / "cabeça" / "cortar a cabeça" / "cabecinha" / "cortar o cabelo" / "cortar o cabelo do meu filho/da minha filha" / "aparar" / "dar uma aparada" / "dar um trato no cabelo" / "dar um jeito no cabelo" / "fazer o cabelo" / "tirar o excesso" / "franja" / "ligar" / "passar o pente" / "zerar" / "na máquina" / "renovar o visual" / "dar uma caprichada"
-BARBA → "barba" / "fazer a barba" / "tirar a barba" / "aparar a barba" / "dar um trato na barba" / "modelar a barba" / "barba e bigode"
-BIGODE → "bigode" / "aparar o bigode"
-SOBRANCELHA → "sobrancelha" / "sombrancelha" / "fazer a sobrancelha" / "tirar a sobrancelha" / "design de sobrancelha"
-COLORAÇÃO → "pintar o cabelo" / "colorir" / "loiro" / "mechas" / "ombré" / "reflexo" / "tingir"
-ALISAMENTO → "alisar" / "relaxar" / "progressiva" / "escova progressiva" / "botox capilar"
-ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
-• REGRA GERAL: se o cliente menciona qualquer parte do corpo ou gíria de serviço que claramente identifica UM serviço da lista, assuma esse serviço — NÃO peça confirmação do serviço, peça data/horário diretamente
+🗣️ LINGUAGEM COLOQUIAL DE SERVIÇOS — use a lista SERVIÇOS acima como referência. Quando o cliente usar termo informal, identifique o serviço correspondente na lista e preencha serviceId automaticamente:
+• Mapeie expressões coloquiais para o serviço da lista que mais se encaixa (ex: "cabelo", "cabeça", "aparar" → serviço de corte; "barba" → serviço de barba; "sobrancelha" → serviço de sobrancelha)
+• Se identificar claramente UM serviço → preencha serviceId e siga para data/horário sem perguntar novamente
+• Se o termo for ambíguo entre dois serviços → pergunte qual dos dois o cliente quer
+• Se o serviço pedido não existir na lista → diga "Não oferecemos esse serviço. Posso te ajudar com outro?"
 ⛔ NUNCA liste todos os serviços da seção SERVIÇOS quando perguntar qual o cliente quer — pergunte APENAS: "Qual procedimento você gostaria?" sem enumerar a lista
-⛔ NUNCA atribua um serviço informal a um serviço DIFERENTE da lista. Ex: "sobrancelha" NÃO é "relaxamento", NÃO é "corte". Se o cliente pedir um serviço que não existe na lista SERVIÇOS, diga: "Não oferecemos esse serviço. Temos: [lista]"
-⛔ NUNCA combine dois pedidos de serviços diferentes em um só. "Corte" + "sobrancelha" = dois serviços separados — pergunte qual fazer primeiro ou se deseja agendar os dois
+⛔ NUNCA atribua um serviço informal a um serviço que não está na lista SERVIÇOS acima
+⛔ NUNCA combine dois pedidos de serviços diferentes em um só — pergunte qual fazer primeiro ou se deseja agendar os dois
 
 🗣️ GÍRIAS E EXPRESSÕES INFORMAIS DE AGENDAMENTO — interprete como intenção de agendar:
 • "Tenho uma vaga aí" / "tenho uma janela" / "tenho um tempinho" / "tenho um espaço" = cliente quer agendar (não que ele TEM uma vaga, mas que ELE está disponível)
 • "cedo agora" / "cedo hoje" / "agora cedo" = hoje de manhã
 • "antes da uma" / "antes de uma hora" / "antes do meio dia" / "antes do almoço" = horário da manhã (antes das 13h)
 • "depois do almoço" / "depois da uma" = período da tarde
-• "meu moleque" / "meu filho" / "minha filha" / "minha esposa" / "meu parceiro" + agendamento = GRUPO de 2 pessoas → ative o fluxo de grupo
-• "a gente" / "nós dois" / "eu e meu..." = também grupo de 2 pessoas
+• "eu e [acompanhante]" / "nós dois" / "pra mim e..." / "duas pessoas" / "junto comigo" / "também quer agendar" = GRUPO de 2 pessoas → ative o fluxo de grupo
+• Menção casual de familiar SEM intenção de agendar para ele ("meu filho vai aparecer depois") = NÃO é grupo
 
 🔀 AMBÍGUO — não assuma, pergunte com contexto:
 • Saudação simples ("oi", "tudo bem?", "boa tarde") → cumprimentar + "Como posso te ajudar?"
@@ -803,12 +799,12 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
 
   try {
     if (apiKey.startsWith('sk-')) {
-      // OpenAI GPT-4o Mini
+      // OpenAI GPT-4.1 Mini
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.1-mini',
           messages: [
             { role: 'system', content: 'Você responde APENAS com JSON válido conforme solicitado. Nenhum texto fora do JSON.' },
             { role: 'user', content: prompt }
@@ -830,7 +826,7 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
           phone_number: phone,
           input_tokens:  d.usage?.prompt_tokens     ?? estimateTokens(prompt),
           output_tokens: d.usage?.completion_tokens ?? estimateTokens(result?.reply ?? ''),
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.1-mini',
           success: !!result,
         }).catch(() => {});
       }
@@ -1657,14 +1653,37 @@ async function _handleMessage(
   const shouldGreet = session.data.greetedAt !== brasiliaDate && _greetedToday.get(_greetKey) !== brasiliaDate;
 
   // ─── Detect group booking intent from keywords ────────────────────────
-  const groupKeywords = ['eu e ', 'pra mim e', 'para mim e', 'minha esposa', 'meu esposo',
-    'minha namorada', 'meu namorado', 'meu filho', 'minha filha', 'meu pai', 'minha mae',
-    'minha mãe', 'meu irmao', 'meu irmão', 'minha irma', 'minha irmã', 'meu amigo',
-    'minha amiga', 'duas pessoas', 'dois cortes', 'nós dois', 'nos dois', 'pra dois',
-    'para dois', 'pra nós', 'meu parceiro', 'minha parceira', 'meu marido', 'minha mulher',
-    'meu moleque', 'minha moleque', 'meu colega', 'minha colega', 'meu sobrinho', 'minha sobrinha',
-    'meu neto', 'minha neta', 'meu cunhado', 'minha cunhada'];
-  const hasGroupIntent = groupKeywords.some(k => lowerText.includes(k));
+  // Only trigger when there's EXPLICIT two-person booking language.
+  // Companion mentions alone ("meu filho vai aparecer depois") must NOT trigger
+  // unless combined with clear booking intent.
+  const EXPLICIT_GROUP_KW = [
+    'eu e ', 'pra mim e', 'para mim e',
+    'nós dois', 'nos dois', 'pra nos', 'pra nós', 'para nos', 'para nós',
+    'pra dois', 'para dois', 'duas pessoas', 'dois cortes', 'dois lugares',
+    'a gente vai', 'a gente quer', 'a gente precisa',
+    'tambem quer', 'também quer', 'tambem vai', 'também vai',
+    'junto comigo', 'juntos',
+  ];
+  const COMPANION_KW = [
+    'minha esposa', 'meu esposo', 'minha namorada', 'meu namorado',
+    'meu filho', 'minha filha', 'meu pai', 'minha mae', 'minha mãe',
+    'meu irmao', 'meu irmão', 'minha irma', 'minha irmã',
+    'meu amigo', 'minha amiga', 'meu marido', 'minha mulher',
+    'meu moleque', 'meu colega', 'minha colega',
+    'meu sobrinho', 'minha sobrinha', 'meu neto', 'minha neta',
+    'meu cunhado', 'minha cunhada', 'meu parceiro', 'minha parceira',
+  ];
+  // Booking verbs that, combined with a companion mention, clearly indicate group booking
+  const GROUP_BOOKING_VERBS = [
+    'agendar', 'marcar', 'cortar', 'aparar', 'raspar', 'horario', 'vaga',
+    'tambem precisa', 'também precisa', 'pra ele tambem', 'pra ela tambem',
+    'pra ele também', 'pra ela também', 'ele tambem', 'ela tambem',
+    'ele também', 'ela também',
+  ];
+  const _hasExplicitGroup = EXPLICIT_GROUP_KW.some(k => lowerText.includes(k));
+  const _hasCompanion = COMPANION_KW.some(k => lowerText.includes(k));
+  const _hasGroupVerb = GROUP_BOOKING_VERBS.some(k => lowerText.includes(k));
+  const hasGroupIntent = _hasExplicitGroup || (_hasCompanion && _hasGroupVerb);
   if (hasGroupIntent && !session.data.groupBooking?.active) {
     const companionMap: [string, string][] = [
       ['minha esposa', 'sua esposa'], ['meu esposo', 'seu esposo'],

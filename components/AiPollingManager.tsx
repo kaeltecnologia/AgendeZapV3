@@ -20,6 +20,8 @@ const _sessionStart = Math.floor(Date.now() / 1000);
 // "stale" messages (received while AI was off) are naturally skipped.
 let _processAfter = _sessionStart;
 let _isBusy = false;
+// _backfillDone: startup backfill runs exactly once per browser session
+let _backfillDone = false;
 
 // ── Status callback — shared with App.tsx for header badge ────────────
 let _statusCallback: ((connected: boolean, aiActive: boolean) => void) | null = null;
@@ -343,6 +345,66 @@ async function poll(tenantId: string) {
   }
 }
 
+// ── Startup backfill: catch follow-up replies missed while computer was off ─
+// When the machine restarts, Evolution API may have lost the webhook config.
+// This function runs ONCE per session, checks for sessions with
+// pendingFollowUpType, fetches messages for those phones from Evolution API,
+// and processes any unhandled client replies.
+async function backfillFollowUpReplies(tenantId: string, tenant: any, instanceName: string, settings: any) {
+  if (_backfillDone) return;
+  _backfillDone = true;
+  try {
+    const cutoff = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+    const { data: sessRows } = await supabase
+      .from('agent_sessions')
+      .select('phone, data, updated_at')
+      .eq('tenant_id', tenantId)
+      .gte('updated_at', cutoff);
+    if (!sessRows || sessRows.length === 0) return;
+
+    const pending = sessRows.filter((s: any) => s.data?.pendingFollowUpType);
+    if (pending.length === 0) return;
+
+    console.log(`[AiPolling] Backfill: ${pending.length} session(s) with pendingFollowUpType`);
+
+    for (const sess of pending) {
+      const phone = sess.phone as string;
+      const sessUpdatedSec = Math.floor(new Date(sess.updated_at as string).getTime() / 1000);
+      const msgs = await evolutionService.fetchContactMessages(instanceName, phone, 15);
+      if (!msgs || msgs.length === 0) continue;
+
+      // Client replies after the aviso was sent
+      const replies = msgs.filter((m: any) => {
+        if (m.key?.fromMe || (m as any).fromMe) return false;
+        const ts = m.messageTimestamp || m.timestamp || 0;
+        return ts > sessUpdatedSec;
+      });
+      if (replies.length === 0) continue;
+
+      // Skip replies already handled by Edge Function webhook
+      const replyIds = replies.map((m: any) => m.key?.id as string).filter(Boolean);
+      const fps = replyIds.map(id => `wh::${id}`);
+      const { data: handled } = await supabase.from('msg_dedup').select('fp').in('fp', fps);
+      const handledFps = new Set((handled || []).map((h: any) => h.fp as string));
+
+      const unhandled = replies.filter((m: any) => {
+        const msgId = m.key?.id as string;
+        return msgId && !handledFps.has(`wh::${msgId}`) && !_processedIds.has(msgId);
+      });
+      if (unhandled.length === 0) continue;
+
+      // Replies are newest-first from fetchContactMessages; process the most recent
+      const latestReply = unhandled[0];
+      const msgId = latestReply.key?.id as string;
+      if (msgId) { _persistId(msgId); broadcastProcessed(msgId); }
+      console.log(`[AiPolling] Backfill: processing missed reply from ${maskPhone(phone)}`);
+      await processarMensagem(tenant, latestReply, settings);
+    }
+  } catch (e: any) {
+    console.error('[AiPolling] Backfill error:', e.message);
+  }
+}
+
 const AiPollingManager: React.FC<{
   tenantId: string;
   onStatus?: (connected: boolean, aiActive: boolean) => void;
@@ -369,7 +431,11 @@ const AiPollingManager: React.FC<{
         const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
         if (!tenant) return;
         const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
-        if (instanceName) await evolutionService.enableWebhook(instanceName, WEBHOOK_URL);
+        if (instanceName) {
+          await evolutionService.enableWebhook(instanceName, WEBHOOK_URL);
+          // Backfill any follow-up replies missed while computer was off (once per session)
+          await backfillFollowUpReplies(tenantId, tenant, instanceName, settings);
+        }
       } catch (e) { /* silent */ }
     };
 
