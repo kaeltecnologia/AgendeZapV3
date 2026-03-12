@@ -22,6 +22,8 @@ let _processAfter = _sessionStart;
 let _isBusy = false;
 // _backfillDone: startup backfill runs exactly once per browser session
 let _backfillDone = false;
+// _aiWasActive: tracks previous AI state to detect OFF→ON transition
+let _aiWasActive = false;
 
 // ── Status callback — shared with App.tsx for header badge ────────────
 let _statusCallback: ((connected: boolean, aiActive: boolean) => void) | null = null;
@@ -214,9 +216,20 @@ async function poll(tenantId: string) {
       // all messages received during the off period are treated as "already past"
       // and won't trigger stale responses.
       _processAfter = Math.floor(Date.now() / 1000);
+      _aiWasActive = false;
       _statusCallback?.(false, false);
       return;
     }
+
+    // ── OFF → ON transition: skip this first cycle and bump _processAfter ──
+    // Prevents the 4-second race window where a message sent just before
+    // activation would slip through and cause a double response.
+    if (!_aiWasActive) {
+      _processAfter = Math.floor(Date.now() / 1000);
+      _aiWasActive = true;
+      return;
+    }
+    _aiWasActive = true;
 
     const { data: tenants } = await supabase.from('tenants').select('*');
     const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
@@ -329,10 +342,18 @@ async function poll(tenantId: string) {
       _pendingMsgs.delete(phone);
       _lastMsgTime.delete(phone);
 
-      // Only respond to the most-recent message (it carries the full intent)
+      // Join all buffered messages into one combined text so the AI has full context.
+      // If the lead sent "quero agendar", "com o Matheus", "pra amanhã" separately,
+      // the agent sees the complete intent instead of just the last fragment.
       const lastMsg = msgs[msgs.length - 1];
+      const extractText = (m: any) =>
+        (m.message?.conversation || m.message?.extendedTextMessage?.text || m.body || m.text || '').trim();
+      const combinedText = msgs.map(extractText).filter(Boolean).join(' ');
+      const msgToProcess = (msgs.length > 1 && combinedText)
+        ? { ...lastMsg, message: { ...lastMsg.message, conversation: combinedText } }
+        : lastMsg;
       try {
-        await processarMensagem(tenant, lastMsg, settings);
+        await processarMensagem(tenant, msgToProcess, settings);
       } catch (e: any) {
         console.error('[AiPolling] Processamento:', e.message);
       }
