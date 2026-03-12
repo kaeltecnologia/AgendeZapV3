@@ -2340,16 +2340,22 @@ async function _handleMessage(
   // ─── Validate target date is open ─────────────────────────────────
   if (session.data.date) {
     const _targetDateObj = new Date(session.data.date + 'T12:00:00');
-    const _targetDow = _targetDateObj.getDay();
-    const _targetDayCfg = settings.operatingHours?.[_targetDow];
-    if (!_targetDayCfg?.active) {
-      const _dayNames = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
-      const _closedMsg = `${_greetPrefix}Não estamos abertos na ${_dayNames[_targetDow]} (${formatDate(session.data.date)}). 😕 Para qual outro dia você gostaria?`;
+    if (isNaN(_targetDateObj.getTime())) {
+      // Invalid date extracted (e.g. "18/19" ambiguous) — clear and ask again
+      console.log('[Agent] Invalid date cleared:', session.data.date);
       session.data.date = undefined;
-      _markGreeted();
-      session.history.push({ role: 'bot', text: _closedMsg });
-      saveSession(session);
-      return _closedMsg;
+    } else {
+      const _targetDow = _targetDateObj.getDay();
+      const _targetDayCfg = settings.operatingHours?.[_targetDow];
+      if (!_targetDayCfg?.active) {
+        const _dayNames = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+        const _closedMsg = `${_greetPrefix}Não estamos abertos na ${_dayNames[_targetDow]} (${formatDate(session.data.date)}). 😕 Para qual outro dia você gostaria?`;
+        session.data.date = undefined;
+        _markGreeted();
+        session.history.push({ role: 'bot', text: _closedMsg });
+        saveSession(session);
+        return _closedMsg;
+      }
     }
   }
 
@@ -2587,10 +2593,16 @@ async function _handleMessage(
       // Try DD/MM/YYYY or DD/MM
       const _brMatch = session.data.date.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{4}))?$/);
       if (_brMatch) {
-        const _dd = _brMatch[1].padStart(2, '0');
-        const _mm = _brMatch[2].padStart(2, '0');
-        const _yyyy = _brMatch[3] || String(_brNow.getUTCFullYear());
-        session.data.date = `${_yyyy}-${_mm}-${_dd}`;
+        const _dd = parseInt(_brMatch[1]);
+        const _mm = parseInt(_brMatch[2]);
+        const _yyyy = _brMatch[3] ? parseInt(_brMatch[3]) : _brNow.getUTCFullYear();
+        // Validate ranges — reject ambiguous inputs like "18/19"
+        if (_dd >= 1 && _dd <= 31 && _mm >= 1 && _mm <= 12) {
+          session.data.date = `${_yyyy}-${String(_mm).padStart(2, '0')}-${String(_dd).padStart(2, '0')}`;
+        } else {
+          console.log(`[Agent] Invalid DD/MM "${session.data.date}" (day=${_dd} month=${_mm}) — clearing`);
+          session.data.date = undefined;
+        }
       } else {
         console.log(`[Agent] Unparseable date "${session.data.date}" — clearing`);
         session.data.date = undefined;
