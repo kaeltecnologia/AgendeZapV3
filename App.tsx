@@ -112,7 +112,7 @@ const App: React.FC = () => {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('agz_dark') !== '0');
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
   const UPDATE_KEY = 'agz_update_seen_v3';
-  const [showUpdateNotice, setShowUpdateNotice] = useState(false);
+  const [showUpdateNotice, setShowUpdateNotice] = useState(() => !localStorage.getItem('agz_update_seen_v3'));
   const [unreadConvCount, setUnreadConvCount] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
@@ -264,13 +264,6 @@ const App: React.FC = () => {
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
     }
   }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, isImpersonating, currentView, superAdminTab]);
-
-  // Show one-time update notice for tenants
-  useEffect(() => {
-    if (isAuthenticated && role === 'TENANT' && !localStorage.getItem(UPDATE_KEY)) {
-      setShowUpdateNotice(true);
-    }
-  }, [isAuthenticated, role]);
 
   // Close sidebar on mobile after any nav action
   const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
@@ -907,7 +900,7 @@ const App: React.FC = () => {
       )}
 
       {/* ── One-time update notice ───────────────────────── */}
-      {showUpdateNotice && (
+      {showUpdateNotice && role === 'TENANT' && isAuthenticated && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 space-y-5 animate-toastIn">
             <div className="flex items-center gap-3">
