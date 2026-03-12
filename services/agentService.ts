@@ -37,6 +37,7 @@ interface SessionData {
   time?: string;        // HH:MM
   preferredTime?: string; // HH:MM — preserved when date is reset so "next available" queries can filter by it
   minTime?: string;       // HH:MM — minimum time preference ("depois das 18h") used to filter available slots
+  maxTime?: string;       // HH:MM — maximum time preference ("antes das 13h") used to filter available slots
   availableSlots?: string[];
   pendingConfirm?: boolean;       // summary shown, waiting for yes/no
   pendingCancelReason?: boolean;  // asked for cancel reason, waiting for it
@@ -308,6 +309,22 @@ function getMinTimePref(norm: string): string | null {
     const mm = (m[2] || '00').padStart(2, '0');
     return `${hh}:${mm}`;
   }
+  // "cedo agora" / "agora cedo" / "cedo hoje" → early morning (08:00)
+  if (/\bcedo\b/.test(norm)) return '08:00';
+  return null;
+}
+
+function getMaxTimePref(norm: string): string | null {
+  // "antes das X" / "antes de X hora" / "antes do meio dia" / "antes do almoco"
+  const re = /antes\s+(?:das?\s+)?(\d{1,2})(?:[h:]\s*(\d{2}))?/;
+  const m = norm.match(re);
+  if (m) {
+    const hh = m[1].padStart(2, '0');
+    const mm = (m[2] || '00').padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+  if (/antes\s+do\s+(?:meio[\s-]?dia|almoco|almoço)/.test(norm)) return '12:00';
+  if (/antes\s+do\s+almo/.test(norm)) return '12:00';
   return null;
 }
 
@@ -651,6 +668,16 @@ ALISAMENTO → "alisar" / "relaxar" / "progressiva" / "escova progressiva" / "bo
 ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
 • REGRA GERAL: se o cliente menciona qualquer parte do corpo ou gíria de serviço que claramente identifica UM serviço da lista, assuma esse serviço — NÃO peça confirmação do serviço, peça data/horário diretamente
 ⛔ NUNCA liste todos os serviços da seção SERVIÇOS quando perguntar qual o cliente quer — pergunte APENAS: "Qual procedimento você gostaria?" sem enumerar a lista
+⛔ NUNCA atribua um serviço informal a um serviço DIFERENTE da lista. Ex: "sobrancelha" NÃO é "relaxamento", NÃO é "corte". Se o cliente pedir um serviço que não existe na lista SERVIÇOS, diga: "Não oferecemos esse serviço. Temos: [lista]"
+⛔ NUNCA combine dois pedidos de serviços diferentes em um só. "Corte" + "sobrancelha" = dois serviços separados — pergunte qual fazer primeiro ou se deseja agendar os dois
+
+🗣️ GÍRIAS E EXPRESSÕES INFORMAIS DE AGENDAMENTO — interprete como intenção de agendar:
+• "Tenho uma vaga aí" / "tenho uma janela" / "tenho um tempinho" / "tenho um espaço" = cliente quer agendar (não que ele TEM uma vaga, mas que ELE está disponível)
+• "cedo agora" / "cedo hoje" / "agora cedo" = hoje de manhã
+• "antes da uma" / "antes de uma hora" / "antes do meio dia" / "antes do almoço" = horário da manhã (antes das 13h)
+• "depois do almoço" / "depois da uma" = período da tarde
+• "meu moleque" / "meu filho" / "minha filha" / "minha esposa" / "meu parceiro" + agendamento = GRUPO de 2 pessoas → ative o fluxo de grupo
+• "a gente" / "nós dois" / "eu e meu..." = também grupo de 2 pessoas
 
 🔀 AMBÍGUO — não assuma, pergunte com contexto:
 • Saudação simples ("oi", "tudo bem?", "boa tarde") → cumprimentar + "Como posso te ajudar?"
@@ -1598,7 +1625,9 @@ async function _handleMessage(
     'minha namorada', 'meu namorado', 'meu filho', 'minha filha', 'meu pai', 'minha mae',
     'minha mãe', 'meu irmao', 'meu irmão', 'minha irma', 'minha irmã', 'meu amigo',
     'minha amiga', 'duas pessoas', 'dois cortes', 'nós dois', 'nos dois', 'pra dois',
-    'para dois', 'pra nós', 'meu parceiro', 'minha parceira', 'meu marido', 'minha mulher'];
+    'para dois', 'pra nós', 'meu parceiro', 'minha parceira', 'meu marido', 'minha mulher',
+    'meu moleque', 'minha moleque', 'meu colega', 'minha colega', 'meu sobrinho', 'minha sobrinha',
+    'meu neto', 'minha neta', 'meu cunhado', 'minha cunhada'];
   const hasGroupIntent = groupKeywords.some(k => lowerText.includes(k));
   if (hasGroupIntent && !session.data.groupBooking?.active) {
     const companionMap: [string, string][] = [
@@ -1610,6 +1639,10 @@ async function _handleMessage(
       ['minha irma', 'sua irmã'], ['minha irmã', 'sua irmã'],
       ['meu amigo', 'seu amigo'], ['minha amiga', 'sua amiga'],
       ['meu marido', 'seu marido'], ['minha mulher', 'sua mulher'],
+      ['meu moleque', 'seu moleque'], ['meu colega', 'seu colega'],
+      ['meu sobrinho', 'seu sobrinho'], ['minha sobrinha', 'sua sobrinha'],
+      ['meu neto', 'seu neto'], ['minha neta', 'sua neta'],
+      ['meu cunhado', 'seu cunhado'], ['minha cunhada', 'sua cunhada'],
     ];
     const found = companionMap.find(([k]) => lowerText.includes(k));
     session.data.groupBooking = {
@@ -2412,13 +2445,13 @@ async function _handleMessage(
     }
   }
 
-  // ─── Detect minimum time preference from client message (e.g. "depois das 18h") ──
+  // ─── Detect min/max time preference from client message ────────────────
   {
     const _normMinT = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
     const _detectedMin = getMinTimePref(_normMinT);
-    if (_detectedMin) {
-      session.data.minTime = _detectedMin;
-    }
+    if (_detectedMin) session.data.minTime = _detectedMin;
+    const _detectedMax = getMaxTimePref(_normMinT);
+    if (_detectedMax) session.data.maxTime = _detectedMax;
   }
 
   // ─── Fetch available slots when professional + date + service are known ──
@@ -2435,10 +2468,10 @@ async function _handleMessage(
       tenantId, session.data.professionalId!, session.data.date!,
       _slotDuration, settings
     );
-    // Filter by minTime preference if set (client said "depois das X")
-    prefetchedSlots = session.data.minTime
-      ? _allSlots.filter(s => s >= session.data.minTime!)
-      : _allSlots;
+    // Filter by min/maxTime preference if set
+    prefetchedSlots = _allSlots
+      .filter(s => !session.data.minTime || s >= session.data.minTime!)
+      .filter(s => !session.data.maxTime || s < session.data.maxTime!);
     // If filtered result is empty but there are slots overall, include them (so AI can explain)
     if (prefetchedSlots.length === 0 && _allSlots.length > 0) {
       prefetchedSlots = _allSlots;
