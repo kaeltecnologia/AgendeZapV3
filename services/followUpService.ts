@@ -17,7 +17,7 @@
 import { db } from './mockDb';
 import { evolutionService } from './evolutionService';
 import { AppointmentStatus } from '../types';
-import { registerFollowUpContext } from './agentService';
+import { registerFollowUpContext, hasUnansweredBotMsg } from './agentService';
 import { maskPhone } from './security';
 
 // Prevent concurrent runs for the same tenant
@@ -122,6 +122,12 @@ export async function runFollowUp(tenant: any): Promise<void> {
         servico: svc?.name || '',
       });
 
+      // Skip if agent already sent an unanswered message to this lead (conversation in progress)
+      if (await hasUnansweredBotMsg(tenantId, cust.phone)) {
+        console.log(`[FollowUp] Aviso pulado — agente já tem resposta pendente para ${maskPhone(cust.phone)}`);
+        continue;
+      }
+
       // Atomic cross-tab claim via Supabase unique constraint (prevents multi-tab duplicate sends)
       const claimKey = `fu::aviso::${cust.id}::${nowDate}`;
       const claimed = await db.claimMessage(claimKey);
@@ -135,6 +141,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
         anySent = true;
         console.log(`[FollowUp] Aviso enviado → ${cust.name} (${maskPhone(cust.phone)})`);
         registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
+          apptId: appt.id,
           apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
           serviceName: svc?.name || '',
           clientName: cust.name,
@@ -186,6 +193,12 @@ export async function runFollowUp(tenant: any): Promise<void> {
         servico: svc?.name || '',
       });
 
+      // Skip if agent already sent an unanswered message to this lead (conversation in progress)
+      if (await hasUnansweredBotMsg(tenantId, cust.phone)) {
+        console.log(`[FollowUp] Lembrete pulado — agente já tem resposta pendente para ${maskPhone(cust.phone)}`);
+        continue;
+      }
+
       // Atomic cross-tab claim
       const claimedL = await db.claimMessage(`fu::lembrete::${appt.id}`);
       if (!claimedL) continue;
@@ -197,6 +210,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
         anySent = true;
         console.log(`[FollowUp] Lembrete enviado → ${cust.name} (appt ${appt.id})`);
         registerFollowUpContext(tenantId, cust.phone, 'lembrete', msg, {
+          apptId: appt.id,
           apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
           serviceName: svc?.name || '',
           clientName: cust.name,

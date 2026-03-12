@@ -38,6 +38,7 @@ interface SessionData {
   preferredTime?: string; // HH:MM — preserved when date is reset so "next available" queries can filter by it
   minTime?: string;       // HH:MM — minimum time preference ("depois das 18h") used to filter available slots
   maxTime?: string;       // HH:MM — maximum time preference ("antes das 13h") used to filter available slots
+  preferLatest?: boolean; // true when client says "mais tarde possível" — slots shown in reverse order
   availableSlots?: string[];
   pendingConfirm?: boolean;       // summary shown, waiting for yes/no
   pendingCancelReason?: boolean;  // asked for cancel reason, waiting for it
@@ -46,6 +47,7 @@ interface SessionData {
   pendingProfContact?: { profId: string; profName: string; profPhone: string };
   // Follow-up context: set when system sends aviso/lembrete/reativacao to this phone
   pendingFollowUpType?: 'aviso' | 'lembrete' | 'reativacao';
+  followUpApptId?: string;           // appointment id (to mark lembrete sent on aviso confirmation)
   followUpApptTime?: string;         // HH:MM of the booked appointment (for reply context)
   followUpServiceName?: string;      // service name (for reply context)
   followUpProfessionalId?: string;   // professional of the appointment (for reschedule flow)
@@ -197,6 +199,7 @@ export function registerFollowUpContext(
   type: 'aviso' | 'lembrete' | 'reativacao',
   sentMessage: string,
   ctx?: {
+    apptId?: string;
     apptTime?: string;
     serviceName?: string;
     clientName?: string;
@@ -210,6 +213,7 @@ export function registerFollowUpContext(
     sess = { tenantId, phone, data: {} as SessionData, history: [], updatedAt: Date.now() };
   }
   sess.data.pendingFollowUpType = type;
+  if (ctx?.apptId)          sess.data.followUpApptId         = ctx.apptId;
   if (ctx?.apptTime)        sess.data.followUpApptTime       = ctx.apptTime;
   if (ctx?.serviceName)     sess.data.followUpServiceName    = ctx.serviceName;
   if (ctx?.professionalId)  sess.data.followUpProfessionalId = ctx.professionalId;
@@ -525,8 +529,12 @@ async function callBrain(
     ? `\n⏰ PREFERÊNCIA DE HORÁRIO MÍNIMO: cliente quer horários a partir das ${data.minTime} — NÃO sugira horários antes deste horário`
     : '';
 
+  const _latestNote = data.preferLatest
+    ? `\n⬇️ ATENÇÃO: cliente pediu "mais tarde possível" — a lista abaixo já está em ordem DECRESCENTE (maior → menor). Sugira o PRIMEIRO horário da lista (o mais tardio disponível).`
+    : '';
+
   const slotsSection = availableSlots && availableSlots.length > 0
-    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):${_minTimeNote}\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
+    ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):${_minTimeNote}${_latestNote}\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
         ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia.'
@@ -624,6 +632,7 @@ async function callBrain(
 ⛔ ARMADILHAS — NUNCA FAÇA:
 • "Quero cortar amanhã" → NÃO agende sem profissional + horário confirmados
 • "Tem horário hoje?" / "Como estão os horários?" / "Horário disponível" / "Tem vaga?" SEM dia específico = se hoje estiver ABERTO, assuma HOJE + "Quer agendar? Qual serviço?". Se hoje estiver FECHADO → "Hoje estamos fechados. Para qual dia você gostaria?"
+⛔ NUNCA sugira ou mencione um serviço específico ao cliente se o serviço NÃO está no CONTEXTO ATUAL — mesmo que o histórico de conversa ou mensagens anteriores contenham serviços. Se serviço não definido → pergunte SEMPRE: "Qual procedimento você gostaria?" sem citar opções específicas.
 • "De manhã" / "de tarde" / "próxima semana" = tempo VAGO → mostre as opções daquele período/semana, nunca escolha por conta própria
 • "Mesmo de sempre" → sem memória histórica → "Pode confirmar o serviço e horário preferido?"
 • "Pode ser com o [prof]?" com SERVIÇO já no contexto → NÃO pergunte "sobre o que você quer falar" → confirme direto: "Ótimo, com o [prof]! Qual dia prefere?"
@@ -1410,6 +1419,24 @@ async function _handleMessage(
       const _fuGreetKey = `${tenantId}::${phone}`;
       preSession.data.greetedAt = _fuDateStr;
       _greetedToday.set(_fuGreetKey, _fuDateStr);
+      // Suppress lembrete for this appointment — client already confirmed via aviso
+      const _confirmedApptId = preSession.data.followUpApptId;
+      if (_confirmedApptId) {
+        (async () => {
+          try {
+            const _s = await db.getSettings(tenantId);
+            const _nowDate = new Date().toISOString().slice(0, 10);
+            const _newSent = {
+              ...(_s.followUpSent || {}),
+              [`lembrete::${_confirmedApptId}`]: _nowDate,
+              [`aviso::${_confirmedApptId}`]: _nowDate,
+            };
+            await db.updateSettings(tenantId, { followUpSent: _newSent });
+          } catch (e: any) {
+            console.error('[Agent] Falha ao suprimir lembrete após confirmação:', e.message);
+          }
+        })();
+      }
       preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
       saveSession(preSession);
       return reply;
@@ -2452,6 +2479,10 @@ async function _handleMessage(
     if (_detectedMin) session.data.minTime = _detectedMin;
     const _detectedMax = getMaxTimePref(_normMinT);
     if (_detectedMax) session.data.maxTime = _detectedMax;
+    // Detect "mais tarde possível" / "o mais tarde" / "último horário"
+    const _wantsLatest = /mais\s+tarde\s+(poss[ií]vel|que\s+poss[ií]vel)|o\s+mais\s+tarde|[uú]ltimo\s+hor[aá]rio|o\s+[uú]ltimo|bem\s+tarde\s+(poss[ií]vel)?/i.test(_normMinT);
+    if (_wantsLatest) session.data.preferLatest = true;
+    else if (_detectedMax || _detectedMin) session.data.preferLatest = false; // reset if they specified a range
   }
 
   // ─── Fetch available slots when professional + date + service are known ──
@@ -2475,6 +2506,10 @@ async function _handleMessage(
     // If filtered result is empty but there are slots overall, include them (so AI can explain)
     if (prefetchedSlots.length === 0 && _allSlots.length > 0) {
       prefetchedSlots = _allSlots;
+    }
+    // If client wants latest possible slot, reverse sort so last slots appear first
+    if (session.data.preferLatest && prefetchedSlots.length > 0) {
+      prefetchedSlots = [...prefetchedSlots].reverse();
     }
     session.data.availableSlots = prefetchedSlots;
 
@@ -2779,25 +2814,31 @@ async function _handleMessage(
     }
   }
 
-  // ── TypeScript guard: block LLM from offering times without service ──────────
+  // ── TypeScript guard: block LLM from offering times or listing services without service ──
   if (!session.data.serviceId) {
     const _timePattern = /\b([01]?\d|2[0-3])[:h]\s*[0-5]?\d\b/;
     if (_timePattern.test(brain.reply) || (ext.time && !ext.serviceId)) {
-      const svcNames = activeServices.map((s: any) => s.name).join(', ');
-      brain.reply = `Qual procedimento você gostaria? Temos: ${svcNames}`;
+      brain.reply = `Qual procedimento você gostaria? 😊`;
       brain.extracted.time = null;
       brain.extracted.confirmed = null;
     }
-    // Guard: if LLM reply mentions a service name but we blocked it, ask properly
-    if (ext.serviceId) {
-      const _hallucinatedSvc = activeServices.find((s: any) => s.id === ext.serviceId);
-      if (_hallucinatedSvc) {
-        const _svcNameLower = _hallucinatedSvc.name.toLowerCase();
-        if (brain.reply.toLowerCase().includes(_svcNameLower)) {
-          console.log('[Agent] TS guard: LLM reply mentions blocked service, replacing reply');
-          brain.reply = `Como posso te ajudar? 😊`;
-        }
-      }
+    // Guard: if LLM listed services (reply contains "Temos:" or many commas), replace with clean question
+    const _temos = /temos[:\s]/i.test(brain.reply);
+    const _commaCount = (brain.reply.match(/,/g) || []).length;
+    if (_temos || _commaCount >= 3) {
+      brain.reply = `Qual procedimento você gostaria? 😊`;
+    }
+  }
+  // Post-brain override: if prof+date now known but service still missing, ask with hardcoded message
+  // This handles the case where the LLM just extracted prof+date for the first time but couldn't
+  // extract service — ensures we NEVER list services or hallucinate at this step.
+  if (session.data.professionalId && session.data.date && !session.data.serviceId) {
+    const _ctxPts: string[] = [];
+    if (session.data.professionalName) _ctxPts.push(`com o ${session.data.professionalName}`);
+    _ctxPts.push(`pra ${formatDate(session.data.date)}`);
+    const _svcQ = `${_greetPrefix}Vou verificar os horários disponíveis ${_ctxPts.join(' ')}! Qual procedimento você gostaria? 😊`;
+    if (brain.reply !== _svcQ) {
+      brain.reply = _svcQ;
     }
   }
 
@@ -3132,6 +3173,40 @@ async function _handleMessage(
   saveSession(session);
   if (shouldGreet) _greetedToday.set(_greetKey, brasiliaDate);
   return finalReply;
+}
+
+/**
+ * Returns true if the last message in the session history for this lead is from
+ * the bot (i.e., the agent asked something and the client hasn't replied yet).
+ * Used by followUpService to skip proactive messages when a conversation is in progress.
+ * Checks in-memory session first; falls back to Supabase. Window: 2 hours.
+ */
+export async function hasUnansweredBotMsg(tenantId: string, phone: string): Promise<boolean> {
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  try {
+    // Fast path: session already in memory
+    const inMem = sessions.get(sessionKey(tenantId, phone));
+    if (inMem) {
+      if (Date.now() - inMem.updatedAt > TWO_HOURS) return false;
+      const last = inMem.history[inMem.history.length - 1];
+      return !!last && last.role === 'bot';
+    }
+    // Fallback: load from Supabase
+    const { data } = await supabase
+      .from('agent_sessions')
+      .select('history, updated_at')
+      .eq('tenant_id', tenantId)
+      .eq('phone', phone)
+      .maybeSingle();
+    if (!data) return false;
+    const age = Date.now() - new Date(data.updated_at).getTime();
+    if (age > TWO_HOURS) return false;
+    const hist = (data.history as HistoryEntry[]) || [];
+    const last = hist[hist.length - 1];
+    return !!last && last.role === 'bot';
+  } catch {
+    return false; // fail open — don't block followUp on errors
+  }
 }
 
 /**
