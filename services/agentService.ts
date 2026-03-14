@@ -1,7 +1,7 @@
 /**
  * AgendeZap — Agente Conversacional v3
  *
- * Arquitetura: GPT-4o Mini (ou Gemini) conduz a conversa de forma natural.
+ * Arquitetura: GPT-4.1 Mini (ou Gemini) conduz a conversa de forma natural.
  * A IA entende tudo que o cliente diz de uma vez, pula etapas automaticamente
  * e gera respostas humanas. O código só gerencia DB e reservas.
  */

@@ -20,7 +20,7 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
 };
 
 function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
-  const p = MODEL_PRICING[model] ?? MODEL_PRICING['gpt-4o-mini'];
+  const p = MODEL_PRICING[model] ?? MODEL_PRICING['gpt-4.1-mini'];
   return inputTokens * p.input + outputTokens * p.output;
 }
 

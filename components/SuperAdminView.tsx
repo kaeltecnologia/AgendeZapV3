@@ -1182,7 +1182,7 @@ END $$;`.trim();
 
           <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
             <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">ℹ️ Preços de referência</p>
-            <p className="text-xs text-blue-600 mt-1">GPT-4o Mini: $0,150/1M tokens entrada · $0,600/1M tokens saída &nbsp;|&nbsp; Gemini 2.0 Flash: gratuito (tier free)</p>
+            <p className="text-xs text-blue-600 mt-1">GPT-4.1 Mini: $0,400/1M tokens entrada · $1,600/1M tokens saída &nbsp;|&nbsp; Gemini 2.0 Flash: gratuito (tier free)</p>
           </div>
 
           {/* ── Motor Global de IA — Otimizar Todos ── */}
@@ -1192,7 +1192,7 @@ END $$;`.trim();
                 <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">🌐 Motor Global de IA</p>
                 <p className="font-black text-xl text-violet-900 mt-1">Otimizar Todos os Tenants</p>
                 <p className="text-xs text-violet-600 mt-1 max-w-lg">
-                  Analisa as conversas de <strong>todos os tenants simultaneamente</strong>, extrai padrões globais de sucesso/falha com GPT-4o Mini e aplica aprendizados cruzados — o que funciona em um negócio melhora os outros.
+                  Analisa as conversas de <strong>todos os tenants simultaneamente</strong>, extrai padrões globais de sucesso/falha com GPT-4.1 Mini e aplica aprendizados cruzados — o que funciona em um negócio melhora os outros.
                 </p>
               </div>
               <button
@@ -1361,7 +1361,7 @@ END $$;`.trim();
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest">🔧 Otimização de IA por Tenant</p>
-                <p className="text-xs text-slate-400 mt-1">Analisa conversas com GPT-4o Mini, melhora o prompt e envia relatório no chat de Suporte do tenant.</p>
+                <p className="text-xs text-slate-400 mt-1">Analisa conversas com GPT-4.1 Mini, melhora o prompt e envia relatório no chat de Suporte do tenant.</p>
               </div>
             </div>
 
@@ -1650,7 +1650,7 @@ END $$;`.trim();
                                     </div>
                                     <div className="bg-white border border-slate-100 rounded-xl px-3 py-2">
                                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Motivo provável</p>
-                                      <p className="text-[10px] font-bold text-slate-600">O agente detectou o mesmo gatilho duas vezes em menos de 10 minutos (ex: mensagem de reset/sair recebida duplicada pelo webhook) e enviou a mesma resposta novamente. O GPT-4o Mini incluirá este padrão na próxima otimização automática.</p>
+                                      <p className="text-[10px] font-bold text-slate-600">O agente detectou o mesmo gatilho duas vezes em menos de 10 minutos (ex: mensagem de reset/sair recebida duplicada pelo webhook) e enviou a mesma resposta novamente. O GPT-4.1 Mini incluirá este padrão na próxima otimização automática.</p>
                                     </div>
                                   </div>
                                 ) : (

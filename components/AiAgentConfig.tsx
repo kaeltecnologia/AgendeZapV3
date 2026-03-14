@@ -84,7 +84,7 @@ const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
           Configurações de inteligência artificial
           {usingOpenAI
-            ? <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase">GPT-4o Mini</span>
+            ? <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase">GPT-4.1 Mini</span>
             : <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase">Gemini Flash</span>
           }
         </p>

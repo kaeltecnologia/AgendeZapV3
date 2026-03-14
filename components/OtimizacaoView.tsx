@@ -50,7 +50,7 @@ export default function OtimizacaoView({ tenantId }: Props) {
           <p className="text-xs font-bold text-slate-400 mt-0.5">Desempenho da IA e otimizações aplicadas pelo suporte</p>
         </div>
         <span className="bg-violet-100 text-violet-700 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
-          GPT-4o Mini
+          GPT-4.1 Mini
         </span>
       </div>
 

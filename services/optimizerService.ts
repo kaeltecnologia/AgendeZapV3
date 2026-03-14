@@ -178,7 +178,7 @@ Responda APENAS com este JSON (sem markdown, sem texto fora do JSON):
   ]
 }`;
 
-  // 4. Call OpenAI gpt-4o-mini
+  // 4. Call OpenAI gpt-4.1-mini
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -186,7 +186,7 @@ Responda APENAS com este JSON (sem markdown, sem texto fora do JSON):
       'Authorization': `Bearer ${openAiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [{ role: 'user', content: analysisPrompt }],
       temperature: 0.3,
       response_format: { type: 'json_object' },
@@ -300,7 +300,7 @@ Em português. Seja específico — cite o tipo de mensagem ou sinal que revela 
       'Authorization': `Bearer ${openAiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
       max_tokens: 800,

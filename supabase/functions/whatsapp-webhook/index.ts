@@ -293,7 +293,8 @@ async function callBrain(
   availableSlots?: string[], customSystemPrompt?: string,
   shouldGreet?: boolean, brasiliaGreeting?: string,
   tenantId?: string, phone?: string,
-  vacationCtx?: string
+  vacationCtx?: string,
+  operatingHours?: Record<number, { active: boolean; start?: string; end?: string }>
 ): Promise<any | null> {
   const svcList = services.map(s => `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`).join('\n');
   const profList = professionals.length > 0 ? professionals.map(p => `• ${p.name} — ID:"${p.id}"`).join('\n') : '• (apenas um profissional disponível)';
@@ -315,11 +316,27 @@ async function callBrain(
     }
   }
 
+  // Build operating hours section so the AI knows which days the business opens
+  const _ohSection = (() => {
+    if (!operatingHours || Object.keys(operatingHours).length === 0) return '';
+    const DOW_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const lines: string[] = [];
+    for (let d = 0; d < 7; d++) {
+      const cfg = (operatingHours as any)[d];
+      if (cfg?.active) {
+        lines.push(`• ${DOW_SHORT[d]}: ${cfg.start || '??'}–${cfg.end || '??'}`);
+      } else {
+        lines.push(`• ${DOW_SHORT[d]}: FECHADO`);
+      }
+    }
+    return `\n🕐 HORÁRIO DE FUNCIONAMENTO:\n${lines.join('\n')}\n⛔ REGRA ABSOLUTA: Se a data selecionada (CONTEXTO ATUAL) cair em um dia ABERTO segundo o horário acima, o estabelecimento ESTÁ ABERTO — NUNCA diga "não abre", "fechado" ou "não funciona" nesse dia. Se não houver horários disponíveis em um dia ABERTO, diga que a AGENDA ESTÁ CHEIA (lotada), NÃO que o estabelecimento não abre.\n`;
+  })();
+
   const slotsSection = availableSlots?.length
     ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
-        ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia.'
+        ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — a agenda está CHEIA para esse dia. NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia. ⛔ NUNCA diga que o estabelecimento "não abre" — o dia está aberto, apenas sem vagas.'
         : '\n🚫 SERVIÇO NÃO DEFINIDO — ⛔ PROIBIDO mencionar ou sugerir QUALQUER horário específico (ex: "16:00", "17:00"). Pergunte APENAS: "Qual procedimento/serviço você gostaria?" — a disponibilidade depende da duração do serviço.')
       : '\n⛔ HORÁRIOS NÃO VERIFICADOS — os horários reais AINDA NÃO foram buscados. NUNCA mencione, sugira ou cite horários específicos (ex: "15:00", "16:00", "17:00"). Colete primeiro o serviço e o dia para então verificar a disponibilidade real.');
 
@@ -375,8 +392,14 @@ async function callBrain(
 • Se o cliente INSISTIR que quer SOMENTE aquele profissional → RESPEITE a escolha. Diga: "Entendido! O [nome] retorna [data]. Posso te avisar quando ele voltar? 😊"
 • NUNCA "discuta" com o cliente sobre a escolha de profissional — se ele quer esperar, aceite.
 
+🚫 DIAS ABERTOS/FECHADOS — NUNCA invente:
+• Consulte SEMPRE a seção "HORÁRIO DE FUNCIONAMENTO" acima para saber se o estabelecimento abre ou não em determinado dia.
+• Se o dia está marcado como ABERTO no horário de funcionamento mas não há vagas → diga "agenda cheia/lotada", NUNCA "não abre" ou "estamos fechados".
+• Se o dia está marcado como FECHADO → o sistema já respondeu automaticamente; você NUNCA precisará informar isso.
+• ⛔ NUNCA diga "a gente não abre", "estamos fechados", "não funciona" por conta própria — essa decisão é do SISTEMA, não sua.
+
 📋 CONSULTAS — responder a pergunta ≠ agendar automaticamente:
-• "Vocês trabalham domingo?" / "qual o horário de vocês?" → informar funcionamento; só depois oferecer agendar
+• "Vocês trabalham domingo?" / "qual o horário de vocês?" → consulte a seção HORÁRIO DE FUNCIONAMENTO e informe os dias/horários; só depois oferecer agendar
 • "Quanto tempo demora um procedimento?" → informar duração; só depois oferecer agendar
 • "O [prof] tá disponível essa semana?" / "tá de folga?" → informar disponibilidade do profissional; só depois oferecer agendar
 • "Tem vaga hoje?" / "Como estão os horários?" / "Tem horário?" SEM dia → mostre os horários disponíveis de HOJE + "Quer agendar? Qual serviço?" — NÃO crie agendamento ainda
@@ -424,7 +447,7 @@ ESCOVA → "escova" / "dar uma escovada" / "modelar o cabelo"
 Atendente brasileiro — informal, caloroso, direto. Máximo 2-3 linhas por resposta.
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${greetSection}
 SERVIÇOS: ${svcList}
-PROFISSIONAIS: ${profList}${vacationCtx ? `\n${vacationCtx}` : ''}${slotsSection}
+PROFISSIONAIS: ${profList}${vacationCtx ? `\n${vacationCtx}` : ''}${_ohSection}${slotsSection}
 
 CONTEXTO ATUAL: ${known.length > 0 ? known.join(' | ') : 'nenhuma informação coletada ainda'}
 ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("sim","ok","pode","beleza","bora","fechou","isso","confirma") → "confirmed":true OBRIGATORIAMENTE.' : ''}
@@ -2293,7 +2316,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }).join('\n')}\n⚠️ Se o cliente pedir ESPECIFICAMENTE um profissional de férias, INFORME que está de férias e quando retorna. NÃO insista em outro profissional se o cliente disser que quer SOMENTE aquele.` : '';
 
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
   if (!brain) {
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
@@ -2366,7 +2389,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined);
+    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;
