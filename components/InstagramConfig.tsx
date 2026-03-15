@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 
-const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID || '';
+const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID || '1295712269034472';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
