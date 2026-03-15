@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 
-const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID || '1295712269034472';
+const IG_APP_ID = '917328734572559';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
@@ -68,13 +68,9 @@ const InstagramConfig: React.FC<Props> = ({ tenantId }) => {
   }, [tenantId]);
 
   const handleConnect = () => {
-    if (!FB_APP_ID) {
-      setError('VITE_FACEBOOK_APP_ID não configurado.');
-      return;
-    }
     const redirectUri = `${window.location.origin}${window.location.pathname}`;
-    const scopes = 'instagram_basic,instagram_content_publish,pages_read_engagement';
-    const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
+    const scopes = 'instagram_business_basic,instagram_business_content_publish';
+    const url = `https://api.instagram.com/oauth/authorize?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}`;
 
     // Open popup
     const w = 600, h = 700;
@@ -174,10 +170,6 @@ const InstagramConfig: React.FC<Props> = ({ tenantId }) => {
           </li>
           <li className="flex items-start gap-2">
             <span className="text-orange-500 font-bold mt-0.5">2.</span>
-            Conectada a uma <strong>Facebook Page</strong> (Página do Facebook)
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-orange-500 font-bold mt-0.5">3.</span>
             Ao clicar em "Conectar", autorize o acesso nas permissões solicitadas
           </li>
         </ul>
