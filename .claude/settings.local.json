@@ -3,7 +3,12 @@
     "allow": [
       "Bash(npx tsc --noEmit)",
       "Bash(npm run build)",
-      "Bash(npx tsc --noEmit --skipLibCheck)"
+      "Bash(npx tsc --noEmit --skipLibCheck)",
+      "Bash(npx tsc --noEmit --project tsconfig.app.json)",
+      "Bash(\"C:\\\\Users\\\\mathe\\\\AppData\\\\Local\\\\npm-cache\\\\_npx\\\\aa8e5c70f9d8d161\\\\node_modules\\\\supabase\\\\bin\\\\supabase.exe\" secrets set FACEBOOK_APP_ID=894236903475619 FACEBOOK_APP_SECRET=0228ce2ff0bf255f264b18e6f5c2cdcc --project-ref cnnfnqrnjckntnxdgwae)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_5b01fd5d1d74673b882db7ed9ca6cbcb979df2f9 \"C:\\\\Users\\\\mathe\\\\AppData\\\\Local\\\\npm-cache\\\\_npx\\\\aa8e5c70f9d8d161\\\\node_modules\\\\supabase\\\\bin\\\\supabase.exe\" functions deploy instagram-oauth --project-ref cnnfnqrnjckntnxdgwae)",
+      "Bash(\"C:\\\\Users\\\\mathe\\\\AppData\\\\Local\\\\npm-cache\\\\_npx\\\\aa8e5c70f9d8d161\\\\node_modules\\\\supabase\\\\bin\\\\supabase.exe\" secrets set FACEBOOK_APP_ID=1295712269034472 FACEBOOK_APP_SECRET=ba45c8c8976f2161ebef59d0bbd539b0 --project-ref cnnfnqrnjckntnxdgwae)",
+      "Bash(\"C:\\\\Users\\\\mathe\\\\AppData\\\\Local\\\\npm-cache\\\\_npx\\\\aa8e5c70f9d8d161\\\\node_modules\\\\supabase\\\\bin\\\\supabase.exe\" functions deploy instagram-oauth --project-ref cnnfnqrnjckntnxdgwae)"
     ]
   }
 }

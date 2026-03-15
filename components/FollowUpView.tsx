@@ -29,6 +29,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
   // Rating tab state
   const [ratingEnabled, setRatingEnabled] = useState(false);
   const [ratingMessage, setRatingMessage] = useState('');
+  const [googlePlaceId, setGooglePlaceId] = useState('');
   const [reviews, setReviews] = useState<Review[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -77,6 +78,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
     setReativacaoModes(s.reativacaoModes || []);
     setRatingEnabled((s as any).ratingEnabled ?? false);
     setRatingMessage((s as any).ratingMessage || '');
+    setGooglePlaceId((s as any).googlePlaceId || '');
     // Load reviews
     db.getReviews(tenantId).then(r => setReviews(r)).catch(() => {});
     setLoading(false);
@@ -233,12 +235,48 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
             <button
               onClick={async () => {
                 setSaving(true);
-                await db.updateSettings(tenantId, { ratingMessage } as any);
+                await db.updateSettings(tenantId, { ratingMessage, googlePlaceId } as any);
                 setSaving(false);
               }}
               className="px-6 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all"
             >
               {saving ? 'Salvando...' : 'Salvar Mensagem'}
+            </button>
+          </div>
+
+          {/* Google Reviews redirect */}
+          <div className="space-y-3 p-4 bg-slate-50 rounded-2xl">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Google Reviews — Redirect automático</label>
+            <p className="text-[10px] text-slate-400">Clientes que derem nota 8+ recebem automaticamente um link para avaliar no Google.</p>
+            <input
+              value={googlePlaceId}
+              onChange={e => setGooglePlaceId(e.target.value.trim())}
+              placeholder="Google Place ID (ex: ChIJx8uNn...)"
+              className="w-full border-2 border-slate-100 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-orange-400"
+            />
+            {googlePlaceId && (
+              <div className="text-[10px] text-slate-400 space-y-1">
+                <p className="font-bold text-green-600">Link que será enviado ao cliente:</p>
+                <p className="break-all bg-white px-3 py-2 rounded-xl border border-slate-100 font-mono text-[9px]">
+                  https://search.google.com/local/writereview?placeid={googlePlaceId}
+                </p>
+              </div>
+            )}
+            <p className="text-[9px] text-slate-400">
+              Para encontrar seu Place ID, pesquise seu negócio no{' '}
+              <a href="https://developers.google.com/maps/documentation/places/web-service/place-id-finder" target="_blank" rel="noopener noreferrer" className="text-orange-500 underline">
+                Google Place ID Finder
+              </a>
+            </p>
+            <button
+              onClick={async () => {
+                setSaving(true);
+                await db.updateSettings(tenantId, { googlePlaceId } as any);
+                setSaving(false);
+              }}
+              className="px-6 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all"
+            >
+              {saving ? 'Salvando...' : 'Salvar Place ID'}
             </button>
           </div>
 

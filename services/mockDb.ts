@@ -860,6 +860,10 @@ class DatabaseService {
           ratingEnabled: fu._ratingEnabled ?? false,
           ratingSent: fu._ratingSent ?? {},
           ratingMessage: fu._ratingMessage ?? '',
+          googlePlaceId: fu._googlePlaceId ?? '',
+          instagramAccessToken: fu._instagramAccessToken ?? '',
+          instagramUserId: fu._instagramUserId ?? '',
+          instagramUsername: fu._instagramUsername ?? '',
           logoUrl: fu._logoUrl ?? '',
           galleryPhotos: fu._galleryPhotos ?? [],
         };
@@ -911,6 +915,10 @@ class DatabaseService {
         _ratingEnabled: newS.ratingEnabled ?? curr.ratingEnabled ?? false,
         _ratingSent: newS.ratingSent ?? curr.ratingSent ?? {},
         _ratingMessage: newS.ratingMessage ?? curr.ratingMessage ?? '',
+        _googlePlaceId: newS.googlePlaceId ?? curr.googlePlaceId ?? '',
+        _instagramAccessToken: newS.instagramAccessToken ?? curr.instagramAccessToken ?? '',
+        _instagramUserId: newS.instagramUserId ?? curr.instagramUserId ?? '',
+        _instagramUsername: newS.instagramUsername ?? curr.instagramUsername ?? '',
         _logoUrl: newS.logoUrl ?? curr.logoUrl ?? '',
         _galleryPhotos: newS.galleryPhotos ?? curr.galleryPhotos ?? [],
       };

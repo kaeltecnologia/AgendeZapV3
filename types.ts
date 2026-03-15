@@ -285,6 +285,10 @@ export interface TenantSettings {
   ratingEnabled?: boolean;              // toggle for post-service rating requests
   ratingSent?: Record<string, string>;  // tracks sent rating requests: "rating::apptId" → "YYYY-MM-DD"
   ratingMessage?: string;               // custom rating message template
+  googlePlaceId?: string;               // Google Place ID for review redirect
+  instagramAccessToken?: string;        // long-lived IG access token (60 days)
+  instagramUserId?: string;             // IG business/creator account ID
+  instagramUsername?: string;           // IG handle (e.g. @barbearia)
   logoUrl?: string;                     // marketplace logo URL
   galleryPhotos?: string[];             // marketplace gallery photo URLs (up to 3)
 }

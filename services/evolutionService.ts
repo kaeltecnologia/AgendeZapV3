@@ -335,6 +335,29 @@ export const evolutionService = {
     return this.disableWebhook(instanceName);
   },
 
+  // Posts an image to the connected WhatsApp Status (visible to all contacts).
+  async sendStatusImage(instanceName: string, imageUrl: string, caption?: string): Promise<SendMessageResponse> {
+    if (!instanceName) return { success: false, error: 'Instância não definida' };
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/message/sendStatus/${instanceName}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          type: 'image',
+          content: imageUrl,
+          caption: caption || '',
+          allContacts: true,
+        })
+      });
+      if (res.ok) return { success: true };
+      const err = await res.json().catch(() => ({}));
+      console.error(`[Evolution] sendStatusImage ${res.status}:`, JSON.stringify(err).substring(0, 500));
+      return { success: false, error: err.message || `HTTP ${res.status}` };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+
   // Disables the external webhook so only frontend polling processes messages.
   // Tries EVERY known Evolution API endpoint variant (v1, v2, forks) to guarantee
   // the webhook is cleared regardless of which API version is running.

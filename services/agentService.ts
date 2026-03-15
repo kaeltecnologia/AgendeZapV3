@@ -83,6 +83,7 @@ interface SessionData {
     serviceName: string;
     customerName: string;
     professionalName: string;
+    googlePlaceId?: string;
   };
 }
 
@@ -242,6 +243,7 @@ export function registerRatingContext(
     serviceName: string;
     customerName: string;
     professionalName: string;
+    googlePlaceId?: string;
   }
 ): void {
   const key = sessionKey(tenantId, phone);
@@ -254,6 +256,7 @@ export function registerRatingContext(
     serviceName: ctx.serviceName,
     customerName: ctx.customerName,
     professionalName: ctx.professionalName,
+    googlePlaceId: ctx.googlePlaceId,
   };
   sess.history.push({ role: 'bot', text: sentMessage });
   if (sess.history.length > 20) sess.history = sess.history.slice(-20);
@@ -1272,7 +1275,10 @@ async function _handleMessage(
       saveSession(preSession);
 
       if (rating >= 8) {
-        return `Muito obrigado pela nota *${rating}*! 🌟 Ficamos felizes que você gostou! Até a próxima! 😊`;
+        const googleLink = ratingCtx.googlePlaceId
+          ? `\n\nSe puder, deixe uma avaliação no Google também! Ajuda muito o nosso trabalho 🙏\nhttps://search.google.com/local/writereview?placeid=${ratingCtx.googlePlaceId}`
+          : '';
+        return `Muito obrigado pela nota *${rating}*! 🌟 Ficamos felizes que você gostou! Até a próxima! 😊${googleLink}`;
       } else if (rating >= 5) {
         return `Obrigado pela nota *${rating}*! Vamos trabalhar para melhorar cada vez mais. Até breve! 🙏`;
       } else {

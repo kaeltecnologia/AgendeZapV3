@@ -118,6 +118,7 @@ export async function runRatingRequests(tenant: any): Promise<void> {
           serviceName: svc?.name || '',
           customerName: cust.name,
           professionalName: prof?.name || '',
+          googlePlaceId: (settings as any).googlePlaceId || '',
         });
       } catch (e: any) {
         console.error(`[Rating] Erro ao enviar para ${maskPhone(cust.phone)}:`, e.message);

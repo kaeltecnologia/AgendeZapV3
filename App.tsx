@@ -35,6 +35,7 @@ const TrialExpiredView = lazy(() => import('./components/TrialExpiredView'));
 const BookingPage = lazy(() => import('./components/BookingPage'));
 const MarketplacePage = lazy(() => import('./components/MarketplacePage'));
 const MarketplacePreview = lazy(() => import('./components/MarketplacePreview'));
+const PublicarView = lazy(() => import('./components/PublicarView'));
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
@@ -74,6 +75,7 @@ enum View {
   SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD',
   OTIMIZACAO = 'OTIMIZACAO',
   MARKETPLACE = 'MARKETPLACE',
+  PUBLICAR = 'PUBLICAR',
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
@@ -92,6 +94,17 @@ function sessionFingerprint(data: Record<string, any>): string {
 }
 
 const App: React.FC = () => {
+  // Instagram OAuth callback: if this window is a popup opened for OAuth,
+  // capture the code from query params, send it to the opener, and close.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code && window.opener) {
+      window.opener.postMessage({ type: 'instagram-oauth-code', code }, window.location.origin);
+      window.close();
+    }
+  }, []);
+
   // Hash-based routing: re-render on hash change
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -583,6 +596,7 @@ const App: React.FC = () => {
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
       case View.MARKETPLACE: return <MarketplacePreview tenantId={tenantId} />;
+      case View.PUBLICAR: return <PublicarView tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
   };
@@ -691,6 +705,7 @@ const App: React.FC = () => {
               {/* ── Operação ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operação</p>}
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.PUBLICAR} onClick={navTo(() => setCurrentView(View.PUBLICAR))} icon={<IconCamera />} label="Publicar" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
@@ -1163,6 +1178,7 @@ const IconMarketing = () => <svg xmlns="http://www.w3.org/2000/svg" className="w
 const IconShoppingBag = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>;
 const IconGift = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>;
 const IconWhatsapp2 = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>;
+const IconCamera = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>;
 const IconGlobe = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
 const IconDoc = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>;
 const IconWallet = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>;
