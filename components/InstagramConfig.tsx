@@ -73,7 +73,7 @@ const InstagramConfig: React.FC<Props> = ({ tenantId }) => {
       return;
     }
     const redirectUri = `${window.location.origin}${window.location.pathname}`;
-    const scopes = 'instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement';
+    const scopes = 'instagram_basic,instagram_content_publish,pages_read_engagement';
     const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
 
     // Open popup
