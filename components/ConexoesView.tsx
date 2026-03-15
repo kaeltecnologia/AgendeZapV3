@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import EvolutionConfig from './EvolutionConfig';
 import AiAgentConfig from './AiAgentConfig';
 import InstagramConfig from './InstagramConfig';
+import GoogleBusinessConfig from './GoogleBusinessConfig';
 import { db } from '../services/mockDb';
 
-type Tab = 'whatsapp' | 'agente' | 'linkweb' | 'instagram';
+type Tab = 'whatsapp' | 'agente' | 'linkweb' | 'instagram' | 'google';
 
 const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string }> = ({ tenantId, tenantSlug }) => {
   const [tab, setTab] = useState<Tab>('whatsapp');
@@ -43,6 +44,7 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string }> = ({ tena
         <TabBtn active={tab === 'whatsapp'} onClick={() => setTab('whatsapp')} icon="📱" label="WhatsApp" />
         <TabBtn active={tab === 'agente'}   onClick={() => setTab('agente')}   icon="🤖" label="Agente IA" />
         <TabBtn active={tab === 'instagram'} onClick={() => setTab('instagram')} icon="📸" label="Instagram" />
+        <TabBtn active={tab === 'google'}   onClick={() => setTab('google')}   icon="📍" label="Google" />
         <TabBtn active={tab === 'linkweb'}  onClick={() => setTab('linkweb')}  icon="🔗" label="Link Web" />
       </div>
 
@@ -51,6 +53,7 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string }> = ({ tena
         {tab === 'whatsapp' && <EvolutionConfig tenantId={tenantId} tenantSlug={tenantSlug} />}
         {tab === 'agente'   && <AiAgentConfig   tenantId={tenantId} />}
         {tab === 'instagram' && <InstagramConfig tenantId={tenantId} />}
+        {tab === 'google'   && <GoogleBusinessConfig tenantId={tenantId} />}
         {tab === 'linkweb'  && (
           <div className="space-y-6">
             {/* Info card */}

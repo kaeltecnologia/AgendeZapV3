@@ -24,13 +24,18 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
   const [igAccessToken, setIgAccessToken] = useState('');
   const [igUsername, setIgUsername] = useState('');
 
+  // Google Business state
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleBusinessName, setGoogleBusinessName] = useState('');
+
   // Channels
   const [chWa, setChWa] = useState(true);
   const [chAz, setChAz] = useState(true);
   const [chIg, setChIg] = useState(false);
+  const [chGoogle, setChGoogle] = useState(false);
 
   // Result feedback
-  const [result, setResult] = useState<{ wa?: string; az?: string; ig?: string } | null>(null);
+  const [result, setResult] = useState<{ wa?: string; az?: string; ig?: string; google?: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -57,6 +62,14 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
           setIgUserId(igId);
           setIgUsername(igUser);
           setChIg(true);
+        }
+        // Google Business
+        const gbName = (settings as any).googleBusinessName || '';
+        const gbLocation = (settings as any).googleLocationId || '';
+        if (gbName && gbLocation) {
+          setGoogleConnected(true);
+          setGoogleBusinessName(gbName);
+          setChGoogle(true);
         }
       } catch (e) { console.error('[PublicarView] init error:', e); }
       setLoading(false);
@@ -85,10 +98,10 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
 
   const handlePublish = async () => {
     if (!file) return;
-    if (!chWa && !chAz && !chIg) { alert('Selecione pelo menos um canal.'); return; }
+    if (!chWa && !chAz && !chIg && !chGoogle) { alert('Selecione pelo menos um canal.'); return; }
     setPublishing(true);
     setResult(null);
-    const res: { wa?: string; az?: string; ig?: string } = {};
+    const res: { wa?: string; az?: string; ig?: string; google?: string } = {};
 
     try {
       // 1. Upload to Supabase Storage
@@ -133,16 +146,37 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
         res.ig = 'Instagram desconectado';
       }
 
+      if (chGoogle && googleConnected) {
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
+        promises.push(
+          fetch(`${SUPABASE_URL}/functions/v1/google-business-publish`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ tenantId, imageUrl: publicUrl, caption: caption.trim() || '' }),
+          })
+            .then(r => r.json())
+            .then(d => { res.google = d.error ? d.error : 'ok'; })
+            .catch(e => { res.google = e.message || 'Erro'; })
+        );
+      } else if (chGoogle && !googleConnected) {
+        res.google = 'Google Business desconectado';
+      }
+
       await Promise.all(promises);
     } catch (e: any) {
       res.az = res.az || e.message;
       res.wa = res.wa || e.message;
       res.ig = res.ig || e.message;
+      res.google = res.google || e.message;
     }
 
     setResult(res);
     // Reset form on full success
-    const hasError = [res.az, res.wa, res.ig].some(v => v && v !== 'ok');
+    const hasError = [res.az, res.wa, res.ig, res.google].some(v => v && v !== 'ok');
     if (!hasError) {
       setFile(null);
       setPreview('');
@@ -266,16 +300,28 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
             <span className="text-[9px] font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ativo</span>
           </label>
 
-          {/* Google Maps — coming soon */}
-          <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-slate-100 opacity-50 cursor-not-allowed">
-            <input type="checkbox" disabled className="w-4 h-4" />
-            <span className="text-lg">📍</span>
-            <div className="flex-1">
-              <p className="text-xs font-black text-slate-700">Google Maps</p>
-              <p className="text-[10px] text-slate-400">Post no perfil do Google Meu Negócio</p>
+          {/* Google Maps */}
+          {googleConnected ? (
+            <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${chGoogle ? 'border-blue-400 bg-blue-50' : 'border-slate-100'}`}>
+              <input type="checkbox" checked={chGoogle} onChange={e => setChGoogle(e.target.checked)} className="w-4 h-4 accent-blue-500" />
+              <span className="text-lg">📍</span>
+              <div className="flex-1">
+                <p className="text-xs font-black text-slate-700">Google Maps</p>
+                <p className="text-[10px] text-slate-400">Post no perfil do {googleBusinessName}</p>
+              </div>
+              <span className="text-[9px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{googleBusinessName}</span>
+            </label>
+          ) : (
+            <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-slate-100 opacity-50">
+              <input type="checkbox" disabled className="w-4 h-4" />
+              <span className="text-lg">📍</span>
+              <div className="flex-1">
+                <p className="text-xs font-black text-slate-700">Google Maps</p>
+                <p className="text-[10px] text-slate-400">Conecte em Conexões &gt; Google</p>
+              </div>
+              <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Desconectado</span>
             </div>
-            <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Em breve</span>
-          </div>
+          )}
         </div>
 
         {/* Result feedback */}
@@ -296,13 +342,18 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
                 {result.az === 'ok' ? '✓ Publicado no Feed AZ!' : `✗ Feed AZ: ${result.az}`}
               </p>
             )}
+            {result.google !== undefined && (
+              <p className={`text-xs font-bold ${result.google === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
+                {result.google === 'ok' ? '✓ Publicado no Google Maps!' : `✗ Google Maps: ${result.google}`}
+              </p>
+            )}
           </div>
         )}
 
         {/* Publish button */}
         <button
           onClick={handlePublish}
-          disabled={!file || publishing || (!chWa && !chAz && !chIg)}
+          disabled={!file || publishing || (!chWa && !chAz && !chIg && !chGoogle)}
           className="w-full bg-orange-500 text-white py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {publishing ? (

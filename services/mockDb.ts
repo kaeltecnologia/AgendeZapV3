@@ -864,6 +864,11 @@ class DatabaseService {
           instagramAccessToken: fu._instagramAccessToken ?? '',
           instagramUserId: fu._instagramUserId ?? '',
           instagramUsername: fu._instagramUsername ?? '',
+          googleBusinessAccessToken: fu._googleBusinessAccessToken ?? '',
+          googleBusinessRefreshToken: fu._googleBusinessRefreshToken ?? '',
+          googleAccountId: fu._googleAccountId ?? '',
+          googleLocationId: fu._googleLocationId ?? '',
+          googleBusinessName: fu._googleBusinessName ?? '',
           logoUrl: fu._logoUrl ?? '',
           galleryPhotos: fu._galleryPhotos ?? [],
         };
@@ -919,6 +924,11 @@ class DatabaseService {
         _instagramAccessToken: newS.instagramAccessToken ?? curr.instagramAccessToken ?? '',
         _instagramUserId: newS.instagramUserId ?? curr.instagramUserId ?? '',
         _instagramUsername: newS.instagramUsername ?? curr.instagramUsername ?? '',
+        _googleBusinessAccessToken: newS.googleBusinessAccessToken ?? curr.googleBusinessAccessToken ?? '',
+        _googleBusinessRefreshToken: newS.googleBusinessRefreshToken ?? curr.googleBusinessRefreshToken ?? '',
+        _googleAccountId: newS.googleAccountId ?? curr.googleAccountId ?? '',
+        _googleLocationId: newS.googleLocationId ?? curr.googleLocationId ?? '',
+        _googleBusinessName: newS.googleBusinessName ?? curr.googleBusinessName ?? '',
         _logoUrl: newS.logoUrl ?? curr.logoUrl ?? '',
         _galleryPhotos: newS.galleryPhotos ?? curr.galleryPhotos ?? [],
       };

@@ -289,6 +289,11 @@ export interface TenantSettings {
   instagramAccessToken?: string;        // long-lived IG access token (60 days)
   instagramUserId?: string;             // IG business/creator account ID
   instagramUsername?: string;           // IG handle (e.g. @barbearia)
+  googleBusinessAccessToken?: string;  // Google Business Profile OAuth access token
+  googleBusinessRefreshToken?: string; // Google Business Profile refresh token
+  googleAccountId?: string;            // Google Business account ID (e.g. accounts/123)
+  googleLocationId?: string;           // Google Business location ID (e.g. locations/456)
+  googleBusinessName?: string;         // Google Business display name
   logoUrl?: string;                     // marketplace logo URL
   galleryPhotos?: string[];             // marketplace gallery photo URLs (up to 3)
 }

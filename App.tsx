@@ -94,13 +94,18 @@ function sessionFingerprint(data: Record<string, any>): string {
 }
 
 const App: React.FC = () => {
-  // Instagram OAuth callback: if this window is a popup opened for OAuth,
+  // OAuth callback: if this window is a popup opened for OAuth,
   // capture the code from query params, send it to the opener, and close.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
+    const state = params.get('state') || 'instagram';
     if (code && window.opener) {
-      window.opener.postMessage({ type: 'instagram-oauth-code', code }, window.location.origin);
+      const typeMap: Record<string, string> = {
+        instagram: 'instagram-oauth-code',
+        google: 'google-business-oauth-code',
+      };
+      window.opener.postMessage({ type: typeMap[state] || 'instagram-oauth-code', code }, window.location.origin);
       window.close();
     }
   }, []);
