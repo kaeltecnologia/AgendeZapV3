@@ -1782,6 +1782,68 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     (session.data as any).pendingVacationOffer = undefined;
   }
 
+  // ── Rating context reply ────────────────────────────────────────────────
+  // When ratingService sends a rating request, the next reply is intercepted here.
+  // Expects a number 0-10. If valid, saves the review and thanks the customer.
+  if ((session.data as any).pendingRating) {
+    const ratingCtx = (session.data as any).pendingRating;
+    const normR = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, '').trim();
+    const numMatch = normR.match(/\b(10|[0-9])\b/);
+
+    if (numMatch) {
+      const rating = parseInt(numMatch[1], 10);
+      try {
+        await supabase.from('reviews').insert({
+          tenant_id: tenantId,
+          customer_phone: phone,
+          customer_name: ratingCtx.customerName || '',
+          appointment_id: ratingCtx.apptId || '',
+          rating,
+          comment: text,
+        });
+      } catch (e: any) {
+        console.error('[Rating-WH] Erro ao salvar review:', e);
+      }
+
+      (session.data as any).pendingRating = undefined;
+
+      let ratingReply: string;
+      if (rating >= 8) {
+        const googleLink = ratingCtx.googlePlaceId
+          ? `\n\nSe puder, deixe uma avaliação no Google também! Ajuda muito o nosso trabalho 🙏\nhttps://search.google.com/local/writereview?placeid=${ratingCtx.googlePlaceId}`
+          : '';
+        ratingReply = `Muito obrigado pela nota *${rating}*! 🌟 Ficamos felizes que você gostou! Até a próxima! 😊${googleLink}`;
+      } else if (rating >= 5) {
+        ratingReply = `Obrigado pela nota *${rating}*! Vamos trabalhar para melhorar cada vez mais. 💪`;
+      } else {
+        ratingReply = `Obrigado pelo feedback. Lamentamos que a experiência não foi a melhor. Vamos melhorar! 🙏`;
+      }
+
+      session.history.push({ role: 'user', text });
+      session.history.push({ role: 'bot', text: ratingReply });
+      await sendMsg(instanceName, phone, ratingReply, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
+    }
+
+    // If client wants to book instead, clear rating and fall through to AI
+    const hasBookingKw = ['agendar', 'marcar', 'horario', 'hora'].some(k => normR.includes(k));
+    if (hasBookingKw) {
+      (session.data as any).pendingRating = undefined;
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      // fall through to AI
+    } else {
+      // Re-prompt for a number
+      const reprompt = 'Por favor, envie uma nota de *0 a 10* para avaliar seu atendimento. ⭐';
+      session.history.push({ role: 'user', text });
+      session.history.push({ role: 'bot', text: reprompt });
+      await sendMsg(instanceName, phone, reprompt, tenantId);
+      saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+      return;
+    }
+  }
+
   // ── Follow-up context: aviso/lembrete/reativacao ──────────────────────────
   // When followUpService sends a follow-up message it persists pendingFollowUpType
   // in the session. Handle the first reply here before falling through to the AI.
