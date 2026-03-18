@@ -336,9 +336,9 @@ async function callBrain(
     ? `Horários disponíveis${_slotsDateLabel} (use APENAS estes, NUNCA invente outros):\n${availableSlots.slice(0, 12).map(s => `- ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
-        ? `NENHUM HORÁRIO DISPONÍVEL${_slotsDateLabel} -- a agenda está CHEIA. Informe que está cheia e ofereça outro dia. NUNCA diga que o estabelecimento "não abre".`
-        : `SERVIÇO NÃO DEFINIDO -- PROIBIDO mencionar horários específicos. Pergunte: "Qual procedimento você gostaria?"`)
-      : `HORÁRIOS NÃO VERIFICADOS -- NUNCA mencione horários específicos. Colete serviço e dia primeiro.`);
+        ? `NENHUM HORÁRIO DISPONÍVEL${_slotsDateLabel} -- a agenda está CHEIA. Diga "agenda cheia" e ofereça outro dia. NUNCA diga "não abre", "fechado", "não atende".`
+        : `SERVIÇO NÃO DEFINIDO -- PROIBIDO mencionar horários específicos (ex: 07:00, 15:00, etc). Pergunte: "Qual procedimento você gostaria?"`)
+      : `HORÁRIOS NÃO VERIFICADOS -- PROIBIDO mencionar QUALQUER horário específico (ex: 07:00, 09:00, 15:00). Colete serviço, profissional e dia primeiro. Só depois o sistema mostrará os horários reais.`);
 
   const histStr = history.slice(-10).map((h: any) => `${h.role === 'user' ? 'Cliente' : 'Agente'}: ${h.text}`).join('\n');
   const isFirst = history.filter((h: any) => h.role === 'bot').length === 0;
@@ -397,6 +397,8 @@ ${profSelectionSection}
 - "Mesmo de sempre" -> sem memória histórica -> "Pode confirmar o serviço e horário preferido?"
 - "Pode ser com o [prof]?" com serviço já no contexto -> NÃO pergunte serviço, confirme: "Ótimo, com o [prof]! Qual dia prefere?"
 - Profissional já definido no contexto -> NÃO pergunte de novo.
+- NUNCA invente horários. Se a seção "Horários" diz "NÃO VERIFICADOS", NÃO sugira nenhum horário (ex: "07:00", "às 9"). Apenas pergunte a preferência e colete as informações que faltam.
+- NUNCA diga que um dia "não abre" ou "tá fechado". O sistema cuida disso. Apenas extraia a data.
 
 ## Protocolo de Cancelamento
 1. Localizar: "Encontrei seu agendamento: [data/hora/serviço]."
@@ -422,11 +424,12 @@ ${profSelectionSection}
 - Cliente insiste -> respeite: "Entendido! O [nome] retorna [data]. Posso te avisar quando ele voltar?"
 
 ## Dias Abertos e Fechados — REGRA CRÍTICA
-- Consulte SEMPRE a seção "Horário de Funcionamento" nos dados abaixo.
-- Dia ABERTO mas sem vagas -> diga "agenda cheia/lotada", NUNCA "não abre" ou "estamos fechados".
-- Dia FECHADO -> o sistema já tratou automaticamente; você nunca precisa informar.
-- PROIBIDO dizer "a gente não abre", "não atende", "estamos fechados", "não funciona", "não abrimos" sobre qualquer dia. Se não há horários, a agenda está CHEIA, não fechada.
-- Se a Data já está no CONTEXTO ATUAL, o sistema já validou que é um dia aberto. NUNCA questione ou contradiga isso.
+- VOCÊ NÃO INFORMA SOBRE DIAS FECHADOS. O SISTEMA faz isso automaticamente antes de você responder.
+- Se o cliente pedir um dia fechado, APENAS extraia a data normalmente. O sistema interceptará e informará sobre o dia fechado.
+- Dia ABERTO mas sem vagas -> diga "agenda cheia/lotada".
+- PROIBIDO usar estas frases: "não abre", "não atende", "tá fechado", "estamos fechados", "não funciona", "não abrimos", "não trabalha", "a gente não abre". NUNCA, em nenhuma circunstância.
+- Se a Data já está no CONTEXTO ATUAL, o sistema já validou que é um dia aberto. Confie nisso.
+- O "Horário de Funcionamento" abaixo serve APENAS para você saber os horários de abertura/fechamento, NÃO para você informar quais dias são fechados.
 
 ## Consultas Informativas
 - "Vocês trabalham domingo?" / "qual o horário?" -> consulte Horário de Funcionamento, informe; depois ofereça agendar.
