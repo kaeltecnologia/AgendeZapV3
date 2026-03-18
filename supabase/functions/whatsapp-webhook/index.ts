@@ -382,6 +382,8 @@ Siga nesta ordem, pule etapas já presentes no CONTEXTO ATUAL:
 1. Mesmo dia: "Esse horário não está disponível, mas ainda tenho [lista]. Algum serve?"
 2. Cliente recusou todos (ou não há mais): sugira o horário desejado no próximo dia disponível.
 3. Horário desejado não existe no próximo dia: ofereça o mais próximo disponível.
+4. Cliente diz que não pode durante a semana (ex: "esses dias estou trabalhando", "só consigo fim de semana"): ofereça SÁBADO como alternativa, pois a maioria das pessoas folga no sábado. Se sábado não tem vaga, tente o próximo sábado.
+5. Quando o cliente pede um horário específico que não existe (ex: "20h"), ofereça o PRÓXIMO horário disponível mais PRÓXIMO do pedido. Ex: "Não temos às 20:00, mas o mais próximo é às 19:00. Serve?"
 ${profSelectionSection}
 # Regras de Comportamento
 
