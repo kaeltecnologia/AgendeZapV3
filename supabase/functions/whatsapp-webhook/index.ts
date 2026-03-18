@@ -447,6 +447,7 @@ Quando o cliente usa termo informal que mapeia para um serviço, preencha extrac
 - ALISAMENTO: "progressiva", "alisar", "botox capilar"
 - ESCOVA: "escova", "modelar o cabelo"
 Regra: se identifica claramente UM serviço, assuma-o. NÃO peça confirmação, prossiga para data/horário.
+COMBO: "cabelo e barba", "corte e barba", "corte barba" = 2 serviços juntos. Procure na lista de serviços um COMBO que cubra ambos. Se não existir, use o serviço de MAIOR DURAÇÃO e mencione AMBOS na confirmação. NUNCA reconheça apenas um quando o cliente pediu dois.
 
 ## Mensagens Sem Relação com Agendamento
 Nem toda mensagem é sobre agendar. Se o cliente enviar algo fora do contexto de agendamento, responda naturalmente SEM forçar o fluxo de agendamento:
@@ -486,7 +487,7 @@ Explique + ofereça alternativa + pergunte "Serve?"
 Aceite naturalmente, sem drama.
 
 ## Casos Especiais
-- 2 serviços -> use o de maior duração ou combo.
+- 2 serviços ("cabelo e barba", "corte e barba", "corte e sobrancelha") -> procure um serviço COMBO na lista (ex: "Corte e Barba"). Se não existir combo, use o de MAIOR DURAÇÃO e mencione ambos na resposta. NUNCA ignore um dos serviços pedidos.
 - 2 pessoas -> descubra o serviço do cliente primeiro, depois pergunte sobre o acompanhante.
 - Preço -> informe direto: "Corte está R$40,00"
 - Agenda cheia -> sugira outra semana.
@@ -793,13 +794,66 @@ function matchServiceByKeywords(
   const normText = norm(text);
   const STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado']);
 
+  // Synonym map: informal terms → canonical keywords for matching
+  const SYNONYMS: Record<string, string[]> = {
+    'corte': ['corte', 'cabelo', 'cabeca', 'cabecinha', 'cortar', 'aparar', 'zerar', 'degrade', 'social', 'navalhado', 'franja', 'maquina'],
+    'barba': ['barba', 'barbinha', 'bigode'],
+    'sobrancelha': ['sobrancelha', 'design'],
+    'coloracao': ['pintar', 'colorir', 'mechas', 'reflexo', 'tingir', 'coloracao'],
+    'progressiva': ['progressiva', 'alisar', 'alisamento', 'botox'],
+    'escova': ['escova', 'modelar'],
+  };
+
+  // Expand message words to canonical forms
+  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+  const canonicalMentions = new Set<string>();
+  for (const mw of msgWords) {
+    for (const [canon, syns] of Object.entries(SYNONYMS)) {
+      if (syns.some(s => s.includes(mw) || mw.includes(s))) {
+        canonicalMentions.add(canon);
+      }
+    }
+  }
+
+  // Detect combo: customer mentioned 2+ service categories (e.g., "cabelo e barba")
+  const isCombo = canonicalMentions.size >= 2;
+
   // 1. Full service name as substring
   for (const svc of services) {
     if (normText.includes(norm(svc.name))) return svc;
   }
 
-  // 2. Keyword overlap scoring
-  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+  // 2. If combo detected, prefer service whose name covers the most mentioned categories
+  if (isCombo) {
+    let bestCombo: typeof services[0] | null = null;
+    let bestComboMatches = 0;
+    for (const svc of services) {
+      const svcNorm = norm(svc.name);
+      let comboMatches = 0;
+      for (const canon of canonicalMentions) {
+        const syns = SYNONYMS[canon] || [canon];
+        if (syns.some(s => svcNorm.includes(s))) comboMatches++;
+      }
+      if (comboMatches > bestComboMatches || (comboMatches === bestComboMatches && bestCombo && svc.durationMinutes > bestCombo.durationMinutes)) {
+        bestComboMatches = comboMatches;
+        bestCombo = svc;
+      }
+    }
+    // If found a service covering 2+ categories, use it; else pick longest duration
+    if (bestCombo && bestComboMatches >= 2) return bestCombo;
+    // No combo service found — pick the service with longest duration
+    if (bestCombo) {
+      const longestSvc = services
+        .filter(s => {
+          const sn = norm(s.name);
+          return [...canonicalMentions].some(c => (SYNONYMS[c] || [c]).some(syn => sn.includes(syn)));
+        })
+        .sort((a, b) => b.durationMinutes - a.durationMinutes)[0];
+      if (longestSvc) return longestSvc;
+    }
+  }
+
+  // 3. Keyword overlap scoring (single service)
   if (msgWords.length === 0) return null;
 
   let best: typeof services[0] | null = null;
