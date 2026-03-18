@@ -20,6 +20,7 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [expandedImg, setExpandedImg] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -186,7 +187,8 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
                       <img
                         src={msg.imageUrl}
                         alt="imagem"
-                        className="max-w-full rounded-2xl mb-1"
+                        className="max-w-full rounded-2xl mb-1 cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => setExpandedImg(msg.imageUrl!)}
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     )}
@@ -247,6 +249,29 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Image lightbox */}
+      {expandedImg && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setExpandedImg('')}
+        >
+          <button
+            onClick={() => setExpandedImg('')}
+            className="absolute top-4 right-4 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all"
+          >
+            <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <img
+            src={expandedImg}
+            alt="imagem expandida"
+            className="max-w-full max-h-full rounded-2xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
 
       {/* Backdrop when open on mobile */}
       {open && (
