@@ -1480,6 +1480,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // Detect target date from message or session for vacation checks
+  const _tomorrowBrasilia = new Date(nowBrasilia.getTime() + 86400000);
+  const _tomorrowISO = `${_tomorrowBrasilia.getUTCFullYear()}-${pad(_tomorrowBrasilia.getUTCMonth()+1)}-${pad(_tomorrowBrasilia.getUTCDate())}`;
+  const _mentionsTomorrow = /\bamanha\b|\bamanh[ãa]\b/i.test(lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+  const _vacCheckDate = session.data.date || (_mentionsTomorrow ? _tomorrowISO : todayISO);
+
   // Professional name pre-extraction (TypeScript layer — more reliable than LLM)
   // Vacation check runs for any # of professionals. Personal-contact-flow only for multi-prof.
   if (!session.data.professionalId && !session.data.pendingProfContact) {
@@ -1491,7 +1497,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         if (b.type !== 'vacation') return false;
         const vacStart: string = b.date || '';
         const vacEnd: string = b.vacationEndDate || b.date || '';
-        return !!vacStart && todayISO >= vacStart && todayISO <= vacEnd;
+        return !!vacStart && _vacCheckDate >= vacStart && _vacCheckDate <= vacEnd;
       });
       if (_vacBreakWh1) {
         const _vacEnd1 = (_vacBreakWh1 as any).vacationEndDate || _vacBreakWh1.date || '';
@@ -1507,7 +1513,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             if (!b.professionalId || b.professionalId !== p.id) return false;
             if (b.type !== 'vacation') return false;
             const vs: string = b.date || '', ve: string = b.vacationEndDate || b.date || '';
-            return !!vs && todayISO >= vs && todayISO <= ve;
+            return !!vs && _vacCheckDate >= vs && _vacCheckDate <= ve;
           }));
         const othersStr = othersAvail.map((p: any) => p.name).join(' ou ');
         const vacMsg = `*${matched.name}* está de férias no momento!${_returnInfo1} 🏖️\n\n${othersStr ? `Mas o ${othersStr} pode te atender! Gostaria de agendar?` : 'Gostaria de agendar com outro profissional?'}`;
@@ -1699,7 +1705,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       if (!b.professionalId || b.professionalId !== session.data.professionalId) return false;
       const vs: string = b.date || '';
       const ve: string = b.vacationEndDate || b.date || '';
-      return !!vs && todayISO >= vs && todayISO <= ve;
+      return !!vs && _vacCheckDate >= vs && _vacCheckDate <= ve;
     });
     if (_curVacBreakWh) {
       const _vacProfNameWh = session.data.professionalName || 'O profissional';
@@ -1715,7 +1721,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           if (b.type !== 'vacation') return false;
           if (!b.professionalId || b.professionalId !== p.id) return false;
           const vs: string = b.date || '', ve: string = b.vacationEndDate || b.date || '';
-          return !!vs && todayISO >= vs && todayISO <= ve;
+          return !!vs && _vacCheckDate >= vs && _vacCheckDate <= ve;
         }));
       const _othersStrWh = _othersAvailWh.map((p: any) => p.name).join(' ou ');
       const _vacMsgWh = `*${_vacProfNameWh}* está de férias no momento!${_returnInfoWh2} 🏖️\n\n${_othersStrWh ? `Mas o ${_othersStrWh} pode te atender! Gostaria de agendar?` : 'Pode agendar quando o profissional retornar.'}`;
