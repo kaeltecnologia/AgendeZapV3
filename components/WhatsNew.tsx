@@ -1,16 +1,15 @@
 import React, { useEffect, useState } from 'react';
 
-const VERSION_KEY = 'agz_whats_new_seen_v4';
+const VERSION_KEY = 'agz_whats_new_seen_v5';
 
 const updates = [
-  { icon: '🌙', title: 'Modo escuro por padrão', desc: 'Sistema abre em dark mode. Troque pelo botão no header.' },
-  { icon: '✨', title: 'Micro-animações por todo o sistema', desc: 'Botões com micro-bounce, mensagens com slide-in suave e transições fluidas.' },
-  { icon: '💬', title: 'Indicador de digitação no chat', desc: 'Três pontinhos animados aparecem enquanto a IA processa sua mensagem.' },
-  { icon: '🔔', title: 'Badge de não lidas no menu', desc: 'O ícone do WhatsApp no menu mostra quantas conversas estão sem visualizar.' },
-  { icon: '⏰', title: 'Alerta de atendimento', desc: 'Popup automático quando chega a hora de um agendamento — abre a comanda com um clique.' },
-  { icon: '🏆', title: 'Streak e estatísticas no Dashboard', desc: 'Veja sua sequência de dias com atendimentos, total de hoje e pendentes em tempo real.' },
-  { icon: '🎊', title: 'Confete ao agendar', desc: 'Animação de celebração ao confirmar um agendamento manual.' },
-  { icon: '🖼️', title: 'Fix: colar imagem no suporte', desc: 'Resolvido o erro ao colar imagens no chat de suporte.' },
+  { icon: '🤖', title: 'IA mais inteligente', desc: 'Reconhecimento de serviços aprimorado — "corte", "degradê", "social", "navalhado" e combos como "cabelo e barba" agora são identificados corretamente.' },
+  { icon: '📅', title: 'Sugestão de horários', desc: 'Quando o horário pedido não está disponível, a IA agora sugere o mais próximo. Se não puder durante a semana, oferece sábado.' },
+  { icon: '🛡️', title: 'Ausências respeitadas', desc: 'A IA agora verifica corretamente férias e ausências do profissional para a data solicitada, evitando oferecer horários incorretos.' },
+  { icon: '💬', title: 'Conversas naturais', desc: 'A IA agora responde elogios, reclamações e mensagens casuais sem forçar o fluxo de agendamento.' },
+  { icon: '✂️', title: 'Combos reconhecidos', desc: 'Quando o cliente pede "cabelo e barba", a IA identifica o combo correto automaticamente em vez de reconhecer apenas um serviço.' },
+  { icon: '🖼️', title: 'Imagens expandíveis no suporte', desc: 'Agora é possível clicar em imagens no chat de suporte para visualizá-las em tela cheia.' },
+  { icon: '📍', title: 'Google Meu Negócio', desc: 'Nova integração! Publique fotos e posts diretamente no seu perfil do Google Maps pela aba Publicar.' },
 ];
 
 const WhatsNew: React.FC = () => {
