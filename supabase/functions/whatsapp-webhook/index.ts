@@ -303,11 +303,18 @@ async function callBrain(
 
   const known: string[] = [];
   if (data.clientName) known.push(`Nome: ${data.clientName}`);
-  if (data.serviceName) known.push(`Serviço: ${data.serviceName}`);
-  if ((data as any)._comboRequest) known.push(`⚠️ COMBO: Cliente pediu ${(data as any)._comboRequest}. Mencione AMBOS na resposta (ex: "cabelo e barba"). O serviço acima cobre o combo.`);
+  if (data.serviceName) known.push(`Serviço: ${data.serviceName}${(data as any)._comboTotalDuration ? ` (${(data as any)._comboTotalDuration}min total, R$${((data as any)._comboTotalPrice || 0).toFixed(2)})` : ''}`);
+  if ((data as any)._comboRequest) known.push(`⚠️ MULTI-SERVIÇO: Cliente pediu ${(data as any)._comboRequest}. Mencione TODOS os serviços na resposta. Duração total e preço já estão calculados acima.`);
   if (data.professionalName) known.push(`Profissional: ${data.professionalName}`);
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
   if (data.time) known.push(`Horário: ${data.time}`);
+  if ((data as any)._suggestedTime && !data.time) {
+    if ((data as any)._nearestSlot) {
+      known.push(`⏰ HORÁRIO PEDIDO: ${(data as any)._suggestedTime} (NÃO disponível). Mais próximo: ${(data as any)._nearestSlot}. Ofereça o mais próximo.`);
+    } else {
+      known.push(`⏰ HORÁRIO DETECTADO: cliente disse "${(data as any)._suggestedTime}". Use este horário se estiver na lista de disponíveis. NÃO pergunte horário de novo.`);
+    }
+  }
   if (data.preferredTime && !data.time) known.push(`Preferência de horário: a partir das ${data.preferredTime}`);
   if ((data as any).requestedQuantity && (data as any).requestedQuantity > 1) known.push(`Quantidade: ${(data as any).requestedQuantity} horários/pessoas`);
   if (data.pendingReschedule) {
@@ -450,7 +457,11 @@ Quando o cliente usa termo informal que mapeia para um serviço, preencha extrac
 - ALISAMENTO: "progressiva", "alisar", "botox capilar"
 - ESCOVA: "escova", "modelar o cabelo"
 Regra: se identifica claramente UM serviço, assuma-o. NÃO peça confirmação, prossiga para data/horário.
-COMBO: "cabelo e barba", "corte e barba", "corte barba" = 2 serviços juntos. Procure na lista de serviços um COMBO que cubra ambos. Se não existir, use o serviço de MAIOR DURAÇÃO e mencione AMBOS na confirmação. NUNCA reconheça apenas um quando o cliente pediu dois.
+MULTI-SERVIÇO: O sistema AUTOMATICAMENTE detecta TODOS os serviços mencionados pelo cliente (ex: "barba, cortar o cabelo, produtinho, sobrancelha" = 4 serviços). O CONTEXTO ATUAL já terá o combo calculado com duração e preço totais. Apenas CONFIRME todos os serviços listados — NUNCA ignore nenhum serviço que o cliente pediu. Se o CONTEXTO diz "Serviço: X + Y + Z", use EXATAMENTE isso.
+
+## Horários Coloquiais
+O sistema detecta automaticamente horários informais: "5 e meia"=17:30, "as 3"=15:00, "meio dia"=12:00.
+Se o CONTEXTO ATUAL tiver "HORÁRIO DETECTADO" ou "HORÁRIO PEDIDO", use esse horário — NÃO pergunte de novo. NÃO reinicie o fluxo.
 
 ## Mensagens Sem Relação com Agendamento
 Nem toda mensagem é sobre agendar. Se o cliente enviar algo fora do contexto de agendamento, responda naturalmente SEM forçar o fluxo de agendamento:
@@ -490,7 +501,7 @@ Explique + ofereça alternativa + pergunte "Serve?"
 Aceite naturalmente, sem drama.
 
 ## Casos Especiais
-- 2 serviços ("cabelo e barba", "corte e barba", "corte e sobrancelha") -> procure um serviço COMBO na lista (ex: "Corte e Barba"). Se não existir combo, use o de MAIOR DURAÇÃO e mencione ambos na resposta. NUNCA ignore um dos serviços pedidos.
+- Múltiplos serviços ("barba, cabelo, sobrancelha, produtinho") -> O sistema já detectou e somou tudo no CONTEXTO ATUAL. Confirme TODOS os serviços listados. NUNCA ignore nenhum. Use o nome combinado do CONTEXTO.
 - 2 pessoas -> descubra o serviço do cliente primeiro, depois pergunte sobre o acompanhante.
 - Preço -> informe direto: "Corte está R$40,00"
 - Agenda cheia -> sugira outra semana.
@@ -506,7 +517,8 @@ Aceite naturalmente, sem drama.
   - Cliente prefere manter -> "Mantenho o das [hora_original] então!", confirmed:false.
 
 # Regras de Extração
-- Horários: "nove horas"->"09:00", "três da tarde"->"15:00", "meio dia"->"12:00"
+- Horários: "nove horas"->"09:00", "três da tarde"->"15:00", "meio dia"->"12:00", "5 e meia"->"17:30", "as 4"->"16:00"
+- O sistema já detecta horários coloquiais automaticamente. Se CONTEXTO ATUAL tem "HORÁRIO DETECTADO", extraia esse time.
 - NUNCA repita perguntas sobre info já no CONTEXTO ATUAL.
 - Use horários SOMENTE da lista disponível.
 - waitlist: true se cliente pediu lista de espera.
@@ -527,7 +539,9 @@ Responda APENAS com JSON válido (sem markdown, sem backticks):
 2. PRECISÃO: Use APENAS horários da lista "Horários disponíveis". NUNCA invente horários. Se não há lista, NÃO mencione horários específicos.
 3. CONTEXTO: Quando CONTEXTO ATUAL já contém Data, os horários são daquele dia. Quando contém "RESUMO JÁ MOSTRADO" e cliente afirma ("sim","ok","beleza","pode","bora","fechou","isso"), defina "confirmed":true OBRIGATORIAMENTE.
 4. PROIBIDO: NUNCA diga "não abre", "não atende", "estamos fechados", "não funciona". Se sem vagas, diga "agenda cheia". Se Data no contexto, o dia já foi validado pelo sistema.
-5. RECONHECIMENTO: Se o cliente já informou serviço, data ou horário na mesma mensagem, NÃO pergunte de novo. Extraia tudo de uma vez.`;
+5. RECONHECIMENTO: Se o cliente já informou serviço, data ou horário na mesma mensagem, NÃO pergunte de novo. Extraia tudo de uma vez.
+6. FLUXO: NUNCA reinicie o fluxo quando CONTEXTO ATUAL já tem dados coletados. Se Serviço, Profissional, Data já estão no contexto, NÃO pergunte "Qual procedimento?" de novo. Continue de onde parou.
+7. MULTI-SERVIÇO: Quando o CONTEXTO diz "MULTI-SERVIÇO", confirme TODOS os serviços listados. Nunca mencione apenas um.`;
 
   // ── User Prompt (dynamic per-turn data) ──────────────────────────
   const userPrompt = `## Serviços
@@ -785,101 +799,178 @@ function matchProfessionalName(text: string, professionals: Array<{ id: string; 
   return null;
 }
 
-// ── Service keyword matcher ──────────────────────────────────────────
-// Priority: COMBO detection first → substring match → keyword overlap.
-// "cabelo e barba" → finds combo service covering both categories.
-// Returns matched service + _comboCategories when 2+ categories detected.
+// ── Service synonym map (shared) ──────────────────────────────────────
+const SVC_SYNONYMS: Record<string, string[]> = {
+  'corte': ['corte', 'cabelo', 'cabeca', 'cabecinha', 'cortar', 'aparar', 'zerar', 'degrade', 'social', 'navalhado', 'franja', 'maquina'],
+  'barba': ['barba', 'barbinha', 'bigode'],
+  'sobrancelha': ['sobrancelha', 'design'],
+  'coloracao': ['pintar', 'colorir', 'mechas', 'reflexo', 'tingir', 'coloracao'],
+  'progressiva': ['progressiva', 'alisar', 'alisamento', 'botox', 'produtinho', 'produto'],
+  'escova': ['escova', 'modelar'],
+  'relaxamento': ['relaxamento', 'relaxar'],
+};
+const SVC_STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado', 'tambem', 'aquele', 'fazer', 'querer']);
+const svcNorm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+
+// ── Detect ALL service categories mentioned in text ──────────────────
+function detectServiceCategories(text: string): Set<string> {
+  const normText = svcNorm(text);
+  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !SVC_STOP.has(w));
+  const mentions = new Set<string>();
+  for (const mw of msgWords) {
+    for (const [canon, syns] of Object.entries(SVC_SYNONYMS)) {
+      if (syns.some(s => s.includes(mw) || mw.includes(s))) {
+        mentions.add(canon);
+      }
+    }
+  }
+  return mentions;
+}
+
+// ── Match ALL services from text (multi-service aware) ────────────────
+// Returns array of matched services + detected categories.
+// "barba, cortar cabelo, produtinho, sobrancelha" → 4 services matched.
+function matchAllServices(
+  text: string,
+  services: Array<{ id: string; name: string; durationMinutes: number; price: number }>
+): { matched: Array<{ id: string; name: string; durationMinutes: number; price: number }>; categories: string[] } {
+  const normText = svcNorm(text);
+  const categories = detectServiceCategories(text);
+  const cats = [...categories];
+  if (cats.length === 0) return { matched: [], categories: [] };
+
+  // For each category, find the best matching service
+  const usedIds = new Set<string>();
+  const matched: Array<{ id: string; name: string; durationMinutes: number; price: number }> = [];
+
+  // First: try to find combo services that cover 2+ categories at once
+  for (const svc of services) {
+    const sn = svcNorm(svc.name);
+    let covers = 0;
+    const coveredCats: string[] = [];
+    for (const cat of cats) {
+      const syns = SVC_SYNONYMS[cat] || [cat];
+      if (syns.some(s => sn.includes(s))) { covers++; coveredCats.push(cat); }
+    }
+    if (covers >= 2 && !usedIds.has(svc.id)) {
+      matched.push(svc);
+      usedIds.add(svc.id);
+      coveredCats.forEach(c => categories.delete(c));
+    }
+  }
+
+  // Second: for remaining uncovered categories, find individual services
+  for (const cat of [...categories]) {
+    const syns = SVC_SYNONYMS[cat] || [cat];
+    const candidateSvcs = services.filter(s => !usedIds.has(s.id) && syns.some(syn => svcNorm(s.name).includes(syn)));
+    // Pick the best candidate (longest duration as tiebreaker)
+    const best = candidateSvcs.sort((a, b) => b.durationMinutes - a.durationMinutes)[0];
+    if (best) {
+      matched.push(best);
+      usedIds.add(best.id);
+      categories.delete(cat);
+    }
+  }
+
+  console.log(`[matchAllSvcs] Detected categories: ${cats.join(', ')} → Matched: ${matched.map(s => s.name).join(', ')}`);
+  return { matched, categories: cats };
+}
+
+// ── Single service matcher (backwards-compatible) ─────────────────────
 function matchServiceByKeywords(
   text: string,
   services: Array<{ id: string; name: string; durationMinutes: number; price: number }>
-): { id: string; name: string; durationMinutes: number; price: number; _comboCategories?: string[] } | null {
-  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
-  const normText = norm(text);
-  const STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado']);
+): { id: string; name: string; durationMinutes: number; price: number; _comboCategories?: string[]; _allMatched?: Array<{ id: string; name: string; durationMinutes: number; price: number }> } | null {
+  const { matched, categories } = matchAllServices(text, services);
+  if (matched.length === 0) return null;
 
-  // Synonym map: informal terms → canonical keywords for matching
-  const SYNONYMS: Record<string, string[]> = {
-    'corte': ['corte', 'cabelo', 'cabeca', 'cabecinha', 'cortar', 'aparar', 'zerar', 'degrade', 'social', 'navalhado', 'franja', 'maquina'],
-    'barba': ['barba', 'barbinha', 'bigode'],
-    'sobrancelha': ['sobrancelha', 'design'],
-    'coloracao': ['pintar', 'colorir', 'mechas', 'reflexo', 'tingir', 'coloracao'],
-    'progressiva': ['progressiva', 'alisar', 'alisamento', 'botox'],
-    'escova': ['escova', 'modelar'],
-    'relaxamento': ['relaxamento', 'relaxar'],
+  if (matched.length === 1) return matched[0];
+
+  // Multiple services: sum durations and prices, build combined name
+  const totalDuration = matched.reduce((sum, s) => sum + s.durationMinutes, 0);
+  const totalPrice = matched.reduce((sum, s) => sum + s.price, 0);
+  // Use the longest service as the "primary" for ID (booking uses this)
+  const primary = matched.sort((a, b) => b.durationMinutes - a.durationMinutes)[0];
+  const combinedName = matched.map(s => s.name).join(' + ');
+
+  return {
+    ...primary,
+    name: combinedName,
+    durationMinutes: totalDuration,
+    price: totalPrice,
+    _comboCategories: categories,
+    _allMatched: matched,
+  };
+}
+
+// ── Colloquial time parser (TypeScript layer) ─────────────────────────
+// Parses informal Brazilian time expressions into HH:MM format.
+// "5 e meia" → "17:30", "as 3" → "15:00", "meio dia" → "12:00"
+function parseColloquialTime(text: string): string | null {
+  const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, ' ').trim();
+
+  // Word-to-number map
+  const NUM: Record<string, number> = {
+    'uma': 1, 'duas': 2, 'tres': 3, 'quatro': 4, 'cinco': 5, 'seis': 6,
+    'sete': 7, 'oito': 8, 'nove': 9, 'dez': 10, 'onze': 11, 'doze': 12,
+    'meia': -1, // special marker
   };
 
-  // Expand message words to canonical forms
-  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
-  const canonicalMentions = new Set<string>();
-  for (const mw of msgWords) {
-    for (const [canon, syns] of Object.entries(SYNONYMS)) {
-      if (syns.some(s => s.includes(mw) || mw.includes(s))) {
-        canonicalMentions.add(canon);
-      }
+  // "meio dia" / "meio-dia"
+  if (/\bmeio[\s-]?dia\b/.test(t)) return '12:00';
+  // "meia noite" / "meia-noite"
+  if (/\bmeia[\s-]?noite\b/.test(t)) return '00:00';
+
+  // Pattern: [as/às] <number> [e meia / e <minutes>]
+  // Examples: "as 5 e meia", "5 e meia", "às 3", "as cinco e meia", "17:30", "17h30", "5h"
+  const patterns = [
+    // "5 e meia", "as 5 e meia", "cinco e meia"
+    /(?:as?\s+)?(\d{1,2}|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze)\s+e\s+meia\b/,
+    // "5 e 15", "as 3 e 45"
+    /(?:as?\s+)?(\d{1,2}|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze)\s+e\s+(\d{1,2})\b/,
+    // "as 5", "às 17", "la pelas 3"
+    /(?:as?\s+|la\s+pelas?\s+)(\d{1,2}|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze)\s*(?:hora|horas|h)?\b/,
+    // "17h30", "17:30", "5h"
+    /\b(\d{1,2})\s*[h:]\s*(\d{2})?\b/,
+    // Standalone "cedo" — context-dependent, skip
+  ];
+
+  for (let i = 0; i < patterns.length; i++) {
+    const m = t.match(patterns[i]);
+    if (!m) continue;
+
+    let hour: number;
+    const rawH = m[1];
+    hour = NUM[rawH] !== undefined ? NUM[rawH] : parseInt(rawH, 10);
+    if (isNaN(hour) || hour < 0) continue;
+
+    let min = 0;
+    if (i === 0) {
+      // "e meia" = :30
+      min = 30;
+    } else if (i === 1 && m[2]) {
+      min = parseInt(m[2], 10);
+    } else if (i === 3 && m[2]) {
+      min = parseInt(m[2], 10);
+    }
+
+    // Smart AM/PM: hours 1-11 likely mean PM for a barbershop (operating hours ~8-20)
+    if (hour >= 1 && hour <= 6) hour += 12; // 1→13, 5→17, 6→18
+    // 7-11 could be AM or PM — check context
+    if (hour >= 7 && hour <= 11) {
+      // If "da tarde" or "da noite" → PM
+      if (/da\s+tarde|da\s+noite/.test(t)) hour += 12;
+      // Otherwise keep as AM (morning appointments)
+    }
+
+    if (hour >= 0 && hour <= 23 && min >= 0 && min <= 59) {
+      const result = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+      console.log(`[parseTime] "${text}" → ${result}`);
+      return result;
     }
   }
 
-  // ── COMBO PATH (2+ categories) — runs FIRST to avoid "Barba" matching in "cabelo e barba" ──
-  const isCombo = canonicalMentions.size >= 2;
-  if (isCombo) {
-    // Find service covering the most mentioned categories
-    let bestCombo: typeof services[0] | null = null;
-    let bestComboMatches = 0;
-    for (const svc of services) {
-      const svcNorm = norm(svc.name);
-      let comboMatches = 0;
-      for (const canon of canonicalMentions) {
-        const syns = SYNONYMS[canon] || [canon];
-        if (syns.some(s => svcNorm.includes(s))) comboMatches++;
-      }
-      if (comboMatches > bestComboMatches || (comboMatches === bestComboMatches && bestCombo && svc.durationMinutes > bestCombo.durationMinutes)) {
-        bestComboMatches = comboMatches;
-        bestCombo = svc;
-      }
-    }
-    const cats = [...canonicalMentions];
-    // Found a combo service covering 2+ categories
-    if (bestCombo && bestComboMatches >= 2) {
-      console.log(`[matchSvc] COMBO hit: "${bestCombo.name}" covers ${bestComboMatches} categories: ${cats.join('+')}`);
-      return { ...bestCombo, _comboCategories: cats };
-    }
-    // No single service covers all categories → pick longest duration among matching
-    const matchingSvcs = services.filter(s => {
-      const sn = norm(s.name);
-      return [...canonicalMentions].some(c => (SYNONYMS[c] || [c]).some(syn => sn.includes(syn)));
-    });
-    const longestSvc = matchingSvcs.sort((a, b) => b.durationMinutes - a.durationMinutes)[0];
-    if (longestSvc) {
-      console.log(`[matchSvc] COMBO fallback (no combo svc): "${longestSvc.name}" (longest), categories: ${cats.join('+')}`);
-      return { ...longestSvc, _comboCategories: cats };
-    }
-  }
-
-  // ── SINGLE SERVICE: full service name as substring ──
-  for (const svc of services) {
-    if (normText.includes(norm(svc.name))) return svc;
-  }
-
-  // ── SINGLE SERVICE: keyword overlap scoring ──
-  if (msgWords.length === 0) return null;
-
-  let best: typeof services[0] | null = null;
-  let bestHits = 0;
-  let bestCoverage = 0;
-
-  for (const svc of services) {
-    const svcWords = norm(svc.name).split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
-    if (svcWords.length === 0) continue;
-    const hits = msgWords.filter(mw => svcWords.some(sw => sw.includes(mw) || mw.includes(sw))).length;
-    const coverage = hits / svcWords.length;
-    if (hits > bestHits || (hits === bestHits && coverage > bestCoverage)) {
-      bestHits = hits;
-      bestCoverage = coverage;
-      best = svc;
-    }
-  }
-
-  return bestHits >= 1 ? best : null;
+  return null;
 }
 
 // ── Brasília greeting ─────────────────────────────────────────────────
@@ -2315,8 +2406,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
 
   // ── TypeScript-layer service keyword pre-extraction ─────────────────
-  // Matches "corte barba" → "Corte de Cabelo e Barba", "barba" → "Barba", etc.
-  // Runs BEFORE slot prefetch so the system knows the exact duration.
+  // Scans text word-by-word for ALL service categories mentioned.
+  // "barba, cortar o cabelo, produtinho, sobrancelha" → 4 services matched.
+  // Sums durations and prices, builds combined name for AI context.
   if (!session.data.serviceId) {
     const _matchedSvc = matchServiceByKeywords(lowerText, services);
     if (_matchedSvc) {
@@ -2324,13 +2416,29 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       session.data.serviceName = _matchedSvc.name;
       session.data.serviceDuration = _matchedSvc.durationMinutes;
       session.data.servicePrice = _matchedSvc.price;
-      // Store combo info so the AI mentions both services in its reply
-      if (_matchedSvc._comboCategories && _matchedSvc._comboCategories.length >= 2) {
+      // Store multi-service info so the AI mentions ALL services
+      if (_matchedSvc._allMatched && _matchedSvc._allMatched.length >= 2) {
+        session.data._comboRequest = _matchedSvc._allMatched.map(s => s.name).join(' + ');
+        session.data._comboTotalDuration = _matchedSvc.durationMinutes;
+        session.data._comboTotalPrice = _matchedSvc.price;
+        console.log('[Agent] TS multi-service:', session.data._comboRequest, `(${_matchedSvc.durationMinutes}min, R$${_matchedSvc.price})`);
+      } else if (_matchedSvc._comboCategories && _matchedSvc._comboCategories.length >= 2) {
         session.data._comboRequest = _matchedSvc._comboCategories.join(' + ');
-        console.log('[Agent] TS pre-extracted COMBO service:', _matchedSvc.name, '| categories:', session.data._comboRequest);
+        console.log('[Agent] TS combo categories:', session.data._comboRequest);
       } else {
         console.log('[Agent] TS pre-extracted service:', _matchedSvc.name);
       }
+    }
+  }
+
+  // ── TypeScript-layer colloquial time pre-extraction ─────────────────
+  // Parses "5 e meia"→"17:30", "as 3"→"15:00", "meio dia"→"12:00"
+  // Runs BEFORE brain call so the AI doesn't need to interpret these.
+  if (!session.data.time && session.data.serviceId) {
+    const _parsedTime = parseColloquialTime(lowerText);
+    if (_parsedTime) {
+      session.data._suggestedTime = _parsedTime;
+      console.log('[Agent] TS parsed colloquial time:', _parsedTime);
     }
   }
 
@@ -2371,6 +2479,27 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (_hasProf && _hasDate && _hasSvc) {
     const _slotDur = session.data.serviceDuration || 30;
     prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, _slotDur, settings);
+
+    // ── Auto-accept suggested time if available in slots ──────────────
+    if ((session.data as any)._suggestedTime && !session.data.time && prefetchedSlots.length > 0) {
+      const suggested = (session.data as any)._suggestedTime as string;
+      if (prefetchedSlots.includes(suggested)) {
+        session.data.time = suggested;
+        console.log(`[Agent] TS auto-accepted suggested time: ${suggested}`);
+      } else {
+        // Find nearest available slot to the suggested time
+        const sugMin = parseInt(suggested.split(':')[0]) * 60 + parseInt(suggested.split(':')[1]);
+        let nearest = prefetchedSlots[0];
+        let nearestDiff = Infinity;
+        for (const slot of prefetchedSlots) {
+          const slotMin = parseInt(slot.split(':')[0]) * 60 + parseInt(slot.split(':')[1]);
+          const diff = Math.abs(slotMin - sugMin);
+          if (diff < nearestDiff) { nearestDiff = diff; nearest = slot; }
+        }
+        (session.data as any)._nearestSlot = nearest;
+        console.log(`[Agent] TS suggested ${suggested} not available, nearest: ${nearest}`);
+      }
+    }
 
     // Empty slots = vacation or fully booked — handle immediately before calling brain
     if (prefetchedSlots.length === 0) {
