@@ -79,7 +79,7 @@ enum View {
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
-type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'wa_central';
+type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'wa_central' | 'testes';
 
 const SESSION_KEY = 'agz_session';
 
@@ -685,6 +685,7 @@ const App: React.FC = () => {
                 <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
                 <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
                 <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'config'} onClick={navTo(() => setSuperAdminTab('config'))} icon={<IconSettings />} label="Configurações" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'testes'} onClick={navTo(() => setSuperAdminTab('testes'))} icon={<IconTerminal />} label="Testes" />
               </div>
             </>
           ) : (

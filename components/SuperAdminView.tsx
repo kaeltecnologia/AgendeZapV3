@@ -14,6 +14,7 @@ import AdminProspeccaoPanel from './AdminProspeccaoPanel';
 import AdminDisparoPanel from './AdminDisparoPanel';
 import CampaignsStatusView from './CampaignsStatusView';
 import CentralPollingManager from './CentralPollingManager';
+import TestRunnerPanel from './TestRunnerPanel';
 import { MarketplaceLead, CashbackBalance } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ interface AdminLog {
   detail: string;
 }
 
-type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback';
+type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'testes';
 
 const STATUS_COLORS: Record<string, string> = {
   [TenantStatus.ACTIVE]: '#22c55e',
@@ -2053,6 +2054,11 @@ END $$;`.trim();
       {/* ══════════════════════ CASHBACK ══════════════════════ */}
       {tab === 'cashback' && (
         <CashbackTab />
+      )}
+
+      {/* ══════════════════════ TESTES ══════════════════════ */}
+      {tab === 'testes' && (
+        <TestRunnerPanel tenants={tenants} />
       )}
 
       {/* ══════════════════════ MODALS ══════════════════════ */}
