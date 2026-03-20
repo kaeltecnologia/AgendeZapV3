@@ -54,7 +54,7 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
   {
     id: 'bug-combo-barba',
     name: 'BUG: Combo so reconhecia barba',
-    icon: '\uD83D\uDC1B',
+    icon: '🐛',
     description: 'Cliente pedia "cabelo e barba" mas IA reconhecia so barba. Substring match rodava antes do combo.',
     bugRef: 'Fix commit bdc8842',
     builtIn: true,
@@ -65,7 +65,7 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
   {
     id: 'bug-multi-service',
     name: 'BUG: Multi-servico ignorado',
-    icon: '\uD83D\uDC1B',
+    icon: '🐛',
     description: 'Cliente pediu 4 servicos mas IA reconheceu so 1. matchServiceByKeywords retornava no primeiro match.',
     bugRef: 'Fix commit 97c418b',
     builtIn: true,
@@ -76,7 +76,7 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
   {
     id: 'bug-colloquial-time',
     name: 'BUG: "5 e meia" nao reconhecido',
-    icon: '\uD83D\uDC1B',
+    icon: '🐛',
     description: 'Cliente disse "5 e meia" e IA nao entendeu como 17:30, resetou o fluxo de agendamento.',
     bugRef: 'Fix commit 97c418b',
     builtIn: true,
@@ -88,7 +88,7 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
   {
     id: 'bug-flow-reset',
     name: 'BUG: Fluxo resetava perdendo dados',
-    icon: '\uD83D\uDC1B',
+    icon: '🐛',
     description: 'Apos coletar servico e horario, IA perguntava "Qual procedimento?" novamente.',
     bugRef: 'Fix commit 97c418b',
     builtIn: true,
@@ -100,7 +100,7 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
   {
     id: 'bug-greeting-natural',
     name: 'BUG: Saudacao forcava agendamento',
-    icon: '\uD83D\uDC1B',
+    icon: '🐛',
     description: 'Cliente mandava "Oi, tudo bem?" e IA ja pulava para "Qual servico deseja?".',
     bugRef: 'Fix: AI prompt critical reminders',
     builtIn: true,
@@ -111,7 +111,7 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
   {
     id: 'regression-single-service',
     name: 'Regressao: Servico unico',
-    icon: '\u2705',
+    icon: '✅',
     description: 'Verifica que reconhecimento basico de servico unico continua funcionando.',
     builtIn: true,
     steps: [
@@ -121,7 +121,7 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
   {
     id: 'regression-full-flow',
     name: 'Regressao: Fluxo completo',
-    icon: '\u2705',
+    icon: '✅',
     description: 'Conversa completa de agendamento do inicio ao fim (4 steps).',
     builtIn: true,
     steps: [
@@ -149,6 +149,7 @@ function saveCustomScenarios(scenarios: TestScenario[]) {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const WEBHOOK_URL = 'https://cnnfnqrnjckntnxdgwae.supabase.co/functions/v1/whatsapp-webhook';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
 
 async function simulateWebhook(instanceName: string, phone: string, text: string): Promise<boolean> {
   const msgId = `test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -166,7 +167,10 @@ async function simulateWebhook(instanceName: string, phone: string, text: string
   try {
     const res = await fetch(WEBHOOK_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
       body: JSON.stringify(payload),
     });
     return res.ok;
@@ -358,7 +362,7 @@ const TestRunnerPanel: React.FC<Props> = ({ tenants }) => {
       id: `custom_${Date.now()}`,
       name: newName.trim(),
       description: newDesc.trim() || 'Cenario customizado',
-      icon: '\uD83E\uDDEA',
+      icon: '🧪',
       bugRef: newBugRef.trim() || undefined,
       steps: newSteps.filter(s => s.msg.trim()).map((s, i) => ({
         id: `s${i + 1}`,
@@ -466,19 +470,19 @@ const TestRunnerPanel: React.FC<Props> = ({ tenants }) => {
 
           {/* Bug fix scenarios */}
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">\uD83D\uDC1B Cenarios de Bug (fixes aplicados)</p>
-            <span className="text-[9px] text-slate-400">{BUILTIN_SCENARIOS.filter(s => s.icon === '\uD83D\uDC1B').length} bugs</span>
+            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">🐛 Cenarios de Bug (fixes aplicados)</p>
+            <span className="text-[9px] text-slate-400">{BUILTIN_SCENARIOS.filter(s => s.icon === '🐛').length} bugs</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {BUILTIN_SCENARIOS.filter(s => s.icon === '\uD83D\uDC1B').map(sc => (
+            {BUILTIN_SCENARIOS.filter(s => s.icon === '🐛').map(sc => (
               <ScenarioCard key={sc.id} scenario={sc} onRun={runScenario} disabled={!selectedTenantId || !testPhone.trim() || isRunning || (health !== null && !health.aiActive)} />
             ))}
           </div>
 
           {/* Regression scenarios */}
-          <p className="text-[10px] font-black text-green-600 uppercase tracking-widest pt-2">\u2705 Regressao</p>
+          <p className="text-[10px] font-black text-green-600 uppercase tracking-widest pt-2">✅ Regressao</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {BUILTIN_SCENARIOS.filter(s => s.icon === '\u2705').map(sc => (
+            {BUILTIN_SCENARIOS.filter(s => s.icon === '✅').map(sc => (
               <ScenarioCard key={sc.id} scenario={sc} onRun={runScenario} disabled={!selectedTenantId || !testPhone.trim() || isRunning || (health !== null && !health.aiActive)} />
             ))}
           </div>
@@ -486,7 +490,7 @@ const TestRunnerPanel: React.FC<Props> = ({ tenants }) => {
           {/* Custom scenarios */}
           {customScenarios.length > 0 && (
             <>
-              <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest pt-2">\uD83E\uDDEA Cenarios Customizados</p>
+              <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest pt-2">🧪 Cenarios Customizados</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {customScenarios.map(sc => (
                   <ScenarioCard key={sc.id} scenario={sc} onRun={runScenario} onDelete={handleDeleteScenario} disabled={!selectedTenantId || !testPhone.trim() || isRunning || (health !== null && !health.aiActive)} />
@@ -541,7 +545,7 @@ const TestRunnerPanel: React.FC<Props> = ({ tenants }) => {
                     />
                   </div>
                   {newSteps.length > 1 && (
-                    <button onClick={() => setNewSteps(newSteps.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs font-bold self-start mt-2">\u2715</button>
+                    <button onClick={() => setNewSteps(newSteps.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs font-bold self-start mt-2">✕</button>
                   )}
                 </div>
               ))}
@@ -609,29 +613,29 @@ const TestRunnerPanel: React.FC<Props> = ({ tenants }) => {
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-black text-slate-600 uppercase tracking-wide">
                     Step {i + 1}/{currentRun.stepResults.length}
-                    {result.status === 'success' && ' \u2705'}
-                    {result.status === 'sending' && ' \u2B06\uFE0F'}
-                    {result.status === 'waiting' && ' \u23F3'}
-                    {result.status === 'timeout' && ' \u26A0\uFE0F'}
-                    {result.status === 'error' && ' \u274C'}
-                    {result.status === 'pending' && ' \u23F8\uFE0F'}
+                    {result.status === 'success' && ' ✅'}
+                    {result.status === 'sending' && ' ⬆️'}
+                    {result.status === 'waiting' && ' ⏳'}
+                    {result.status === 'timeout' && ' ⚠️'}
+                    {result.status === 'error' && ' ❌'}
+                    {result.status === 'pending' && ' ⏸️'}
                   </p>
                   {result.latencyMs != null && <span className="text-[9px] text-slate-400">{(result.latencyMs / 1000).toFixed(1)}s</span>}
                 </div>
 
                 <div className="flex items-start gap-2">
-                  <span className="text-[10px] flex-shrink-0 mt-0.5">\uD83D\uDCE4</span>
+                  <span className="text-[10px] flex-shrink-0 mt-0.5">📤</span>
                   <p className="text-[11px] font-medium text-slate-700">{step.customerMessage}</p>
                 </div>
 
                 <div className="flex items-start gap-2">
-                  <span className="text-[10px] flex-shrink-0 mt-0.5">\uD83C\uDFAF</span>
+                  <span className="text-[10px] flex-shrink-0 mt-0.5">🎯</span>
                   <p className="text-[10px] text-slate-400 italic">{step.expectedBehavior}</p>
                 </div>
 
                 {result.aiResponse && (
                   <div className="flex items-start gap-2 bg-white/60 rounded-xl p-3 mt-1">
-                    <span className="text-[10px] text-green-600 flex-shrink-0 mt-0.5">\uD83E\uDD16</span>
+                    <span className="text-[10px] text-green-600 flex-shrink-0 mt-0.5">🤖</span>
                     <p className="text-[11px] text-slate-800 whitespace-pre-wrap">{result.aiResponse}</p>
                   </div>
                 )}
@@ -675,7 +679,7 @@ const TestRunnerPanel: React.FC<Props> = ({ tenants }) => {
                     <span className={`text-[9px] font-bold uppercase ${run.status === 'completed' ? 'text-green-600' : run.status === 'aborted' ? 'text-yellow-600' : 'text-red-600'}`}>
                       {run.status === 'completed' ? 'OK' : run.status === 'aborted' ? 'Abortado' : 'Falhou'}
                     </span>
-                    <span className="text-slate-300 text-xs">{isExpanded ? '\u25B2' : '\u25BC'}</span>
+                    <span className="text-slate-300 text-xs">{isExpanded ? '▲' : '▼'}</span>
                   </div>
                 </button>
                 {isExpanded && scenario && (
@@ -686,11 +690,11 @@ const TestRunnerPanel: React.FC<Props> = ({ tenants }) => {
                       return (
                         <div key={step.id} className="bg-slate-50 rounded-xl p-3 space-y-1">
                           <p className="text-[9px] font-bold text-slate-500">
-                            Step {i + 1}: {r.status === 'success' ? '\u2705' : r.status === 'timeout' ? '\u26A0\uFE0F' : r.status === 'error' ? '\u274C' : '\u23F8\uFE0F'}
+                            Step {i + 1}: {r.status === 'success' ? '✅' : r.status === 'timeout' ? '⚠️' : r.status === 'error' ? '❌' : '⏸️'}
                             {r.latencyMs ? ` (${(r.latencyMs / 1000).toFixed(1)}s)` : ''}
                           </p>
-                          <p className="text-[10px] text-slate-600">\uD83D\uDCE4 {step.customerMessage}</p>
-                          {r.aiResponse && <p className="text-[10px] text-slate-800 whitespace-pre-wrap">\uD83E\uDD16 {r.aiResponse}</p>}
+                          <p className="text-[10px] text-slate-600">📤 {step.customerMessage}</p>
+                          {r.aiResponse && <p className="text-[10px] text-slate-800 whitespace-pre-wrap">🤖 {r.aiResponse}</p>}
                           {r.error && <p className="text-[10px] text-red-600">{r.error}</p>}
                         </div>
                       );
@@ -736,7 +740,7 @@ const ScenarioCard: React.FC<{
           onClick={() => onDelete(scenario.id)}
           className="px-2 py-1.5 text-red-400 hover:text-red-600 text-[9px] font-bold"
         >
-          \u2715
+          ✕
         </button>
       )}
     </div>
