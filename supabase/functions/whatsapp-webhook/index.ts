@@ -188,6 +188,48 @@ async function transcribeAudio(apiKey: string, base64: string, mimeType: string)
   }
 }
 
+async function cleanupAudioTranscription(apiKey: string, raw: string): Promise<string> {
+  const prompt = `Você é um assistente que converte fala informal brasileira em texto estruturado para agendamento.
+Regras:
+- Mantenha nomes de serviços, datas, horários e nomes de profissionais
+- Converta gírias e abreviações para português correto
+- "dps do almoco tipo umas duas hora" → "às 14h"
+- "5 e meia" → "às 17:30"
+- "amanha de manha" → "amanhã de manhã"
+- Retorne APENAS o texto limpo, sem explicações ou aspas
+
+Texto do áudio: "${raw}"`;
+
+  try {
+    if (apiKey.startsWith('sk-')) {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4.1-mini',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 200,
+          temperature: 0.2,
+        }),
+      });
+      if (!res.ok) return raw;
+      const j = await res.json();
+      return j.choices?.[0]?.message?.content?.trim() || raw;
+    } else {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        }),
+      });
+      if (!res.ok) return raw;
+      return (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text?.trim() || raw;
+    }
+  } catch { return raw; }
+}
+
 // ── Available slots ───────────────────────────────────────────────────
 async function getAvailableSlots(
   tenantId: string, professionalId: string, date: string,
@@ -1060,11 +1102,11 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
   if (!apiKey) { console.warn('[Agent] no API key for tenant', tenant.id); return; }
 
-  const lowerText = text.toLowerCase();
-  const isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
+  let lowerText = text.toLowerCase();
+  let isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
   // isReset: only trigger on very short messages (≤40 chars) to prevent false positives.
   // e.g. "vou sair cedinho" is NOT a reset command — the lead is just saying they're leaving.
-  const isReset = lowerText.trim().length <= 40 &&
+  let isReset = lowerText.trim().length <= 40 &&
     ['sair', 'reiniciar', 'recomeçar', 'recomecar', 'esquece', 'esquecer'].some(k => lowerText.includes(k));
 
   // Pre-check: pending implicit-cancel confirmation (user previously asked to cancel)
@@ -1142,6 +1184,46 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     } catch (e) { console.error('[Agent] cancel-reason error:', e); }
     await sendMsg(instanceName, phone, `Cancelamento registrado! Obrigado por nos avisar. 😊`, tenantId);
     return;
+  }
+
+  // Pre-check: pending audio transcription confirmation
+  if (preSession?.data?._pendingAudioText) {
+    const pendingAudioText = preSession.data._pendingAudioText as string;
+    const normAC = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const AFFIRM_AC = ['sim', 'ok', 'pode', 'certo', 'isso', 'correto', 'exato', 'bora', 'claro', 'ta certo', 'esta certo'];
+    const DENY_AC = ['nao', 'errado', 'errei', 'incorreto', 'nope', 'negativo'];
+    const AFFIRM_EMOJI_AC = /[\u{1F44D}\u{2705}\u{1F44A}\u{1F919}]/u;
+    const isAffirmAC = AFFIRM_AC.some(a => normAC === a || normAC.includes(a)) || AFFIRM_EMOJI_AC.test(text);
+    const isDenyAC = normAC.split(/\s+/).length <= 5 && DENY_AC.some(d => normAC === d || normAC.includes(d)) && !isAffirmAC;
+
+    if (isAffirmAC) {
+      // User confirmed → use cleaned audio text
+      text = pendingAudioText;
+      lowerText = text.toLowerCase();
+      isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
+      isReset = lowerText.trim().length <= 40 &&
+        ['sair', 'reiniciar', 'recomeçar', 'recomecar', 'esquece', 'esquecer'].some(k => lowerText.includes(k));
+      preSession.data._pendingAudioText = undefined;
+      preSession.data._pendingAudioRaw = undefined;
+      await saveSession(tenantId, phone, preSession.data, preSession.history);
+      console.log(`[Agent] Audio confirmed, processing: "${text}"`);
+      // Fall through to normal processing with the cleaned audio text
+    } else if (isDenyAC) {
+      // User denied → ask to type
+      preSession.data._pendingAudioText = undefined;
+      preSession.data._pendingAudioRaw = undefined;
+      preSession.history.push({ role: 'user', text }, { role: 'bot', text: 'Ok! Pode digitar o que precisa que eu te ajudo 😊' });
+      await saveSession(tenantId, phone, preSession.data, preSession.history);
+      await sendMsg(instanceName, phone, 'Ok! Pode digitar o que precisa que eu te ajudo 😊', tenantId);
+      return;
+    } else {
+      // User typed something else → treat as the corrected text
+      preSession.data._pendingAudioText = undefined;
+      preSession.data._pendingAudioRaw = undefined;
+      await saveSession(tenantId, phone, preSession.data, preSession.history);
+      console.log(`[Agent] Audio correction, using typed text: "${text}"`);
+      // Fall through to normal processing with the user's typed text
+    }
   }
 
   if (isReset) {
@@ -3246,13 +3328,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Resolve text (with audio transcription if needed)
+      // Resolve text (with audio transcription + confirmation if needed)
       let text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || '').trim();
       if (!text) {
         const msgType = msg.messageType || msg.type || '';
         const isAudio = ['audioMessage', 'pttMessage'].includes(msgType) || !!msg.message?.audioMessage || !!msg.message?.pttMessage;
         if (isAudio) {
-          // Save audio placeholder to DB even before transcription attempt
+          // Save audio placeholder to DB
           const _audioPhone = extractPhone(msg);
           if (_audioPhone) {
             EdgeRuntime.waitUntil(saveWaMsg(
@@ -3265,24 +3347,56 @@ Deno.serve(async (req) => {
             ));
           }
 
-          if (!settings.aiActive) continue; // no AI → already saved placeholder, move on
+          if (!settings.aiActive) continue; // no AI → already saved placeholder
 
+          // Get API key for transcription + cleanup
           let audioKey = (settings.openaiApiKey || '').trim();
           if (!audioKey) {
             let gRows: any[] = [];
             try { const { data } = await supabase.from('global_settings').select('key, value'); gRows = data || []; } catch {}
             audioKey = ((gRows).find((r: any) => r.key === 'shared_openai_key')?.value || '').trim() || (tenant.gemini_api_key || '').trim();
           }
+
+          // Check audio duration — long audios (>15s) get a "please type" response
+          const audioDuration = msg.message?.audioMessage?.seconds || msg.message?.pttMessage?.seconds || 0;
+          if (audioDuration > 15) {
+            const phone = extractPhone(msg);
+            if (phone) await sendMsg(instanceName, phone, `Seu áudio ficou um pouquinho longo! 😅 Pode resumir em texto o que precisa? Fica mais fácil pra eu te ajudar certinho! 💬`, tenant.id);
+            continue;
+          }
+
+          // Transcribe audio
           if (audioKey) {
             const audio = await fetchAudioBase64(instanceName, msg);
             if (audio) {
-              const transcribed = await transcribeAudio(audioKey, audio.base64, audio.mimeType);
-              if (transcribed) text = transcribed;
+              const rawTranscription = await transcribeAudio(audioKey, audio.base64, audio.mimeType);
+              if (rawTranscription) {
+                // Cleanup: transform informal speech to structured text
+                const cleanedText = await cleanupAudioTranscription(audioKey, rawTranscription);
+                console.log(`[Audio] raw="${rawTranscription}" → cleaned="${cleanedText}"`);
+
+                // Save pending audio in session and ask for confirmation
+                const phone = extractPhone(msg);
+                if (phone) {
+                  const sess = await getSession(tenant.id, phone);
+                  const sessData = sess?.data || {};
+                  const sessHistory = sess?.history || [];
+                  sessData._pendingAudioText = cleanedText;
+                  sessData._pendingAudioRaw = rawTranscription;
+                  await saveSession(tenant.id, phone, sessData, sessHistory);
+
+                  const confirmMsg = `🎙️ Ouvi isso do seu áudio:\n\n_${cleanedText}_\n\nEstá correto? Responda *sim* para continuar ou digite o que quis dizer.`;
+                  await sendMsg(instanceName, phone, confirmMsg, tenant.id);
+                }
+                continue; // Wait for confirmation before processing
+              }
             }
           }
+
+          // Transcription failed → ask for text
           if (!text) {
             const phone = extractPhone(msg);
-            if (phone) await sendMsg(instanceName, phone, `Recebi seu áudio! 🎵 Pode digitar sua mensagem? 😊`, tenant.id);
+            if (phone) await sendMsg(instanceName, phone, `Não consegui entender seu áudio 😅 Pode digitar sua mensagem? 💬`, tenant.id);
             continue;
           }
         }

@@ -120,6 +120,17 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
     ],
   },
   {
+    id: 'bug-audio-conflict',
+    name: 'BUG: Audio processado sem confirmacao',
+    icon: '🐛',
+    description: 'Audios informais eram processados direto pela IA sem confirmacao, causando interpretacao errada.',
+    bugRef: 'Fix: transcricao + cleanup + confirmacao antes de processar',
+    builtIn: true,
+    steps: [
+      { id: 's1', customerMessage: 'Quero cortar o cabelo amanha as duas da tarde', expectedBehavior: 'IA deve reconhecer servico e horario normalmente (teste com texto que simula audio transcrito)' },
+    ],
+  },
+  {
     id: 'regression-single-service',
     name: 'Regressao: Servico unico',
     icon: '✅',
