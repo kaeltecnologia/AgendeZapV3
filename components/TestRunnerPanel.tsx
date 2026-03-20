@@ -109,6 +109,17 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
     ],
   },
   {
+    id: 'bug-fitin-now',
+    name: 'BUG: Encaixe agora tratado como on-the-way',
+    icon: '🐛',
+    description: 'Cliente pedia "tem como encaixar agora?" e sistema respondia "Te esperamos!" sem verificar disponibilidade.',
+    bugRef: 'Fix: walk-in detection antes do on-the-way',
+    builtIn: true,
+    steps: [
+      { id: 's1', customerMessage: 'tem como encaixar agora? to chegando', expectedBehavior: 'Deve perguntar qual servico ou verificar disponibilidade, NAO responder "Te esperamos"' },
+    ],
+  },
+  {
     id: 'regression-single-service',
     name: 'Regressao: Servico unico',
     icon: '✅',

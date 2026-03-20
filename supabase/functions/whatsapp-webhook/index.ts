@@ -308,6 +308,9 @@ async function callBrain(
   if (data.professionalName) known.push(`Profissional: ${data.professionalName}`);
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
   if (data.time) known.push(`Horário: ${data.time}`);
+  if ((data as any)._fitInNow) {
+    known.push(`⚡ ENCAIXE AGORA: Cliente quer atendimento IMEDIATO. Pergunte qual serviço se não souber. Mostre horários disponíveis a partir de AGORA. Se não houver vaga agora, sugira o mais próximo.`);
+  }
   if ((data as any)._suggestedTime && !data.time) {
     if ((data as any)._nearestSlot) {
       known.push(`⏰ HORÁRIO PEDIDO: ${(data as any)._suggestedTime} (NÃO disponível). Mais próximo: ${(data as any)._nearestSlot}. Ofereça o mais próximo.`);
@@ -916,6 +919,18 @@ function parseColloquialTime(text: string): string | null {
     'meia': -1, // special marker
   };
 
+  // "agora" / "agora mesmo" → current Brasília time rounded up to next 15min
+  if (/\bagora\b/.test(t)) {
+    const _bra = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const _h = _bra.getUTCHours();
+    const _m = Math.ceil(_bra.getUTCMinutes() / 15) * 15;
+    const h = _m >= 60 ? _h + 1 : _h;
+    const m = _m >= 60 ? 0 : _m;
+    const r = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    console.log(`[parseTime] "agora" → ${r} (Brasília)`);
+    return r;
+  }
+
   // "meio dia" / "meio-dia"
   if (/\bmeio[\s-]?dia\b/.test(t)) return '12:00';
   // "meia noite" / "meia-noite"
@@ -1268,11 +1283,37 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // ── "Walk-in / fit me in now" detection ──────────────────────────────
+  // Must run BEFORE on-the-way detection to prevent "encaixar agora? to chegando"
+  // from being treated as "I'm on my way to an existing appointment".
+  const _normFitIn = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+  const FIT_IN_KW = ['encaixar agora', 'encaixe agora', 'tem como encaixar', 'encaixa agora',
+    'encaixar hoje', 'encaixe hoje', 'quero encaixar', 'da pra encaixar',
+    'tem encaixe', 'horario agora', 'atender agora', 'vaga agora'];
+  const isFitInRequest = FIT_IN_KW.some(k => _normFitIn.includes(k));
+  if (isFitInRequest) {
+    console.log('[Agent] Walk-in / fit-in-now request detected — skipping on-the-way, routing to booking flow');
+    // Set date=today and _suggestedTime=now so slot prefetch runs
+    const _bNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const _nowH = _bNow.getUTCHours();
+    const _nowM = _bNow.getUTCMinutes();
+    // Round up to next 15-minute slot
+    const _roundedM = Math.ceil(_nowM / 15) * 15;
+    const _fitH = _roundedM >= 60 ? _nowH + 1 : _nowH;
+    const _fitM = _roundedM >= 60 ? 0 : _roundedM;
+    session.data.date = todayISO;
+    session.data._suggestedTime = `${String(_fitH).padStart(2, '0')}:${String(_fitM).padStart(2, '0')}`;
+    (session.data as any)._fitInNow = true;
+    console.log(`[Agent] Fit-in: date=${todayISO}, suggestedTime=${session.data._suggestedTime}`);
+    // Fall through to AI — it will handle the booking flow
+  }
+
   // ── "On the way / running late" detection (TypeScript layer) ──────────
   // Lead is heading to their appointment (possibly late).
   // Must run BEFORE implicit-cancel so "vou atrasar mas tô indo" doesn't cancel.
   // e.g.: "tô indo embora", "saindo agora", "acho que vou atrasar", "logo chego"
-  if (!session.data.pendingConfirm && !session.data.pendingReschedule && !session.data.pendingCancelConfirm) {
+  // SKIP if this is a fit-in request (already detected above)
+  if (!isFitInRequest && !session.data.pendingConfirm && !session.data.pendingReschedule && !session.data.pendingCancelConfirm) {
     const IM_COMING_KW = [
       'indo embora', 'saindo agora', 'to saindo', 'to vindo', 'a caminho',
       'logo chego', 'indo para ai', 'indo pra ai', 'estou indo', 'indo ja',
@@ -2465,7 +2506,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const _normAvail = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const _availKws = ['tem horario', 'tem vaga', 'horario disponivel', 'horarios disponiveis',
       'como estao os horarios', 'tem horario hoje', 'tem vaga hoje', 'horario livre',
-      'tem horario disponivel', 'quais horarios', 'que horarios', 'horario para hoje'];
+      'tem horario disponivel', 'quais horarios', 'que horarios', 'horario para hoje',
+      'encaixar agora', 'encaixe agora', 'tem como encaixar', 'encaixa agora',
+      'atender agora', 'vaga agora', 'horario agora'];
     const _asksAvailToday = _availKws.some(kw => _normAvail.includes(kw));
     if (_asksAvailToday) {
       session.data.date = todayISO;
