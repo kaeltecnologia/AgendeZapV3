@@ -2797,13 +2797,26 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
       // Slot conflict check — prevent double booking (checks full duration overlap)
       const { data: conflicting } = await supabase.from('appointments')
-        .select('id')
+        .select('id, customer_id')
         .eq('tenant_id', tenantId)
         .eq('professional_id', session.data.professionalId)
         .not('status', 'in', '("cancelado","CANCELLED")')
         .lt('inicio', endTimeStr)   // existing starts before new ends
         .gt('fim',    startTimeStr); // existing ends after new starts
       if (conflicting && conflicting.length > 0) {
+        // Check if the conflicting appointment belongs to THIS customer (duplicate booking attempt)
+        const { data: thisCust } = await supabase.from('customers').select('id')
+          .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+        const isOwnBooking = thisCust && conflicting.some((c: any) => c.customer_id === thisCust.id);
+        if (isOwnBooking) {
+          // This customer already has this slot booked — it's a duplicate, not a conflict
+          console.log('[Agent] Duplicate booking detected — customer already has this slot. Skipping conflict msg.');
+          const alreadyMsg = `Tudo certo! Seu agendamento já está confirmado para ${formatDate(session.data.date)} às ${session.data.time} com ${session.data.professionalName}. Te esperamos! 😊`;
+          session.history.push({ role: 'bot', text: alreadyMsg });
+          await sendMsg(instanceName, phone, alreadyMsg, tenantId);
+          await clearSession(tenantId, phone);
+          return;
+        }
         const freshSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, dur, settings);
         session.data.time = undefined;
         session.data.availableSlots = freshSlots;
