@@ -2230,6 +2230,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       const apptTime = session.data.followUpApptTime as string | undefined;
       const reply = apptTime ? `Show de bola! Aguardamos você às *${apptTime}*.` : `Show de bola! Aguardamos você.`;
       session.data.pendingFollowUpType = undefined;
+      // Mark as greeted today so any subsequent message doesn't trigger a new greeting
+      const { dateStr: _fGreetDate } = getBrasiliaGreeting();
+      session.data.greetedAt = _fGreetDate;
       session.history.push({ role: 'bot', text: reply });
       await sendMsg(instanceName, phone, reply, tenantId);
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] followUp saveSession err:', e));
@@ -2240,14 +2243,18 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (fType === 'reativacao' && isDeny) {
       const reply = `Tudo bem! Quando precisar, é só chamar. 😊`;
       session.data.pendingFollowUpType = undefined;
+      const { dateStr: _fGreetDate2 } = getBrasiliaGreeting();
+      session.data.greetedAt = _fGreetDate2;
       session.history.push({ role: 'bot', text: reply });
       await sendMsg(instanceName, phone, reply, tenantId);
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] followUp saveSession err:', e));
       return;
     }
 
-    // Anything else → clear flag and fall through to AI with full history context
+    // Anything else → clear flag, mark greeted, and fall through to AI with full history context
     session.data.pendingFollowUpType = undefined;
+    const { dateStr: _fGreetDate3 } = getBrasiliaGreeting();
+    session.data.greetedAt = _fGreetDate3;
   }
 
   // ─── Follow-up fallback: session may have expired but appointment exists today ──
