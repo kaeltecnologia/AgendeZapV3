@@ -131,6 +131,17 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
     ],
   },
   {
+    id: 'bug-corta-informal',
+    name: 'BUG: "corta" nao reconhecido como corte',
+    icon: '🐛',
+    description: 'Cliente dizia "quero corta com o matheus tem vaga ai?" e sistema nao reconhecia como pedido de corte.',
+    bugRef: 'Fix: adicionado "corta" a BOOK_KW2 e SVC_SYNONYMS',
+    builtIn: true,
+    steps: [
+      { id: 's1', customerMessage: 'Quero corta tem vaga ai?', expectedBehavior: 'Deve reconhecer como pedido de corte de cabelo e seguir fluxo de agendamento' },
+    ],
+  },
+  {
     id: 'regression-single-service',
     name: 'Regressao: Servico unico',
     icon: '✅',

@@ -846,7 +846,7 @@ function matchProfessionalName(text: string, professionals: Array<{ id: string; 
 
 // ── Service synonym map (shared) ──────────────────────────────────────
 const SVC_SYNONYMS: Record<string, string[]> = {
-  'corte': ['corte', 'cabelo', 'cabeca', 'cabecinha', 'cortar', 'aparar', 'zerar', 'degrade', 'social', 'navalhado', 'franja', 'maquina'],
+  'corte': ['corte', 'corta', 'cabelo', 'cabeca', 'cabecinha', 'cortar', 'aparar', 'zerar', 'degrade', 'social', 'navalhado', 'franja', 'maquina'],
   'barba': ['barba', 'barbinha', 'bigode'],
   'sobrancelha': ['sobrancelha', 'design'],
   'coloracao': ['pintar', 'colorir', 'mechas', 'reflexo', 'tingir', 'coloracao'],
@@ -1810,7 +1810,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       if (professionals.length > 1) {
         // Multiple professionals: check for booking intent or personal-contact flow
         const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'cabelo', 'cabeca', 'cabecinha', 'cabeça'];
+        const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'corta', 'cortar', 'barba', 'agendamento', 'cabelo', 'cabeca', 'cabecinha', 'cabeça', 'vaga', 'disponivel', 'disponibilidade', 'encaixe', 'encaixar', 'sobrancelha', 'progressiva', 'escova', 'pintar', 'colorir', 'alisar'];
         const hasSvcMention = services.some((s: any) =>
           normMsg2.includes((s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ''))
         );
