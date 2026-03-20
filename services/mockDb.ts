@@ -1771,9 +1771,12 @@ class DatabaseService {
   //   CREATE TABLE IF NOT EXISTS msg_dedup (fp text PRIMARY KEY, ts timestamptz DEFAULT now());
   async claimMessage(fp: string): Promise<boolean> {
     try {
-      // Prune entries older than 30 s (best-effort — don't bail if it fails)
-      const cutoff = new Date(Date.now() - 30_000).toISOString();
-      await supabase.from('msg_dedup').delete().lt('ts', cutoff);
+      // Prune: follow-up keys (fu::*) need 25h TTL, webhook keys need 30s TTL.
+      // The pg_cron job handles cleanup every 30min — here we only prune short-lived webhook keys.
+      if (!fp.startsWith('fu::') && !fp.startsWith('rating::')) {
+        const cutoff = new Date(Date.now() - 30_000).toISOString();
+        await supabase.from('msg_dedup').delete().lt('ts', cutoff).not('fp', 'like', 'fu::%').not('fp', 'like', 'rating::%');
+      }
 
       // The INSERT is the actual atomic dedup gate — PRIMARY KEY rejects duplicates
       const { error } = await supabase.from('msg_dedup').insert({ fp });
