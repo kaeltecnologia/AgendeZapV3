@@ -386,7 +386,7 @@ async function callBrain(
   // Slots
   const _slotsDateLabel = data.date ? ` para ${formatDate(data.date)}` : '';
   const slotsContent = availableSlots?.length
-    ? `Horários disponíveis${_slotsDateLabel} (use APENAS estes, NUNCA invente outros):\n${availableSlots.slice(0, 12).map(s => `- ${s}`).join('\n')}`
+    ? `Horários disponíveis${_slotsDateLabel} (use APENAS estes, NUNCA invente outros):\n${availableSlots.map(s => `- ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
         ? `NENHUM HORÁRIO DISPONÍVEL${_slotsDateLabel} -- a agenda está CHEIA. Diga "agenda cheia" e ofereça outro dia. NUNCA diga "não abre", "fechado", "não atende".`
@@ -445,6 +445,16 @@ ${profSelectionSection}
 - NUNCA diga "hoje não temos horários" quando a data no contexto é outro dia.
 - Data definida + serviço informado -> ofereça os horários daquele dia diretamente.
 
+## Correção de Serviço
+- "Só corte", "somente barba", "apenas X" = cliente CORRIGINDO o serviço. Respeite: mude para o serviço correto. NUNCA insista no serviço anterior.
+- "Eu falei X", "eu pedi X", "é só X" = mesma coisa, correção.
+- Se o CONTEXTO ATUAL mostra um serviço diferente do que o cliente acabou de pedir -> atualize para o que o cliente quer AGORA.
+
+## Quando cliente quer ver horários
+- "Quero todos os horários", "me mostra tudo", "quais horários tem?" = LISTE TODOS os horários da seção "Horários disponíveis". Não pergunte período.
+- "O que tiver", "qualquer horário", "tanto faz" = liste os horários disponíveis e pergunte qual prefere. NÃO pergunte "manhã ou tarde?", apenas liste.
+- "Quero todos" referente a horários = NÃO é "marcar todos", é "ver todos". Liste-os.
+
 ## Armadilhas -- NUNCA faça
 - "Quero cortar amanhã" -> NÃO agende sem profissional + horário confirmados.
 - "Tem horário?" sem dia E sem Data no contexto -> assuma HOJE, mostre horários + "Qual serviço?"
@@ -494,7 +504,7 @@ ${profSelectionSection}
 
 ## Linguagem Coloquial de Serviços
 Quando o cliente usa termo informal que mapeia para um serviço, preencha extracted.serviceId automaticamente:
-- CORTE: "corte", "cabelo", "cabeça", "cortar", "aparar", "zerar", "na máquina", "cabecinha", "franja", "degradê", "degrade", "social", "navalhado"
+- CORTE: "corte", "corta", "cabelo", "cabeça", "cortar", "aparar", "zerar", "na máquina", "cabecinha", "franja", "degradê", "degrade", "social", "navalhado"
 - BARBA: "barba", "fazer a barba", "modelar a barba", "barba e bigode", "barbinha"
 - BIGODE: "bigode", "aparar o bigode"
 - SOBRANCELHA: "sobrancelha", "design de sobrancelha"
@@ -2503,8 +2513,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const { profId, profName, profPhone } = session.data.pendingProfContact as { profId: string; profName: string; profPhone: string };
     const normMsgPc = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
     const normWdsPc = normMsgPc.split(/\s+/);
-    const BOOK_KW_PC = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'barba', 'agendamento', 'cabelo', 'cabeca', 'cabecinha', 'cabeça'];
-    const AFFIRM_PC  = ['sim', 'pode', 'quero', 'ok', 'claro', 'isso', 'bora', 'gostaria', 'queria', 'preciso', 'favor', 'exato'];
+    const BOOK_KW_PC = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'corta', 'cortar', 'barba', 'agendamento', 'cabelo', 'cabeca', 'cabecinha', 'cabeça', 'vaga', 'disponivel', 'disponibilidade', 'encaixe', 'encaixar', 'sobrancelha', 'progressiva', 'escova', 'pintar', 'colorir', 'alisar'];
+    const AFFIRM_PC  = ['sim', 'pode', 'ok', 'claro', 'isso', 'bora', 'gostaria', 'queria', 'favor', 'exato'];
     const DENY_PC    = ['nao', 'não', 'nope', 'negativo'];
     const hasBookingKwPc = BOOK_KW_PC.some((k: string) => normMsgPc.includes(k));
     const isAffirmPc     = AFFIRM_PC.some((a: string) => normWdsPc.includes(a));
