@@ -558,6 +558,7 @@ export interface SocialMediaProfile {
   postsPerWeek: number;
   diasSemana: string[];         // ex: ['seg', 'ter', 'qua', 'qui', 'sex']
   plataformas: string[];
+  gerarImagem?: boolean;        // se quer geração de imagem por IA (foco é vídeo/roteiros)
   createdAt: string;
 }
 

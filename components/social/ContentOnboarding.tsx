@@ -144,6 +144,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
   const [postsPerWeek, setPostsPerWeek] = useState<number>(5);
   const [diasSemana, setDiasSemana] = useState<string[]>(['seg', 'ter', 'qua', 'qui', 'sex']);
   const [plataformas, setPlataformas] = useState<string[]>(['instagram']);
+  const [gerarImagem, setGerarImagem] = useState(false);
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) => {
     set(list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
@@ -176,6 +177,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
       postsPerWeek,
       diasSemana,
       plataformas,
+      gerarImagem,
       createdAt: new Date().toISOString(),
     };
     try {
@@ -380,32 +382,65 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
           </div>
         )}
 
-        {/* Step 8: Plataformas */}
+        {/* Step 8: Plataformas + Geração de Imagem */}
         {step === 8 && (
-          <div className="space-y-3">
-            {PLATAFORMAS.map(p => {
-              const selected = plataformas.includes(p.id);
-              const borderColor = selected
-                ? p.color === 'purple' ? 'border-purple-400 bg-purple-50'
-                : p.color === 'pink' ? 'border-pink-400 bg-pink-50'
-                : 'border-green-400 bg-green-50'
-                : 'border-slate-100 hover:border-slate-300';
-              return (
+          <div className="space-y-6">
+            <div className="space-y-3">
+              {PLATAFORMAS.map(p => {
+                const selected = plataformas.includes(p.id);
+                const borderColor = selected
+                  ? p.color === 'purple' ? 'border-purple-400 bg-purple-50'
+                  : p.color === 'pink' ? 'border-pink-400 bg-pink-50'
+                  : 'border-green-400 bg-green-50'
+                  : 'border-slate-100 hover:border-slate-300';
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => toggle(plataformas, setPlataformas, p.id)}
+                    className={`w-full flex items-center gap-4 rounded-2xl border-2 p-4 transition-all text-left ${borderColor}`}
+                  >
+                    <span className="text-2xl">{p.icon}</span>
+                    <p className="text-xs font-black text-black uppercase flex-1">{p.label}</p>
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                      selected ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-200'
+                    }`}>
+                      {selected && <span className="text-[9px] font-black">✓</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="border-t border-slate-100 pt-6 space-y-3">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Geração de Imagem por IA</p>
+              <p className="text-[10px] font-bold text-slate-400">O foco do calendário é gerar roteiros e ideias de vídeos. Quer que a IA também gere imagens para posts de foto/carrossel?</p>
+              <div className="grid grid-cols-2 gap-4">
                 <button
-                  key={p.id}
-                  onClick={() => toggle(plataformas, setPlataformas, p.id)}
-                  className={`w-full flex items-center gap-4 rounded-2xl border-2 p-4 transition-all text-left ${borderColor}`}
+                  onClick={() => setGerarImagem(false)}
+                  className={`rounded-2xl border-2 p-5 text-center transition-all ${
+                    !gerarImagem
+                      ? 'border-orange-400 bg-orange-50 shadow-md'
+                      : 'border-slate-100 hover:border-slate-300'
+                  }`}
                 >
-                  <span className="text-2xl">{p.icon}</span>
-                  <p className="text-xs font-black text-black uppercase flex-1">{p.label}</p>
-                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-                    selected ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-200'
-                  }`}>
-                    {selected && <span className="text-[9px] font-black">✓</span>}
-                  </div>
+                  <p className="text-2xl">🎬</p>
+                  <p className="text-[11px] font-black text-black uppercase tracking-tight mt-2">Só Roteiros</p>
+                  <p className="text-[9px] font-bold text-slate-400 mt-1">Foco em vídeos e ideias</p>
                 </button>
-              );
-            })}
+                <button
+                  onClick={() => setGerarImagem(true)}
+                  className={`rounded-2xl border-2 p-5 text-center transition-all ${
+                    gerarImagem
+                      ? 'border-orange-400 bg-orange-50 shadow-md'
+                      : 'border-slate-100 hover:border-slate-300'
+                  }`}
+                >
+                  <p className="text-2xl">🖼️</p>
+                  <p className="text-[11px] font-black text-black uppercase tracking-tight mt-2">Roteiros + Imagens</p>
+                  <p className="text-[9px] font-bold text-slate-400 mt-1">Também gera imagens por IA</p>
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
