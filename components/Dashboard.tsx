@@ -177,6 +177,12 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
   const showFallAlert = prev7Rev > 0 && last7Rev < prev7Rev * 0.8;
   const fallPct = prev7Rev > 0 ? Math.round((1 - last7Rev / prev7Rev) * 100) : 0;
 
+  // ── Monthly summary KPIs (CLARIS-style) ──────────────────────────────────
+  const monthlyAppts = appointments.filter(a => new Date(a.startTime) >= monthStart && new Date(a.startTime) <= now && byProf(a));
+  const monthlyFinished = monthlyAppts.filter(a => a.status === AppointmentStatus.FINISHED).length;
+  const monthlyCancelled = monthlyAppts.filter(a => a.status === AppointmentStatus.CANCELLED).length;
+  const totalClients = customers.length;
+
   // Today
   const todayStr = now.toISOString().split('T')[0];
   const todayAppts = appointments
@@ -344,128 +350,90 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         </div>
       </div>
 
-      {/* Hoje + Pendentes */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 flex items-center gap-4">
-          <span className="text-3xl">📅</span>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hoje</p>
-            <p className="text-2xl font-black text-black leading-none">
-              <AnimatedNumber value={todayAppts.length} />
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">agendamentos · <span className="text-green-600 font-bold">{todayFinished} concluídos</span></p>
-          </div>
+      {/* CLARIS-style monthly KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 cursor-pointer hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5 transition-all" onClick={() => onNavigate?.('AGENDAMENTOS')}>
+          <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Agendados / Atendidos</p>
+          <p className="text-3xl sm:text-4xl font-black text-black leading-none mt-3">
+            <AnimatedNumber value={monthlyAppts.length} />
+          </p>
+          <p className="text-xs text-slate-400 mt-2">para o mês · <span className="text-green-600 font-bold">{monthlyFinished} concluídos</span></p>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 flex items-center gap-4">
-          <span className="text-3xl">⏳</span>
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pendentes</p>
-            <p className={`text-2xl font-black leading-none ${pendingCount > 0 ? 'text-orange-500' : 'text-slate-300'}`}>
-              <AnimatedNumber value={pendingCount} />
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">aguardando confirmação</p>
-          </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 cursor-pointer hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5 transition-all" onClick={() => onNavigate?.('CLIENTES')}>
+          <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Clientes</p>
+          <p className="text-3xl sm:text-4xl font-black text-black leading-none mt-3">
+            <AnimatedNumber value={totalClients} />
+          </p>
+          <p className="text-xs text-slate-400 mt-2">cadastrados</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6">
+          <p className="text-xs font-bold text-red-400 uppercase tracking-wider">Cancelados</p>
+          <p className={`text-3xl sm:text-4xl font-black leading-none mt-3 ${monthlyCancelled > 0 ? 'text-red-500' : 'text-slate-300'}`}>
+            <AnimatedNumber value={monthlyCancelled} />
+          </p>
+          <p className="text-xs text-slate-400 mt-2">para o mês</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6">
+          <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Hoje</p>
+          <p className="text-3xl sm:text-4xl font-black text-black leading-none mt-3">
+            <AnimatedNumber value={todayAppts.length} />
+          </p>
+          <p className="text-xs text-slate-400 mt-2">{pendingCount > 0 ? <span className="text-orange-500 font-bold">{pendingCount} pendentes</span> : <span>{todayFinished} concluídos</span>}</p>
         </div>
       </div>
 
-      {/* KPIs estratégicos — linha 1 */}
+      {/* Meta + Projeção + Margem + Dia forte */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Meta Mensal */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 col-span-2">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 col-span-2 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all" onClick={() => onNavigate?.('FINANCEIRO')}>
           <div className="flex items-start justify-between mb-3">
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Meta Mensal</p>
-              <p className="text-lg sm:text-2xl font-black text-black leading-none mt-1 truncate">R$ {fmtBRL(thisMonthRevenue)}</p>
+              <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Faturamento do Mês</p>
+              <p className="text-2xl sm:text-3xl font-black text-black leading-none mt-2 truncate">R$ {fmtBRL(thisMonthRevenue)}</p>
               {monthlyGoal > 0
-                ? <p className="text-xs text-slate-400 mt-0.5">de R$ {fmtBRL(monthlyGoal)}</p>
-                : <p className="text-xs text-slate-400 mt-0.5">Meta não configurada</p>
+                ? <p className="text-xs text-slate-400 mt-1">Meta: R$ {fmtBRL(monthlyGoal)}</p>
+                : <p className="text-xs text-slate-400 mt-1">Meta não configurada</p>
               }
             </div>
-            <span className={`text-sm font-black px-3 py-1 rounded-full ${goalPct >= 100 ? 'bg-green-50 text-green-600' : goalPct >= 70 ? 'bg-orange-50 text-orange-500' : 'bg-red-50 text-red-500'}`}>
-              {goalPct}%
-            </span>
+            {monthlyGoal > 0 && (
+              <span className={`text-sm font-black px-3 py-1 rounded-full ${goalPct >= 100 ? 'bg-green-50 text-green-600' : goalPct >= 70 ? 'bg-orange-50 text-orange-500' : 'bg-red-50 text-red-500'}`}>
+                {goalPct}%
+              </span>
+            )}
           </div>
-          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${goalPct >= 100 ? 'bg-green-500' : goalPct >= 70 ? 'bg-orange-500' : 'bg-red-400'}`}
-              style={{ width: `${goalPct}%` }}
-            />
-          </div>
-          {monthlyGoal > 0 && goalPct < 100 && (
-            <p className="text-[10px] text-slate-400 mt-2">Faltam R$ {fmtBRL(monthlyGoal - thisMonthRevenue)} para a meta</p>
+          {monthlyGoal > 0 && (
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${goalPct >= 100 ? 'bg-green-500' : goalPct >= 70 ? 'bg-orange-500' : 'bg-red-400'}`}
+                style={{ width: `${goalPct}%` }}
+              />
+            </div>
           )}
         </div>
-
-        {/* Projeção */}
         <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Projeção do Mês</p>
-          <p className="text-lg sm:text-2xl font-black text-black leading-none truncate">R$ {fmtBRL(projection)}</p>
-          <p className="text-xs text-slate-400 mt-0.5">Baseado nos {daysPassed} dias corridos</p>
-          <p className="text-[10px] text-slate-300 mt-2">Média diária: R$ {fmtBRL(dailyAvg)}</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Projeção</p>
+          <p className="text-xl sm:text-2xl font-black text-black leading-none mt-2 truncate">R$ {fmtBRL(projection)}</p>
+          <p className="text-[10px] text-slate-400 mt-1">Média: R$ {fmtBRL(dailyAvg)}/dia</p>
         </div>
-
-        {/* Margem Real */}
         <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Margem Real</p>
-          <p className={`text-lg sm:text-2xl font-black leading-none ${margin >= 50 ? 'text-green-600' : margin >= 20 ? 'text-orange-500' : 'text-red-500'}`}>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Margem Real</p>
+          <p className={`text-xl sm:text-2xl font-black leading-none mt-2 ${margin >= 50 ? 'text-green-600' : margin >= 20 ? 'text-orange-500' : 'text-red-500'}`}>
             {margin.toFixed(1)}%
           </p>
-          <p className="text-xs text-slate-400 mt-0.5">Receita − Despesas</p>
-          <p className="text-[10px] text-slate-300 mt-2">Despesas: R$ {fmtBRL(thisMonthExpenses)}</p>
+          <p className="text-[10px] text-slate-400 mt-1">Despesas: R$ {fmtBRL(thisMonthExpenses)}</p>
         </div>
       </div>
 
-      {/* KPIs operacionais — linha 2 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          icon={<IcoTrend />}
-          title="Faturamento"
-          value={`R$ ${fmtBRL(curRevenue)}`}
-          trend={revTrend}
-          sub="vs. período anterior"
-          onClick={onNavigate ? () => onNavigate('FINANCEIRO') : undefined}
-        />
-        <StatCard
-          icon={<IcoCalendar />}
-          title="Agendamentos"
-          value={String(curAppts.length)}
-          trend={apptTrend}
-          sub="este período"
-          onClick={onNavigate ? () => onNavigate('AGENDAMENTOS') : undefined}
-        />
-        <StatCard
-          icon={<IcoUsers />}
-          title="Profissionais"
-          value={String(professionals.length)}
-          trendLabel={`+${professionals.length}`}
-          trendPos
-          sub="ativos"
-          onClick={onNavigate ? () => onNavigate('PROFISSIONAIS') : undefined}
-        />
-        {/* Dia mais forte */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
-          <div className="flex items-start justify-between mb-4">
-            <div className="w-9 h-9 bg-slate-50 rounded-xl flex items-center justify-center text-slate-500">
-              <IcoStar />
-            </div>
-          </div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Dia Mais Forte</p>
-          <p className="text-2xl font-black text-black leading-none">{strongestDayName}</p>
-          <p className="text-[10px] text-slate-400 mt-1">Últ. 30 dias</p>
-        </div>
-      </div>
-
-      {/* Bar + Donut */}
+      {/* Bar chart + Total Financeiro (CLARIS-style) */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="md:col-span-3 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="flex items-start justify-between mb-5">
             <div>
-              <h3 className="font-black text-sm text-black">Fluxo de Receitas</h3>
+              <h3 className="font-black text-sm text-black">Estatísticas de Receita</h3>
               <p className="text-xs text-slate-400">Faturamento dos últimos 7 dias</p>
             </div>
-            <span className="text-xs font-bold text-slate-500">↗ R$ {fmtBRL(barTotal)}</span>
+            <span className="text-xs font-bold text-slate-500">R$ {fmtBRL(barTotal)}</span>
           </div>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={barData} barSize={30} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} />
               <YAxis hide />
@@ -479,7 +447,49 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
           </ResponsiveContainer>
         </div>
 
-        <div className="md:col-span-2 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
+        <div className="md:col-span-2 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 flex flex-col items-center justify-center">
+          <div className="w-full mb-3">
+            <h3 className="font-black text-sm text-black">Total Financeiro</h3>
+            <p className="text-xs text-slate-400">Receita vs despesas do mês</p>
+          </div>
+          <div className="relative">
+            <PieChart width={180} height={180}>
+              <Pie
+                data={[
+                  { name: 'Receita', value: Math.max(thisMonthRevenue, 1) },
+                  { name: 'Despesas', value: Math.max(thisMonthExpenses, 0.01) },
+                ]}
+                cx={85} cy={85}
+                innerRadius={55} outerRadius={80}
+                dataKey="value"
+                strokeWidth={2}
+                stroke="#fff"
+              >
+                <Cell fill="#22c55e" />
+                <Cell fill="#ef4444" />
+              </Pie>
+            </PieChart>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-lg font-black text-black leading-none">R$ {fmtBRL(thisMonthRevenue)}</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 mt-2">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+              <span className="text-[11px] text-slate-600">Receita</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+              <span className="text-[11px] text-slate-600">Despesas</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Serviços Populares + Dia Forte */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="md:col-span-3 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="mb-4">
             <h3 className="font-black text-sm text-black">Serviços Populares</h3>
             <p className="text-xs text-slate-400">Distribuição por categoria</p>
@@ -505,7 +515,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
               </div>
             </div>
             <div className="flex-1 space-y-2.5 min-w-0">
-              {(donutData.length ? donutData : []).slice(0, 3).map((d, i) => (
+              {(donutData.length ? donutData : []).slice(0, 5).map((d, i) => (
                 <div key={i} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <div className="w-2 h-2 rounded-full shrink-0" style={{ background: DONUT_COLORS[i] }} />
@@ -516,6 +526,20 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
               ))}
               {donutData.length === 0 && <p className="text-[11px] text-slate-400">Sem dados</p>}
             </div>
+          </div>
+        </div>
+        <div className="md:col-span-2 grid grid-cols-1 gap-4">
+          <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
+            <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Dia Mais Forte</p>
+            <p className="text-3xl font-black text-black leading-none mt-2">{strongestDayName}</p>
+            <p className="text-[10px] text-slate-400 mt-1">Últimos 30 dias</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
+            <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Profissionais Ativos</p>
+            <p className="text-3xl font-black text-black leading-none mt-2">
+              <AnimatedNumber value={professionals.length} />
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">no sistema</p>
           </div>
         </div>
       </div>
@@ -626,39 +650,6 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
   );
 };
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-const StatCard = ({ icon, title, value, trend, trendLabel, trendPos, sub, onClick }: {
-  icon: React.ReactNode; title: string; value: string;
-  trend?: number; trendLabel?: string; trendPos?: boolean; sub?: string; onClick?: () => void;
-}) => {
-  const showTrend = trend !== undefined;
-  const isPos = showTrend ? trend >= 0 : !!trendPos;
-  const label = trendLabel ?? `${isPos ? '+' : ''}${trend?.toFixed(1)}%`;
-  return (
-    <div
-      className={`bg-white rounded-2xl border p-4 sm:p-5 transition-all ${onClick ? 'cursor-pointer border-slate-100 hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5' : 'border-slate-100'}`}
-      onClick={onClick}
-    >
-      <div className="flex items-start justify-between mb-3 sm:mb-4">
-        <div className="w-8 h-8 sm:w-9 sm:h-9 bg-slate-50 rounded-xl flex items-center justify-center text-slate-500">{icon}</div>
-        <div className="flex items-center gap-1">
-          <span className={`text-[9px] sm:text-[10px] font-bold ${isPos ? 'text-green-500' : 'text-red-400'}`}>{isPos ? '↑' : '↓'} {label}</span>
-          {onClick && <span className="text-[10px] text-slate-300">→</span>}
-        </div>
-      </div>
-      <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">{title}</p>
-      <p className="text-lg sm:text-2xl font-black text-black leading-none truncate animate-countUp">{value}</p>
-      {sub && <p className="text-[10px] text-slate-400 mt-1">{sub}</p>}
-    </div>
-  );
-};
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
-const IcoTrend = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>;
-const IcoCalendar = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
-const IcoUsers = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
-const IcoStar = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+// (no sub-components needed — all inline now)
 
 export default Dashboard;
