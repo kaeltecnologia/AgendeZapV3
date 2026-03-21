@@ -27,7 +27,7 @@ function json(data: unknown, status = 200) {
   });
 }
 
-// Plan prices (must match planConfig.ts)
+// Plan monthly prices (must match planConfig.ts)
 const PLAN_PRICES: Record<string, number> = {
   START: 39.90,
   PROFISSIONAL: 89.90,
@@ -39,6 +39,19 @@ const PLAN_NAMES: Record<string, string> = {
   PROFISSIONAL: 'AgendeZap Profissional',
   ELITE: 'AgendeZap Elite',
 };
+
+// Cycle config: Asaas cycle name, multiplier (months), discount
+const CYCLE_CONFIG: Record<string, { asaasCycle: string; months: number; discount: number; label: string }> = {
+  MONTHLY:      { asaasCycle: 'MONTHLY',      months: 1,  discount: 0,    label: 'Mensal' },
+  SEMIANNUALLY: { asaasCycle: 'SEMIANNUALLY', months: 6,  discount: 0.15, label: 'Semestral' },
+  YEARLY:       { asaasCycle: 'YEARLY',       months: 12, discount: 0.25, label: 'Anual' },
+};
+
+function calcCycleValue(monthlyPrice: number, cycle: string): number {
+  const cfg = CYCLE_CONFIG[cycle] || CYCLE_CONFIG.MONTHLY;
+  const total = monthlyPrice * cfg.months * (1 - cfg.discount);
+  return Math.round(total * 100) / 100; // round to 2 decimals
+}
 
 async function asaasFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(`${ASAAS_API_URL}${path}`, {
@@ -63,7 +76,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tenantId, planId, billingType } = await req.json();
+    const { tenantId, planId, billingType, cycle = 'MONTHLY' } = await req.json();
 
     // ── Validate input ──────────────────────────────────────────────────
     if (!tenantId || !planId || !billingType) {
@@ -74,6 +87,9 @@ Deno.serve(async (req) => {
     }
     if (!['PIX', 'CREDIT_CARD'].includes(billingType)) {
       return json({ error: `Invalid billingType: ${billingType}. Use PIX or CREDIT_CARD` }, 400);
+    }
+    if (!CYCLE_CONFIG[cycle]) {
+      return json({ error: `Invalid cycle: ${cycle}. Use MONTHLY, SEMIANNUALLY, or YEARLY` }, 400);
     }
 
     // ── Fetch tenant ────────────────────────────────────────────────────
@@ -116,16 +132,19 @@ Deno.serve(async (req) => {
     const today = new Date();
     const nextDueDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
+    const cycleCfg = CYCLE_CONFIG[cycle];
+    const cycleValue = calcCycleValue(PLAN_PRICES[planId], cycle);
+
     const subscriptionData = await asaasFetch('/subscriptions', {
       method: 'POST',
       body: JSON.stringify({
         customer: asaasCustomerId,
         billingType,
-        value: PLAN_PRICES[planId],
-        cycle: 'MONTHLY',
+        value: cycleValue,
+        cycle: cycleCfg.asaasCycle,
         nextDueDate,
-        description: `${PLAN_NAMES[planId]} — Assinatura Mensal`,
-        externalReference: `${tenantId}::${planId}`,
+        description: `${PLAN_NAMES[planId]} — Assinatura ${cycleCfg.label}`,
+        externalReference: `${tenantId}::${planId}::${cycle}`,
       }),
     });
 
@@ -151,6 +170,7 @@ Deno.serve(async (req) => {
       _asaasCustomerId: asaasCustomerId,
       _asaasSubscriptionId: subscriptionId,
       _asaasPlanId: planId,
+      _asaasCycle: cycle,
     };
 
     await supabase.from('tenant_settings').upsert(
@@ -161,7 +181,7 @@ Deno.serve(async (req) => {
     // Also update tenant plan optimistically
     await supabase.from('tenants').update({
       plan: planId,
-      mensalidade: PLAN_PRICES[planId],
+      mensalidade: cycleValue,
     }).eq('id', tenantId);
 
     console.log(`[asaas] Checkout complete for tenant ${tenantId}: plan=${planId}, sub=${subscriptionId}`);

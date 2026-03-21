@@ -31,11 +31,11 @@ function json(data: unknown, status = 200) {
   });
 }
 
-// Resolve planId from subscription externalReference ("tenantId::PLAN")
-function parsePlanFromRef(ref?: string): string | null {
-  if (!ref) return null;
+// Resolve planId and cycle from subscription externalReference ("tenantId::PLAN::CYCLE")
+function parseRef(ref?: string): { planId: string | null; cycle: string | null } {
+  if (!ref) return { planId: null, cycle: null };
   const parts = ref.split('::');
-  return parts[1] || null;
+  return { planId: parts[1] || null, cycle: parts[2] || null };
 }
 
 // Plan prices (must match planConfig.ts)
@@ -64,14 +64,16 @@ Deno.serve(async (req) => {
     const event = body.event as string;
     const payment = body.payment;
 
-    console.log(`[asaas-webhook] Event: ${event}, payment: ${payment?.id || 'N/A'}, subscription: ${payment?.subscription || 'N/A'}`);
+    const subscription = body.subscription; // for subscription-level events
+
+    console.log(`[asaas-webhook] Event: ${event}, payment: ${payment?.id || 'N/A'}, subscription: ${payment?.subscription || subscription?.id || 'N/A'}`);
 
     if (!event) {
       return json({ error: 'Missing event' }, 400);
     }
 
     // ── Find tenant by subscription ID ────────────────────────────────
-    const subscriptionId = payment?.subscription;
+    const subscriptionId = payment?.subscription || subscription?.id;
     if (!subscriptionId) {
       console.log(`[asaas-webhook] No subscription in event ${event}, skipping`);
       return json({ ok: true, skipped: true });
@@ -90,9 +92,11 @@ Deno.serve(async (req) => {
 
     const tenantId = rows[0].tenant_id;
     const fup = rows[0].follow_up || {};
-    const planId = parsePlanFromRef(payment?.externalReference) || fup._asaasPlanId || 'START';
+    const ref = parseRef(payment?.externalReference || subscription?.externalReference);
+    const planId = ref.planId || fup._asaasPlanId || 'START';
+    const cycle = ref.cycle || fup._asaasCycle || 'MONTHLY';
 
-    console.log(`[asaas-webhook] Tenant: ${tenantId}, plan: ${planId}, event: ${event}`);
+    console.log(`[asaas-webhook] Tenant: ${tenantId}, plan: ${planId}, cycle: ${cycle}, event: ${event}`);
 
     // ── Handle events ─────────────────────────────────────────────────
     switch (event) {
@@ -128,6 +132,22 @@ Deno.serve(async (req) => {
       case 'PAYMENT_CONFIRMED': {
         // Intermediate state — just log, wait for PAYMENT_RECEIVED
         console.log(`[asaas-webhook] Payment confirmed for tenant ${tenantId}, waiting for RECEIVED`);
+        break;
+      }
+
+      case 'SUBSCRIPTION_CREATED': {
+        // Log subscription creation and save IDs (in case checkout didn't persist them)
+        const updatedFupCreated = {
+          ...fup,
+          _asaasSubscriptionId: subscriptionId,
+          _asaasPlanId: planId,
+          _asaasCycle: cycle,
+        };
+        await supabase.from('tenant_settings').update({
+          follow_up: updatedFupCreated,
+        }).eq('tenant_id', tenantId);
+
+        console.log(`[asaas-webhook] Subscription created for tenant ${tenantId}: plan=${planId}, cycle=${cycle}`);
         break;
       }
 
