@@ -878,7 +878,7 @@ const App: React.FC = () => {
           <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
             <ErrorBoundary key={currentView}>
               {trialInfo?.isExpired && role === 'TENANT'
-                ? <TrialExpiredView tenantId={tenantId} />
+                ? <TrialExpiredView tenantId={tenantId} onActivated={() => { setTrialInfo(null); window.location.reload(); }} />
                 : <div className="p-4 md:p-6">{renderView()}</div>
               }
             </ErrorBoundary>

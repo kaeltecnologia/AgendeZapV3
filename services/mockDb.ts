@@ -871,6 +871,8 @@ class DatabaseService {
           googleBusinessName: fu._googleBusinessName ?? '',
           logoUrl: fu._logoUrl ?? '',
           galleryPhotos: fu._galleryPhotos ?? [],
+          asaasCustomerId: fu._asaasCustomerId ?? '',
+          asaasSubscriptionId: fu._asaasSubscriptionId ?? '',
         };
       }
     } catch (e) {
@@ -931,6 +933,8 @@ class DatabaseService {
         _googleBusinessName: newS.googleBusinessName ?? curr.googleBusinessName ?? '',
         _logoUrl: newS.logoUrl ?? curr.logoUrl ?? '',
         _galleryPhotos: newS.galleryPhotos ?? curr.galleryPhotos ?? [],
+        _asaasCustomerId: newS.asaasCustomerId ?? curr.asaasCustomerId ?? '',
+        _asaasSubscriptionId: newS.asaasSubscriptionId ?? curr.asaasSubscriptionId ?? '',
       };
 
       const { error } = await supabase.from('tenant_settings').upsert(

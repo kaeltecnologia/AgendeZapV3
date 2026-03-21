@@ -296,6 +296,8 @@ export interface TenantSettings {
   googleBusinessName?: string;         // Google Business display name
   logoUrl?: string;                     // marketplace logo URL
   galleryPhotos?: string[];             // marketplace gallery photo URLs (up to 3)
+  asaasCustomerId?: string;            // Asaas customer ID for billing
+  asaasSubscriptionId?: string;        // Asaas subscription ID for recurring billing
 }
 
 export interface Appointment {

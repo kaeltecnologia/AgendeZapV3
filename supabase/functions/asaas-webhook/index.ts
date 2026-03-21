@@ -1,0 +1,159 @@
+/**
+ * asaas-webhook — Supabase Edge Function
+ *
+ * Receives webhook events from Asaas (payment/subscription status changes)
+ * and updates the tenant's status accordingly.
+ *
+ * Configure in Asaas dashboard:
+ *   URL: https://cnnfnqrnjckntnxdgwae.supabase.co/functions/v1/asaas-webhook
+ *   Events: PAYMENT_RECEIVED, PAYMENT_OVERDUE, PAYMENT_CONFIRMED, SUBSCRIPTION_INACTIVATED
+ *   Auth token: set as ASAAS_WEBHOOK_TOKEN secret
+ */
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const WEBHOOK_TOKEN = Deno.env.get('ASAAS_WEBHOOK_TOKEN') || '';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, asaas-access-token',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// Resolve planId from subscription externalReference ("tenantId::PLAN")
+function parsePlanFromRef(ref?: string): string | null {
+  if (!ref) return null;
+  const parts = ref.split('::');
+  return parts[1] || null;
+}
+
+// Plan prices (must match planConfig.ts)
+const PLAN_PRICES: Record<string, number> = {
+  START: 39.90,
+  PROFISSIONAL: 89.90,
+  ELITE: 149.90,
+};
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    // ── Verify webhook token ──────────────────────────────────────────
+    if (WEBHOOK_TOKEN) {
+      const token = req.headers.get('asaas-access-token') || '';
+      if (token !== WEBHOOK_TOKEN) {
+        console.warn('[asaas-webhook] Invalid token');
+        return json({ error: 'Unauthorized' }, 401);
+      }
+    }
+
+    const body = await req.json();
+    const event = body.event as string;
+    const payment = body.payment;
+
+    console.log(`[asaas-webhook] Event: ${event}, payment: ${payment?.id || 'N/A'}, subscription: ${payment?.subscription || 'N/A'}`);
+
+    if (!event) {
+      return json({ error: 'Missing event' }, 400);
+    }
+
+    // ── Find tenant by subscription ID ────────────────────────────────
+    const subscriptionId = payment?.subscription;
+    if (!subscriptionId) {
+      console.log(`[asaas-webhook] No subscription in event ${event}, skipping`);
+      return json({ ok: true, skipped: true });
+    }
+
+    // Query tenant_settings where follow_up JSONB contains _asaasSubscriptionId
+    const { data: rows } = await supabase
+      .from('tenant_settings')
+      .select('tenant_id, follow_up')
+      .filter('follow_up->>_asaasSubscriptionId', 'eq', subscriptionId);
+
+    if (!rows || rows.length === 0) {
+      console.warn(`[asaas-webhook] No tenant found for subscription ${subscriptionId}`);
+      return json({ ok: true, skipped: true });
+    }
+
+    const tenantId = rows[0].tenant_id;
+    const fup = rows[0].follow_up || {};
+    const planId = parsePlanFromRef(payment?.externalReference) || fup._asaasPlanId || 'START';
+
+    console.log(`[asaas-webhook] Tenant: ${tenantId}, plan: ${planId}, event: ${event}`);
+
+    // ── Handle events ─────────────────────────────────────────────────
+    switch (event) {
+      case 'PAYMENT_RECEIVED': {
+        // Activate tenant: remove trial, set plan, status = ATIVA
+        await supabase.from('tenants').update({
+          status: 'ATIVA',
+          plan: planId,
+          mensalidade: PLAN_PRICES[planId] || payment?.value || 0,
+        }).eq('id', tenantId);
+
+        // Clear trial and enable AI
+        const updatedFup = { ...fup, trialStartDate: null, trialWarningSent: false };
+        await supabase.from('tenant_settings').update({
+          follow_up: updatedFup,
+          ai_active: true,
+        }).eq('tenant_id', tenantId);
+
+        console.log(`[asaas-webhook] ✅ Tenant ${tenantId} ACTIVATED — plan=${planId}`);
+        break;
+      }
+
+      case 'PAYMENT_OVERDUE': {
+        // Mark as pending payment
+        await supabase.from('tenants').update({
+          status: 'PAGAMENTO PENDENTE',
+        }).eq('id', tenantId);
+
+        console.log(`[asaas-webhook] ⚠️ Tenant ${tenantId} PAYMENT OVERDUE`);
+        break;
+      }
+
+      case 'PAYMENT_CONFIRMED': {
+        // Intermediate state — just log, wait for PAYMENT_RECEIVED
+        console.log(`[asaas-webhook] Payment confirmed for tenant ${tenantId}, waiting for RECEIVED`);
+        break;
+      }
+
+      case 'SUBSCRIPTION_INACTIVATED':
+      case 'SUBSCRIPTION_DELETED': {
+        // Block tenant and disable AI
+        await supabase.from('tenants').update({
+          status: 'BLOQUEADA',
+        }).eq('id', tenantId);
+
+        await supabase.from('tenant_settings').update({
+          ai_active: false,
+        }).eq('tenant_id', tenantId);
+
+        console.log(`[asaas-webhook] 🚫 Tenant ${tenantId} BLOCKED — subscription inactive`);
+        break;
+      }
+
+      default:
+        console.log(`[asaas-webhook] Unhandled event: ${event}`);
+    }
+
+    return json({ ok: true, event, tenantId });
+
+  } catch (err: any) {
+    console.error('[asaas-webhook] Error:', err);
+    return json({ error: err.message || 'Internal error' }, 500);
+  }
+});
