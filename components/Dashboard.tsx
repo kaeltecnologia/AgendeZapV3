@@ -329,22 +329,22 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
       )}
 
       {/* Motivational card */}
-      <div className="bg-gradient-to-br from-orange-500 via-orange-500 to-amber-400 rounded-2xl p-5 sm:p-7 shadow-lg shadow-orange-500/20 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/4" />
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-gradient-to-br from-orange-50 via-amber-50 to-blue-50 rounded-2xl p-6 sm:p-8 shadow-sm border border-orange-100/50 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-blue-100/30 rounded-full -translate-y-1/2 translate-x-1/4" />
+        <div className="absolute bottom-0 left-0 w-32 h-32 bg-orange-100/30 rounded-full translate-y-1/2 -translate-x-1/4" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-orange-100">{greeting},</p>
-            <h2 className="text-xl sm:text-2xl font-black text-white leading-tight mt-0.5">{tenantName || 'Meu Negócio'}</h2>
-            <p className="text-sm text-white/80 mt-3 italic leading-relaxed max-w-lg">"{todayQuote}"</p>
+            <p className="text-base font-semibold text-blue-400">{greeting},</p>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-800 leading-tight mt-1">{tenantName || 'Meu Negócio'}</h2>
+            <p className="text-base sm:text-lg text-slate-500 mt-4 italic leading-relaxed max-w-lg font-medium">"{todayQuote}"</p>
           </div>
-          <div className="flex items-center gap-3 bg-white/15 backdrop-blur-sm rounded-2xl px-5 py-4 shrink-0">
+          <div className="flex items-center gap-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl px-6 py-5 shrink-0 shadow-lg shadow-blue-500/20">
             <span className="text-3xl">🔥</span>
             <div>
-              <p className="text-3xl font-black text-white leading-none">
+              <p className="text-4xl font-black text-white leading-none">
                 <AnimatedNumber value={streakDays} />
               </p>
-              <p className="text-[10px] font-bold text-orange-100 uppercase tracking-wider mt-0.5">dias seguidos</p>
+              <p className="text-[10px] font-bold text-blue-100 uppercase tracking-wider mt-0.5">dias seguidos</p>
             </div>
           </div>
         </div>
