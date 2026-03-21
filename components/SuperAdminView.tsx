@@ -1959,7 +1959,7 @@ END $$;`.trim();
           <div className="bg-white rounded-3xl border-2 border-orange-100 p-8 space-y-5">
             <div>
               <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">🔑 Chave OpenAI Compartilhada</p>
-              <p className="text-xs text-slate-400 mt-1">Propagada para todos os tenants que não configuraram a própria. Usada tanto no servidor (Edge Function) quanto no browser.</p>
+              <p className="text-xs text-slate-400 mt-1">Chave da API OpenAI, usada para IA (calendário de conteúdo, tendências). Propagada para todos os tenants. Obtenha em <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" className="text-orange-500 underline">platform.openai.com/api-keys</a></p>
             </div>
             <div className="flex gap-3">
               <div className="flex-1 relative">
