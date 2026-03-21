@@ -142,6 +142,17 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
     ],
   },
   {
+    id: 'bug-corte-vira-combo',
+    name: 'BUG: Corte virava Corte+Relaxamento',
+    icon: '🐛',
+    description: 'Ao pedir so "corte", sistema selecionava "Corte e Relaxamento" (combo mais longo) em vez do servico simples.',
+    bugRef: 'Fix: preferir servico mais especifico no matching individual',
+    builtIn: true,
+    steps: [
+      { id: 's1', customerMessage: 'Quero so corte', expectedBehavior: 'Deve selecionar APENAS corte, nao combo com relaxamento ou outro servico' },
+    ],
+  },
+  {
     id: 'regression-single-service',
     name: 'Regressao: Servico unico',
     icon: '✅',

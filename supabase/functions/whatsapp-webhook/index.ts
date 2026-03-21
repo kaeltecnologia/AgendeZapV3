@@ -908,8 +908,15 @@ function matchAllServices(
   for (const cat of [...categories]) {
     const syns = SVC_SYNONYMS[cat] || [cat];
     const candidateSvcs = services.filter(s => !usedIds.has(s.id) && syns.some(syn => svcNorm(s.name).includes(syn)));
-    // Pick the best candidate (longest duration as tiebreaker)
-    const best = candidateSvcs.sort((a, b) => b.durationMinutes - a.durationMinutes)[0];
+    // Prefer most specific service: fewest extra category matches, then shortest name
+    const best = candidateSvcs.sort((a, b) => {
+      const snA = svcNorm(a.name), snB = svcNorm(b.name);
+      // Count how many OTHER categories each service name matches (besides target)
+      const extraA = Object.entries(SVC_SYNONYMS).filter(([c, ss]) => c !== cat && ss.some(s => snA.includes(s))).length;
+      const extraB = Object.entries(SVC_SYNONYMS).filter(([c, ss]) => c !== cat && ss.some(s => snB.includes(s))).length;
+      if (extraA !== extraB) return extraA - extraB; // fewer extra = more specific
+      return snA.length - snB.length; // shorter name = more specific
+    })[0];
     if (best) {
       matched.push(best);
       usedIds.add(best.id);
@@ -2532,6 +2539,33 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     } else {
       // Ambiguous — let AI handle with full context
       session.data.pendingProfContact = undefined;
+    }
+  }
+
+  // ── Service correction: "só corte", "somente barba", "não, quero X" ──
+  // If client is correcting the previously selected service, clear it and re-match
+  if (session.data.serviceId) {
+    const _normCorr = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+    const _hasCorrectionIntent = /\bso\b|\bsomente\b|\bapenas\b|\bsoh\b|\bsó\b/.test(_normCorr) ||
+      /^(nao|n[aã]o),?\s/.test(_normCorr) || /\bnao (e|eh|era)\b/.test(_normCorr) ||
+      /\bso\s+(corte|corta|barba|cabelo|sobrancelha|progressiva|escova)\b/.test(_normCorr) ||
+      /\b(eu falei|eu disse|eu pedi|eu quero)\b/.test(_normCorr);
+    if (_hasCorrectionIntent) {
+      const _corrMatch = matchServiceByKeywords(_normCorr, services);
+      if (_corrMatch && _corrMatch.id !== session.data.serviceId) {
+        console.log(`[Agent] Service correction: "${session.data.serviceName}" → "${_corrMatch.name}"`);
+        session.data.serviceId = _corrMatch.id;
+        session.data.serviceName = _corrMatch.name;
+        session.data.serviceDuration = _corrMatch.durationMinutes;
+        session.data.servicePrice = _corrMatch.price;
+        session.data._comboRequest = undefined;
+        session.data._comboTotalDuration = undefined;
+        session.data._comboTotalPrice = undefined;
+        // Clear date/time so AI re-asks after service change
+        session.data.date = undefined;
+        session.data.time = undefined;
+        session.data._suggestedTime = undefined;
+      }
     }
   }
 
