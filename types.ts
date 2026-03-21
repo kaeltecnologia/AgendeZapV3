@@ -298,6 +298,10 @@ export interface TenantSettings {
   galleryPhotos?: string[];             // marketplace gallery photo URLs (up to 3)
   asaasCustomerId?: string;            // Asaas customer ID for billing
   asaasSubscriptionId?: string;        // Asaas subscription ID for recurring billing
+  socialMediaProfile?: SocialMediaProfile | null;  // social media onboarding data
+  contentCalendar?: ContentCalendar | null;        // AI-generated content calendar
+  trendingContent?: TrendingItem[] | null;         // cached weekly trending content
+  trendingContentDate?: string | null;             // ISO date of last trending fetch
 }
 
 export interface Appointment {
@@ -539,4 +543,68 @@ export interface MarketplaceStory {
   caption?: string;
   createdAt: string;
   expiresAt: string;
+}
+
+// ── Social Media Content Planning ──────────────────────────────────
+
+export interface SocialMediaProfile {
+  nicho: string;
+  estiloImagem: string[];       // ex: ['premium', 'moderno']
+  publicoAlvo: string[];        // ex: ['homens', 'jovens']
+  tiposConteudo: string[];      // ex: ['antes_depois', 'bastidores']
+  tomComunicacao: string[];     // ex: ['descontraido', 'profissional']
+  objetivos: string[];          // ex: ['atrair_clientes', 'autoridade']
+  diferenciais: string[];       // ex: ['atendimento', 'ambiente']
+  postsPerWeek: number;
+  diasSemana: string[];         // ex: ['seg', 'ter', 'qua', 'qui', 'sex']
+  plataformas: string[];
+  createdAt: string;
+}
+
+export interface StoryEngagement {
+  horario: string;              // ex: "10:00"
+  tipo: string;                 // ex: "foto", "video_trecho", "enquete", "caixinha"
+  descricao: string;            // o que postar no story
+}
+
+export interface ContentDay {
+  date: string;
+  postTime: string;             // horário de postagem (ex: "18:00")
+  title: string;
+  mediaType: string;            // "video" | "foto" | "carrossel"
+  placement: string;            // "feed" | "story" | "reels"
+  objective: string;            // resumo do objetivo
+  intro: string;                // texto introdutório da estratégia do dia
+  spokenScript: string;         // "FALA: ..." — roteiro falado detalhado
+  visualDirection: string;      // O QUE MOSTRAR — direção visual
+  scene: string;                // CENA — setup, ângulos, close
+  editing: string;              // EDIÇÃO — cortes, música, transições, legenda
+  cta: string;                  // call-to-action
+  hashtags: string[];
+  captionSuggestion: string;    // sugestão de legenda para a postagem
+  storyEngagement: StoryEngagement[]; // sugestões de stories para engajamento
+  completed: boolean;
+}
+
+export interface MonthStrategy {
+  month: number;
+  year: number;
+  theme: string;
+  description: string;
+  days: ContentDay[];
+  generated: boolean;
+}
+
+export interface ContentCalendar {
+  strategies: MonthStrategy[];
+  startMonth: number;
+  startYear: number;
+}
+
+export interface TrendingItem {
+  platform: 'tiktok' | 'instagram';
+  title: string;
+  description: string;
+  adaptationTip: string;
+  estimatedViews: string;
 }

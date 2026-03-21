@@ -6,6 +6,9 @@ import { db } from '../../services/mockDb';
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+const DIA_MAP: Record<string, number> = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 };
+const DIA_LABEL: Record<string, string> = { dom: 'domingo', seg: 'segunda', ter: 'terça', qua: 'quarta', qui: 'quinta', sex: 'sexta', sab: 'sábado' };
+
 const MONTH_THEMES = [
   'Construindo Presença',
   'Autoridade no Nicho',
@@ -87,6 +90,8 @@ const ContentCalendar: React.FC<Props> = ({ tenantId, profile }) => {
     return key;
   };
 
+  const diasPermitidos = (profile.diasSemana || ['seg', 'ter', 'qua', 'qui', 'sex']).map(d => DIA_LABEL[d] || d).join(', ');
+
   const generateMonthContent = async (strategy: MonthStrategy): Promise<ContentDay[]> => {
     const apiKey = await resolveApiKey();
     if (!apiKey) {
@@ -97,7 +102,7 @@ const ContentCalendar: React.FC<Props> = ({ tenantId, profile }) => {
     const totalPosts = profile.postsPerWeek * 4;
     const daysInMonth = new Date(strategy.year, strategy.month, 0).getDate();
 
-    const prompt = `Você é um estrategista de conteúdo para redes sociais especializado em ${profile.nicho}.
+    const prompt = `Você é um estrategista de conteúdo para redes sociais especializado em ${profile.nicho}. Você cria planejamentos COMPLETOS e DETALHADOS para que o dono do negócio só precise executar — tudo pronto, sem pensar.
 
 PERFIL DO NEGÓCIO:
 - Nicho: ${profile.nicho}
@@ -108,38 +113,45 @@ PERFIL DO NEGÓCIO:
 - Objetivos: ${profile.objetivos.join(', ')}
 - Diferenciais: ${profile.diferenciais.join(', ')}
 - Frequência: ${profile.postsPerWeek}x por semana
+- Dias permitidos para postagem: ${diasPermitidos}
 - Plataformas: ${profile.plataformas.join(', ')}
 
 ESTRATÉGIA DO MÊS: "${strategy.theme}"
 Mês: ${MONTH_NAMES[strategy.month - 1]} ${strategy.year}
 Dias no mês: ${daysInMonth}
 
-INSTRUÇÕES:
-Gere exatamente ${totalPosts} posts distribuídos ao longo do mês (${profile.postsPerWeek} por semana).
-Cada post deve ser prático, acionável e baseado em tendências reais que funcionam para ${profile.nicho}.
-Referencie cases de sucesso reais e formatos comprovados do nicho.
-Adapte o formato (Reels, Stories, Carrossel, Post) de acordo com as plataformas escolhidas.
-Considere o estilo de imagem ${profile.estiloImagem.join('/')} e o tom ${profile.tomComunicacao.join('/')} nas sugestões.
+REGRAS IMPORTANTES:
+1. Gere exatamente ${totalPosts} posts distribuídos APENAS nos dias: ${diasPermitidos}
+2. NUNCA agende conteúdo em dias que não estão na lista de dias permitidos
+3. Cada post DEVE ter horário de postagem (entre 10:00 e 20:00, variando estrategicamente)
+4. Inclua sugestões de Stories para engajamento de cada postagem
+5. O conteúdo deve ser TÃO DETALHADO que o tenant só precise gravar/fotografar e seguir as instruções
 
-Para cada post retorne:
-- date: formato YYYY-MM-DD (distribua nos dias úteis do mês)
-- title: título criativo do conteúdo
-- format: "Reels" | "Stories" | "Carrossel" | "Post"
+Para cada post retorne um objeto JSON com:
+- date: formato YYYY-MM-DD (APENAS nos dias permitidos: ${diasPermitidos})
+- postTime: horário de postagem (ex: "18:00")
+- title: título criativo do conteúdo (ex: "Cuidados Pós-Tratamento")
+- mediaType: "video" | "foto" | "carrossel"
+- placement: "feed" | "reels"
 - objective: resumo do objetivo em 1-2 frases
-- script: roteiro detalhado de como fazer (mínimo 3 frases)
-- scene: como filmar/criar a cena (ambiente, ângulo, props)
-- editing: dicas de edição (cortes, textos, músicas)
+- intro: texto introdutório estratégico do dia (ex: "Hoje vamos criar conteúdo estratégico para feed, focando em conexão com seu público e construção de autoridade no seu nicho.")
+- spokenScript: roteiro FALADO completo, com frases exatas para dizer (comece com "FALA:" e escreva exatamente o que a pessoa deve falar na câmera, frase por frase)
+- visualDirection: O QUE MOSTRAR — direção visual detalhada (ex: "Mostre resultado visual. Foque no benefício. Capture reação genuína do cliente.")
+- scene: CENA — como montar a cena (ângulos, close, iluminação, ambiente, props)
+- editing: EDIÇÃO — estilo de corte, música sugerida, transições, sugestão de legenda para a postagem
 - cta: call-to-action final
-- hashtags: array com 5-8 hashtags relevantes
+- hashtags: array com 8-12 hashtags relevantes
+- captionSuggestion: sugestão COMPLETA de legenda para a postagem (com emojis, quebras de linha, CTA)
+- storyEngagement: array com 2-3 sugestões de Stories para engajar na postagem, cada uma com: { horario: "HH:MM", tipo: "foto" | "video_trecho" | "enquete" | "caixinha" | "contagem_regressiva", descricao: "o que postar no story" }
 
-Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
+Retorne como JSON com chave "posts" contendo o array.`;
 
     let parsed: any[];
     try {
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'Você é um estrategista de conteúdo para redes sociais. Responda sempre em JSON array válido, sem markdown.' },
+          { role: 'system', content: 'Você é um estrategista de conteúdo para redes sociais. Responda sempre em JSON válido com chave "posts" contendo um array. Sem markdown.' },
           { role: 'user', content: prompt },
         ],
         temperature: 0.8,
@@ -148,7 +160,6 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
 
       const raw = response.choices[0]?.message?.content || '{}';
       const obj = JSON.parse(raw);
-      // OpenAI json_object wraps in an object — extract the array
       parsed = Array.isArray(obj) ? obj : (obj.posts || obj.content || obj.calendar || obj.data || Object.values(obj)[0] || []);
     } catch (e: any) {
       const msg = e?.message || JSON.stringify(e);
@@ -163,14 +174,24 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
 
     const days: ContentDay[] = (Array.isArray(parsed) ? parsed : []).map((d: any) => ({
       date: d.date || '',
+      postTime: d.postTime || '18:00',
       title: d.title || '',
-      format: d.format || 'Post',
+      mediaType: d.mediaType || 'video',
+      placement: d.placement || 'feed',
       objective: d.objective || '',
-      script: d.script || '',
+      intro: d.intro || '',
+      spokenScript: d.spokenScript || '',
+      visualDirection: d.visualDirection || '',
       scene: d.scene || '',
       editing: d.editing || '',
       cta: d.cta || '',
       hashtags: Array.isArray(d.hashtags) ? d.hashtags : [],
+      captionSuggestion: d.captionSuggestion || '',
+      storyEngagement: Array.isArray(d.storyEngagement) ? d.storyEngagement.map((s: any) => ({
+        horario: s.horario || '',
+        tipo: s.tipo || 'foto',
+        descricao: s.descricao || '',
+      })) : [],
       completed: false,
     }));
 
@@ -182,10 +203,9 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
     setError(null);
     try {
       const cal = await generateStrategies();
-      // Generate content for the current month
       cal.strategies[0].days = await generateMonthContent(cal.strategies[0]);
       cal.strategies[0].generated = true;
-      cal.strategies[0].description = `Estratégia focada em ${cal.strategies[0].theme.toLowerCase()} com ${profile.postsPerWeek} posts semanais no estilo ${profile.estiloImagem.join('/')}, tom ${profile.tomComunicacao.join('/')}.`;
+      cal.strategies[0].description = `Estratégia focada em ${cal.strategies[0].theme.toLowerCase()} com ${profile.postsPerWeek} posts semanais.`;
 
       await db.updateSettings(tenantId, { contentCalendar: cal });
       setCalendar(cal);
@@ -204,7 +224,7 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
       const strat = calendar.strategies[idx];
       strat.days = await generateMonthContent(strat);
       strat.generated = true;
-      strat.description = `Estratégia focada em ${strat.theme.toLowerCase()} com ${profile.postsPerWeek} posts semanais no estilo ${profile.estiloImagem.join('/')}, tom ${profile.tomComunicacao.join('/')}.`;
+      strat.description = `Estratégia focada em ${strat.theme.toLowerCase()} com ${profile.postsPerWeek} posts semanais.`;
 
       const updated = { ...calendar, strategies: [...calendar.strategies] };
       updated.strategies[idx] = { ...strat };
@@ -237,14 +257,8 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
   };
 
   const isMonthLocked = (month: number, year: number): boolean => {
-    if (year > currentYear) return month > currentMonth || year > currentYear;
+    if (year > currentYear) return true;
     if (year === currentYear) return month > currentMonth;
-    return false;
-  };
-
-  const isCurrentOrPast = (month: number, year: number): boolean => {
-    if (year < currentYear) return true;
-    if (year === currentYear && month <= currentMonth) return true;
     return false;
   };
 
@@ -294,13 +308,14 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
 
   // ── DAY DETAIL VIEW ──
   if (viewMode === 'day' && selectedDay && selectedMonth) {
-    const formatColor = selectedDay.format === 'Reels' ? 'bg-pink-100 text-pink-700'
-      : selectedDay.format === 'Stories' ? 'bg-purple-100 text-purple-700'
-      : selectedDay.format === 'Carrossel' ? 'bg-blue-100 text-blue-700'
-      : 'bg-green-100 text-green-700';
+    const d = selectedDay;
+    const mediaLabel = d.mediaType === 'video' ? 'Vídeo' : d.mediaType === 'foto' ? 'Foto' : 'Carrossel';
+    const placementLabel = d.placement === 'reels' ? 'Reels' : d.placement === 'story' ? 'Story' : 'Feed';
+    const mediaColor = d.mediaType === 'video' ? 'bg-pink-100 text-pink-700' : d.mediaType === 'foto' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700';
+    const placementColor = d.placement === 'reels' ? 'bg-pink-500 text-white' : d.placement === 'story' ? 'bg-purple-500 text-white' : 'bg-orange-500 text-white';
 
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-2xl mx-auto space-y-4">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
           <button onClick={() => { setViewMode('year'); setSelectedMonth(null); setSelectedDay(null); }} className="hover:text-orange-500 transition-colors">
@@ -311,68 +326,124 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
             {MONTH_NAMES[selectedMonth.month - 1]}
           </button>
           <span>›</span>
-          <span className="text-black">{new Date(selectedDay.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+          <span className="text-black">{new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
         </div>
 
-        {/* Day header */}
-        <div className="bg-white rounded-[24px] border-2 border-slate-100 p-8 space-y-6">
-          <div className="flex items-start justify-between">
-            <div className="space-y-2">
-              <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${formatColor}`}>
-                {selectedDay.format}
-              </span>
-              <h2 className="text-lg font-black text-black uppercase tracking-tight">{selectedDay.title}</h2>
-              <p className="text-xs font-bold text-slate-400">
-                {new Date(selectedDay.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-              </p>
+        {/* ── BLOCO 1: Resumo do Conteúdo ── */}
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[24px] p-6 text-white space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${mediaColor}`}>{mediaLabel}</span>
+              <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${placementColor}`}>{placementLabel}</span>
             </div>
-            <button
-              onClick={() => handleToggleCompleted(selectedDay)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
-                selectedDay.completed
-                  ? 'bg-green-100 text-green-700 border-2 border-green-200'
-                  : 'bg-slate-100 text-slate-500 border-2 border-slate-200 hover:border-orange-300'
-              }`}
-            >
-              {selectedDay.completed ? '✓ Concluído' : 'Marcar como feito'}
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-black text-slate-400">Postar às</span>
+              <span className="text-sm font-black text-orange-400">{d.postTime || '18:00'}</span>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-tight">{d.title}</h2>
+            <p className="text-xs font-bold text-slate-400 mt-1">
+              {new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
           </div>
 
           {/* Objective */}
-          <div className="bg-orange-50 rounded-2xl p-5 space-y-2">
-            <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Objetivo</p>
-            <p className="text-sm font-bold text-slate-700">{selectedDay.objective}</p>
+          <div className="bg-white/10 rounded-2xl p-4 space-y-1">
+            <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Objetivo</p>
+            <p className="text-sm font-bold text-white/90">{d.objective}</p>
           </div>
 
-          {/* Script */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Roteiro</p>
-            <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{selectedDay.script}</p>
-          </div>
+          {/* Intro */}
+          {d.intro && (
+            <p className="text-xs text-slate-300 leading-relaxed italic">{d.intro}</p>
+          )}
+
+          <button
+            onClick={() => handleToggleCompleted(d)}
+            className={`w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
+              d.completed
+                ? 'bg-green-500 text-white'
+                : 'bg-white/10 text-white hover:bg-orange-500'
+            }`}
+          >
+            {d.completed ? '✓ Conteúdo Concluído' : 'Marcar como Concluído'}
+          </button>
+        </div>
+
+        {/* ── BLOCO 2: Roteiro e Diretrizes ── */}
+        <div className="bg-white rounded-[24px] border-2 border-slate-100 p-6 space-y-5">
+          <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Roteiro e Diretrizes</p>
+
+          {/* Spoken Script */}
+          {d.spokenScript && (
+            <div className="bg-orange-50 rounded-2xl p-5 space-y-2">
+              <p className="text-[9px] font-black text-orange-600 uppercase tracking-widest">Roteiro Falado</p>
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{d.spokenScript}</p>
+            </div>
+          )}
+
+          {/* Visual Direction */}
+          {d.visualDirection && (
+            <div className="space-y-2">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">O que Mostrar no Vídeo</p>
+              <p className="text-sm text-slate-600 leading-relaxed">{d.visualDirection}</p>
+            </div>
+          )}
 
           {/* Scene */}
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cena / Filmagem</p>
-            <p className="text-sm text-slate-600 leading-relaxed">{selectedDay.scene}</p>
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Cena / Filmagem</p>
+            <p className="text-sm text-slate-600 leading-relaxed">{d.scene}</p>
           </div>
 
           {/* Editing */}
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Edição</p>
-            <p className="text-sm text-slate-600 leading-relaxed">{selectedDay.editing}</p>
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Edição</p>
+            <p className="text-sm text-slate-600 leading-relaxed">{d.editing}</p>
           </div>
+        </div>
+
+        {/* ── BLOCO 3: Legenda e Hashtags ── */}
+        <div className="bg-white rounded-[24px] border-2 border-slate-100 p-6 space-y-5">
+          <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Legenda e Hashtags</p>
+
+          {/* Caption */}
+          {d.captionSuggestion && (
+            <div className="bg-slate-50 rounded-2xl p-5 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Sugestão de Legenda</p>
+                <button
+                  onClick={() => navigator.clipboard.writeText(d.captionSuggestion)}
+                  className="text-[9px] font-black text-orange-500 hover:text-orange-700 uppercase tracking-widest"
+                >
+                  Copiar
+                </button>
+              </div>
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{d.captionSuggestion}</p>
+            </div>
+          )}
 
           {/* CTA */}
-          <div className="bg-black rounded-2xl p-5 space-y-2">
-            <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Call-to-Action</p>
-            <p className="text-sm font-bold text-white">{selectedDay.cta}</p>
+          <div className="bg-black rounded-2xl p-5 space-y-1">
+            <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Call-to-Action</p>
+            <p className="text-sm font-bold text-white">{d.cta}</p>
           </div>
 
           {/* Hashtags */}
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hashtags</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Hashtags</p>
+              <button
+                onClick={() => navigator.clipboard.writeText(d.hashtags.map(h => h.startsWith('#') ? h : `#${h}`).join(' '))}
+                className="text-[9px] font-black text-orange-500 hover:text-orange-700 uppercase tracking-widest"
+              >
+                Copiar Todas
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2">
-              {selectedDay.hashtags.map((h, i) => (
+              {d.hashtags.map((h, i) => (
                 <span
                   key={i}
                   onClick={() => navigator.clipboard.writeText(h.startsWith('#') ? h : `#${h}`)}
@@ -385,6 +456,33 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
             </div>
           </div>
         </div>
+
+        {/* ── BLOCO 4: Stories para Engajamento ── */}
+        {d.storyEngagement && d.storyEngagement.length > 0 && (
+          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-[24px] border-2 border-purple-100 p-6 space-y-4">
+            <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Stories para Engajamento da Postagem</p>
+
+            {d.storyEngagement.map((story, i) => {
+              const tipoColor = story.tipo === 'enquete' ? 'bg-green-100 text-green-700'
+                : story.tipo === 'caixinha' ? 'bg-blue-100 text-blue-700'
+                : story.tipo === 'contagem_regressiva' ? 'bg-red-100 text-red-700'
+                : story.tipo === 'video_trecho' ? 'bg-pink-100 text-pink-700'
+                : 'bg-purple-100 text-purple-700';
+
+              return (
+                <div key={i} className="bg-white rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-purple-600">{story.horario}</span>
+                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${tipoColor}`}>
+                      {story.tipo.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-slate-700 leading-relaxed">{story.descricao}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -428,7 +526,6 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
           {selectedMonth.description && (
             <p className="text-xs font-bold text-orange-100">{selectedMonth.description}</p>
           )}
-          {/* Progress bar */}
           <div className="h-2 bg-white/20 rounded-full overflow-hidden">
             <div
               className="h-full bg-white rounded-full transition-all"
@@ -491,7 +588,7 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
                       </span>
                       {content && (
                         <span className={`text-[7px] font-black uppercase tracking-wider ${content.completed ? 'text-green-500' : 'text-orange-500'}`}>
-                          {content.format === 'Reels' ? 'R' : content.format === 'Stories' ? 'S' : content.format === 'Carrossel' ? 'C' : 'P'}
+                          {content.postTime || ''}
                         </span>
                       )}
                       {content?.completed && (
@@ -507,10 +604,9 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Conteúdos do mês</p>
               {selectedMonth.days.map((day, i) => {
-                const formatColor = day.format === 'Reels' ? 'bg-pink-100 text-pink-700'
-                  : day.format === 'Stories' ? 'bg-purple-100 text-purple-700'
-                  : day.format === 'Carrossel' ? 'bg-blue-100 text-blue-700'
-                  : 'bg-green-100 text-green-700';
+                const mediaIcon = day.mediaType === 'video' ? '🎬' : day.mediaType === 'foto' ? '📸' : '🖼️';
+                const placementBadge = day.placement === 'reels' ? 'Reels' : day.placement === 'story' ? 'Story' : 'Feed';
+                const placementColor = day.placement === 'reels' ? 'bg-pink-100 text-pink-700' : day.placement === 'story' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700';
 
                 return (
                   <button
@@ -528,9 +624,11 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${formatColor}`}>
-                          {day.format}
+                        <span className="text-xs">{mediaIcon}</span>
+                        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${placementColor}`}>
+                          {placementBadge}
                         </span>
+                        <span className="text-[9px] font-bold text-slate-400">{day.postTime}</span>
                         {day.completed && <span className="text-[8px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Concluído</span>}
                       </div>
                       <p className="text-xs font-black text-black truncate">{day.title}</p>
@@ -556,11 +654,10 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
   // ── YEAR VIEW (default) ──
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-black text-black uppercase tracking-widest">Planejamento Estratégico</h2>
-          <p className="text-[10px] font-bold text-slate-400">{profile.nicho} — {profile.postsPerWeek}x/semana — {profile.estiloImagem.join(', ')}</p>
+          <p className="text-[10px] font-bold text-slate-400">{profile.nicho} — {profile.postsPerWeek}x/semana — {(profile.diasSemana || []).join(', ')}</p>
         </div>
       </div>
 
@@ -570,7 +667,6 @@ Retorne APENAS o JSON array, sem markdown ou texto adicional.`;
         </div>
       )}
 
-      {/* 12-month grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {calendar.strategies.map((strat, idx) => {
           const locked = isMonthLocked(strat.month, strat.year);
