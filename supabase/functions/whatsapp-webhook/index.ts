@@ -1119,6 +1119,18 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
   if (!apiKey) { console.warn('[Agent] no API key for tenant', tenant.id); return; }
 
+  // ── Agent pause check: if loop was detected, reset on next real message ──
+  const _pauseCheck = await getSession(tenantId, phone);
+  if (_pauseCheck?.data?._agentPaused) {
+    console.log(`[Agent] Agent was paused for ${phone}, resetting on new message`);
+    _pauseCheck.data._agentPaused = undefined;
+    _pauseCheck.data._botSendTs = undefined;
+    // Clear stale booking data that was causing the loop
+    _pauseCheck.data._suggestedTime = undefined;
+    _pauseCheck.data.availableSlots = undefined;
+    await saveSession(tenantId, phone, _pauseCheck.data, _pauseCheck.history);
+  }
+
   let lowerText = text.toLowerCase();
   let isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
   // isReset: only trigger on very short messages (≤40 chars) to prevent false positives.
@@ -3119,23 +3131,85 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     session.data.pendingConfirm = true;
   }
 
-  // ── Duplicate / loop guard ────────────────────────────────────────────────
-  // When the AI would repeat a generic greeting/question that was already sent last turn,
-  // replace with a clear "I didn't understand" message instead of looping.
-  {
-    const lastBotMsg = (session.history.filter((h: any) => h.role === 'bot').slice(-1)[0]?.text || '').toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const newReplyNorm = brain.reply.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const GENERIC_PAT = [
-      'como posso te ajudar', 'seja bem-vindo', 'seja bem vindo',
-      'tudo bem?', 'tudo bem!', 'qual procedimento voce gostaria',
-      'o que voce gostaria de agendar', 'como posso ajudar',
-    ];
-    const isGeneric = (s: string) => GENERIC_PAT.some(p => s.includes(p));
-    if (isGeneric(newReplyNorm) && isGeneric(lastBotMsg)) {
-      brain.reply = 'Desculpa, não entendi bem. Como posso te ajudar hoje? 😊';
-      console.log('[Agent] Loop guard triggered — replaced generic repeat with fallback');
+  // ── ANTI-LOOP SYSTEM (3 layers) ──────────────────────────────────────────
+
+  const _normForLoop = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+  const newReplyNorm = _normForLoop(brain.reply);
+  const botMsgs = session.history.filter((h: any) => h.role === 'bot');
+  const lastBotMsg = _normForLoop(botMsgs.slice(-1)[0]?.text || '');
+
+  // Layer 1: Semantic repeat detection — if the AI is asking the same question again
+  // Compare last 3 bot messages for similarity (shared words ratio)
+  const _wordSim = (a: string, b: string): number => {
+    if (!a || !b) return 0;
+    const wa = new Set(a.split(/\s+/).filter(w => w.length >= 3));
+    const wb = new Set(b.split(/\s+/).filter(w => w.length >= 3));
+    if (wa.size === 0 || wb.size === 0) return 0;
+    let shared = 0;
+    for (const w of wa) if (wb.has(w)) shared++;
+    return shared / Math.max(wa.size, wb.size);
+  };
+
+  const lastBotMsgs = botMsgs.slice(-3).map((h: any) => _normForLoop(h.text));
+  const repeatCount = lastBotMsgs.filter(m => _wordSim(m, newReplyNorm) > 0.6).length;
+
+  if (repeatCount >= 2) {
+    // AI is repeating itself for the 3rd time — stop the loop
+    console.log(`[Agent] LOOP DETECTED: reply similar to ${repeatCount} of last 3 bot msgs. Stopping loop.`);
+    brain.reply = 'Percebi que não estamos nos entendendo 😅 Pode me explicar de outra forma o que precisa? Se preferir, pode ligar ou visitar a loja!';
+    // Clear problematic session state to break the cycle
+    session.data._suggestedTime = undefined;
+    session.data.availableSlots = undefined;
+  }
+
+  // Layer 2: Rate limit — max 3 bot messages in 2 minutes without conversation progress
+  const _now = Date.now();
+  const _recentBotTs: number[] = ((session.data as any)._botSendTs || []).filter((t: number) => _now - t < 120_000);
+  _recentBotTs.push(_now);
+  (session.data as any)._botSendTs = _recentBotTs.slice(-10); // keep last 10
+
+  if (_recentBotTs.length > 3 && repeatCount >= 1) {
+    console.log(`[Agent] RATE LIMIT: ${_recentBotTs.length} bot msgs in 2min + repeating. Stopping.`);
+    brain.reply = 'Parece que estamos dando voltas! 😅 Quando puder, me conta direitinho o que precisa que eu te ajudo. Se preferir, pode chamar no balcão!';
+    session.data._suggestedTime = undefined;
+    session.data.availableSlots = undefined;
+  }
+
+  // Layer 3: Max unanswered bot messages — if bot sent 5+ messages and client
+  // keeps sending very short/non-responsive messages, stop interacting
+  const _lastN = session.history.slice(-12);
+  const _consecutiveBotOnly = (() => {
+    let botCount = 0;
+    // Count how many bot messages at the end have only short/non-responsive user msgs between them
+    const recentPairs: Array<{ userLen: number; botSimilar: boolean }> = [];
+    for (let i = _lastN.length - 1; i >= 1; i--) {
+      if (_lastN[i].role === 'bot' && _lastN[i - 1]?.role === 'user') {
+        const uLen = (_lastN[i - 1].text || '').trim().length;
+        const bSim = _wordSim(_normForLoop(_lastN[i].text), newReplyNorm) > 0.5;
+        recentPairs.push({ userLen: uLen, botSimilar: bSim });
+      }
     }
+    // If 4+ recent pairs have the bot repeating similar content, it's a loop
+    return recentPairs.filter(p => p.botSimilar).length;
+  })();
+
+  if (_consecutiveBotOnly >= 4) {
+    console.log(`[Agent] MAX INTERACTIONS: ${_consecutiveBotOnly} similar bot responses. Stopping.`);
+    brain.reply = 'Vou dar uma pausa pra não te encher de mensagem! 😊 Quando estiver pronto, é só chamar que eu te ajudo a agendar.';
+    // Mark session as paused — next message from client will reset
+    (session.data as any)._agentPaused = true;
+  }
+
+  // Layer 1b: Generic greeting repeat (existing logic)
+  const GENERIC_PAT = [
+    'como posso te ajudar', 'seja bem-vindo', 'seja bem vindo',
+    'tudo bem?', 'tudo bem!', 'qual procedimento voce gostaria',
+    'o que voce gostaria de agendar', 'como posso ajudar',
+  ];
+  const isGeneric = (s: string) => GENERIC_PAT.some(p => s.includes(p));
+  if (isGeneric(newReplyNorm) && isGeneric(lastBotMsg)) {
+    brain.reply = 'Desculpa, não entendi bem. Como posso te ajudar hoje? 😊';
+    console.log('[Agent] Loop guard triggered — replaced generic repeat with fallback');
   }
 
   if (shouldGreet || richFirstMessage) session.data.greetedAt = brasiliaDate;

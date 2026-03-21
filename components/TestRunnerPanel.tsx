@@ -153,6 +153,19 @@ const BUILTIN_SCENARIOS: TestScenario[] = [
     ],
   },
   {
+    id: 'bug-loop-repeat',
+    name: 'BUG: Loop infinito de respostas repetidas',
+    icon: '🐛',
+    description: 'IA repetia "manha ou tarde?" dezenas de vezes sem parar. Anti-loop adicionado.',
+    bugRef: 'Fix: 3 camadas anti-loop (semantic repeat, rate limit, max interactions)',
+    builtIn: true,
+    steps: [
+      { id: 's1', customerMessage: 'Quero cortar cabelo', expectedBehavior: 'Reconhece corte e segue fluxo' },
+      { id: 's2', customerMessage: 'Quarta', expectedBehavior: 'Aceita quarta e pergunta horario' },
+      { id: 's3', customerMessage: 'O que tiver', expectedBehavior: 'Lista horarios disponiveis, NAO repete "manha ou tarde"' },
+    ],
+  },
+  {
     id: 'regression-single-service',
     name: 'Regressao: Servico unico',
     icon: '✅',
