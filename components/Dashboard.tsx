@@ -265,33 +265,26 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
 
   return (
     <div className="space-y-5 animate-fadeIn">
-      {/* Header + filters */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        <div>
-          <p className="text-sm text-slate-400 font-medium">{greeting},</p>
-          <h1 className="text-xl sm:text-2xl font-black text-black">{tenantName || 'Meu Negócio'}</h1>
-          <p className="text-xs text-slate-400 mt-1 italic max-w-md">"{todayQuote}"</p>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <select
-            value={selectedProfId}
-            onChange={e => setSelectedProfId(e.target.value)}
-            className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold bg-white text-slate-600 outline-none cursor-pointer min-w-0 max-w-[160px]"
-          >
-            <option value="">Todos Prof.</option>
-            {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
-            {[7, 30, 90].map(d => (
-              <button
-                key={d}
-                onClick={() => setPeriod(d)}
-                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${period === d ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}
-              >
-                {d}d
-              </button>
-            ))}
-          </div>
+      {/* Filters */}
+      <div className="flex items-center justify-end gap-2 sm:gap-3 flex-wrap">
+        <select
+          value={selectedProfId}
+          onChange={e => setSelectedProfId(e.target.value)}
+          className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold bg-white text-slate-600 outline-none cursor-pointer min-w-0 max-w-[160px]"
+        >
+          <option value="">Todos Prof.</option>
+          {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
+          {[7, 30, 90].map(d => (
+            <button
+              key={d}
+              onClick={() => setPeriod(d)}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${period === d ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}
+            >
+              {d}d
+            </button>
+          ))}
         </div>
       </div>
 
@@ -329,18 +322,30 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         </div>
       )}
 
-      {/* Streak + Hoje */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-4 sm:p-5 flex items-center gap-4 shadow-lg shadow-orange-500/20">
-          <span className="text-3xl">🔥</span>
-          <div>
-            <p className="text-[10px] font-black text-orange-100 uppercase tracking-widest">Sequência</p>
-            <p className="text-2xl font-black text-white leading-none">
-              <AnimatedNumber value={streakDays} suffix=" dias" />
-            </p>
-            <p className="text-[10px] text-orange-200 mt-0.5">dias seguidos com atendimento</p>
+      {/* Motivational card */}
+      <div className="bg-gradient-to-br from-orange-500 via-orange-500 to-amber-400 rounded-2xl p-5 sm:p-7 shadow-lg shadow-orange-500/20 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/4" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-orange-100">{greeting},</p>
+            <h2 className="text-xl sm:text-2xl font-black text-white leading-tight mt-0.5">{tenantName || 'Meu Negócio'}</h2>
+            <p className="text-sm text-white/80 mt-3 italic leading-relaxed max-w-lg">"{todayQuote}"</p>
+          </div>
+          <div className="flex items-center gap-3 bg-white/15 backdrop-blur-sm rounded-2xl px-5 py-4 shrink-0">
+            <span className="text-3xl">🔥</span>
+            <div>
+              <p className="text-3xl font-black text-white leading-none">
+                <AnimatedNumber value={streakDays} />
+              </p>
+              <p className="text-[10px] font-bold text-orange-100 uppercase tracking-wider mt-0.5">dias seguidos</p>
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* Hoje + Pendentes */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 flex items-center gap-4">
           <span className="text-3xl">📅</span>
           <div>
