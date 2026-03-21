@@ -1308,10 +1308,21 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
     const knownName = existing?.nome || (pushName && pushName !== 'Cliente' ? pushName : null);
     session = { data: knownName ? { clientName: knownName } : {}, history: [] };
+
+    // ── Welcome message for brand-new leads ──────────────────────────────
+    if (!existing) {
+      const _svcExamples = services.slice(0, 3).map(s => s.name.toLowerCase()).join(', ');
+      const _welcomeMsg = `Olá! 👋 Bem-vindo(a) ao *${tenantName}*!\n\nNosso atendimento é automatizado para te ajudar de forma rápida e prática.\n\nPara agendar, é simples — basta me dizer:\n• O serviço que deseja (ex: ${_svcExamples ? `"${_svcExamples}"` : '"quero cortar o cabelo"'})\n• O dia e horário de preferência\n\nComo posso te ajudar? 😊`;
+      await sendMsg(instanceName, phone, _welcomeMsg, tenantId);
+      console.log(`[welcome] First-contact welcome sent → ${phone.slice(-4)}`);
+      // Mark as greeted so the AI doesn't send a redundant greeting
+      session.data.greetedAt = getBrasiliaGreeting().dateStr;
+    }
   }
 
   // Greeting flag (persisted in session to survive cold starts)
   const { greeting: brasiliaGreeting, dateStr: brasiliaDate } = getBrasiliaGreeting();
+  // Skip AI greeting if we just sent a welcome message (new lead)
   const shouldGreet = session.data.greetedAt !== brasiliaDate;
 
   // ── Date-change during confirmation (TypeScript layer) ───────────────
