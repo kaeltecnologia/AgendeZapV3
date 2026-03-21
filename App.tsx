@@ -553,7 +553,7 @@ const App: React.FC = () => {
     if (role === 'SUPERADMIN') return <SuperAdminView activeTab={superAdminTab} onTabChange={setSuperAdminTab} onImpersonate={handleImpersonate} />;
 
     switch (currentView) {
-      case View.DASHBOARD: return <Dashboard tenantId={tenantId} onNavigate={setCurrentView} />;
+      case View.DASHBOARD: return <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} />;
       case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} />;
       case View.SERVICOS: return <ServicesView tenantId={tenantId} />;
       case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} />;

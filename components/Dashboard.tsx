@@ -4,13 +4,13 @@ import { db } from '../services/mockDb';
 import { AppointmentStatus, Professional, Service, Customer } from '../types';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend
+  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid
 } from 'recharts';
 
 const fmtBRL = (n: number) =>
   n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const DONUT_COLORS = ['#0f172a', '#475569', '#94a3b8', '#cbd5e1', '#e2e8f0'];
+const DONUT_COLORS = ['#f97316', '#fb923c', '#fdba74', '#fed7aa', '#ffedd5'];
 const DAY_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 // Animated counter
@@ -30,7 +30,41 @@ const AnimatedNumber: React.FC<{ value: number; prefix?: string; suffix?: string
   return <span className="animate-countUp">{prefix}{display}{suffix}</span>;
 };
 
-const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => void }> = ({ tenantId, onNavigate }) => {
+const QUOTES = [
+  'Cada cliente é uma oportunidade de fazer a diferença.',
+  'O sucesso é a soma de pequenos esforços repetidos dia após dia.',
+  'Seu talento é o seu maior investimento.',
+  'Hoje é o dia perfeito para superar suas metas.',
+  'Grandes resultados começam com pequenas atitudes.',
+  'A excelência não é um ato, é um hábito.',
+  'Faça do seu trabalho a sua obra-prima.',
+  'Cada atendimento é uma chance de fidelizar.',
+  'O profissionalismo é o que transforma clientes em fãs.',
+  'Sua dedicação de hoje constrói o sucesso de amanhã.',
+  'Quem ama o que faz, faz com excelência.',
+  'A consistência vence o talento quando o talento não é consistente.',
+  'Construa sua reputação um cliente de cada vez.',
+  'O melhor marketing é um cliente satisfeito.',
+  'Acredite no seu potencial — seus resultados provam.',
+  'Disciplina é a ponte entre metas e conquistas.',
+  'Seu diferencial é a forma como você trata cada pessoa.',
+  'Não espere oportunidades, crie-as.',
+  'A qualidade do seu serviço define o tamanho do seu futuro.',
+  'Mais um dia para brilhar. Vamos com tudo!',
+  'Trabalhe em silêncio, deixe os resultados falarem.',
+  'O segredo do sucesso? Nunca parar de melhorar.',
+  'Transforme cada desafio em combustível para crescer.',
+  'A atitude certa abre portas que o talento sozinho não abre.',
+  'Clientes voltam por causa de experiências, não só serviços.',
+  'Você não precisa ser perfeito, precisa ser comprometido.',
+  'Pequenos detalhes fazem grandes profissionais.',
+  'Seu melhor concorrente é quem você era ontem.',
+  'Comece cada dia com propósito e termine com orgulho.',
+  'A persistência é o caminho mais curto para o sucesso.',
+  'Faça hoje o que outros não querem, conquiste amanhã o que outros não podem.',
+];
+
+const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: (view: string) => void }> = ({ tenantId, tenantName, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -215,6 +249,12 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
     .slice(0, 3);
   const maxRev = topProfs[0]?.revenue || 1;
 
+  // Greeting + daily quote
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const dayOfYear = Math.floor((Date.now() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
+  const todayQuote = QUOTES[dayOfYear % QUOTES.length];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-20">
@@ -226,10 +266,11 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* Header + filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-black">Dashboard</h1>
-          <p className="text-xs text-slate-400 mt-0.5">Visão estratégica do negócio.</p>
+          <p className="text-sm text-slate-400 font-medium">{greeting},</p>
+          <h1 className="text-xl sm:text-2xl font-black text-black">{tenantName || 'Meu Negócio'}</h1>
+          <p className="text-xs text-slate-400 mt-1 italic max-w-md">"{todayQuote}"</p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <select
@@ -428,7 +469,7 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
                 contentStyle={{ borderRadius: 10, border: '1px solid #f1f5f9', fontSize: 11, background: '#fff', color: '#0f172a', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
                 cursor={{ fill: '#f8fafc' }}
               />
-              <Bar dataKey="value" fill="#0f172a" radius={[5, 5, 0, 0]} />
+              <Bar dataKey="value" fill="#f97316" radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -478,19 +519,25 @@ const Dashboard: React.FC<{ tenantId: string; onNavigate?: (view: string) => voi
       <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
         <div className="mb-4">
           <h3 className="font-black text-sm text-black">Tendência Semanal</h3>
-          <p className="text-xs text-slate-400">Comparativo receita × agendamentos</p>
+          <p className="text-xs text-slate-400">Receita das últimas 4 semanas</p>
         </div>
-        <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={weeklyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={weeklyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gradReceita" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f97316" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#f97316" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} />
-            <YAxis yAxisId="l" hide />
-            <YAxis yAxisId="r" orientation="right" hide />
-            <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #f1f5f9', fontSize: 11, background: '#fff', color: '#0f172a', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }} />
-            <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-            <Line yAxisId="l" type="monotone" dataKey="receita" name="Receita" stroke="#0f172a" strokeWidth={2.5} dot={{ r: 4, fill: '#0f172a', strokeWidth: 0 }} activeDot={{ r: 5 }} />
-            <Line yAxisId="r" type="monotone" dataKey="agendamentos" name="Agendamentos" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 3, fill: '#94a3b8', strokeWidth: 0 }} />
-          </LineChart>
+            <YAxis hide />
+            <Tooltip
+              formatter={(v: any) => [`R$ ${fmtBRL(v)}`, 'Receita']}
+              contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 11, background: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
+            />
+            <Area type="monotone" dataKey="receita" name="Receita" stroke="#f97316" strokeWidth={2.5} fill="url(#gradReceita)" dot={{ r: 4, fill: '#f97316', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: '#f97316', stroke: '#fff', strokeWidth: 2 }} />
+          </AreaChart>
         </ResponsiveContainer>
       </div>
 
