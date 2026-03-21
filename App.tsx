@@ -35,7 +35,7 @@ const TrialExpiredView = lazy(() => import('./components/TrialExpiredView'));
 const BookingPage = lazy(() => import('./components/BookingPage'));
 const MarketplacePage = lazy(() => import('./components/MarketplacePage'));
 const MarketplacePreview = lazy(() => import('./components/MarketplacePreview'));
-const PublicarView = lazy(() => import('./components/PublicarView'));
+const SocialMidiaView = lazy(() => import('./components/SocialMidiaView'));
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
@@ -75,7 +75,7 @@ enum View {
   SUPERADMIN_DASHBOARD = 'SUPERADMIN_DASHBOARD',
   OTIMIZACAO = 'OTIMIZACAO',
   MARKETPLACE = 'MARKETPLACE',
-  PUBLICAR = 'PUBLICAR',
+  SOCIAL_MIDIA = 'SOCIAL_MIDIA',
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
@@ -589,19 +589,35 @@ const App: React.FC = () => {
           <EstoqueProdutosView tenantId={tenantId} />
         </PlanGate>
       );
-      case View.COMANDAS: return <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} />;
+      case View.COMANDAS: return (
+        <PlanGate feature="caixaAvancado" tenantPlan={tenantPlan}>
+          <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} />
+        </PlanGate>
+      );
       case View.PERFORMANCE: return (
         <PlanGate feature="performance" tenantPlan={tenantPlan}>
           <PerformanceView tenantId={tenantId} />
         </PlanGate>
       );
-      case View.MARKETING: return <MarketingView tenantId={tenantId} />;
-      case View.NOTAS_FISCAIS: return <NotasFiscaisView tenantId={tenantId} />;
-      case View.FOLHA_PAGAMENTO: return <FolhaPagamentoView tenantId={tenantId} />;
+      case View.MARKETING: return (
+        <PlanGate feature="relatorios" tenantPlan={tenantPlan}>
+          <MarketingView tenantId={tenantId} />
+        </PlanGate>
+      );
+      case View.NOTAS_FISCAIS: return (
+        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+          <NotasFiscaisView tenantId={tenantId} />
+        </PlanGate>
+      );
+      case View.FOLHA_PAGAMENTO: return (
+        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+          <FolhaPagamentoView tenantId={tenantId} />
+        </PlanGate>
+      );
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
       case View.MARKETPLACE: return <MarketplacePreview tenantId={tenantId} />;
-      case View.PUBLICAR: return <PublicarView tenantId={tenantId} />;
+      case View.SOCIAL_MIDIA: return <PlanGate feature="socialMidia" tenantPlan={tenantPlan}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
       default: return <Dashboard tenantId={tenantId} />;
     }
   };
@@ -704,14 +720,14 @@ const App: React.FC = () => {
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operacional</p>}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => setCurrentView(View.COMANDAS))} icon={<IconScissors />} label="Comandas" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<IconScissors />} label="Comandas" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />
               </div>
 
               {/* ── Operação ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operação</p>}
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.PUBLICAR} onClick={navTo(() => setCurrentView(View.PUBLICAR))} icon={<IconCamera />} label="Publicar" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.SOCIAL_MIDIA} onClick={navTo(() => handleGatedNav(View.SOCIAL_MIDIA, 'socialMidia'))} icon={<IconCamera />} label="Social Mídia" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
@@ -723,11 +739,11 @@ const App: React.FC = () => {
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => setCurrentView(View.NOTAS_FISCAIS))} icon={<IconDoc />} label="Notas Fiscais" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => setCurrentView(View.FOLHA_PAGAMENTO))} icon={<IconWallet />} label="Folha Pgto." />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'financeiro'))} icon={<IconDoc />} label="Notas Fiscais" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />
                 {/* Relatórios */}
                 {sidebarCollapsed ? (
-                  <NavItem collapsed={true} active={currentView === View.MARKETING || currentView === View.PERFORMANCE} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Relatórios" />
+                  <NavItem collapsed={true} active={currentView === View.MARKETING || currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.MARKETING, 'relatorios'))} icon={<IconMarketing />} label="Relatórios" />
                 ) : (
                   <>
                     <button
@@ -740,7 +756,7 @@ const App: React.FC = () => {
                     </button>
                     {relatoriosOpen && (
                       <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
-                        <NavItem collapsed={false} active={currentView === View.MARKETING} onClick={navTo(() => setCurrentView(View.MARKETING))} icon={<IconMarketing />} label="Marketing" />
+                        <NavItem collapsed={false} active={currentView === View.MARKETING} onClick={navTo(() => handleGatedNav(View.MARKETING, 'relatorios'))} icon={<IconMarketing />} label="Marketing" />
                         <NavItem collapsed={false} active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
                       </div>
                     )}

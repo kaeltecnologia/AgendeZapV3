@@ -568,6 +568,18 @@ export interface StoryEngagement {
   descricao: string;            // o que postar no story
 }
 
+export interface ScriptScene {
+  startSec: number;             // ex: 0
+  endSec: number;               // ex: 5
+  label: string;                // ex: "Abertura", "Revelação", "CTA"
+  action: string;               // o que acontece visualmente
+  spokenLine?: string;          // fala exata (se houver)
+  music?: string;               // sugestão de música/áudio nesse trecho
+  gesture?: string;             // gesto/expressão do profissional
+  cameraAngle?: string;         // ângulo de câmera (close, wide, POV)
+  onScreenText?: string;        // texto/legenda na tela nesse trecho
+}
+
 export interface ContentDay {
   date: string;
   postTime: string;             // horário de postagem (ex: "18:00")
@@ -576,11 +588,11 @@ export interface ContentDay {
   placement: string;            // "feed" | "story" | "reels"
   objective: string;            // resumo do objetivo
   intro: string;                // texto introdutório da estratégia do dia
-  spokenScript: string;         // "FALA: ..." — roteiro falado detalhado
-  visualDirection: string;      // O QUE MOSTRAR — direção visual
-  scene: string;                // CENA — setup, ângulos, close
-  editing: string;              // EDIÇÃO — cortes, música, transições, legenda
-  cta: string;                  // call-to-action
+  scriptTimeline: ScriptScene[]; // roteiro segundo a segundo dividido em cenas
+  musicSuggestion: string;      // música principal sugerida para o conteúdo
+  totalDuration: string;        // duração total (ex: "30-45s")
+  editing: string;              // EDIÇÃO — cortes, transições, legenda
+  cta: string;                  // call-to-action resumido
   hashtags: string[];
   captionSuggestion: string;    // sugestão de legenda para a postagem
   storyEngagement: StoryEngagement[]; // sugestões de stories para engajamento
@@ -608,4 +620,11 @@ export interface TrendingItem {
   description: string;
   adaptationTip: string;
   estimatedViews: string;
+  viralReference: string;       // descrição de vídeo viral de referência
+  trendingAudio: string;        // nome da música/áudio trending
+  audioArtist: string;          // artista ou criador do áudio
+  recreationSteps: string[];    // passo-a-passo para recriar a trend
+  hashtags: string[];           // hashtags da trend
+  difficulty: 'facil' | 'medio' | 'avancado';
+  contentFormat: string;        // formato (POV, Before/After, Tutorial, etc.)
 }

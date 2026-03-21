@@ -873,6 +873,10 @@ class DatabaseService {
           galleryPhotos: fu._galleryPhotos ?? [],
           asaasCustomerId: fu._asaasCustomerId ?? '',
           asaasSubscriptionId: fu._asaasSubscriptionId ?? '',
+          socialMediaProfile: fu._socialMediaProfile ?? null,
+          contentCalendar: fu._contentCalendar ?? null,
+          trendingContent: fu._trendingContent ?? null,
+          trendingContentDate: fu._trendingContentDate ?? null,
         };
       }
     } catch (e) {
@@ -935,6 +939,10 @@ class DatabaseService {
         _galleryPhotos: newS.galleryPhotos ?? curr.galleryPhotos ?? [],
         _asaasCustomerId: newS.asaasCustomerId ?? curr.asaasCustomerId ?? '',
         _asaasSubscriptionId: newS.asaasSubscriptionId ?? curr.asaasSubscriptionId ?? '',
+        _socialMediaProfile: newS.socialMediaProfile !== undefined ? newS.socialMediaProfile : (curr.socialMediaProfile ?? null),
+        _contentCalendar: newS.contentCalendar !== undefined ? newS.contentCalendar : (curr.contentCalendar ?? null),
+        _trendingContent: newS.trendingContent !== undefined ? newS.trendingContent : (curr.trendingContent ?? null),
+        _trendingContentDate: newS.trendingContentDate !== undefined ? newS.trendingContentDate : (curr.trendingContentDate ?? null),
       };
 
       const { error } = await supabase.from('tenant_settings').upsert(

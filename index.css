@@ -59,6 +59,19 @@ button:active:not(:disabled) { transform: scale(0.93) !important; }
 .unread-ping { position: absolute; inset: 0; border-radius: 9999px; background: inherit; animation: ping 1.2s cubic-bezier(0,0,0.2,1) infinite; }
 @keyframes ping { 0% { transform: scale(1); opacity: 0.8; } 75%,100% { transform: scale(2.2); opacity: 0; } }
 
+/* ── Social Mídia Animations ────────────────────────── */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slideInLeft { animation: slideInLeft 0.4s ease-out forwards; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeInUp { animation: fadeInUp 0.5s ease-out forwards; }
+
 /* Número animado (counter) */
 @keyframes countUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .animate-countUp { animation: countUp 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }

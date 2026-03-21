@@ -106,21 +106,21 @@ const MultiSelectGrid: React.FC<{
         <button
           key={opt.id}
           onClick={() => onToggle(opt.id)}
-          className={`flex items-start gap-3 rounded-2xl border-2 p-4 transition-all text-left ${
+          className={`flex items-start gap-3 rounded-2xl border p-4 transition-all duration-300 text-left ${
             isSelected
-              ? 'border-orange-400 bg-orange-50 shadow-md'
-              : 'border-slate-100 hover:border-slate-300'
+              ? 'border-orange-300 bg-orange-50 shadow-md'
+              : 'border-slate-100 hover:border-slate-200 hover:shadow-sm'
           }`}
         >
           <span className="text-xl mt-0.5">{opt.icon}</span>
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-black text-black uppercase tracking-tight">{opt.label}</p>
-            {opt.desc && <p className="text-[10px] font-bold text-slate-400 mt-0.5 leading-tight">{opt.desc}</p>}
+            <p className="text-sm font-bold text-slate-900">{opt.label}</p>
+            {opt.desc && <p className="text-xs text-slate-400 mt-0.5 leading-tight">{opt.desc}</p>}
           </div>
           <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
             isSelected ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-200'
           }`}>
-            {isSelected && <span className="text-[9px] font-black">✓</span>}
+            {isSelected && <span className="text-[9px] font-bold">✓</span>}
           </div>
         </button>
       );
@@ -141,7 +141,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
   const [tomComunicacao, setTomComunicacao] = useState<string[]>([]);
   const [objetivos, setObjetivos] = useState<string[]>([]);
   const [diferenciais, setDiferenciais] = useState<string[]>([]);
-  const [postsPerWeek, setPostsPerWeek] = useState<number>(5);
+  // postsPerWeek is derived from diasSemana.length (no separate state needed)
   const [diasSemana, setDiasSemana] = useState<string[]>(['seg', 'ter', 'qua', 'qui', 'sex']);
   const [plataformas, setPlataformas] = useState<string[]>(['instagram']);
   const [gerarImagem, setGerarImagem] = useState(false);
@@ -174,7 +174,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
       tomComunicacao,
       objetivos,
       diferenciais,
-      postsPerWeek,
+      postsPerWeek: diasSemana.length,
       diasSemana,
       plataformas,
       gerarImagem,
@@ -208,34 +208,34 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
     <div className="max-w-2xl mx-auto space-y-8">
       {/* Header */}
       <div className="text-center space-y-3">
-        <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-orange-600 rounded-[20px] flex items-center justify-center mx-auto text-3xl shadow-lg">
+        <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-rose-500 rounded-[20px] flex items-center justify-center mx-auto text-3xl shadow-lg shadow-orange-200">
           🎬
         </div>
-        <h1 className="text-2xl font-black text-black uppercase tracking-tight">Social Mídia</h1>
-        <p className="text-xs font-bold text-slate-400 max-w-md mx-auto">
+        <h1 className="font-display text-2xl font-extrabold text-slate-900">Social Mídia</h1>
+        <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
           Responda as perguntas para a IA entender seu perfil e gerar um calendário de conteúdo personalizado.
         </p>
       </div>
 
       {/* Progress bar */}
       <div className="space-y-2">
-        <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
-          <span>Etapa {step} de {TOTAL_STEPS}</span>
-          <span>{Math.round(progress)}%</span>
+        <div className="flex justify-between text-xs text-slate-400">
+          <span className="font-medium">Etapa {step} de {TOTAL_STEPS}</span>
+          <span className="font-medium">{Math.round(progress)}%</span>
         </div>
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full transition-all duration-500"
+            className="h-full bg-gradient-to-r from-orange-400 to-rose-500 rounded-full transition-all duration-500"
             style={{ width: `${progress}%` }}
           />
         </div>
       </div>
 
       {/* Step content */}
-      <div className="bg-white rounded-[24px] border-2 border-slate-100 p-8 space-y-6">
+      <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm p-8 space-y-6">
         <div className="space-y-1">
-          <h2 className="text-sm font-black text-black uppercase tracking-widest">{currentStep.title}</h2>
-          <p className="text-[10px] font-bold text-slate-400">{currentStep.subtitle}</p>
+          <h2 className="font-display text-base font-extrabold text-slate-900">{currentStep.title}</h2>
+          <p className="text-sm text-slate-400">{currentStep.subtitle}</p>
         </div>
 
         {/* Step 1: Nicho */}
@@ -246,13 +246,13 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
                 <button
                   key={n}
                   onClick={() => { setNicho(n); if (n !== 'Outro') setNichoCustom(''); }}
-                  className={`rounded-2xl border-2 p-4 text-center transition-all ${
+                  className={`rounded-2xl border p-4 text-center transition-all duration-300 ${
                     nicho === n
-                      ? 'border-orange-400 bg-orange-50 shadow-md'
-                      : 'border-slate-100 hover:border-slate-300'
+                      ? 'border-orange-300 bg-orange-50 shadow-md'
+                      : 'border-slate-100 hover:border-slate-200 hover:shadow-sm'
                   }`}
                 >
-                  <p className="text-[11px] font-black text-black uppercase tracking-tight">{n}</p>
+                  <p className="text-sm font-bold text-slate-900">{n}</p>
                 </button>
               ))}
             </div>
@@ -309,7 +309,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
         {step === 6 && (
           <div className="space-y-6">
             <div className="space-y-3">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Seus objetivos</p>
+              <p className="text-xs font-semibold text-slate-500">Seus objetivos</p>
               <MultiSelectGrid
                 options={OBJETIVOS}
                 selected={objetivos}
@@ -317,7 +317,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
               />
             </div>
             <div className="border-t border-slate-100 pt-6 space-y-3">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Seus diferenciais</p>
+              <p className="text-xs font-semibold text-slate-500">Seus diferenciais</p>
               <MultiSelectGrid
                 options={DIFERENCIAIS}
                 selected={diferenciais}
@@ -328,55 +328,36 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
           </div>
         )}
 
-        {/* Step 7: Dias da Semana + Frequência */}
+        {/* Step 7: Dias da Semana */}
         {step === 7 && (
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dias que você quer postar</p>
-              <div className="grid grid-cols-7 gap-2">
-                {DIAS_SEMANA.map(d => {
-                  const selected = diasSemana.includes(d.id);
-                  return (
-                    <button
-                      key={d.id}
-                      onClick={() => toggle(diasSemana, setDiasSemana, d.id)}
-                      className={`rounded-2xl border-2 p-3 text-center transition-all ${
-                        selected
-                          ? 'border-orange-400 bg-orange-50 shadow-md'
-                          : 'border-slate-100 hover:border-slate-300'
-                      }`}
-                    >
-                      <p className="text-lg font-black text-black">{d.short}</p>
-                      <p className="text-[8px] font-bold text-slate-400 mt-0.5">{d.label}</p>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 text-center">
-                {diasSemana.length} dia{diasSemana.length !== 1 ? 's' : ''} selecionado{diasSemana.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-
-            <div className="border-t border-slate-100 pt-6 space-y-3">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Postagens por semana</p>
-              <div className="grid grid-cols-3 gap-4">
-                {[3, 5, 7].map(n => (
+          <div className="space-y-4">
+            <p className="text-xs font-semibold text-slate-500">Selecione os dias que você quer postar</p>
+            <div className="grid grid-cols-7 gap-2">
+              {DIAS_SEMANA.map(d => {
+                const selected = diasSemana.includes(d.id);
+                return (
                   <button
-                    key={n}
-                    onClick={() => setPostsPerWeek(n)}
-                    className={`rounded-2xl border-2 p-5 text-center transition-all ${
-                      postsPerWeek === n
-                        ? 'border-orange-400 bg-orange-50 shadow-lg scale-105'
-                        : 'border-slate-100 hover:border-slate-300'
+                    key={d.id}
+                    onClick={() => toggle(diasSemana, setDiasSemana, d.id)}
+                    className={`rounded-2xl border p-3 text-center transition-all duration-300 ${
+                      selected
+                        ? 'border-orange-300 bg-orange-50 shadow-md'
+                        : 'border-slate-100 hover:border-slate-200 hover:shadow-sm'
                     }`}
                   >
-                    <p className="text-2xl font-black text-black">{n}x</p>
-                    <p className="text-[10px] font-bold text-slate-400 mt-1">por semana</p>
-                    <p className="text-[9px] font-bold text-orange-500 mt-1">
-                      {n === 3 ? 'Essencial' : n === 5 ? 'Recomendado' : 'Intensivo'}
-                    </p>
+                    <p className="font-display text-lg font-bold text-slate-900">{d.short}</p>
+                    <p className="text-[9px] text-slate-400 mt-0.5">{d.label}</p>
                   </button>
-                ))}
+                );
+              })}
+            </div>
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/50 rounded-xl p-4 flex items-center gap-3">
+              <span className="text-2xl">📅</span>
+              <div>
+                <p className="font-display text-sm font-bold text-slate-900">
+                  {diasSemana.length} vídeo{diasSemana.length !== 1 ? 's' : ''} por semana
+                </p>
+                <p className="text-xs text-slate-500">A IA vai gerar 1 roteiro para cada dia selecionado.</p>
               </div>
             </div>
           </div>
@@ -389,56 +370,35 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
               {PLATAFORMAS.map(p => {
                 const selected = plataformas.includes(p.id);
                 const borderColor = selected
-                  ? p.color === 'purple' ? 'border-purple-400 bg-purple-50'
-                  : p.color === 'pink' ? 'border-pink-400 bg-pink-50'
-                  : 'border-green-400 bg-green-50'
-                  : 'border-slate-100 hover:border-slate-300';
+                  ? p.color === 'purple' ? 'border-purple-300 bg-purple-50'
+                  : p.color === 'pink' ? 'border-pink-300 bg-pink-50'
+                  : 'border-green-300 bg-green-50'
+                  : 'border-slate-100 hover:border-slate-200 hover:shadow-sm';
                 return (
                   <button
                     key={p.id}
                     onClick={() => toggle(plataformas, setPlataformas, p.id)}
-                    className={`w-full flex items-center gap-4 rounded-2xl border-2 p-4 transition-all text-left ${borderColor}`}
+                    className={`w-full flex items-center gap-4 rounded-2xl border p-4 transition-all duration-300 text-left ${borderColor}`}
                   >
                     <span className="text-2xl">{p.icon}</span>
-                    <p className="text-xs font-black text-black uppercase flex-1">{p.label}</p>
+                    <p className="text-sm font-bold text-slate-900 flex-1">{p.label}</p>
                     <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
                       selected ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-200'
                     }`}>
-                      {selected && <span className="text-[9px] font-black">✓</span>}
+                      {selected && <span className="text-[9px] font-bold">✓</span>}
                     </div>
                   </button>
                 );
               })}
             </div>
 
-            <div className="border-t border-slate-100 pt-6 space-y-3">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Geração de Imagem por IA</p>
-              <p className="text-[10px] font-bold text-slate-400">O foco do calendário é gerar roteiros e ideias de vídeos. Quer que a IA também gere imagens para posts de foto/carrossel?</p>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => setGerarImagem(false)}
-                  className={`rounded-2xl border-2 p-5 text-center transition-all ${
-                    !gerarImagem
-                      ? 'border-orange-400 bg-orange-50 shadow-md'
-                      : 'border-slate-100 hover:border-slate-300'
-                  }`}
-                >
-                  <p className="text-2xl">🎬</p>
-                  <p className="text-[11px] font-black text-black uppercase tracking-tight mt-2">Só Roteiros</p>
-                  <p className="text-[9px] font-bold text-slate-400 mt-1">Foco em vídeos e ideias</p>
-                </button>
-                <button
-                  onClick={() => setGerarImagem(true)}
-                  className={`rounded-2xl border-2 p-5 text-center transition-all ${
-                    gerarImagem
-                      ? 'border-orange-400 bg-orange-50 shadow-md'
-                      : 'border-slate-100 hover:border-slate-300'
-                  }`}
-                >
-                  <p className="text-2xl">🖼️</p>
-                  <p className="text-[11px] font-black text-black uppercase tracking-tight mt-2">Roteiros + Imagens</p>
-                  <p className="text-[9px] font-bold text-slate-400 mt-1">Também gera imagens por IA</p>
-                </button>
+            <div className="border-t border-slate-100 pt-6">
+              <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/50 rounded-xl p-4 flex items-center gap-3">
+                <span className="text-2xl">🎬</span>
+                <div>
+                  <p className="font-display text-sm font-bold text-slate-900">Foco 100% em Vídeos</p>
+                  <p className="text-xs text-slate-500">Todos os roteiros serão para Reels e TikTok com direção cena a cena.</p>
+                </div>
               </div>
             </div>
           </div>
@@ -450,7 +410,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
         {step > 1 && (
           <button
             onClick={() => setStep(step - 1)}
-            className="flex-1 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest border-2 border-slate-200 text-slate-500 hover:border-slate-400 transition-all"
+            className="flex-1 py-4 rounded-2xl font-display font-bold text-sm border border-slate-200 text-slate-500 hover:border-slate-400 transition-all duration-300"
           >
             ← Voltar
           </button>
@@ -459,7 +419,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
           <button
             onClick={() => setStep(step + 1)}
             disabled={!canAdvance()}
-            className="flex-1 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest bg-black text-white hover:bg-orange-500 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex-1 py-4 rounded-2xl font-display font-bold text-sm bg-slate-900 text-white hover:bg-orange-500 transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             Próximo →
           </button>
@@ -467,7 +427,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
           <button
             onClick={handleFinish}
             disabled={!canAdvance() || saving}
-            className="flex-1 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-black hover:to-black transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex-1 py-4 rounded-2xl font-display font-bold text-sm bg-gradient-to-r from-orange-500 to-rose-500 text-white hover:shadow-xl hover:shadow-orange-200 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {saving ? (
               <>

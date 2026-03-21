@@ -14,6 +14,7 @@ export type FeatureKey =
   | 'relatoriosAvancados' // Relatórios comparativos e de crescimento trimestral — ELITE
   | 'reativacao'          // Reativação automática de clientes — PROFISSIONAL+
   | 'disparo'             // Disparador massivo segmentado — PROFISSIONAL+
+  | 'socialMidia'         // Social Mídia: calendário, roteiros, tendências — PROFISSIONAL+
   | 'assistenteAdmin';    // Assistente administrativo via WhatsApp — ELITE
 
 export interface PlanConfig {
@@ -69,6 +70,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       'Caixa diário e taxas de cartão',
       'Disparador de mensagens',
       'Reativação automática',
+      'Social Mídia (calendário e roteiros)',
       'Assistente admin via WhatsApp',
     ],
     permissions: {
@@ -79,6 +81,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       relatoriosAvancados: false,
       reativacao: false,
       disparo: false,
+      socialMidia: false,
       assistenteAdmin: false,
     },
   },
@@ -111,6 +114,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       'Relatórios por profissional',
       'Reativação automática de clientes',
       'Disparador segmentado',
+      'Social Mídia — calendário e roteiros com IA',
     ],
     notIncluded: [
       'Caixa diário detalhado',
@@ -126,6 +130,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       relatoriosAvancados: false,
       reativacao: true,
       disparo: true,
+      socialMidia: true,
       assistenteAdmin: false,
     },
   },
@@ -154,6 +159,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       'Projeção de faturamento avançada',
       'Relatórios comparativos mensais',
       'Relatórios de crescimento trimestral',
+      'Social Mídia — calendário e roteiros com IA',
       'Assistente administrativo via WhatsApp',
       'Prioridade no suporte',
     ],
@@ -166,6 +172,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       relatoriosAvancados: true,
       reativacao: true,
       disparo: true,
+      socialMidia: true,
       assistenteAdmin: true,
     },
   },

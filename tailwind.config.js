@@ -7,7 +7,11 @@ export default {
   ],
   darkMode: 'class',
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        display: ['Poppins', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 }
