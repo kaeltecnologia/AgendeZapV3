@@ -5,8 +5,9 @@ import ContentOnboarding from './social/ContentOnboarding';
 import ContentCalendar from './social/ContentCalendar';
 import TrendingContent from './social/TrendingContent';
 import PublicarView from './PublicarView';
+import VideoEditor from './social/VideoEditor';
 
-type Tab = 'calendario' | 'publicar' | 'tendencias';
+type Tab = 'calendario' | 'editor' | 'publicar' | 'tendencias';
 
 interface Props {
   tenantId: string;
@@ -14,6 +15,7 @@ interface Props {
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'calendario', label: 'Calendário', icon: '📅' },
+  { id: 'editor', label: 'Editor', icon: '✂️' },
   { id: 'publicar', label: 'Publicar', icon: '📸' },
   { id: 'tendencias', label: 'Tendências', icon: '🔥' },
 ];
@@ -213,6 +215,9 @@ const SocialMidiaView: React.FC<Props> = ({ tenantId }) => {
       {/* Content */}
       {tab === 'calendario' && profile && (
         <ContentCalendar tenantId={tenantId} profile={profile} />
+      )}
+      {tab === 'editor' && (
+        <VideoEditor />
       )}
       {tab === 'publicar' && (
         <PublicarView tenantId={tenantId} />
