@@ -741,7 +741,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
         tenant_id: tenantId,
         customer_id: bookingCustomerId,
         professional_id: bookingProfId,
-        service_id: encodeServiceIds(bookingSvcIds),
+        service_id: bookingSvcIds[0],
         serviceIds: bookingSvcIds,
         startTime,
         durationMinutes: dur,

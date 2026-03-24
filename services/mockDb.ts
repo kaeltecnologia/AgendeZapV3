@@ -305,31 +305,43 @@ class DatabaseService {
         inicio = toLocalISO(start);
         fim = toLocalISO(end);
       }
-      // Multi-service: encode serviceIds array into service_id column
-      const serviceIdValue = app.serviceIds && app.serviceIds.length > 0
-        ? encodeServiceIds(app.serviceIds)
-        : app.service_id;
+      // Multi-service: service_id is UUID in DB, so store first service and
+      // create linked group via same inicio timestamp for multi-service appointments.
+      const svcIds = app.serviceIds && app.serviceIds.length > 0 ? app.serviceIds : [app.service_id];
+      const firstServiceId = svcIds[0];
 
       const payload: any = {
         tenant_id: app.tenant_id,
         customer_id: app.customer_id,
         professional_id: app.professional_id,
-        service_id: serviceIdValue,
+        service_id: firstServiceId,
         inicio,
         fim,
         status: app.status || AppointmentStatus.PENDING,
         origem: app.source || BookingSource.WEB,
         is_plan: app.isPlan ?? false
       };
-      let { data, error } = await supabase.from('appointments').insert(payload).select().single();
-      // Fallback: if is_plan column not yet migrated, retry without it
-      if (error && (error.message?.includes('is_plan') || (error as any).code === '42703')) {
-        console.warn('[DB] is_plan column missing — run migration. Retrying without it.');
-        const { is_plan, ...payloadWithout } = payload;
-        const r2 = await supabase.from('appointments').insert(payloadWithout).select().single();
-        data = r2.data; error = r2.error;
+
+      const insertOne = async (p: any) => {
+        let { data, error } = await supabase.from('appointments').insert(p).select().single();
+        if (error && (error.message?.includes('is_plan') || (error as any).code === '42703')) {
+          console.warn('[DB] is_plan column missing — run migration. Retrying without it.');
+          const { is_plan, ...payloadWithout } = p;
+          const r2 = await supabase.from('appointments').insert(payloadWithout).select().single();
+          data = r2.data; error = r2.error;
+        }
+        if (error) throw error;
+        return data;
+      };
+
+      // Insert first service
+      const data = await insertOne(payload);
+
+      // Insert additional services as linked appointments (same time slot)
+      for (let i = 1; i < svcIds.length; i++) {
+        await insertOne({ ...payload, service_id: svcIds[i] });
       }
-      if (error) throw error;
+
       return {
         ...data,
         startTime: data.inicio,

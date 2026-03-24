@@ -324,7 +324,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       // Pass local time string directly — never go through toISOString (avoids UTC+3h shift)
       const newApp = await db.addAppointment({
         tenant_id: tenantId, customer_id: customerId, professional_id: profId,
-        service_id: encodeServiceIds(svcIds), serviceIds: svcIds,
+        service_id: svcIds[0], serviceIds: svcIds,
         startTime: `${manualDate}T${manualTime}:00`,
         durationMinutes: totalDuration, status: AppointmentStatus.CONFIRMED,
         source: isPlanAppt ? BookingSource.PLAN : BookingSource.MANUAL,

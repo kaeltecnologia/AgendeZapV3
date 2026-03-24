@@ -30,6 +30,7 @@ const FolhaPagamentoView = lazy(() => import('./components/FolhaPagamentoView'))
 const EstoqueProdutosView = lazy(() => import('./components/EstoqueProdutosView'));
 const SuperAdminView = lazy(() => import('./components/SuperAdminView'));
 const SupportChat = lazy(() => import('./components/SupportChat'));
+const TutorialsPanel = lazy(() => import('./components/TutorialsPanel'));
 const OtimizacaoView = lazy(() => import('./components/OtimizacaoView'));
 const TrialExpiredView = lazy(() => import('./components/TrialExpiredView'));
 const BookingPage = lazy(() => import('./components/BookingPage'));
@@ -134,6 +135,7 @@ const App: React.FC = () => {
   const [showUpdateNotice, setShowUpdateNotice] = useState(() => !localStorage.getItem('agz_update_seen_v3'));
   const [unreadConvCount, setUnreadConvCount] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [showTutorials, setShowTutorials] = useState(false);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
   }, []);
@@ -923,6 +925,19 @@ const App: React.FC = () => {
 
       {isAuthenticated && role === 'TENANT' && tenantId && (
         <>
+          {/* Floating Tutorials button */}
+          <div className="fixed bottom-[10.5rem] right-6 z-50">
+            <button
+              onClick={() => setShowTutorials(true)}
+              title="Tutoriais"
+              className="w-14 h-14 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:shadow-2xl transition-all cursor-pointer"
+            >
+              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+            </button>
+          </div>
+          <TutorialsPanel open={showTutorials} onClose={() => setShowTutorials(false)} />
           {/* Floating Marketplace button — opens in new tab */}
           <div className="fixed bottom-24 right-6 z-50">
             <button
