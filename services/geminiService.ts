@@ -42,9 +42,10 @@ export const processWhatsAppMessage = async (tenantId: string, phone: string, na
     REGRAS:
     1. Nunca use listas numeradas.
     2. Se o cliente pedir agendamento, você deve identificar: O que ele quer (Serviço), com quem (Barbeiro) e quando (Data/Hora).
-    3. Se faltar informação, peça educadamente.
-    4. Ao confirmar, use o campo "appointmentDetails" no JSON de saída.
-    5. Para o campo "dateTime", use sempre o formato ISO 8601 (Ex: 2024-05-20T14:30:00).
+    3. IMPORTANTE: O cliente pode pedir MÚLTIPLOS serviços de uma vez (ex: "cabelo e barba", "corte e relaxamento"). Nesse caso, retorne TODOS os serviços no array "serviceNames". Nunca ignore um serviço mencionado.
+    4. Se faltar informação, peça educadamente.
+    5. Ao confirmar, use o campo "appointmentDetails" no JSON de saída.
+    6. Para o campo "dateTime", use sempre o formato ISO 8601 (Ex: 2024-05-20T14:30:00).
   `;
 
   try {
@@ -64,7 +65,7 @@ export const processWhatsAppMessage = async (tenantId: string, phone: string, na
               type: Type.OBJECT,
               properties: {
                 professionalName: { type: Type.STRING },
-                serviceName: { type: Type.STRING },
+                serviceNames: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Array com TODOS os serviços pedidos pelo cliente (ex: ['Corte', 'Barba'])" },
                 dateTime: { type: Type.STRING, description: "Data e hora no formato ISO" }
               }
             }
@@ -83,28 +84,46 @@ export const processWhatsAppMessage = async (tenantId: string, phone: string, na
       if (!isNaN(requestedDate.getTime())) {
         const customer = await db.findOrCreateCustomer(tenantId, phone, name);
         
-        // Match inteligente para profissional e serviço
+        // Match inteligente para profissional
         const prof = professionals.find(p => p.name.toLowerCase().includes(result.appointmentDetails.professionalName?.toLowerCase() || "")) || professionals[0];
-        const svc = services.find(s => s.name.toLowerCase().includes(result.appointmentDetails.serviceName?.toLowerCase() || "")) || services[0];
-        
-        const check = await db.isSlotAvailable(tenantId, prof.id, requestedDate, svc.durationMinutes);
-        
+
+        // Match múltiplos serviços — suporta array (novo) e string (legado)
+        const rawNames: string[] = Array.isArray(result.appointmentDetails.serviceNames)
+          ? result.appointmentDetails.serviceNames
+          : result.appointmentDetails.serviceName
+            ? [result.appointmentDetails.serviceName]
+            : [];
+
+        const matchedSvcs = rawNames
+          .map(name => services.find(s => s.name.toLowerCase().includes(name.toLowerCase())))
+          .filter(Boolean) as typeof services;
+
+        // Fallback: se nenhum serviço matched, usa o primeiro
+        const svcs = matchedSvcs.length > 0 ? matchedSvcs : [services[0]];
+        const totalDuration = svcs.reduce((sum, s) => sum + s.durationMinutes, 0);
+        const totalPrice = svcs.reduce((sum, s) => sum + s.price, 0);
+
+        const check = await db.isSlotAvailable(tenantId, prof.id, requestedDate, totalDuration);
+
         if (check.available) {
+          const svcIds = svcs.map(s => s.id);
           const newApp = await db.addAppointment({
-            tenant_id: tenantId, 
-            customer_id: customer.id, 
-            professional_id: prof.id, 
-            service_id: svc.id, 
-            startTime: requestedDate.toISOString(), 
-            durationMinutes: svc.durationMinutes, 
-            status: AppointmentStatus.CONFIRMED, 
+            tenant_id: tenantId,
+            customer_id: customer.id,
+            professional_id: prof.id,
+            service_id: svcIds[0],
+            serviceIds: svcIds,
+            startTime: requestedDate.toISOString(),
+            durationMinutes: totalDuration,
+            status: AppointmentStatus.CONFIRMED,
             source: BookingSource.AI
           });
-          
+
           await sendProfessionalNotification(newApp);
-          
-          // Sobrescreve a resposta da IA com uma confirmação precisa dos dados reais gravados
-          result.replyText = `Show! ✅ Agendado com sucesso:\n\n✂️ *${svc.name}*\n👤 *${prof.name}*\n📅 *${requestedDate.toLocaleDateString('pt-BR')} às ${requestedDate.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}*\n\nTe esperamos lá!`;
+
+          // Confirmação com todos os serviços
+          const svcList = svcs.map(s => s.name).join(' + ');
+          result.replyText = `Show! ✅ Agendado com sucesso:\n\n✂️ *${svcList}* (R$${totalPrice.toFixed(2).replace('.', ',')})\n👤 *${prof.name}*\n📅 *${requestedDate.toLocaleDateString('pt-BR')} às ${requestedDate.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}*\n\nTe esperamos lá!`;
         } else {
           result.replyText = `Poxa, o horário das ${requestedDate.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} com ${prof.name} já está ocupado. Quer tentar outro momento?`;
         }
