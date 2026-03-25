@@ -718,10 +718,10 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
 // ── Notify waitlist leads when a slot opens (appointment cancelled) ────
 async function notifyWaitlistLeadsInline(tenantId: string, date?: string) {
   try {
-    const { data: tenantRow } = await supabase.from('tenants').select('evolution_instance, nome, name').eq('id', tenantId).maybeSingle();
+    const { data: tenantRow } = await supabase.from('tenants').select('evolution_instance, nome').eq('id', tenantId).maybeSingle();
     const inst: string = tenantRow?.evolution_instance || '';
     if (!inst) return;
-    const tenantName: string = tenantRow?.nome || tenantRow?.name || 'Nosso estabelecimento';
+    const tenantName: string = tenantRow?.nome || 'Nosso estabelecimento';
 
     const { data: sRow } = await supabase.from('tenant_settings').select('follow_up').eq('tenant_id', tenantId).maybeSingle();
     const fu = sRow?.follow_up || {};
