@@ -340,8 +340,8 @@ async function callBrain(
   operatingHours?: Record<number, { active: boolean; start?: string; end?: string }>
 ): Promise<any | null> {
   // ── Data preparation (unchanged) ──────────────────────────────────
-  const svcList = services.map(s => `- ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) -- ID:"${s.id}"`).join('\n');
-  const profList = professionals.length > 0 ? professionals.map(p => `- ${p.name} -- ID:"${p.id}"`).join('\n') : '- (apenas um profissional disponível)';
+  const svcList = services.map(s => `- ${s.name || 'Serviço'} (${s.durationMinutes || 30}min, R$${(Number(s.price) || 0).toFixed(2)}) -- ID:"${s.id}"`).join('\n');
+  const profList = professionals.length > 0 ? professionals.map(p => `- ${p.name || 'Profissional'} -- ID:"${p.id}"`).join('\n') : '- (apenas um profissional disponível)';
 
   const known: string[] = [];
   if (data.clientName) known.push(`Nome: ${data.clientName}`);
@@ -865,7 +865,7 @@ const SVC_SYNONYMS: Record<string, string[]> = {
   'relaxamento': ['relaxamento', 'relaxar'],
 };
 const SVC_STOP = new Set(['de', 'do', 'da', 'dos', 'das', 'e', 'com', 'no', 'na', 'em', 'o', 'a', 'os', 'as', 'um', 'uma', 'pra', 'para', 'por', 'que', 'nao', 'sim', 'hoje', 'amanha', 'horas', 'hora', 'marca', 'marcar', 'agendar', 'reservar', 'quero', 'preciso', 'gostaria', 'favor', 'pode', 'vou', 'vai', 'ter', 'tem', 'boa', 'bom', 'tarde', 'noite', 'dia', 'manha', 'voce', 'viu', 'deixa', 'agendado', 'tambem', 'aquele', 'fazer', 'querer']);
-const svcNorm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+const svcNorm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
 
 // ── Detect ALL service categories mentioned in text ──────────────────
 function detectServiceCategories(text: string): Set<string> {
@@ -1286,7 +1286,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const todayISO = `${nowBrasilia.getUTCFullYear()}-${pad(nowBrasilia.getUTCMonth()+1)}-${pad(nowBrasilia.getUTCDate())}`;
 
   const services = (svcsRes.data || []).map((s: any) => ({
-    id: s.id, name: s.nome, durationMinutes: s.duracao_minutos, price: Number(s.preco || 0)
+    id: s.id, name: (s.nome || 'Serviço').trim(), durationMinutes: s.duracao_minutos || 30, price: Number(s.preco || 0)
   }));
 
   // Build custom system prompt with variable substitution
@@ -1297,8 +1297,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       .replace(/\$\{tenant\.nome\}/g, tenantName)
       .replace(/\$\{hoje\}/g, hoje)
       .replace(/\$\{tenant\.nicho\}/g, tenant.nicho || 'estabelecimento')
-      .replace(/\$\{profStr\}/g, professionals.map(p => p.name).join(', '))
-      .replace(/\$\{svcStr\}/g, services.map(s => `${s.name} (R$${s.price.toFixed(2)})`).join(', '));
+      .replace(/\$\{profStr\}/g, professionals.map(p => p.name || 'Profissional').join(', '))
+      .replace(/\$\{svcStr\}/g, services.map(s => `${s.name || 'Serviço'} (R$${(Number(s.price) || 0).toFixed(2)})`).join(', '));
   }
 
   // Get/create session
@@ -1311,7 +1311,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
     // ── Welcome message for brand-new leads ──────────────────────────────
     if (!existing) {
-      const _svcExamples = services.slice(0, 3).map(s => s.name.toLowerCase()).join(', ');
+      const _svcExamples = services.slice(0, 3).map(s => (s.name || 'serviço').toLowerCase()).join(', ');
       const _welcomeMsg = `Olá! 👋 Bem-vindo(a) ao *${tenantName}*!\n\nNosso atendimento é automatizado para te ajudar de forma rápida e prática.\n\nPara agendar, é simples — basta me dizer:\n• O serviço que deseja (ex: ${_svcExamples ? `"${_svcExamples}"` : '"quero cortar o cabelo"'})\n• O dia e horário de preferência\n\nComo posso te ajudar? 😊`;
       await sendMsg(instanceName, phone, _welcomeMsg, tenantId);
       console.log(`[welcome] First-contact welcome sent → ${phone.slice(-4)}`);
@@ -2594,6 +2594,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         session.data._comboRequest = undefined;
         session.data._comboTotalDuration = undefined;
         session.data._comboTotalPrice = undefined;
+        session.data._comboServiceIds = undefined;
         // Clear date/time so AI re-asks after service change
         session.data.date = undefined;
         session.data.time = undefined;
@@ -2618,6 +2619,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         session.data._comboRequest = _matchedSvc._allMatched.map(s => s.name).join(' + ');
         session.data._comboTotalDuration = _matchedSvc.durationMinutes;
         session.data._comboTotalPrice = _matchedSvc.price;
+        session.data._comboServiceIds = _matchedSvc._allMatched.map(s => s.id);
         console.log('[Agent] TS multi-service:', session.data._comboRequest, `(${_matchedSvc.durationMinutes}min, R$${_matchedSvc.price})`);
       } else if (_matchedSvc._comboCategories && _matchedSvc._comboCategories.length >= 2) {
         session.data._comboRequest = _matchedSvc._comboCategories.join(' + ');
@@ -3037,9 +3039,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       let isPlanAppt = false;
       let planBalanceMsg = '';
       try {
-        const cData = settings.customerData[customer.id] || {};
+        const cData = (settings.customerData || {})[customer.id] || {};
         if (cData.planId && cData.planStatus === 'ativo') {
-          const plan = settings.plans.find(p => p.id === cData.planId && p.active);
+          const plan = (settings.plans || []).find(p => p.id === cData.planId && p.active);
           if (plan) {
             // Migrate legacy plan format
             const quotas = plan.quotas && plan.quotas.length > 0
@@ -3050,11 +3052,11 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             const quota = quotas.find(q => q.serviceId === svcId);
             if (quota) {
               const usageKey = `${customer.id}::${svcId}`;
-              const used = settings.planUsage[usageKey] || 0;
+              const used = (settings.planUsage || {})[usageKey] || 0;
               if (used < quota.quantity) {
                 isPlanAppt = true;
                 // Increment usage in JSONB
-                const newUsage = { ...settings.planUsage, [usageKey]: used + 1 };
+                const newUsage = { ...(settings.planUsage || {}), [usageKey]: used + 1 };
                 const { data: curSettings } = await supabase.from('tenant_settings')
                   .select('follow_up').eq('tenant_id', tenantId).maybeSingle();
                 const curFu = curSettings?.follow_up || {};
@@ -3062,13 +3064,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
                   tenant_id: tenantId,
                   follow_up: { ...curFu, _planUsage: newUsage }
                 }, { onConflict: 'tenant_id' });
+                if (!settings.planUsage) (settings as any).planUsage = {};
                 settings.planUsage[usageKey] = used + 1; // update local copy too
 
                 // Build balance message for all quotas
                 const balParts: string[] = [];
                 for (const q of quotas) {
                   const uKey = `${customer.id}::${q.serviceId}`;
-                  const u = settings.planUsage[uKey] || 0;
+                  const u = (settings.planUsage || {})[uKey] || 0;
                   const svcName = session.data.serviceName || q.serviceId;
                   // Try to look up real service name for other quotas
                   balParts.push(`${svcName}: ${u}/${q.quantity}`);
@@ -3082,17 +3085,23 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         console.error('[Agent] plan quota check error:', ePlan);
       }
 
-      await supabase.from('appointments').insert({
-        tenant_id: tenantId,
-        customer_id: customer.id,
-        professional_id: session.data.professionalId,
-        service_id: session.data.serviceId,
-        inicio: startTimeStr,
-        fim: endTimeStr,
-        status: 'CONFIRMED',
-        origem: 'AI',
-        is_plan: isPlanAppt,
-      });
+      // Multi-service: create one row per service (same time slot)
+      const _allSvcIds: string[] = (session.data._comboServiceIds && session.data._comboServiceIds.length >= 2)
+        ? session.data._comboServiceIds
+        : [session.data.serviceId];
+      for (const _svcId of _allSvcIds) {
+        await supabase.from('appointments').insert({
+          tenant_id: tenantId,
+          customer_id: customer.id,
+          professional_id: session.data.professionalId,
+          service_id: _svcId,
+          inicio: startTimeStr,
+          fim: endTimeStr,
+          status: 'CONFIRMED',
+          origem: 'AI',
+          is_plan: isPlanAppt,
+        });
+      }
 
       // ── Reschedule: cancel old appointment ───────────────────────────
       const pendingRS = session.data.pendingReschedule;
@@ -3110,19 +3119,20 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
       await clearSession(tenantId, phone);
 
+      const _priceStr = session.data._comboTotalPrice ? ` (R$${(Number(session.data._comboTotalPrice) || 0).toFixed(2).replace('.', ',')})` : (session.data.servicePrice ? ` (R$${(Number(session.data.servicePrice) || 0).toFixed(2).replace('.', ',')})` : '');
       const confirmMsg = wasReschedule
         ? `✅ *Reagendado!*\n\n` +
           `📅 *Dia:* ${formatDate(session.data.date)}\n` +
           `⏰ *Horário:* ${session.data.time}\n` +
-          `✂️ *Procedimento:* ${session.data.serviceName}\n` +
-          `💈 *Profissional:* ${session.data.professionalName}` +
+          `✂️ *Procedimento:* ${session.data.serviceName || 'Procedimento'}${_priceStr}\n` +
+          `💈 *Profissional:* ${session.data.professionalName || 'Profissional'}` +
           (isPlanAppt ? planBalanceMsg : '') +
           `\n\nTe esperamos! 😊`
         : `✅ *Agendamento confirmado!*\n\n` +
           `📅 *Dia:* ${formatDate(session.data.date)}\n` +
           `⏰ *Horário:* ${session.data.time}\n` +
-          `✂️ *Procedimento:* ${session.data.serviceName}\n` +
-          `💈 *Profissional:* ${session.data.professionalName}` +
+          `✂️ *Procedimento:* ${session.data.serviceName || 'Procedimento'}${_priceStr}\n` +
+          `💈 *Profissional:* ${session.data.professionalName || 'Profissional'}` +
           (isPlanAppt ? planBalanceMsg : '') +
           `\n\nTe esperamos! 😊`;
       await sendMsg(instanceName, phone, confirmMsg, tenantId);
