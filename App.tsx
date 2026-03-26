@@ -566,7 +566,7 @@ const App: React.FC = () => {
           <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />
         </PlanGate>
       );
-      case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} />;
+      case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} tenantPlan={tenantPlan} />;
       case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.PLANOS: return <PlansView tenantId={tenantId} />;
       case View.TEST_WA: return (
@@ -632,7 +632,7 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-slate-50/30">
       <Toast toasts={toasts} onRemove={removeToast} />
       {role === 'TENANT' && <WhatsNew />}
-      {tenantId && (
+      {tenantId && hasFeature(tenantPlan, 'agenteIA') && (
         <AiPollingManager
           tenantId={tenantId}
           onStatus={(connected, aiActive) => setPollingStatus({ connected, aiActive })}

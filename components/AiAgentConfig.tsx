@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDb';
+import { hasFeature } from '../config/planConfig';
 
 const Toggle = ({ checked, onChange, label, description }: {
   checked: boolean;
@@ -25,7 +26,7 @@ const Toggle = ({ checked, onChange, label, description }: {
 const DEFAULT_PROMPT = 'Você é o assistente oficial da Barbearia. Use um tom amigável, moderno e focado na conversão de agendamentos. Pergunte o que o cliente deseja e guie-o até a confirmação de horário, profissional e serviço.';
 const DEFAULT_AGENT_NAME = 'Agente Inteligente AgendeZap';
 
-const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
   const [active, setActive] = useState(false);
   const [aiLeadActive, setAiLeadActive] = useState(true);
   const [aiProfessionalActive, setAiProfessionalActive] = useState(false);
@@ -74,6 +75,28 @@ const AiAgentConfig: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   };
 
   if (loadingSettings) return <div className="p-20 text-center font-black animate-pulse">CARREGANDO CONFIGURAÇÕES...</div>;
+
+  if (!hasFeature(tenantPlan, 'agenteIA')) {
+    return (
+      <div className="space-y-10 animate-fadeIn">
+        <div>
+          <h1 className="text-3xl font-black text-black uppercase tracking-tight">Agente IA</h1>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Configurações de inteligência artificial</p>
+        </div>
+        <div className="bg-white p-10 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 text-center space-y-6">
+          <div className="w-24 h-24 mx-auto rounded-[30px] bg-slate-50 flex items-center justify-center text-5xl">🔒</div>
+          <h2 className="text-xl font-black text-black uppercase tracking-tight">Recurso do Plano Profissional</h2>
+          <p className="text-sm font-bold text-slate-400 max-w-md mx-auto">
+            O Agente IA de agendamento via WhatsApp está disponível a partir do plano <strong className="text-blue-600">Profissional</strong>. Faça upgrade para ativar o atendimento automático por IA.
+          </p>
+          <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-5 max-w-sm mx-auto">
+            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Plano Profissional</p>
+            <p className="text-2xl font-black text-blue-700 mt-1">R$89,90<span className="text-xs font-bold text-blue-400">/mês</span></p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const usingOpenAI = openaiApiKey.trim().startsWith('sk-');
 

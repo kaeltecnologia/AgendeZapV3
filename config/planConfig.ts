@@ -7,6 +7,7 @@
 export type PlanId = 'START' | 'PROFISSIONAL' | 'ELITE';
 
 export type FeatureKey =
+  | 'agenteIA'            // Agente IA de agendamento via WhatsApp — PROFISSIONAL+
   | 'financeiro'          // Financeiro Essencial: despesas, lucro, margem, comissão — PROFISSIONAL+
   | 'performance'         // Performance: ranking, metas, ticket médio, faltas — PROFISSIONAL+
   | 'caixaAvancado'       // Caixa diário + taxas de cartão configuráveis — ELITE
@@ -52,7 +53,6 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     emoji: '🟢',
     badge: '🟢 Start',
     features: [
-      'IA de agendamento',
       'Confirmação automática',
       '1 profissional incluído',
       'Lembretes automáticos',
@@ -64,6 +64,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       '+R$29,90 por profissional adicional',
     ],
     notIncluded: [
+      'Agente IA de agendamento',
       'Despesas e lucro líquido',
       'Comissão automática',
       'Ranking e metas de equipe',
@@ -74,6 +75,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       'Assistente admin via WhatsApp',
     ],
     permissions: {
+      agenteIA: false,
       financeiro: false,
       performance: false,
       caixaAvancado: false,
@@ -101,6 +103,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     badge: '🔵 Profissional',
     features: [
       'Tudo do Start',
+      'Agente IA de agendamento',
       'Até 5 profissionais',
       'Performance — ranking e metas',
       'Meta mensal com barra de progresso',
@@ -123,6 +126,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       'Assistente admin via WhatsApp',
     ],
     permissions: {
+      agenteIA: true,
       financeiro: true,
       performance: true,
       caixaAvancado: false,
@@ -165,6 +169,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     ],
     notIncluded: [],
     permissions: {
+      agenteIA: true,
       financeiro: true,
       performance: true,
       caixaAvancado: true,

@@ -7,7 +7,7 @@ import { db } from '../services/mockDb';
 
 type Tab = 'whatsapp' | 'agente' | 'linkweb' | 'instagram' | 'google';
 
-const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string }> = ({ tenantId, tenantSlug }) => {
+const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?: string }> = ({ tenantId, tenantSlug, tenantPlan }) => {
   const [tab, setTab] = useState<Tab>('whatsapp');
   const [copied, setCopied] = useState(false);
   const dbOnline = db.isOnline();
@@ -51,7 +51,7 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string }> = ({ tena
       {/* Content */}
       <div>
         {tab === 'whatsapp' && <EvolutionConfig tenantId={tenantId} tenantSlug={tenantSlug} />}
-        {tab === 'agente'   && <AiAgentConfig   tenantId={tenantId} />}
+        {tab === 'agente'   && <AiAgentConfig   tenantId={tenantId} tenantPlan={tenantPlan} />}
         {tab === 'instagram' && <InstagramConfig tenantId={tenantId} />}
         {tab === 'google'   && <GoogleBusinessConfig tenantId={tenantId} />}
         {tab === 'linkweb'  && (

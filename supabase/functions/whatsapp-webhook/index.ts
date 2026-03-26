@@ -3585,6 +3585,10 @@ Deno.serve(async (req) => {
       // ── AI processing — only if aiActive ──────────────────────────
       if (!settings.aiActive) continue;
 
+      // ── Plan gate: plano START não tem acesso ao agente IA ──────
+      const tenantPlan = (tenant.plano || tenant.plan || 'START').toUpperCase();
+      if (tenantPlan === 'START') continue;
+
       // Se aiLeadActive estiver desativado, ignora mensagens de números desconhecidos
       // Também verifica se a IA foi pausada manualmente para este lead específico
       const hasPausedCustomers = Object.values(settings.customerData).some(cd => cd?.aiPaused);
