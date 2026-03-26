@@ -87,6 +87,10 @@ async function getSession(tenantId: string, phone: string): Promise<any | null> 
   delete sd.availableSlots;
   // pendingVacationOffer is per-turn context, should not persist
   delete sd.pendingVacationOffer;
+  // Clean stale button state (>30 min old)
+  if (sd._pendingButtons && Date.now() - (sd._pendingButtons.sentAt || 0) > 30 * 60 * 1000) {
+    delete sd._pendingButtons;
+  }
   return { data: sd, history: data.history || [] };
 }
 
@@ -715,6 +719,100 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
   }
 }
 
+// ── Send WhatsApp interactive buttons (max 3) ────────────────────────
+async function sendButtons(instanceName: string, phone: string, title: string, description: string, buttons: Array<{id: string; text: string}>, tenantId?: string) {
+  try {
+    await fetch(`${EVO_URL}/message/sendButtons/${instanceName}`, {
+      method: 'POST', headers: EVO_HEADERS,
+      body: JSON.stringify({
+        number: phone, title, description, footerText: 'AgendeZap',
+        buttons: buttons.slice(0, 3).map(b => ({ buttonId: b.id, buttonText: { displayText: b.text } })),
+      }),
+    });
+    if (tenantId) {
+      saveWaMsg(tenantId, `out_btn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        phone, `[Botões: ${buttons.map(b => b.text).join(' | ')}]`, Math.floor(Date.now() / 1000), 'Bot', 'buttons', true
+      ).catch(() => {});
+    }
+  } catch (e) { console.error('[sendButtons] error:', e); }
+}
+
+// ── Send WhatsApp list message (many options) ─────────────────────────
+async function sendListMessage(instanceName: string, phone: string, title: string, description: string, buttonText: string, sections: Array<{title: string; rows: Array<{id: string; title: string; description?: string}>}>, tenantId?: string) {
+  try {
+    await fetch(`${EVO_URL}/message/sendList/${instanceName}`, {
+      method: 'POST', headers: EVO_HEADERS,
+      body: JSON.stringify({
+        number: phone, title, description, buttonText, footerText: 'AgendeZap',
+        sections: sections.map(sec => ({
+          title: sec.title,
+          rows: sec.rows.slice(0, 10).map(r => ({ rowId: r.id, title: (r.title || '').slice(0, 24), description: (r.description || '').slice(0, 72) })),
+        })).slice(0, 10),
+      }),
+    });
+    if (tenantId) {
+      const rowCount = sections.reduce((s, sec) => s + sec.rows.length, 0);
+      saveWaMsg(tenantId, `out_list_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        phone, `[Lista: ${rowCount} opções]`, Math.floor(Date.now() / 1000), 'Bot', 'list', true
+      ).catch(() => {});
+    }
+  } catch (e) { console.error('[sendListMessage] error:', e); }
+}
+
+// ── Decide and send interactive buttons based on session state ────────
+type PendingButtons = { type: 'service' | 'professional' | 'time' | 'confirmation'; options: Array<{id: string; label: string}>; sentAt: number };
+
+async function maybeSendInteractiveButtons(
+  instanceName: string, phone: string, sessionData: any,
+  services: Array<{id: string; name: string; durationMinutes: number; price: number}>,
+  professionals: Array<{id: string; name: string}>,
+  availableSlots: string[] | undefined, tenantId: string
+): Promise<PendingButtons | null> {
+  try {
+    // POINT 1: Service Selection
+    if (!sessionData.serviceId && services.length >= 2) {
+      const rows = services.map(s => ({ id: `svc_${s.id}`, title: (s.name || 'Serviço').slice(0, 24), description: `${s.durationMinutes || 30}min — R$${(Number(s.price) || 0).toFixed(2)}` }));
+      if (services.length <= 3) {
+        await sendButtons(instanceName, phone, 'Serviços', 'Qual serviço deseja?', rows.map(r => ({ id: r.id, text: r.title })), tenantId);
+      } else {
+        await sendListMessage(instanceName, phone, 'Serviços', 'Escolha o serviço desejado:', 'Ver serviços', [{ title: 'Serviços disponíveis', rows }], tenantId);
+      }
+      return { type: 'service', options: rows.map(r => ({ id: r.id, label: r.title })), sentAt: Date.now() };
+    }
+
+    // POINT 2: Professional Selection
+    if (sessionData.serviceId && !sessionData.professionalId && professionals.length >= 2) {
+      if (professionals.length <= 3) {
+        const btns = professionals.map(p => ({ id: `prof_${p.id}`, text: (p.name || 'Profissional').slice(0, 20) }));
+        await sendButtons(instanceName, phone, 'Profissional', 'Com qual profissional?', btns, tenantId);
+      } else {
+        const rows = professionals.map(p => ({ id: `prof_${p.id}`, title: (p.name || 'Profissional').slice(0, 24) }));
+        await sendListMessage(instanceName, phone, 'Profissionais', 'Com qual profissional?', 'Ver profissionais', [{ title: 'Profissionais disponíveis', rows }], tenantId);
+      }
+      return { type: 'professional', options: professionals.map(p => ({ id: `prof_${p.id}`, label: p.name || 'Profissional' })), sentAt: Date.now() };
+    }
+
+    // POINT 3: Time Slot Selection
+    if (sessionData.serviceId && sessionData.professionalId && sessionData.date && !sessionData.time && availableSlots && availableSlots.length > 0) {
+      const slotsToShow = availableSlots.slice(0, 10);
+      const rows = slotsToShow.map(s => ({ id: `slot_${s.replace(':', '')}`, title: s }));
+      await sendListMessage(instanceName, phone, 'Horários', 'Escolha um horário:', 'Ver horários', [{ title: `Horários disponíveis`, rows }], tenantId);
+      return { type: 'time', options: rows.map(r => ({ id: r.id, label: r.title })), sentAt: Date.now() };
+    }
+
+    // POINT 4: Confirmation
+    if (sessionData.pendingConfirm && sessionData.serviceId && sessionData.professionalId && sessionData.date && sessionData.time) {
+      await sendButtons(instanceName, phone, 'Confirmar Agendamento',
+        `${sessionData.serviceName || 'Serviço'} — ${sessionData.date} às ${sessionData.time} com ${sessionData.professionalName || 'Profissional'}`,
+        [{ id: 'confirm_yes', text: 'Confirmar ✅' }, { id: 'confirm_change', text: 'Alterar horário' }, { id: 'confirm_cancel', text: 'Cancelar' }],
+        tenantId
+      );
+      return { type: 'confirmation', options: [{ id: 'confirm_yes', label: 'Confirmar' }, { id: 'confirm_change', label: 'Alterar' }, { id: 'confirm_cancel', label: 'Cancelar' }], sentAt: Date.now() };
+    }
+  } catch (e) { console.error('[maybeSendInteractiveButtons] error:', e); }
+  return null;
+}
+
 // ── Notify waitlist leads when a slot opens (appointment cancelled) ────
 async function notifyWaitlistLeadsInline(tenantId: string, date?: string) {
   try {
@@ -1317,6 +1415,60 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       console.log(`[welcome] First-contact welcome sent → ${phone.slice(-4)}`);
       // Mark as greeted so the AI doesn't send a redundant greeting
       session.data.greetedAt = getBrasiliaGreeting().dateStr;
+    }
+  }
+
+  // ── Button response resolution ─────────────────────────────────────
+  // If incoming message matches a pending button ID, resolve to session data + natural text
+  const _pb = session.data._pendingButtons as PendingButtons | undefined;
+  if (_pb && _pb.sentAt > Date.now() - 30 * 60 * 1000) {
+    const _normText = text.trim().toLowerCase();
+    const _matched = _pb.options.find(o =>
+      _normText === o.id.toLowerCase() || _normText === o.label.toLowerCase() ||
+      text.includes(o.id) || text.includes(o.label)
+    );
+    if (_matched) {
+      const _id = _matched.id;
+      if (_pb.type === 'service' && _id.startsWith('svc_')) {
+        const _svcId = _id.replace('svc_', '');
+        const _svc = services.find(s => s.id === _svcId);
+        if (_svc) {
+          session.data.serviceId = _svc.id;
+          session.data.serviceName = _svc.name;
+          session.data.serviceDuration = _svc.durationMinutes;
+          session.data.servicePrice = _svc.price;
+          text = _svc.name;
+          console.log(`[Buttons] Service selected: ${_svc.name}`);
+        }
+      } else if (_pb.type === 'professional' && _id.startsWith('prof_')) {
+        const _profId = _id.replace('prof_', '');
+        const _prof = professionals.find(p => p.id === _profId);
+        if (_prof) {
+          session.data.professionalId = _prof.id;
+          session.data.professionalName = _prof.name;
+          text = _prof.name;
+          console.log(`[Buttons] Professional selected: ${_prof.name}`);
+        }
+      } else if (_pb.type === 'time' && _id.startsWith('slot_')) {
+        const _timeRaw = _id.replace('slot_', '');
+        const _formatted = _timeRaw.length === 4 ? `${_timeRaw.slice(0,2)}:${_timeRaw.slice(2)}` : _timeRaw;
+        session.data.time = _formatted;
+        text = _formatted;
+        console.log(`[Buttons] Time selected: ${_formatted}`);
+      } else if (_pb.type === 'confirmation') {
+        if (_id === 'confirm_yes') text = 'sim, confirmar';
+        else if (_id === 'confirm_change') { text = 'quero alterar o horário'; session.data.time = undefined; session.data.pendingConfirm = undefined; }
+        else if (_id === 'confirm_cancel') text = 'cancelar';
+        console.log(`[Buttons] Confirmation: ${_id} → "${text}"`);
+      }
+      session.data._pendingButtons = undefined;
+      // Refresh lowerText and derived flags after button resolution
+      lowerText = text.toLowerCase();
+      isCancellation = ['cancelar', 'cancela', 'cancele', 'cancelamento'].some(k => lowerText.includes(k));
+      isReset = lowerText.trim().length <= 40 && ['sair', 'reiniciar', 'recomeçar', 'recomecar', 'esquece', 'esquecer'].some(k => lowerText.includes(k));
+    } else {
+      // No match — clear stale buttons, let text flow through normally
+      session.data._pendingButtons = undefined;
     }
   }
 
@@ -2756,6 +2908,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         session.data.availableSlots = _foundNextSlots;
         session.history.push({ role: 'bot', text: noAvail });
         await sendMsg(instanceName, phone, noAvail, tenantId);
+        // Send time slot buttons for the alternative day
+        if (_foundNextSlots.length > 0) {
+          const _slotRows = _foundNextSlots.slice(0, 10).map(s => ({ id: `slot_${s.replace(':', '')}`, title: s }));
+          await sendListMessage(instanceName, phone, 'Horários', 'Escolha um horário:', 'Ver horários', [{ title: 'Horários disponíveis', rows: _slotRows }], tenantId);
+          session.data._pendingButtons = { type: 'time' as const, options: _slotRows.map(r => ({ id: r.id, label: r.title })), sentAt: Date.now() };
+        }
         saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
         return;
       }
@@ -3020,6 +3178,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         if (freshSlots.length === 0) session.data.date = undefined;
         session.history.push({ role: 'bot', text: takenMsg });
         await sendMsg(instanceName, phone, takenMsg, tenantId);
+        // Send time slot buttons for fresh alternatives
+        if (freshSlots.length > 0) {
+          const _freshRows = freshSlots.slice(0, 10).map(s => ({ id: `slot_${s.replace(':', '')}`, title: s }));
+          await sendListMessage(instanceName, phone, 'Horários', 'Escolha um horário:', 'Ver horários', [{ title: 'Horários disponíveis', rows: _freshRows }], tenantId);
+          session.data._pendingButtons = { type: 'time' as const, options: _freshRows.map(r => ({ id: r.id, label: r.title })), sentAt: Date.now() };
+        }
         saveSession(tenantId, phone, session.data, session.history).catch(() => {});
         return;
       }
@@ -3236,6 +3400,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (shouldGreet || richFirstMessage) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
   await sendMsg(instanceName, phone, brain.reply, tenantId);
+
+  // ── Send interactive buttons after AI reply ──────────────────────────
+  const _btnResult = await maybeSendInteractiveButtons(
+    instanceName, phone, session.data, services, professionalsVisible,
+    prefetchedSlots || session.data.availableSlots, tenantId
+  );
+  if (_btnResult) session.data._pendingButtons = _btnResult;
+
   saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
 }
 
@@ -3461,7 +3633,10 @@ Deno.serve(async (req) => {
         if (!await claimMsg(`wh::${msgId}`)) continue;
         // Also claim by fingerprint so browser polling skips this message
         const phone = extractPhone(msg);
-        const rawText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+        const rawText = msg.message?.conversation || msg.message?.extendedTextMessage?.text
+          || msg.message?.buttonsResponseMessage?.selectedButtonId
+          || msg.message?.listResponseMessage?.singleSelectReply?.selectedRowId
+          || msg.message?.templateButtonReplyMessage?.selectedId || '';
         if (phone && rawText) {
           await claimMsg(`${tenant.id}::${phone}::${rawText.trim().slice(0, 120)}`);
         }
@@ -3469,6 +3644,22 @@ Deno.serve(async (req) => {
 
       // Resolve text (with audio transcription + confirmation if needed)
       let text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || '').trim();
+      // ── Parse button/list interactive responses ─────────────────────────
+      let _buttonResponseId: string | null = null;
+      if (!text) {
+        const _btnId = msg.message?.buttonsResponseMessage?.selectedButtonId
+          || msg.message?.templateButtonReplyMessage?.selectedId || null;
+        const _listId = msg.message?.listResponseMessage?.singleSelectReply?.selectedRowId || null;
+        let _interactiveId: string | null = null;
+        try { const _nf = msg.message?.interactiveResponseMessage?.nativeFlowResponseMessage; if (_nf?.params) { const _p = JSON.parse(_nf.params); _interactiveId = _p?.id || null; } } catch {}
+        _buttonResponseId = _btnId || _listId || _interactiveId || null;
+        if (_buttonResponseId) {
+          text = msg.message?.buttonsResponseMessage?.selectedDisplayText
+            || msg.message?.listResponseMessage?.title
+            || _buttonResponseId;
+          console.log(`[Buttons] Received interactive response: ${_buttonResponseId} → text="${text}"`);
+        }
+      }
       if (!text) {
         const msgType = msg.messageType || msg.type || '';
         const isAudio = ['audioMessage', 'pttMessage'].includes(msgType) || !!msg.message?.audioMessage || !!msg.message?.pttMessage;
