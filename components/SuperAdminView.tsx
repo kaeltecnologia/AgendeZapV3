@@ -2175,7 +2175,7 @@ END $$;`.trim();
                     <p className="text-[9px] font-black text-slate-400 uppercase mt-3">Senha</p>
                     <p className="text-xl font-black text-orange-500 font-mono">{successData.pass}</p>
                     <p className="text-[9px] font-black text-slate-400 uppercase mt-3">Link de agendamento</p>
-                    <p className="text-xs font-bold text-blue-500 break-all">{window.location.origin}{window.location.pathname}#/agendar/{successData.slug}</p>
+                    <p className="text-xs font-bold text-blue-500 break-all">{window.location.origin}/agendar/{successData.slug}</p>
                   </div>
                   <button onClick={() => { setShowNew(false); setSuccessData(null); }} className="w-full py-4 bg-black text-white rounded-2xl font-black uppercase text-xs">Fechar</button>
                 </div>

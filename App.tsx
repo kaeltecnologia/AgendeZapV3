@@ -527,6 +527,9 @@ const App: React.FC = () => {
   };
 
   const bookingSlug = (() => {
+    // Support both /agendar/slug (clean URL) and #/agendar/slug (legacy hash)
+    const pathMatch = window.location.pathname.match(/\/agendar\/(.+)/);
+    if (pathMatch) return pathMatch[1];
     const m = hash.match(/^#\/agendar\/(.+)$/);
     return m ? m[1] : null;
   })();

@@ -192,7 +192,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
             {tenantSlug && (
               <button
                 onClick={() => {
-                  const url = `${window.location.origin}${window.location.pathname}#/agendar/${tenantSlug}`;
+                  const url = `${window.location.origin}/agendar/${tenantSlug}`;
                   window.open(url, '_blank');
                 }}
                 className="w-full bg-white border-2 border-slate-100 text-slate-600 py-3 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:border-orange-500 hover:text-orange-500 transition-all flex items-center justify-center gap-2"

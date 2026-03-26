@@ -85,7 +85,7 @@ const MarketplacePreview: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     })();
   }, [tenantId]);
 
-  const weblink = `${window.location.origin}/#/agendar/${tenant?.slug || ''}`;
+  const weblink = `${window.location.origin}/agendar/${tenant?.slug || ''}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(weblink);

@@ -944,7 +944,7 @@ const MarketplacePage: React.FC = () => {
                   {followedTenants.has(selectedTenant.id) ? 'Seguindo ✓' : 'Seguir'}
                 </button>
                 <div className="relative flex-1">
-                  <a href={`#/agendar/${selectedTenant.slug}`} onClick={() => { setBookingConfetti(true); setTimeout(() => setBookingConfetti(false), 1400); }} className="block w-full py-2 rounded-xl font-black text-[11px] uppercase tracking-wider bg-orange-500 text-white hover:bg-orange-600 transition-all text-center">Agendar</a>
+                  <a href={`/agendar/${selectedTenant.slug}`} onClick={() => { setBookingConfetti(true); setTimeout(() => setBookingConfetti(false), 1400); }} className="block w-full py-2 rounded-xl font-black text-[11px] uppercase tracking-wider bg-orange-500 text-white hover:bg-orange-600 transition-all text-center">Agendar</a>
                   {bookingConfetti && (
                     <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, height: 0, pointerEvents: 'none', overflow: 'visible' }}>
                       {['🎉','✨','⭐','🌟','💫','🎊','🔥','❤️'].map((emoji, i) => (
@@ -1009,7 +1009,7 @@ const MarketplacePage: React.FC = () => {
                   {selectedTenant.endereco && (
                     <p className="text-xs text-slate-500 font-bold">📍 {selectedTenant.endereco}{selectedTenant.cidade ? `, ${selectedTenant.cidade}` : ''}</p>
                   )}
-                  <a href={`#/agendar/${selectedTenant.slug}`} onClick={() => { setBookingConfetti(true); setTimeout(() => setBookingConfetti(false), 1400); }} className="block w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all text-center">
+                  <a href={`/agendar/${selectedTenant.slug}`} onClick={() => { setBookingConfetti(true); setTimeout(() => setBookingConfetti(false), 1400); }} className="block w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all text-center">
                     Agendar Horário
                   </a>
                 </div>
@@ -1096,7 +1096,7 @@ const MarketplacePage: React.FC = () => {
             {tenant && (
               <div className="absolute bottom-6 left-4 right-4 z-20">
                 <a
-                  href={`#/agendar/${tenant.slug}`}
+                  href={`/agendar/${tenant.slug}`}
                   onClick={e => e.stopPropagation()}
                   className="block w-full bg-white text-black py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest text-center hover:bg-orange-500 hover:text-white transition-all"
                 >

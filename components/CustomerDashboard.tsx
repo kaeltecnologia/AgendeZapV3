@@ -328,7 +328,7 @@ const CustomerDashboard: React.FC = () => {
                           <button onClick={() => removeFavorite(t.id)} className="text-red-400 hover:text-red-600 text-lg transition-all" title="Remover">❤️</button>
                         </div>
                         {t.endereco && <p className="text-[10px] text-slate-400 font-bold">📍 {t.endereco}{t.cidade ? `, ${t.cidade}` : ''}</p>}
-                        <a href={`#/agendar/${t.slug}`}
+                        <a href={`/agendar/${t.slug}`}
                           className="block text-center bg-orange-500 text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">
                           Agendar
                         </a>

@@ -12,7 +12,7 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
   const [copied, setCopied] = useState(false);
   const dbOnline = db.isOnline();
 
-  const bookingUrl = `${window.location.origin}${window.location.pathname}#/agendar/${tenantSlug}`;
+  const bookingUrl = `${window.location.origin}/agendar/${tenantSlug}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(bookingUrl).then(() => {

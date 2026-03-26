@@ -1,4 +1,8 @@
 {
+  "rewrites": [
+    { "source": "/agendar/:slug*", "destination": "/index.html" },
+    { "source": "/marketplace", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/index.html",
