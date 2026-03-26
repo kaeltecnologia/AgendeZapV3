@@ -1407,13 +1407,18 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const knownName = existing?.nome || (pushName && pushName !== 'Cliente' ? pushName : null);
     session = { data: knownName ? { clientName: knownName } : {}, history: [] };
 
-    // ── Welcome message for brand-new leads ──────────────────────────────
+    // ── Welcome message ──────────────────────────────────────────────────
     if (!existing) {
-      const _svcExamples = services.slice(0, 3).map(s => (s.name || 'serviço').toLowerCase()).join(', ');
-      const _welcomeMsg = `Olá! 👋 Bem-vindo(a) ao *${tenantName}*!\n\nNosso atendimento é automatizado para te ajudar de forma rápida e prática.\n\nPara agendar, é simples — basta me dizer:\n• O serviço que deseja (ex: ${_svcExamples ? `"${_svcExamples}"` : '"quero cortar o cabelo"'})\n• O dia e horário de preferência\n\nComo posso te ajudar? 😊`;
+      // Brand-new lead
+      const _welcomeMsg = `Olá! 👋 Bem-vindo(a) a *${tenantName}*!\n\nNosso atendimento é automatizado e funciona 24/7 🕐\n\nComo posso te ajudar? 😊`;
       await sendMsg(instanceName, phone, _welcomeMsg, tenantId);
       console.log(`[welcome] First-contact welcome sent → ${phone.slice(-4)}`);
-      // Mark as greeted so the AI doesn't send a redundant greeting
+      session.data.greetedAt = getBrasiliaGreeting().dateStr;
+    } else {
+      // Returning lead — new session
+      const _welcomeBack = `Olá! 👋 Bem-vindo(a) novamente a *${tenantName}*!\n\nNosso atendimento é automatizado e funciona 24/7 🕐\n\nComo posso te ajudar? 😊`;
+      await sendMsg(instanceName, phone, _welcomeBack, tenantId);
+      console.log(`[welcome] Returning-lead welcome sent → ${phone.slice(-4)}`);
       session.data.greetedAt = getBrasiliaGreeting().dateStr;
     }
   }
