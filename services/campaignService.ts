@@ -86,11 +86,17 @@ export async function deleteCampaign(id: string): Promise<void> {
 // pg_cron calls it every minute as server-side fallback.
 const TICK_URL =
   'https://cnnfnqrnjckntnxdgwae.supabase.co/functions/v1/whatsapp-webhook';
+const ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
 
 export async function triggerTick(): Promise<void> {
   await fetch(TICK_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-campaign-tick': 'true' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-campaign-tick': 'true',
+      'Authorization': `Bearer ${ANON_KEY}`,
+    },
     body: '{}',
   }).catch(() => {}); // non-fatal — pg_cron is the fallback
 }
