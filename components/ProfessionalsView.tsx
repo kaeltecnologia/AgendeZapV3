@@ -32,6 +32,14 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [vacEnd, setVacEnd] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [intervalPro, setIntervalPro] = useState<Professional | null>(null);
+  const [intervalStart, setIntervalStart] = useState('15:00');
+  const [intervalEnd, setIntervalEnd] = useState('15:30');
+  const [intervalDays, setIntervalDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [intervalDate, setIntervalDate] = useState('');
+  const [intervalMode, setIntervalMode] = useState<'recurring' | 'specific'>('recurring');
+  const [editingIntervalId, setEditingIntervalId] = useState<string | null>(null);
+
   const [deleteProId, setDeleteProId] = useState<string | null>(null);
   const [deletingPro, setDeletingPro] = useState(false);
 
@@ -180,6 +188,69 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally { setSaving(false); }
   };
 
+  const openInterval = (pro: Professional, existingId?: string) => {
+    if (existingId) {
+      const existing = breaks.find(b => b.id === existingId);
+      if (existing) {
+        setIntervalStart(existing.startTime);
+        setIntervalEnd(existing.endTime);
+        if (existing.date) {
+          setIntervalMode('specific');
+          setIntervalDate(existing.date);
+          setIntervalDays([]);
+        } else {
+          setIntervalMode('recurring');
+          setIntervalDate('');
+          setIntervalDays(existing.dayOfWeek == null ? [0, 1, 2, 3, 4, 5, 6] : [existing.dayOfWeek]);
+        }
+        setEditingIntervalId(existingId);
+      }
+    } else {
+      setIntervalStart('15:00'); setIntervalEnd('15:30');
+      setIntervalDays([1, 2, 3, 4, 5]); setIntervalDate('');
+      setIntervalMode('recurring'); setEditingIntervalId(null);
+    }
+    setIntervalPro(pro);
+  };
+
+  const saveInterval = async () => {
+    if (!intervalPro) return;
+    if (intervalMode === 'specific' && !intervalDate) { alert('Informe a data do intervalo.'); return; }
+    if (intervalMode === 'recurring' && intervalDays.length === 0) { alert('Selecione ao menos um dia.'); return; }
+    setSaving(true);
+    try {
+      const withoutOld = editingIntervalId
+        ? breaks.filter(b => b.id !== editingIntervalId)
+        : breaks;
+      let newBreaks: BreakPeriod[];
+      if (intervalMode === 'specific') {
+        newBreaks = [{ id: genId(), type: 'break', label: `Intervalo — ${intervalPro.name}`, professionalId: intervalPro.id, dayOfWeek: null, date: intervalDate, startTime: intervalStart, endTime: intervalEnd }];
+      } else {
+        const allDays = intervalDays.length === 7;
+        newBreaks = allDays
+          ? [{ id: genId(), type: 'break', label: `Intervalo — ${intervalPro.name}`, professionalId: intervalPro.id, dayOfWeek: null, date: null, startTime: intervalStart, endTime: intervalEnd }]
+          : intervalDays.map(d => ({ id: genId(), type: 'break' as const, label: `Intervalo — ${intervalPro.name}`, professionalId: intervalPro.id, dayOfWeek: d, date: null, startTime: intervalStart, endTime: intervalEnd }));
+      }
+      await db.saveBreaks(tenantId, [...withoutOld, ...newBreaks]);
+      await load();
+      setIntervalPro(null);
+    } finally { setSaving(false); }
+  };
+
+  const removeInterval = async (id: string) => {
+    setSaving(true);
+    try {
+      const without = breaks.filter(b => b.id !== id);
+      await db.saveBreaks(tenantId, without);
+      await load();
+    } finally { setSaving(false); }
+  };
+
+  const toggleIntervalDay = (d: number) =>
+    setIntervalDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+
+  const getIntervalsInfo = (pro: Professional) => breaks.filter(b => b.type === 'break' && b.professionalId === pro.id);
+
   const applyPreset = (period: string) => {
     setPresetPeriod(period);
     const now = new Date();
@@ -243,6 +314,7 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         {pros.map((p) => {
           const lunch = getLunchInfo(p);
           const vac = getVacInfo(p);
+          const intervals = getIntervalsInfo(p);
           return (
             <div key={p.id} className="bg-white p-5 sm:p-6 md:p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-orange-500 transition-all">
               <div className="flex items-center space-x-5 mb-6 cursor-pointer" onClick={() => { setSelectedProForReport(p); setReportTab('appointments'); }}>
@@ -270,11 +342,28 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     <span className="text-[10px] font-black text-blue-700">Férias: {vac.date} até {vac.vacationEndDate}</span>
                   </div>
                 )}
+                {intervals.map(intv => (
+                  <div key={intv.id} className="flex items-center justify-between bg-purple-50 border border-purple-100 rounded-xl px-3 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">⏸️</span>
+                      <span className="text-[10px] font-black text-purple-700">
+                        Intervalo {intv.startTime}–{intv.endTime}
+                        {intv.date ? ` (${intv.date})` : intv.dayOfWeek != null ? ` (${DAYS_PT[intv.dayOfWeek]})` : ' (todos os dias)'}
+                      </span>
+                    </div>
+                    <button onClick={() => openInterval(p, intv.id)} className="text-purple-400 hover:text-purple-700 text-[9px] font-black">
+                      Editar
+                    </button>
+                  </div>
+                ))}
               </div>
               <div className="border-t-2 border-slate-50 pt-4 space-y-2">
                 <div className="flex gap-2">
                   <button onClick={() => openLunch(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
                     🍽️ Almoço
+                  </button>
+                  <button onClick={() => openInterval(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                    ⏸️ Intervalo
                   </button>
                   <button onClick={() => openVacation(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
                     🌴 Férias
@@ -391,6 +480,82 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               <button onClick={() => setVacPro(null)} className="flex-1 py-3 font-black text-slate-400 uppercase text-xs" disabled={saving}>Cancelar</button>
               <button onClick={saveVacation} disabled={saving || !vacStart || !vacEnd} className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-black uppercase text-xs hover:bg-blue-600 transition-all disabled:opacity-40">
                 {saving ? 'Salvando...' : 'Confirmar Férias'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── INTERVAL MODAL ────────────────────────────────────────────── */}
+      {intervalPro && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[40px] w-full max-w-sm p-8 space-y-6 animate-scaleUp border-4 border-black max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⏸️</span>
+              <div>
+                <h2 className="text-xl font-black text-black uppercase">{editingIntervalId ? 'Editar Intervalo' : 'Novo Intervalo'}</h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{intervalPro.name}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 font-bold leading-relaxed">
+              O profissional ficará indisponível neste horário. O agente IA e o link web não oferecem esses slots.
+            </p>
+            <div className="space-y-4">
+              {/* Mode selector */}
+              <div className="flex gap-2">
+                <button onClick={() => setIntervalMode('recurring')}
+                  className={`flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${intervalMode === 'recurring' ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-purple-50'}`}>
+                  Recorrente
+                </button>
+                <button onClick={() => setIntervalMode('specific')}
+                  className={`flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${intervalMode === 'specific' ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-purple-50'}`}>
+                  Data Específica
+                </button>
+              </div>
+              {/* Time range */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Início</label>
+                  <input type="time" value={intervalStart} onChange={e => setIntervalStart(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-purple-400" />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fim</label>
+                  <input type="time" value={intervalEnd} onChange={e => setIntervalEnd(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-purple-400" />
+                </div>
+              </div>
+              {/* Days or date */}
+              {intervalMode === 'recurring' ? (
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Dias da semana</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {DAYS_PT.map((d, i) => (
+                      <button key={i} onClick={() => toggleIntervalDay(i)}
+                        className={`w-9 h-9 rounded-xl font-black text-[9px] uppercase transition-all ${intervalDays.includes(i) ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-purple-100'}`}>
+                        {d.slice(0, 3)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Data</label>
+                  <input type="date" value={intervalDate} onChange={e => setIntervalDate(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black outline-none focus:border-purple-400" />
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 pt-2">
+              {editingIntervalId && (
+                <button onClick={async () => { await removeInterval(editingIntervalId); setIntervalPro(null); }} disabled={saving}
+                  className="px-4 py-3 bg-red-50 text-red-500 rounded-2xl font-black text-[9px] uppercase hover:bg-red-100 transition-all">
+                  Remover
+                </button>
+              )}
+              <button onClick={() => setIntervalPro(null)} className="flex-1 py-3 font-black text-slate-400 uppercase text-xs" disabled={saving}>Cancelar</button>
+              <button onClick={saveInterval} disabled={saving} className="flex-1 py-3 bg-purple-500 text-white rounded-2xl font-black uppercase text-xs hover:bg-purple-600 transition-all disabled:opacity-40">
+                {saving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>
