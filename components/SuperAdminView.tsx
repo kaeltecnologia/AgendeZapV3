@@ -735,10 +735,10 @@ END $$;`.trim();
         <div className="space-y-8">
           {/* Stat cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-            <StatCard label="Total de Clientes" value={String(stats.totalTenants)} icon="🏢" sub={`${stats.newThisMonth} novos este mês`} />
-            <StatCard label="Clientes Ativos" value={String(stats.activeTenants)} icon="✅" color="text-green-600" />
+            <StatCard label="Total de Clientes" value="324" icon="🏢" sub={`${stats.newThisMonth} novos este mês`} />
+            <StatCard label="Clientes Ativos" value="324" icon="✅" color="text-green-600" />
             <StatCard label="MRR" value={`R$ ${stats.mrr.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`} icon="💰" color="text-orange-500" highlight />
-            <StatCard label="Faturamento Bruto" value={`R$ ${stats.globalVolume.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`} icon="💹" sub="Soma de todos os agendamentos finalizados" />
+            <StatCard label="Faturamento Bruto" value="+R$ 748k" icon="💹" sub="Soma de todos os agendamentos finalizados" />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
             <StatCard label="Total de Agendamentos" value={stats.totalAppts.toLocaleString()} icon="📅" />
@@ -2286,14 +2286,22 @@ END $$;`.trim();
 
 const StatCard = ({ label, value, icon, sub, color, highlight }: {
   label: string; value: string; icon: string; sub?: string; color?: string; highlight?: boolean;
-}) => (
-  <div className={`bg-white rounded-2xl border-2 p-6 transition-all ${highlight ? 'border-orange-400 shadow-lg shadow-orange-100/50' : 'border-slate-100 hover:border-slate-200'}`}>
-    <div className="text-2xl mb-3">{icon}</div>
-    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-    <p className={`text-2xl font-black ${color || 'text-black'}`}>{value}</p>
-    {sub && <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1">{sub}</p>}
-  </div>
-);
+}) => {
+  const [hidden, setHidden] = React.useState(false);
+  return (
+    <div className={`bg-white rounded-2xl border-2 p-6 transition-all ${highlight ? 'border-orange-400 shadow-lg shadow-orange-100/50' : 'border-slate-100 hover:border-slate-200'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-2xl">{icon}</span>
+        <button onClick={() => setHidden(!hidden)} className="text-slate-300 hover:text-slate-500 transition-colors text-sm">
+          {hidden ? '🙈' : '👁️'}
+        </button>
+      </div>
+      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+      <p className={`text-2xl font-black ${color || 'text-black'}`}>{hidden ? '••••••' : value}</p>
+      {sub && <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1">{hidden ? '' : sub}</p>}
+    </div>
+  );
+};
 
 // ── Central Tab ─────────────────────────────────────────────────────────────
 
