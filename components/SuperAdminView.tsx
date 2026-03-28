@@ -735,10 +735,10 @@ END $$;`.trim();
         <div className="space-y-8">
           {/* Stat cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-            <StatCard label="Total de Clientes" value="324" icon="🏢" sub={`${stats.newThisMonth} novos este mês`} />
-            <StatCard label="Clientes Ativos" value="324" icon="✅" color="text-green-600" />
+            <StatCard label="Total de Clientes" value={String(stats.totalTenants)} icon="🏢" sub={`${stats.newThisMonth} novos este mês`} />
+            <StatCard label="Clientes Ativos" value={String(stats.activeTenants)} icon="✅" color="text-green-600" />
             <StatCard label="MRR" value={`R$ ${stats.mrr.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`} icon="💰" color="text-orange-500" highlight />
-            <StatCard label="Faturamento Bruto" value="+R$ 748k" icon="💹" sub="Soma de todos os agendamentos finalizados" />
+            <StatCard label="Faturamento Bruto" value={`R$ ${stats.globalVolume.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`} icon="💹" sub="Soma de todos os agendamentos finalizados" />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
             <StatCard label="Total de Agendamentos" value={stats.totalAppts.toLocaleString()} icon="📅" />
