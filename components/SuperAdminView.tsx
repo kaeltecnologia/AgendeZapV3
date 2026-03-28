@@ -2250,6 +2250,30 @@ END $$;`.trim();
                     })}
                   </div>
                 </div>
+                {/* Reset quiz */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Quiz Social Midia</label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!editingTenant) return;
+                      if (!confirm(`Reiniciar o quiz e o contador de resets de "${editingTenant.name}"?`)) return;
+                      try {
+                        const settings = await db.getSettings(editingTenant.id);
+                        const followUp = (settings as any).follow_up || {};
+                        await db.updateSettings(editingTenant.id, {
+                          socialMediaProfile: null,
+                          contentCalendar: null,
+                          follow_up: { ...followUp, _quizResetCount: 0, _quizResetMonth: '' },
+                        } as any);
+                        alert('Quiz reiniciado com sucesso! O tenant pode refazer o quiz agora.');
+                      } catch (e) { alert('Erro ao reiniciar quiz'); }
+                    }}
+                    className="w-full p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl text-amber-700 font-black text-xs uppercase tracking-widest hover:bg-amber-100 transition-all"
+                  >
+                    Reiniciar Quiz + Zerar Contador
+                  </button>
+                </div>
               </div>
               <div className="flex gap-4">
                 <button onClick={() => setEditingTenant(null)} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs" disabled={saving}>Cancelar</button>
