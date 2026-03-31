@@ -98,9 +98,10 @@ export async function searchGoogleMaps(
   keyword: string,
   city: string,
   apiKey: string,
+  preposition: string = 'em',
   onProgress?: (page: number, found: number) => void,
 ): Promise<SearchResult> {
-  const q = `${keyword.trim()} em ${city.trim()}`;
+  const q = `${keyword.trim()} ${preposition} ${city.trim()}`;
   const PER_PAGE = 100;
   const MAX_PAGES = 10; // up to ~1000 results
   const allRaw: any[] = [];

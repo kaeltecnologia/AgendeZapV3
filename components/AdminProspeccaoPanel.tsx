@@ -28,6 +28,7 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
     });
   }, []);
   const [keyword, setKeyword] = useState('');
+  const [preposition, setPreposition] = useState('em');
   const [city, setCity] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState<{ page: number; found: number } | null>(null);
@@ -53,7 +54,7 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
 
     try {
       const { places, duplicatesRemoved: removed } = await searchGoogleMaps(
-        keyword, city, serperKey,
+        keyword, city, serperKey, preposition,
         (page, found) => setSearchProgress({ page, found }),
       );
       setResults(places);
@@ -170,8 +171,8 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
       {/* Search */}
       <div className="bg-white border-2 border-slate-100 rounded-[28px] p-6 space-y-5">
         <h2 className="text-sm font-black text-black uppercase tracking-widest">🗺️ Buscar no Google Maps</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="flex-1 min-w-[180px] space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Palavra-chave / Segmento</label>
             <input
               value={keyword}
@@ -182,6 +183,18 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
             />
           </div>
           <div className="space-y-1">
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Prep.</label>
+            <select
+              value={preposition}
+              onChange={e => setPreposition(e.target.value)}
+              className="px-3 py-3 bg-slate-50 rounded-2xl text-sm font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all cursor-pointer"
+            >
+              {['em', 'no', 'na', 'do', 'da', 'de'].map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[180px] space-y-1">
             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Cidade</label>
             <input
               value={city}
