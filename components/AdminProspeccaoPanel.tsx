@@ -362,13 +362,39 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
                 className="w-full px-4 py-2.5 bg-slate-50 rounded-2xl text-sm font-semibold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
               />
             </div>
+            <div className="flex gap-3">
+            <button
+              onClick={() => {
+                const selected = results.filter(p => selectedIds.has(p.id) && p.phone);
+                if (!selected.length) return;
+                const header = 'Nome,Telefone,Endereço,Categoria,Rating,Site';
+                const rows = selected.map(p =>
+                  [p.name, p.phone, p.address, p.category || '', p.rating ?? '', p.website || '']
+                    .map(v => `"${String(v).replace(/"/g, '""')}"`)
+                    .join(',')
+                );
+                const csv = [header, ...rows].join('\n');
+                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${(campaignName.trim() || `${keyword}-${city}`).replace(/\s+/g, '_')}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              disabled={selectedWithPhone === 0}
+              className="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-700 hover:scale-[1.02] transition-all disabled:opacity-40 disabled:scale-100"
+            >
+              💾 Salvar Contatos ({selectedWithPhone})
+            </button>
             <button
               onClick={createCampaign}
               disabled={selectedWithPhone === 0}
-              className="w-full py-4 bg-orange-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-200 hover:bg-orange-600 hover:scale-[1.02] transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none"
+              className="flex-1 py-4 bg-orange-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-200 hover:bg-orange-600 hover:scale-[1.02] transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none"
             >
               🚀 Criar Campanha com {selectedWithPhone} Contato{selectedWithPhone !== 1 ? 's' : ''}
             </button>
+            </div>
           </div>
         </div>
       )}
