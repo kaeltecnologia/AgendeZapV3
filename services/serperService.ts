@@ -101,7 +101,8 @@ export async function searchGoogleMaps(
   onProgress?: (page: number, found: number) => void,
 ): Promise<SearchResult> {
   const q = `${keyword.trim()} em ${city.trim()}`;
-  const MAX_PAGES = 10; // up to ~200 results
+  const PER_PAGE = 100;
+  const MAX_PAGES = 10; // up to ~1000 results
   const allRaw: any[] = [];
 
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -110,7 +111,7 @@ export async function searchGoogleMaps(
     const res = await fetch('https://google.serper.dev/maps', {
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q, gl: 'br', hl: 'pt', num: 20, page }),
+      body: JSON.stringify({ q, gl: 'br', hl: 'pt', num: PER_PAGE, page }),
     });
 
     if (!res.ok) {
@@ -126,7 +127,7 @@ export async function searchGoogleMaps(
 
     if (!pagePlaces.length) break; // no more results
     allRaw.push(...pagePlaces);
-    if (pagePlaces.length < 20) break; // last partial page
+    if (pagePlaces.length < PER_PAGE) break; // last partial page
   }
 
   const mapped = allRaw

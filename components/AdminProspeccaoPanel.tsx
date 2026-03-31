@@ -236,7 +236,7 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
             </div>
           )}
           <p className="text-[9px] font-bold text-slate-300">
-            Até 10 páginas · máx. ~200 resultados
+            Até 10 páginas · sem limite de resultados
           </p>
         </div>
       )}
