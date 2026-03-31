@@ -102,8 +102,8 @@ export async function searchGoogleMaps(
   onProgress?: (page: number, found: number) => void,
 ): Promise<SearchResult> {
   const q = `${keyword.trim()} ${preposition} ${city.trim()}`;
-  const PER_PAGE = 100;
-  const MAX_PAGES = 10; // up to ~1000 results
+  const PER_PAGE = 20; // Serper Maps API max per page
+  const MAX_PAGES = 50; // up to ~1000 results
   const allRaw: any[] = [];
 
   for (let page = 1; page <= MAX_PAGES; page++) {

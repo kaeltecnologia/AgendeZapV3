@@ -237,19 +237,17 @@ const AdminProspeccaoPanel: React.FC<Props> = ({ campaigns, onCampaignsChange, o
             </p>
           )}
           {searchProgress && (
-            <div className="flex justify-center gap-1 mt-2">
-              {Array.from({ length: 10 }, (_, i) => (
+            <div className="w-48 mx-auto mt-2">
+              <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
                 <div
-                  key={i}
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    i < searchProgress.page ? 'bg-orange-500' : 'bg-slate-200'
-                  }`}
+                  className="h-full bg-orange-500 rounded-full transition-all"
+                  style={{ width: `${Math.min((searchProgress.page / 50) * 100, 100)}%` }}
                 />
-              ))}
+              </div>
             </div>
           )}
           <p className="text-[9px] font-bold text-slate-300">
-            Até 10 páginas · sem limite de resultados
+            Buscando até encontrar todos os resultados
           </p>
         </div>
       )}
