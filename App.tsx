@@ -250,13 +250,18 @@ const App: React.FC = () => {
   const expandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const handleSidebarEnter = () => {
+    if (isMobile) return; // mobile: only toggle via button
     if (collapseTimerRef.current) { clearTimeout(collapseTimerRef.current); collapseTimerRef.current = null; }
     if (sidebarCollapsed) {
-      expandTimerRef.current = setTimeout(() => { setSidebarCollapsed(false); setSidebarAutoExpanded(true); }, 1000);
+      // Expand immediately on hover (no delay)
+      setSidebarCollapsed(false);
+      setSidebarAutoExpanded(true);
     }
   };
   const handleSidebarLeave = () => {
+    if (isMobile) return; // mobile: only toggle via button
     if (expandTimerRef.current) { clearTimeout(expandTimerRef.current); expandTimerRef.current = null; }
     if (sidebarAutoExpanded) {
       collapseTimerRef.current = setTimeout(() => { setSidebarCollapsed(true); setSidebarAutoExpanded(false); }, 1000);
@@ -270,6 +275,7 @@ const App: React.FC = () => {
   };
 
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showInstallTutorial, setShowInstallTutorial] = useState(false);
   const [relatoriosOpen, setRelatoriosOpen] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
   const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
@@ -740,10 +746,18 @@ const App: React.FC = () => {
               {/* ── Convidar Parceiro ── */}
               <button
                 onClick={navTo(() => setShowInviteModal(true))}
-                className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-3`}
+                className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-1`}
               >
                 <IconGift />
                 {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>}
+              </button>
+              {/* ── Tutorial: Salvar app ── */}
+              <button
+                onClick={navTo(() => setShowInstallTutorial(true))}
+                className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all group mb-3`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-blue-500">Salvar no Celular</span>}
               </button>
 
               {/* ── Operacional ── */}
@@ -1005,6 +1019,86 @@ const App: React.FC = () => {
               <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: '#cbd5e1' }}>
                 Obrigado por escolher o AgendeZap
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Install Tutorial Modal ──── */}
+      {showInstallTutorial && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowInstallTutorial(false)}>
+          <div className="rounded-[32px] shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-toastIn" style={{ background: '#ffffff' }} onClick={e => e.stopPropagation()}>
+            <div className="p-6 sm:p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-2xl">📱</div>
+                  <div>
+                    <h2 className="text-lg font-black uppercase tracking-tight" style={{ color: '#000' }}>Salvar no Celular</h2>
+                    <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#94a3b8' }}>Instale como aplicativo</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowInstallTutorial(false)} className="text-slate-300 hover:text-slate-600 text-xl font-black transition-colors">✕</button>
+              </div>
+
+              <p className="text-xs font-bold" style={{ color: '#64748b' }}>
+                O AgendeZap funciona como um app nativo no seu celular! Siga as instrucoes abaixo para o seu navegador:
+              </p>
+
+              {/* Safari iOS */}
+              <div className="rounded-2xl p-5 space-y-3" style={{ background: '#f0f9ff', border: '2px solid #bae6fd' }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🍎</span>
+                  <p className="text-xs font-black uppercase tracking-wide" style={{ color: '#0369a1' }}>Safari (iPhone / iPad)</p>
+                </div>
+                <ol className="text-xs font-bold space-y-2 ml-7 list-decimal" style={{ color: '#475569' }}>
+                  <li>Abra <strong>agendezap.com</strong> no Safari</li>
+                  <li>Toque no botao de <strong>compartilhar</strong> (quadrado com seta para cima)</li>
+                  <li>Role para baixo e toque em <strong>"Adicionar a Tela de Inicio"</strong></li>
+                  <li>Toque em <strong>"Adicionar"</strong> para confirmar</li>
+                </ol>
+              </div>
+
+              {/* Chrome Android */}
+              <div className="rounded-2xl p-5 space-y-3" style={{ background: '#f0fdf4', border: '2px solid #bbf7d0' }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🤖</span>
+                  <p className="text-xs font-black uppercase tracking-wide" style={{ color: '#15803d' }}>Chrome (Android)</p>
+                </div>
+                <ol className="text-xs font-bold space-y-2 ml-7 list-decimal" style={{ color: '#475569' }}>
+                  <li>Abra <strong>agendezap.com</strong> no Chrome</li>
+                  <li>Toque nos <strong>3 pontinhos</strong> (canto superior direito)</li>
+                  <li>Toque em <strong>"Adicionar a tela inicial"</strong></li>
+                  <li>Toque em <strong>"Adicionar"</strong> para confirmar</li>
+                </ol>
+              </div>
+
+              {/* Chrome iOS */}
+              <div className="rounded-2xl p-5 space-y-3" style={{ background: '#fffbeb', border: '2px solid #fde68a' }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🌐</span>
+                  <p className="text-xs font-black uppercase tracking-wide" style={{ color: '#a16207' }}>Chrome (iPhone / iPad)</p>
+                </div>
+                <ol className="text-xs font-bold space-y-2 ml-7 list-decimal" style={{ color: '#475569' }}>
+                  <li>Abra <strong>agendezap.com</strong> no Chrome</li>
+                  <li>Toque no botao de <strong>compartilhar</strong> (icone de compartilhar)</li>
+                  <li>Toque em <strong>"Adicionar a Tela de Inicio"</strong></li>
+                  <li>Se nao aparecer, abra no <strong>Safari</strong> e siga o tutorial acima</li>
+                </ol>
+              </div>
+
+              <div className="rounded-2xl p-4 text-center" style={{ background: '#f8fafc' }}>
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#94a3b8' }}>
+                  Apos instalar, o AgendeZap abrira como um app independente sem barra do navegador!
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowInstallTutorial(false)}
+                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:opacity-90"
+                style={{ background: '#000', color: '#fff' }}
+              >
+                Entendi!
+              </button>
             </div>
           </div>
         </div>
