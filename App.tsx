@@ -275,6 +275,7 @@ const App: React.FC = () => {
   const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
   const [pendingPayment, setPendingPayment] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
@@ -659,7 +660,7 @@ const App: React.FC = () => {
     <ToastContext.Provider value={showToast}>
     <div className="flex h-screen bg-slate-50/30">
       <Toast toasts={toasts} onRemove={removeToast} />
-      {role === 'TENANT' && <WhatsNew />}
+      {role === 'TENANT' && !pendingPayment && <WhatsNew />}
       {tenantId && hasFeature(tenantPlan, 'agenteIA') && (
         <AiPollingManager
           tenantId={tenantId}
@@ -952,10 +953,58 @@ const App: React.FC = () => {
                   mode="pending_payment"
                   onActivated={() => {
                     setPendingPayment(false);
-                    window.location.reload();
+                    setShowWelcome(true);
                   }}
                 />
               </Suspense>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Welcome popup after first payment ──── */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="rounded-[32px] shadow-2xl w-full max-w-md animate-toastIn" style={{ background: '#ffffff' }}>
+            <div className="p-8 sm:p-10 text-center space-y-6">
+              <div className="w-20 h-20 bg-green-100 rounded-[24px] flex items-center justify-center mx-auto text-4xl">
+                🎉
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-black uppercase tracking-tight" style={{ color: '#000' }}>
+                  Bem-vindo ao AgendeZap!
+                </h2>
+                <p className="text-sm font-bold" style={{ color: '#64748b' }}>
+                  Pagamento confirmado com sucesso. Sua conta esta ativa e pronta para uso!
+                </p>
+              </div>
+              <div className="rounded-2xl p-5 space-y-3 text-left" style={{ background: '#fff7ed', border: '2px solid #fed7aa' }}>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center flex-shrink-0 text-lg" style={{ color: '#fff' }}>
+                    💬
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide" style={{ color: '#000' }}>Precisa de ajuda?</p>
+                    <p className="text-xs font-bold mt-1" style={{ color: '#64748b' }}>
+                      O botao laranja flutuante no canto inferior direito e nosso chat direto ao suporte. Estamos disponiveis de <strong style={{ color: '#000' }}>segunda a sabado, das 8h as 20h</strong>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowWelcome(false);
+                  localStorage.setItem('agz_whats_new_seen_v5', '1');
+                  window.location.reload();
+                }}
+                className="w-full py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:opacity-90"
+                style={{ background: '#f97316', color: '#fff' }}
+              >
+                Comecar a usar!
+              </button>
+              <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: '#cbd5e1' }}>
+                Obrigado por escolher o AgendeZap
+              </p>
             </div>
           </div>
         </div>
