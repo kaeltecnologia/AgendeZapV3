@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tenantId, planId, billingType, cycle = 'MONTHLY' } = await req.json();
+    const { tenantId, planId, billingType, cycle = 'MONTHLY', cpfCnpj } = await req.json();
 
     // ── Validate input ──────────────────────────────────────────────────
     if (!tenantId || !planId || !billingType) {
@@ -122,6 +122,7 @@ Deno.serve(async (req) => {
           name: tenant.nome,
           email: tenant.email,
           phone: tenant.phone || undefined,
+          cpfCnpj: cpfCnpj || undefined,
           externalReference: tenantId,
         }),
       });

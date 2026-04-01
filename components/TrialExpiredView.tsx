@@ -8,7 +8,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJ
 const PLANS: PlanId[] = ['START', 'PROFISSIONAL', 'ELITE'];
 
 type Cycle = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
-type Step = 'plan' | 'cycle' | 'payment' | 'loading' | 'waiting';
+type Step = 'plan' | 'cycle' | 'cpf' | 'payment' | 'loading' | 'waiting';
 
 const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; discount: number; tag?: string }[] = [
   { id: 'MONTHLY',      label: 'Mensal',      months: 1,  discount: 0 },
@@ -25,6 +25,28 @@ function fmt(v: number) {
   return v.toFixed(2).replace('.', ',');
 }
 
+function formatCpfCnpj(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length <= 11) {
+    // CPF: 000.000.000-00
+    return digits
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+  // CNPJ: 00.000.000/0000-00
+  return digits
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+}
+
+function isValidCpfCnpj(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 11 || digits.length === 14;
+}
+
 const TrialExpiredView: React.FC<{
   tenantId: string;
   mode?: 'trial_expired' | 'pending_payment';
@@ -33,6 +55,7 @@ const TrialExpiredView: React.FC<{
   const [step, setStep] = useState<Step>('plan');
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [selectedCycle, setSelectedCycle] = useState<Cycle>('MONTHLY');
+  const [cpfCnpj, setCpfCnpj] = useState('');
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -49,8 +72,17 @@ const TrialExpiredView: React.FC<{
 
   const handleSelectCycle = (cycle: Cycle) => {
     setSelectedCycle(cycle);
-    setStep('payment');
+    setStep('cpf');
     setError(null);
+  };
+
+  const handleCpfSubmit = () => {
+    if (!isValidCpfCnpj(cpfCnpj)) {
+      setError('Informe um CPF (11 digitos) ou CNPJ (14 digitos) valido.');
+      return;
+    }
+    setError(null);
+    setStep('payment');
   };
 
   const handleSelectPayment = async (billingType: 'PIX' | 'CREDIT_CARD') => {
@@ -65,7 +97,13 @@ const TrialExpiredView: React.FC<{
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ tenantId, planId: selectedPlan, billingType, cycle: selectedCycle }),
+        body: JSON.stringify({
+          tenantId,
+          planId: selectedPlan,
+          billingType,
+          cycle: selectedCycle,
+          cpfCnpj: cpfCnpj.replace(/\D/g, ''),
+        }),
       });
 
       const data = await res.json();
@@ -108,9 +146,11 @@ const TrialExpiredView: React.FC<{
   };
 
   const handleBack = () => {
-    if (step === 'payment') { setStep('cycle'); setError(null); }
-    else if (step === 'cycle') { setStep('plan'); setSelectedPlan(null); setError(null); }
-    else { setStep('plan'); setSelectedPlan(null); setError(null); }
+    setError(null);
+    if (step === 'payment') { setStep('cpf'); }
+    else if (step === 'cpf') { setStep('cycle'); }
+    else if (step === 'cycle') { setStep('plan'); setSelectedPlan(null); }
+    else { setStep('plan'); setSelectedPlan(null); }
   };
 
   const planCfg = selectedPlan ? PLAN_CONFIGS[selectedPlan] : null;
@@ -123,24 +163,26 @@ const TrialExpiredView: React.FC<{
     step === 'waiting' ? 'Aguardando pagamento'
     : step === 'loading' ? 'Gerando assinatura...'
     : step === 'payment' ? 'Forma de pagamento'
-    : step === 'cycle' ? 'Período de assinatura'
-    : mode === 'pending_payment' ? 'Escolha seu plano para começar'
-    : 'Período de teste encerrado';
+    : step === 'cpf' ? 'Dados para cobranca'
+    : step === 'cycle' ? 'Periodo de assinatura'
+    : mode === 'pending_payment' ? 'Escolha seu plano para comecar'
+    : 'Periodo de teste encerrado';
   const headerSubtitle =
-    step === 'waiting' ? 'Após confirmar o pagamento, sua conta será ativada automaticamente.'
+    step === 'waiting' ? 'Apos confirmar o pagamento, sua conta sera ativada automaticamente.'
     : step === 'payment' ? `${planCfg?.name} ${cycleCfg.label} — R$ ${fmt(cycleTotal)}`
-    : step === 'cycle' ? `Plano ${planCfg?.name} — escolha o período`
-    : mode === 'pending_payment' ? 'Selecione o plano ideal para seu negócio. Cancele grátis nos primeiros 7 dias.'
-    : 'Seus dados estão salvos e seguros. Escolha um plano para continuar usando o AgendeZap.';
+    : step === 'cpf' ? `${planCfg?.name} ${cycleCfg.label} — R$ ${fmt(cycleTotal)}`
+    : step === 'cycle' ? `Plano ${planCfg?.name} — escolha o periodo`
+    : mode === 'pending_payment' ? 'Selecione o plano ideal para seu negocio. Cancele gratis nos primeiros 7 dias.'
+    : 'Seus dados estao salvos e seguros. Escolha um plano para continuar usando o AgendeZap.';
 
   return (
-    <div className="min-h-full bg-slate-50 flex items-center justify-center p-8">
-      <div className="w-full max-w-4xl space-y-10">
+    <div className="min-h-full flex items-center justify-center p-4 md:p-8">
+      <div className="w-full max-w-4xl space-y-8">
 
         {/* Header */}
         <div className="text-center space-y-3">
           <div className="w-16 h-16 bg-slate-100 rounded-[20px] flex items-center justify-center mx-auto text-3xl">{headerIcon}</div>
-          <h1 className="text-3xl font-black text-black uppercase tracking-tight">{headerTitle}</h1>
+          <h1 className="text-2xl md:text-3xl font-black text-black uppercase tracking-tight">{headerTitle}</h1>
           <p className="text-sm font-bold text-slate-400 max-w-md mx-auto">{headerSubtitle}</p>
         </div>
 
@@ -167,7 +209,7 @@ const TrialExpiredView: React.FC<{
 
                   <div>
                     <span className="text-3xl font-black text-black">R$ {fmt(cfg.price)}</span>
-                    <span className="text-xs font-bold text-slate-400">/mês</span>
+                    <span className="text-xs font-bold text-slate-400">/mes</span>
                   </div>
 
                   <ul className="space-y-2">
@@ -197,7 +239,7 @@ const TrialExpiredView: React.FC<{
         {/* ── Step 2: Cycle Selection ── */}
         {step === 'cycle' && planCfg && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
               {CYCLE_OPTIONS.map(opt => {
                 const total = calcCyclePrice(planCfg.price, opt.months, opt.discount);
                 const monthlyEquiv = total / opt.months;
@@ -221,7 +263,7 @@ const TrialExpiredView: React.FC<{
                       <span className="text-2xl font-black text-black">R$ {fmt(total)}</span>
                       {opt.months > 1 && (
                         <p className="text-[10px] font-bold text-slate-400 mt-1">
-                          = R$ {fmt(monthlyEquiv)}/mês
+                          = R$ {fmt(monthlyEquiv)}/mes
                         </p>
                       )}
                     </div>
@@ -243,7 +285,41 @@ const TrialExpiredView: React.FC<{
           </div>
         )}
 
-        {/* ── Step 3: Payment Method ── */}
+        {/* ── Step 3: CPF/CNPJ ── */}
+        {step === 'cpf' && (
+          <div className="space-y-6 max-w-md mx-auto">
+            <div className="bg-white rounded-[24px] border-2 border-slate-100 p-8 space-y-5">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-black uppercase tracking-widest">CPF ou CNPJ</label>
+                <input
+                  type="text"
+                  value={cpfCnpj}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '').slice(0, 14);
+                    setCpfCnpj(formatCpfCnpj(raw));
+                  }}
+                  placeholder="000.000.000-00"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all font-bold text-center text-lg tracking-wider"
+                  autoFocus
+                />
+                <p className="text-[10px] font-bold text-slate-400 text-center">Necessario para emissao da cobranca</p>
+              </div>
+              <button
+                onClick={handleCpfSubmit}
+                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all bg-black text-white hover:bg-orange-500"
+              >
+                Continuar
+              </button>
+            </div>
+            <div className="text-center">
+              <button onClick={handleBack} className="text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest">
+                ← Voltar para periodo
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 4: Payment Method ── */}
         {step === 'payment' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-lg mx-auto">
@@ -258,7 +334,7 @@ const TrialExpiredView: React.FC<{
                 </div>
                 <div>
                   <p className="text-sm font-black text-black uppercase">Pix</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1">Pagamento instantâneo</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-1">Pagamento instantaneo</p>
                 </div>
               </button>
 
@@ -273,15 +349,15 @@ const TrialExpiredView: React.FC<{
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-black text-black uppercase">Cartão de Crédito</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1">Débito automático</p>
+                  <p className="text-sm font-black text-black uppercase">Cartao de Credito</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-1">Debito automatico</p>
                 </div>
               </button>
             </div>
 
             <div className="text-center">
               <button onClick={handleBack} className="text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest">
-                ← Voltar para período
+                ← Voltar
               </button>
             </div>
           </div>
@@ -303,13 +379,13 @@ const TrialExpiredView: React.FC<{
               <div className="space-y-2">
                 <p className="text-sm font-black text-orange-700 uppercase tracking-widest">Pagamento em andamento</p>
                 <p className="text-xs font-bold text-orange-600 max-w-sm mx-auto">
-                  Uma nova aba foi aberta para você realizar o pagamento.
-                  Assim que confirmarmos, sua conta será ativada automaticamente.
+                  Uma nova aba foi aberta para voce realizar o pagamento.
+                  Assim que confirmarmos, sua conta sera ativada automaticamente.
                 </p>
               </div>
             </div>
             <div className="text-center space-y-2">
-              <p className="text-[10px] font-bold text-slate-300">Não viu a aba? Verifique o bloqueador de pop-ups.</p>
+              <p className="text-[10px] font-bold text-slate-300">Nao viu a aba? Verifique o bloqueador de pop-ups.</p>
               <button onClick={() => { setStep('plan'); setSelectedPlan(null); }} className="text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest">
                 ← Escolher outro plano
               </button>
@@ -319,7 +395,7 @@ const TrialExpiredView: React.FC<{
 
         {step === 'plan' && (
           <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-            Pagamento seguro via Asaas. {mode === 'pending_payment' ? 'Cancele grátis em até 7 dias.' : 'Cancele quando quiser.'}
+            Pagamento seguro via Asaas. {mode === 'pending_payment' ? 'Cancele gratis em ate 7 dias.' : 'Cancele quando quiser.'}
           </p>
         )}
       </div>

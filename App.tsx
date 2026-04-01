@@ -579,37 +579,16 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} onRegister={handleRegister} />;
   }
 
-  // Full-screen checkout for unpaid tenants — no sidebar
-  if (pendingPayment && role === 'TENANT' && tenantId && !isImpersonating) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-xl shadow-lg shadow-orange-200">✂️</div>
-            <h1 className="text-lg font-black text-black italic tracking-tight uppercase">AgendeZap</h1>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="text-xs font-bold text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors"
-          >
-            Sair
-          </button>
-        </div>
-        <div className="flex-1">
-          <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
-            <TrialExpiredView
-              tenantId={tenantId}
-              mode="pending_payment"
-              onActivated={() => {
-                setPendingPayment(false);
-                window.location.reload();
-              }}
-            />
-          </Suspense>
-        </div>
-      </div>
-    );
-  }
+  // Show payment popup after 7 seconds for unpaid tenants
+  const [showPaymentPopup, setShowPaymentPopup] = useState(false);
+  useEffect(() => {
+    if (!pendingPayment || role !== 'TENANT' || !tenantId || isImpersonating) {
+      setShowPaymentPopup(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowPaymentPopup(true), 7000);
+    return () => clearTimeout(timer);
+  }, [pendingPayment, role, tenantId, isImpersonating]);
 
   const renderView = () => {
     if (role === 'SUPERADMIN') return <SuperAdminView activeTab={superAdminTab} onTabChange={setSuperAdminTab} onImpersonate={handleImpersonate} />;
@@ -971,6 +950,33 @@ const App: React.FC = () => {
           tenantId={tenantId}
           onClose={() => setUpgradeModal(null)}
         />
+      )}
+
+      {/* ── Payment popup for unpaid tenants (7s delay) ──── */}
+      {showPaymentPopup && pendingPayment && role === 'TENANT' && tenantId && !isImpersonating && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="bg-white dark:bg-[#0b1a2e] rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative animate-toastIn">
+            <button
+              onClick={() => setShowPaymentPopup(false)}
+              className="absolute top-4 right-5 text-slate-300 hover:text-slate-600 text-xl font-black z-10 transition-colors"
+            >
+              ✕
+            </button>
+            <div className="p-6 md:p-8">
+              <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
+                <TrialExpiredView
+                  tenantId={tenantId}
+                  mode="pending_payment"
+                  onActivated={() => {
+                    setPendingPayment(false);
+                    setShowPaymentPopup(false);
+                    window.location.reload();
+                  }}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
       )}
 
       {showInviteModal && (
