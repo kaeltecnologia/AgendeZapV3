@@ -103,32 +103,33 @@ export async function searchGoogleMaps(
 ): Promise<SearchResult> {
   const q = `${keyword.trim()} ${preposition} ${city.trim()}`;
   const PER_PAGE = 20; // Serper Maps API max per page
-  const MAX_PAGES = 50; // up to ~1000 results
+  const MAX_PAGES = 50;
   const allRaw: any[] = [];
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    onProgress?.(page, allRaw.length);
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const start = page * PER_PAGE;
+    onProgress?.(page + 1, allRaw.length);
 
     const res = await fetch('https://google.serper.dev/maps', {
       method: 'POST',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q, gl: 'br', hl: 'pt', num: PER_PAGE, page }),
+      body: JSON.stringify({ q, gl: 'br', hl: 'pt', num: PER_PAGE, page: page + 1, start }),
     });
 
     if (!res.ok) {
-      if (page === 1) {
+      if (page === 0) {
         const err = await res.json().catch(() => ({})) as any;
         throw new Error(err.message || `Serper API — erro ${res.status}`);
       }
-      break; // subsequent pages failing → stop gracefully
+      break;
     }
 
     const data = await res.json();
     const pagePlaces: any[] = data.places || [];
 
-    if (!pagePlaces.length) break; // no more results
+    if (!pagePlaces.length) break;
     allRaw.push(...pagePlaces);
-    if (pagePlaces.length < PER_PAGE) break; // last partial page
+    if (pagePlaces.length < PER_PAGE) break;
   }
 
   const mapped = allRaw
