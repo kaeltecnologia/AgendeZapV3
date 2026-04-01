@@ -754,10 +754,10 @@ const App: React.FC = () => {
               {/* ── Tutorial: Salvar app ── */}
               <button
                 onClick={navTo(() => setShowInstallTutorial(true))}
-                className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all group mb-3`}
+                className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-3`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-blue-500">Salvar no Celular</span>}
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Salvar no Celular</span>}
               </button>
 
               {/* ── Operacional ── */}
