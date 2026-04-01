@@ -7,13 +7,14 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 const PLANS: PlanId[] = ['START', 'PROFISSIONAL', 'ELITE'];
 
-type Cycle = 'MONTHLY' | 'SEMIANNUALLY' | 'YEARLY';
+type Cycle = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
 type Step = 'plan' | 'cycle' | 'payment' | 'loading' | 'waiting';
 
 const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; discount: number; tag?: string }[] = [
-  { id: 'MONTHLY',      label: 'Mensal',    months: 1,  discount: 0 },
-  { id: 'SEMIANNUALLY', label: 'Semestral',  months: 6,  discount: 0.15, tag: '15% OFF' },
-  { id: 'YEARLY',       label: 'Anual',      months: 12, discount: 0.25, tag: '25% OFF' },
+  { id: 'MONTHLY',      label: 'Mensal',      months: 1,  discount: 0 },
+  { id: 'QUARTERLY',    label: 'Trimestral',  months: 3,  discount: 0.10, tag: '10% OFF' },
+  { id: 'SEMIANNUALLY', label: 'Semestral',   months: 6,  discount: 0.15, tag: '15% OFF' },
+  { id: 'YEARLY',       label: 'Anual',       months: 12, discount: 0.25, tag: '25% OFF' },
 ];
 
 function calcCyclePrice(monthlyPrice: number, months: number, discount: number) {
@@ -26,8 +27,9 @@ function fmt(v: number) {
 
 const TrialExpiredView: React.FC<{
   tenantId: string;
+  mode?: 'trial_expired' | 'pending_payment';
   onActivated?: () => void;
-}> = ({ tenantId, onActivated }) => {
+}> = ({ tenantId, mode = 'trial_expired', onActivated }) => {
   const [step, setStep] = useState<Step>('plan');
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [selectedCycle, setSelectedCycle] = useState<Cycle>('MONTHLY');
@@ -88,10 +90,18 @@ const TrialExpiredView: React.FC<{
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
-        const settings = await db.getSettings(tenantId);
-        if (!settings.trialStartDate) {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          onActivated?.();
+        if (mode === 'pending_payment') {
+          const tenant = await db.getTenant(tenantId);
+          if (tenant?.status === 'ATIVA') {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            onActivated?.();
+          }
+        } else {
+          const settings = await db.getSettings(tenantId);
+          if (!settings.trialStartDate) {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            onActivated?.();
+          }
         }
       } catch { /* ignore */ }
     }, 5000);
@@ -108,17 +118,19 @@ const TrialExpiredView: React.FC<{
   const cycleTotal = planCfg ? calcCyclePrice(planCfg.price, cycleCfg.months, cycleCfg.discount) : 0;
 
   // Header text per step
-  const headerIcon = step === 'waiting' ? '⏳' : step === 'loading' ? '⏳' : '🔒';
+  const headerIcon = step === 'waiting' ? '⏳' : step === 'loading' ? '⏳' : mode === 'pending_payment' ? '🚀' : '🔒';
   const headerTitle =
     step === 'waiting' ? 'Aguardando pagamento'
     : step === 'loading' ? 'Gerando assinatura...'
     : step === 'payment' ? 'Forma de pagamento'
     : step === 'cycle' ? 'Período de assinatura'
+    : mode === 'pending_payment' ? 'Escolha seu plano para começar'
     : 'Período de teste encerrado';
   const headerSubtitle =
     step === 'waiting' ? 'Após confirmar o pagamento, sua conta será ativada automaticamente.'
     : step === 'payment' ? `${planCfg?.name} ${cycleCfg.label} — R$ ${fmt(cycleTotal)}`
     : step === 'cycle' ? `Plano ${planCfg?.name} — escolha o período`
+    : mode === 'pending_payment' ? 'Selecione o plano ideal para seu negócio. Cancele grátis nos primeiros 7 dias.'
     : 'Seus dados estão salvos e seguros. Escolha um plano para continuar usando o AgendeZap.';
 
   return (
@@ -307,7 +319,7 @@ const TrialExpiredView: React.FC<{
 
         {step === 'plan' && (
           <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-            Pagamento seguro via Asaas. Cancele quando quiser.
+            Pagamento seguro via Asaas. {mode === 'pending_payment' ? 'Cancele grátis em até 7 dias.' : 'Cancele quando quiser.'}
           </p>
         )}
       </div>

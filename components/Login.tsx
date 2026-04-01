@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 
 interface LoginProps {
   onLogin: (role: 'SUPERADMIN' | 'TENANT', userSlug?: string, userEmail?: string, userPassword?: string) => Promise<void> | void;
-  onRegister?: (storeName: string, email: string, pass: string) => Promise<void>;
+  onRegister?: (storeName: string, email: string, pass: string, phone: string) => Promise<void>;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
@@ -11,6 +11,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
   const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +21,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
     setLoading(true);
     
     try {
-      if (!email || !password || (isSignUp && !storeName)) {
+      if (!email || !password || (isSignUp && (!storeName || !phone))) {
         setError('Preencha todos os campos.');
         setLoading(false);
         return;
@@ -31,7 +32,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
       if (isSignUp) {
         if (onRegister) {
-          await onRegister(storeName, cleanEmail, cleanPassword);
+          await onRegister(storeName, cleanEmail, cleanPassword, phone.trim());
         }
         return;
       }
@@ -83,16 +84,28 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {isSignUp && (
-            <div className="space-y-2 animate-fadeIn">
-              <label className="text-[10px] font-black text-black uppercase tracking-widest ml-4">Nome do Estabelecimento</label>
-              <input 
-                type="text" 
-                value={storeName}
-                onChange={(e) => setStoreName(e.target.value)}
-                placeholder="Ex: Barbearia do Centro"
-                className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
-              />
-            </div>
+            <>
+              <div className="space-y-2 animate-fadeIn">
+                <label className="text-[10px] font-black text-black uppercase tracking-widest ml-4">Nome do Estabelecimento</label>
+                <input
+                  type="text"
+                  value={storeName}
+                  onChange={(e) => setStoreName(e.target.value)}
+                  placeholder="Ex: Barbearia do Centro"
+                  className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
+                />
+              </div>
+              <div className="space-y-2 animate-fadeIn">
+                <label className="text-[10px] font-black text-black uppercase tracking-widest ml-4">WhatsApp do Responsável</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="(11) 99999-9999"
+                  className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 focus:bg-white transition-all font-bold"
+                />
+              </div>
+            </>
           )}
 
           <div className="space-y-2">

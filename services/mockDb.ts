@@ -177,13 +177,14 @@ class DatabaseService {
     }
   }
 
-  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string }) {
+  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; phone?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string }) {
     try {
       const payload = {
         nome: tenant.name,
         slug: tenant.slug,
         email: tenant.email,
         password: tenant.password,
+        phone: tenant.phone,
         plan: tenant.subscriptionPlan || tenant.plan || 'START',
         status: tenant.status || TenantStatus.ACTIVE,
         mensalidade: tenant.monthlyFee || 0,

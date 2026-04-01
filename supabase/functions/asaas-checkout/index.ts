@@ -43,6 +43,7 @@ const PLAN_NAMES: Record<string, string> = {
 // Cycle config: Asaas cycle name, multiplier (months), discount
 const CYCLE_CONFIG: Record<string, { asaasCycle: string; months: number; discount: number; label: string }> = {
   MONTHLY:      { asaasCycle: 'MONTHLY',      months: 1,  discount: 0,    label: 'Mensal' },
+  QUARTERLY:    { asaasCycle: 'QUARTERLY',    months: 3,  discount: 0.10, label: 'Trimestral' },
   SEMIANNUALLY: { asaasCycle: 'SEMIANNUALLY', months: 6,  discount: 0.15, label: 'Semestral' },
   YEARLY:       { asaasCycle: 'YEARLY',       months: 12, discount: 0.25, label: 'Anual' },
 };
@@ -89,7 +90,7 @@ Deno.serve(async (req) => {
       return json({ error: `Invalid billingType: ${billingType}. Use PIX or CREDIT_CARD` }, 400);
     }
     if (!CYCLE_CONFIG[cycle]) {
-      return json({ error: `Invalid cycle: ${cycle}. Use MONTHLY, SEMIANNUALLY, or YEARLY` }, 400);
+      return json({ error: `Invalid cycle: ${cycle}. Use MONTHLY, QUARTERLY, SEMIANNUALLY, or YEARLY` }, 400);
     }
 
     // ── Fetch tenant ────────────────────────────────────────────────────

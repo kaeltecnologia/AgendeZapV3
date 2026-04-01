@@ -274,6 +274,7 @@ const App: React.FC = () => {
   const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
   const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
+  const [pendingPayment, setPendingPayment] = useState(false);
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
@@ -331,6 +332,18 @@ const App: React.FC = () => {
     const interval = setInterval(check, 60_000);
     return () => clearInterval(interval);
   }, [tenantId, role]);
+
+  // ── Pending payment check — detects unpaid tenants ──────────────────
+  useEffect(() => {
+    if (!tenantId || !isAuthenticated || role !== 'TENANT') return;
+    const checkPayment = async () => {
+      try {
+        const tenant = await db.getTenant(tenantId);
+        setPendingPayment(tenant?.status === TenantStatus.PENDING_PAYMENT);
+      } catch { /* ignore */ }
+    };
+    checkPayment();
+  }, [tenantId, isAuthenticated, role]);
 
   useEffect(() => {
     const init = async () => {
@@ -417,6 +430,11 @@ const App: React.FC = () => {
             setTenantPlan(data.plan || 'START');
             setRole('TENANT');
             setIsAuthenticated(true);
+            // Check if tenant still needs to pay
+            const loginTenant = await db.getTenant(data.id);
+            if (loginTenant?.status === TenantStatus.PENDING_PAYMENT) {
+              setPendingPayment(true);
+            }
             setCurrentView(View.DASHBOARD);
             return;
           }
@@ -444,6 +462,9 @@ const App: React.FC = () => {
         setTenantPlan(myTenant.plan || 'START');
         setRole('TENANT');
         setIsAuthenticated(true);
+        if (myTenant.status === TenantStatus.PENDING_PAYMENT) {
+          setPendingPayment(true);
+        }
         setCurrentView(View.DASHBOARD);
       }
     } catch (err) {
@@ -452,7 +473,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRegister = async (storeName: string, email: string, pass: string) => {
+  const handleRegister = async (storeName: string, email: string, pass: string, phone: string) => {
     try {
       const slug = email.split('@')[0].toLowerCase().trim();
       const tenants = await db.getAllTenants();
@@ -465,8 +486,11 @@ const App: React.FC = () => {
       const newTenant = await db.addTenant({
         name: storeName,
         slug: slug,
-        plan: 'BASIC',
-        status: TenantStatus.ACTIVE,
+        email: email,
+        password: pass,
+        phone: phone,
+        plan: 'START',
+        status: TenantStatus.PENDING_PAYMENT,
         monthlyFee: 0
       });
 
@@ -474,7 +498,6 @@ const App: React.FC = () => {
         await db.updateSettings(newTenant.id, {
           themeColor: '#f97316',
           aiActive: false,
-          trialStartDate: new Date().toISOString()
         });
 
         setTenantId(newTenant.id);
@@ -483,6 +506,7 @@ const App: React.FC = () => {
         setTenantPlan(newTenant.plan || 'START');
         setRole('TENANT');
         setIsAuthenticated(true);
+        setPendingPayment(true);
         setCurrentView(View.DASHBOARD);
       }
     } catch (err: any) {
@@ -497,6 +521,7 @@ const App: React.FC = () => {
     setTenantId('');
     setTenantSlug('');
     setIsImpersonating(false);
+    setPendingPayment(false);
     setCurrentView(View.DASHBOARD);
   };
 
@@ -552,6 +577,38 @@ const App: React.FC = () => {
 
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} onRegister={handleRegister} />;
+  }
+
+  // Full-screen checkout for unpaid tenants — no sidebar
+  if (pendingPayment && role === 'TENANT' && tenantId && !isImpersonating) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-xl shadow-lg shadow-orange-200">✂️</div>
+            <h1 className="text-lg font-black text-black italic tracking-tight uppercase">AgendeZap</h1>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="text-xs font-bold text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors"
+          >
+            Sair
+          </button>
+        </div>
+        <div className="flex-1">
+          <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
+            <TrialExpiredView
+              tenantId={tenantId}
+              mode="pending_payment"
+              onActivated={() => {
+                setPendingPayment(false);
+                window.location.reload();
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
   }
 
   const renderView = () => {
