@@ -757,7 +757,7 @@ const App: React.FC = () => {
                 className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all group mb-3`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Salvar no Celular</span>}
+                {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Download do App</span>}
               </button>
 
               {/* ── Operacional ── */}
@@ -1033,7 +1033,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-2xl">📱</div>
                   <div>
-                    <h2 className="text-lg font-black uppercase tracking-tight" style={{ color: '#000' }}>Salvar no Celular</h2>
+                    <h2 className="text-lg font-black uppercase tracking-tight" style={{ color: '#000' }}>Download do App</h2>
                     <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#94a3b8' }}>Instale como aplicativo</p>
                   </div>
                 </div>
