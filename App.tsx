@@ -275,6 +275,7 @@ const App: React.FC = () => {
   const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
   const [pendingPayment, setPendingPayment] = useState(false);
+  const [showPaymentPopup, setShowPaymentPopup] = useState(false);
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
@@ -344,6 +345,16 @@ const App: React.FC = () => {
     };
     checkPayment();
   }, [tenantId, isAuthenticated, role]);
+
+  // ── Payment popup timer — shows after 7s for unpaid tenants ─────────
+  useEffect(() => {
+    if (!pendingPayment || role !== 'TENANT' || !tenantId || isImpersonating) {
+      setShowPaymentPopup(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowPaymentPopup(true), 7000);
+    return () => clearTimeout(timer);
+  }, [pendingPayment, role, tenantId, isImpersonating]);
 
   useEffect(() => {
     const init = async () => {
@@ -578,17 +589,6 @@ const App: React.FC = () => {
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} onRegister={handleRegister} />;
   }
-
-  // Show payment popup after 7 seconds for unpaid tenants
-  const [showPaymentPopup, setShowPaymentPopup] = useState(false);
-  useEffect(() => {
-    if (!pendingPayment || role !== 'TENANT' || !tenantId || isImpersonating) {
-      setShowPaymentPopup(false);
-      return;
-    }
-    const timer = setTimeout(() => setShowPaymentPopup(true), 7000);
-    return () => clearTimeout(timer);
-  }, [pendingPayment, role, tenantId, isImpersonating]);
 
   const renderView = () => {
     if (role === 'SUPERADMIN') return <SuperAdminView activeTab={superAdminTab} onTabChange={setSuperAdminTab} onImpersonate={handleImpersonate} />;
