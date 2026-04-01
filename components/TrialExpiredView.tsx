@@ -215,7 +215,7 @@ const TrialExpiredView: React.FC<{
     : step === 'payment' ? `${planCfg?.name} ${cycleCfg.label} — R$ ${fmt(cycleTotal)}`
     : step === 'cpf' ? `${planCfg?.name} ${cycleCfg.label} — R$ ${fmt(cycleTotal)}`
     : step === 'cycle' ? `Plano ${planCfg?.name} — escolha o periodo`
-    : mode === 'pending_payment' ? 'Selecione o plano ideal para seu negocio. Cancele gratis nos primeiros 7 dias.'
+    : mode === 'pending_payment' ? 'Para maior controle e seguranca, nosso sistema faz a cobranca do plano desejado antecipadamente, porem voce pode pedir reembolso a qualquer momento dentro de 7 dias.'
     : 'Seus dados estao salvos e seguros. Escolha um plano para continuar usando o AgendeZap.';
 
   return (
@@ -449,7 +449,7 @@ const TrialExpiredView: React.FC<{
 
         {step === 'plan' && (
           <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-            Pagamento seguro via Asaas. {mode === 'pending_payment' ? 'Cancele gratis em ate 7 dias.' : 'Cancele quando quiser.'}
+            Pagamento seguro via Asaas. {mode === 'pending_payment' ? 'Reembolso garantido em ate 7 dias.' : 'Cancele quando quiser.'}
           </p>
         )}
       </div>

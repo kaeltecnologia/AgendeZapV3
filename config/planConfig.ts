@@ -53,6 +53,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
     emoji: '🟢',
     badge: '🟢 Start',
     features: [
+      'Automação do WhatsApp com IA para até 100 clientes mensais',
       'Confirmação automática',
       '1 profissional incluído',
       'Lembretes automáticos',
