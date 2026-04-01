@@ -57,6 +57,7 @@ const TrialExpiredView: React.FC<{
   const [selectedCycle, setSelectedCycle] = useState<Cycle>('MONTHLY');
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -124,10 +125,52 @@ const TrialExpiredView: React.FC<{
     }
   };
 
+  const callAsaasVerify = async (): Promise<'activated' | 'pending' | 'not_paid' | 'error'> => {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/asaas-verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ tenantId }),
+      });
+      const data = await res.json();
+      return data.status || 'error';
+    } catch {
+      return 'error';
+    }
+  };
+
+  const handleVerifyPayment = async () => {
+    setVerifying(true);
+    setError(null);
+    const status = await callAsaasVerify();
+    setVerifying(false);
+    if (status === 'activated') {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      onActivated?.();
+    } else if (status === 'pending') {
+      setError('Pagamento ainda pendente. Aguarde a confirmacao ou tente novamente em alguns instantes.');
+    } else if (status === 'not_paid') {
+      setError('Nenhum pagamento encontrado. Realize o pagamento na aba aberta e tente novamente.');
+    } else {
+      setError('Nao foi possivel verificar. Tente novamente em alguns instantes.');
+    }
+  };
+
   const startPolling = () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
+        // First try asaas-verify (direct Asaas API check — works even if webhook fails)
+        const verifyStatus = await callAsaasVerify();
+        if (verifyStatus === 'activated') {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          onActivated?.();
+          return;
+        }
+        // Fallback: check DB directly
         if (mode === 'pending_payment') {
           const tenant = await db.getTenant(tenantId);
           if (tenant?.status === 'ATIVA') {
@@ -142,7 +185,7 @@ const TrialExpiredView: React.FC<{
           }
         }
       } catch { /* ignore */ }
-    }, 5000);
+    }, 10000);
   };
 
   const handleBack = () => {
@@ -384,7 +427,18 @@ const TrialExpiredView: React.FC<{
                 </p>
               </div>
             </div>
-            <div className="text-center space-y-2">
+            <div className="text-center space-y-3">
+              <button
+                onClick={handleVerifyPayment}
+                disabled={verifying}
+                className={`px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
+                  verifying
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
+                }`}
+              >
+                {verifying ? 'Verificando...' : 'Ja paguei — Verificar'}
+              </button>
               <p className="text-[10px] font-bold text-slate-300">Nao viu a aba? Verifique o bloqueador de pop-ups.</p>
               <button onClick={() => { setStep('plan'); setSelectedPlan(null); }} className="text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest">
                 ← Escolher outro plano
