@@ -102,26 +102,26 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
       {modal.show && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
-          <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
-          <div className="bg-white rounded-[40px] w-full max-w-md p-12 space-y-8 animate-scaleUp border-4 border-black">
-            <h2 className="text-2xl font-black text-black uppercase tracking-tight italic">{modal.data?.id ? 'Editar Serviço' : 'Novo Serviço'}</h2>
-            <div className="space-y-6">
+          <div className="flex justify-center items-center min-h-full p-4 sm:p-6">
+          <div className="bg-white rounded-[32px] sm:rounded-[40px] w-full max-w-md p-6 sm:p-10 space-y-6 sm:space-y-8 animate-scaleUp border-4 border-black">
+            <h2 className="text-xl sm:text-2xl font-black text-black uppercase tracking-tight italic">{modal.data?.id ? 'Editar Serviço' : 'Novo Serviço'}</h2>
+            <div className="space-y-5 sm:space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Procedimento</label>
-                <input value={modal.data?.name || ''} onChange={e=>setModal({...modal, data: {...modal.data, name: e.target.value}})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
+                <input value={modal.data?.name || ''} onChange={e=>setModal({...modal, data: {...modal.data, name: e.target.value}})} className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Preço (R$)</label>
-                  <input type="number" value={modal.data?.price || ''} onChange={e=>setModal({...modal, data: {...modal.data, price: Number(e.target.value)}})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-lg text-orange-600" />
+                  <input type="number" value={modal.data?.price || ''} onChange={e=>setModal({...modal, data: {...modal.data, price: Number(e.target.value)}})} className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-lg text-orange-600" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tempo (Min)</label>
-                  <input type="number" value={modal.data?.durationMinutes || ''} onChange={e=>setModal({...modal, data: {...modal.data, durationMinutes: Number(e.target.value)}})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-lg" />
+                  <input type="number" value={modal.data?.durationMinutes || ''} onChange={e=>setModal({...modal, data: {...modal.data, durationMinutes: Number(e.target.value)}})} className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-lg" />
                 </div>
               </div>
             </div>
-            <div className="flex gap-4 pt-4">
+            <div className="flex gap-4 pt-2">
               <button onClick={()=>setModal({show: false, data: null})} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs tracking-widest">Voltar</button>
               <button onClick={handleSave} className="flex-1 py-4 bg-black text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-500 transition-all shadow-xl">Confirmar</button>
             </div>

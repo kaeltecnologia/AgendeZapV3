@@ -275,7 +275,6 @@ const App: React.FC = () => {
   const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
   const [pendingPayment, setPendingPayment] = useState(false);
-  const [showPaymentPopup, setShowPaymentPopup] = useState(false);
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
@@ -345,16 +344,6 @@ const App: React.FC = () => {
     };
     checkPayment();
   }, [tenantId, isAuthenticated, role]);
-
-  // ── Payment popup timer — shows after 7s for unpaid tenants ─────────
-  useEffect(() => {
-    if (!pendingPayment || role !== 'TENANT' || !tenantId || isImpersonating) {
-      setShowPaymentPopup(false);
-      return;
-    }
-    const timer = setTimeout(() => setShowPaymentPopup(true), 7000);
-    return () => clearTimeout(timer);
-  }, [pendingPayment, role, tenantId, isImpersonating]);
 
   useEffect(() => {
     const init = async () => {
@@ -953,23 +942,16 @@ const App: React.FC = () => {
       )}
 
       {/* ── Payment popup for unpaid tenants (7s delay) ──── */}
-      {showPaymentPopup && pendingPayment && role === 'TENANT' && tenantId && !isImpersonating && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="bg-white dark:bg-[#0b1a2e] rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative animate-toastIn">
-            <button
-              onClick={() => setShowPaymentPopup(false)}
-              className="absolute top-4 right-5 text-slate-300 hover:text-slate-600 text-xl font-black z-10 transition-colors"
-            >
-              ✕
-            </button>
-            <div className="p-6 md:p-8">
+      {pendingPayment && role === 'TENANT' && tenantId && !isImpersonating && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-y-auto relative animate-toastIn" style={{ background: '#ffffff' }}>
+            <div className="p-4 md:p-8">
               <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
                 <TrialExpiredView
                   tenantId={tenantId}
                   mode="pending_payment"
                   onActivated={() => {
                     setPendingPayment(false);
-                    setShowPaymentPopup(false);
                     window.location.reload();
                   }}
                 />

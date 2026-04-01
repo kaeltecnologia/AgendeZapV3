@@ -224,9 +224,9 @@ const TrialExpiredView: React.FC<{
 
         {/* Header */}
         <div className="text-center space-y-3">
-          <div className="w-16 h-16 bg-slate-100 rounded-[20px] flex items-center justify-center mx-auto text-3xl">{headerIcon}</div>
-          <h1 className="text-2xl md:text-3xl font-black text-black uppercase tracking-tight">{headerTitle}</h1>
-          <p className="text-sm font-bold text-slate-400 max-w-md mx-auto">{headerSubtitle}</p>
+          <div className="w-16 h-16 rounded-[20px] flex items-center justify-center mx-auto text-3xl" style={{ background: '#f1f5f9' }}>{headerIcon}</div>
+          <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight" style={{ color: '#000' }}>{headerTitle}</h1>
+          <p className="text-sm font-bold max-w-md mx-auto" style={{ color: '#94a3b8' }}>{headerSubtitle}</p>
         </div>
 
         {error && (
@@ -241,35 +241,36 @@ const TrialExpiredView: React.FC<{
             {PLANS.map(planId => {
               const cfg = PLAN_CONFIGS[planId];
               return (
-                <div key={planId} className="bg-white rounded-[32px] border-2 border-slate-100 hover:border-slate-300 p-8 space-y-6 transition-all">
+                <div key={planId} className="rounded-[32px] p-8 space-y-6 transition-all hover:shadow-lg" style={{ background: '#fff', border: '2px solid #f1f5f9' }}>
                   <div className="space-y-1">
                     <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${cfg.bgClass} ${cfg.textClass}`}>
                       {cfg.badge}
                     </span>
-                    <h3 className="text-xl font-black text-black uppercase tracking-tight mt-2">{cfg.name}</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">{cfg.subtitle}</p>
+                    <h3 className="text-xl font-black uppercase tracking-tight mt-2" style={{ color: '#000' }}>{cfg.name}</h3>
+                    <p className="text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>{cfg.subtitle}</p>
                   </div>
 
                   <div>
-                    <span className="text-3xl font-black text-black">R$ {fmt(cfg.price)}</span>
-                    <span className="text-xs font-bold text-slate-400">/mes</span>
+                    <span className="text-3xl font-black" style={{ color: '#000' }}>R$ {fmt(cfg.price)}</span>
+                    <span className="text-xs font-bold" style={{ color: '#94a3b8' }}>/mes</span>
                   </div>
 
                   <ul className="space-y-2">
                     {cfg.features.slice(0, 5).map((f, i) => (
-                      <li key={i} className="flex items-start gap-2 text-[10px] font-bold text-slate-600">
+                      <li key={i} className="flex items-start gap-2 text-[10px] font-bold" style={{ color: '#475569' }}>
                         <span className="text-orange-500 mt-0.5">✓</span>
                         <span>{f}</span>
                       </li>
                     ))}
                     {cfg.features.length > 5 && (
-                      <li className="text-[10px] font-black text-slate-400 ml-4">+ {cfg.features.length - 5} mais...</li>
+                      <li className="text-[10px] font-black ml-4" style={{ color: '#94a3b8' }}>+ {cfg.features.length - 5} mais...</li>
                     )}
                   </ul>
 
                   <button
                     onClick={() => handleSelectPlan(planId)}
-                    className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all bg-black text-white hover:bg-orange-500"
+                    className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-orange-500"
+                    style={{ background: '#000', color: '#fff' }}
                   >
                     Quero o {cfg.name}
                   </button>
@@ -294,18 +295,19 @@ const TrialExpiredView: React.FC<{
                   <button
                     key={opt.id}
                     onClick={() => handleSelectCycle(opt.id)}
-                    className="bg-white rounded-[24px] border-2 border-slate-100 hover:border-orange-300 hover:shadow-lg p-6 space-y-3 transition-all text-center relative"
+                    className="rounded-[24px] hover:border-orange-300 hover:shadow-lg p-6 space-y-3 transition-all text-center relative"
+                    style={{ background: '#fff', border: '2px solid #f1f5f9' }}
                   >
                     {opt.tag && (
-                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider">
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider" style={{ color: '#fff' }}>
                         {opt.tag}
                       </span>
                     )}
-                    <p className="text-sm font-black text-black uppercase">{opt.label}</p>
+                    <p className="text-sm font-black uppercase" style={{ color: '#000' }}>{opt.label}</p>
                     <div>
-                      <span className="text-2xl font-black text-black">R$ {fmt(total)}</span>
+                      <span className="text-2xl font-black" style={{ color: '#000' }}>R$ {fmt(total)}</span>
                       {opt.months > 1 && (
-                        <p className="text-[10px] font-bold text-slate-400 mt-1">
+                        <p className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>
                           = R$ {fmt(monthlyEquiv)}/mes
                         </p>
                       )}
@@ -331,9 +333,9 @@ const TrialExpiredView: React.FC<{
         {/* ── Step 3: CPF/CNPJ ── */}
         {step === 'cpf' && (
           <div className="space-y-6 max-w-md mx-auto">
-            <div className="bg-white rounded-[24px] border-2 border-slate-100 p-8 space-y-5">
+            <div className="rounded-[24px] p-8 space-y-5" style={{ background: '#fff', border: '2px solid #f1f5f9' }}>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-black uppercase tracking-widest">CPF ou CNPJ</label>
+                <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#000' }}>CPF ou CNPJ</label>
                 <input
                   type="text"
                   value={cpfCnpj}
@@ -342,14 +344,16 @@ const TrialExpiredView: React.FC<{
                     setCpfCnpj(formatCpfCnpj(raw));
                   }}
                   placeholder="000.000.000-00"
-                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all font-bold text-center text-lg tracking-wider"
+                  className="w-full p-4 rounded-2xl outline-none focus:border-orange-500 transition-all font-bold text-center text-lg tracking-wider"
+                  style={{ background: '#f8fafc', border: '2px solid #f1f5f9', color: '#000' }}
                   autoFocus
                 />
-                <p className="text-[10px] font-bold text-slate-400 text-center">Necessario para emissao da cobranca</p>
+                <p className="text-[10px] font-bold text-center" style={{ color: '#94a3b8' }}>Necessario para emissao da cobranca</p>
               </div>
               <button
                 onClick={handleCpfSubmit}
-                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all bg-black text-white hover:bg-orange-500"
+                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-orange-500"
+                style={{ background: '#000', color: '#fff' }}
               >
                 Continuar
               </button>
@@ -368,7 +372,8 @@ const TrialExpiredView: React.FC<{
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-lg mx-auto">
               <button
                 onClick={() => handleSelectPayment('PIX')}
-                className="bg-white rounded-[24px] border-2 border-slate-100 hover:border-green-300 hover:shadow-lg p-8 space-y-4 transition-all text-center group"
+                className="rounded-[24px] hover:border-green-300 hover:shadow-lg p-8 space-y-4 transition-all text-center group"
+                style={{ background: '#fff', border: '2px solid #f1f5f9' }}
               >
                 <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
                   <svg viewBox="0 0 512 512" className="w-8 h-8 text-green-600" fill="currentColor">
@@ -376,14 +381,15 @@ const TrialExpiredView: React.FC<{
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-black text-black uppercase">Pix</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1">Pagamento instantaneo</p>
+                  <p className="text-sm font-black uppercase" style={{ color: '#000' }}>Pix</p>
+                  <p className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>Pagamento instantaneo</p>
                 </div>
               </button>
 
               <button
                 onClick={() => handleSelectPayment('CREDIT_CARD')}
-                className="bg-white rounded-[24px] border-2 border-slate-100 hover:border-blue-300 hover:shadow-lg p-8 space-y-4 transition-all text-center group"
+                className="rounded-[24px] hover:border-blue-300 hover:shadow-lg p-8 space-y-4 transition-all text-center group"
+                style={{ background: '#fff', border: '2px solid #f1f5f9' }}
               >
                 <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
                   <svg viewBox="0 0 24 24" className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" strokeWidth="2">
@@ -392,8 +398,8 @@ const TrialExpiredView: React.FC<{
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-black text-black uppercase">Cartao de Credito</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1">Debito automatico</p>
+                  <p className="text-sm font-black uppercase" style={{ color: '#000' }}>Cartao de Credito</p>
+                  <p className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>Debito automatico</p>
                 </div>
               </button>
             </div>
