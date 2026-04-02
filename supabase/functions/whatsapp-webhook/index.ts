@@ -1191,6 +1191,26 @@ async function debouncedRun(tenant: any, phone: string, text: string, settings: 
   delete cleanData._processorId;
   await saveSession(tenantId, phone, cleanData, fresh.history);
 
+  // ── Re-check aiActive + aiPaused after debounce (settings may have changed) ──
+  const { data: _freshSettings } = await supabase.from('tenant_settings')
+    .select('ai_active, follow_up').eq('tenant_id', tenantId).maybeSingle();
+  if (!_freshSettings?.ai_active) {
+    console.log(`[debouncedRun] AI desativada durante debounce para ${phone.slice(0,2)}***`);
+    return;
+  }
+  const _freshCd = (_freshSettings.follow_up?._customerData || {}) as Record<string, { aiPaused?: boolean }>;
+  if (_freshCd[`phone:${phone}`]?.aiPaused) {
+    console.log(`[debouncedRun] IA pausada (phone key) durante debounce para ${phone.slice(0,2)}***`);
+    return;
+  }
+  const _phoneSuffix = phone.replace(/\D/g, '').slice(-10);
+  const { data: _custCheck } = await supabase.from('customers')
+    .select('id').eq('tenant_id', tenantId).like('telefone', `%${_phoneSuffix}`).limit(1);
+  if (_custCheck?.[0] && _freshCd[_custCheck[0].id]?.aiPaused) {
+    console.log(`[debouncedRun] IA pausada (customer) durante debounce para ${phone.slice(0,2)}***`);
+    return;
+  }
+
   // Show "typing..." indicator while AI processes the message
   const instanceName = tenant.evolution_instance || `agz_${(tenant.slug || '').replace(/[^a-z0-9]/g, '')}`;
   await sendTyping(instanceName, phone, 15000);
@@ -3683,6 +3703,15 @@ Deno.serve(async (req) => {
           }
 
           if (!settings.aiActive) continue; // no AI → already saved placeholder
+
+          // Check per-lead aiPaused for audio messages too
+          if (_audioPhone) {
+            const _aSuffix = _audioPhone.replace(/\D/g, '').slice(-10);
+            if (settings.customerData[`phone:${_audioPhone}`]?.aiPaused) continue;
+            const { data: _aCusts } = await supabase.from('customers')
+              .select('id').eq('tenant_id', tenant.id).like('telefone', `%${_aSuffix}`).limit(1);
+            if (_aCusts?.[0] && settings.customerData[_aCusts[0].id]?.aiPaused) continue;
+          }
 
           // Get API key for transcription + cleanup
           let audioKey = (settings.openaiApiKey || '').trim();
