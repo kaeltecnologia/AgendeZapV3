@@ -133,8 +133,12 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
     let isPaused = !!settings.customerData[`phone:${cleanPhone}`]?.aiPaused;
     if (!isPaused) {
       try {
-        const { data: existingCust } = await supabase.from('customers')
-          .select('id').eq('tenant_id', tenant.id).eq('telefone', cleanPhone).maybeSingle();
+        // Use suffix match (last 10 digits) — phone format may differ between
+        // WhatsApp (5511999998888) and DB (11999998888)
+        const suffix = cleanPhone.replace(/\D/g, '').slice(-10);
+        const { data: custs } = await supabase.from('customers')
+          .select('id').eq('tenant_id', tenant.id).like('telefone', `%${suffix}`).limit(1);
+        const existingCust = custs?.[0] || null;
         if (existingCust && settings.customerData[existingCust.id]?.aiPaused) {
           isPaused = true;
         }

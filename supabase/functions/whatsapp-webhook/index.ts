@@ -3791,8 +3791,12 @@ Deno.serve(async (req) => {
       const needsCustomerLookup = !settings.aiLeadActive || hasPausedCustomers;
       let resolvedCustomerId: string | null = null;
       if (needsCustomerLookup) {
-        const { data: existingCust } = await supabase.from('customers')
-          .select('id').eq('tenant_id', tenant.id).eq('telefone', phone).maybeSingle();
+        // Use suffix match (last 10 digits) — phone format may differ between
+        // WhatsApp (5511999998888) and DB (11999998888)
+        const phoneSuffix = phone.replace(/\D/g, '').slice(-10);
+        const { data: custRows } = await supabase.from('customers')
+          .select('id').eq('tenant_id', tenant.id).like('telefone', `%${phoneSuffix}`).limit(1);
+        const existingCust = custRows?.[0] || null;
         if (!settings.aiLeadActive && !existingCust) continue;
         resolvedCustomerId = existingCust?.id || null;
       }
