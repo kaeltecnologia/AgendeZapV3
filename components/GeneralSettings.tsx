@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDb';
 import { WorkingDay, FocusNfeConfig } from '../types';
+import { geocodeAddress } from '../services/geocodingService';
 
 const DEFAULT_NFE: FocusNfeConfig = {
   token: '', cnpj: '', inscricaoMunicipal: '', codigoServico: '7.02',
@@ -12,6 +13,8 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [operatingHours, setOperatingHours] = useState<{ [key: number]: WorkingDay }>({});
   const [storeName, setStoreName] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [estado, setEstado] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -31,6 +34,8 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setOperatingHours(settings.operatingHours);
       setWhatsapp(settings.whatsapp || '');
       setStoreName(tenant?.name || '');
+      setCidade(tenant?.cidade || '');
+      setEstado(tenant?.estado || '');
       if (cfgNfe) setNfeCfg(cfgNfe);
       setLoading(false);
     };
@@ -69,8 +74,16 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const tenantUpdates: any = { name: storeName, cidade, estado };
+      if (cidade.trim()) {
+        const coords = await geocodeAddress(`${cidade.trim()}, ${estado.trim()}, Brasil`);
+        if (coords) {
+          tenantUpdates.latitude = coords.lat;
+          tenantUpdates.longitude = coords.lng;
+        }
+      }
       await Promise.all([
-        db.updateTenant(tenantId, { name: storeName }),
+        db.updateTenant(tenantId, tenantUpdates),
         db.updateSettings(tenantId, { operatingHours, whatsapp })
       ]);
       alert('Configurações salvas com sucesso!');
@@ -127,6 +140,24 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 onChange={e => setWhatsapp(e.target.value)}
                 placeholder="5544998169251"
                 className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm focus:border-orange-500 transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cidade</label>
+              <input
+                value={cidade}
+                onChange={e => setCidade(e.target.value)}
+                placeholder="Ex: Maringá"
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm focus:border-orange-500 transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Estado</label>
+              <input
+                value={estado}
+                onChange={e => setEstado(e.target.value)}
+                placeholder="Ex: PR"
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm uppercase focus:border-orange-500 transition-all"
               />
             </div>
           </div>

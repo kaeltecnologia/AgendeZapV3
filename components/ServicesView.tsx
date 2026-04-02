@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../services/mockDb';
 import { Service } from '../types';
 
@@ -100,34 +101,33 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         )}
       </div>
 
-      {modal.show && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
-          <div className="flex justify-center items-center min-h-full p-4 sm:p-6">
-          <div className="bg-white rounded-[32px] sm:rounded-[40px] w-full max-w-md p-6 sm:p-10 space-y-6 sm:space-y-8 animate-scaleUp border-4 border-black">
-            <h2 className="text-xl sm:text-2xl font-black text-black uppercase tracking-tight italic">{modal.data?.id ? 'Editar Serviço' : 'Novo Serviço'}</h2>
+      {modal.show && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 sm:p-6">
+          <div className="rounded-[32px] sm:rounded-[40px] w-full max-w-md p-6 sm:p-10 space-y-6 sm:space-y-8 animate-scaleUp border-2" style={{ background: 'linear-gradient(145deg, #f8f8ff 0%, #f2f2fa 50%, #f6f6fc 100%)', borderColor: '#c0c0d0', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 25px 50px -12px rgba(40,40,60,0.25)' }}>
+            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight italic" style={{ color: '#1a1a2e' }}>{modal.data?.id ? 'Editar Serviço' : 'Novo Serviço'}</h2>
             <div className="space-y-5 sm:space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Procedimento</label>
-                <input value={modal.data?.name || ''} onChange={e=>setModal({...modal, data: {...modal.data, name: e.target.value}})} className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
+                <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: '#8888a0' }}>Nome do Procedimento</label>
+                <input value={modal.data?.name || ''} onChange={e=>setModal({...modal, data: {...modal.data, name: e.target.value}})} className="w-full p-4 sm:p-5 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#1a1a2e', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Preço (R$)</label>
-                  <input type="number" value={modal.data?.price || ''} onChange={e=>setModal({...modal, data: {...modal.data, price: Number(e.target.value)}})} className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-lg text-orange-600" />
+                  <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: '#8888a0' }}>Preço (R$)</label>
+                  <input type="number" value={modal.data?.price || ''} onChange={e=>setModal({...modal, data: {...modal.data, price: Number(e.target.value)}})} className="w-full p-4 sm:p-5 rounded-2xl outline-none font-black text-lg" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#f97316', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tempo (Min)</label>
-                  <input type="number" value={modal.data?.durationMinutes || ''} onChange={e=>setModal({...modal, data: {...modal.data, durationMinutes: Number(e.target.value)}})} className="w-full p-4 sm:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-lg" />
+                  <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: '#8888a0' }}>Tempo (Min)</label>
+                  <input type="number" value={modal.data?.durationMinutes || ''} onChange={e=>setModal({...modal, data: {...modal.data, durationMinutes: Number(e.target.value)}})} className="w-full p-4 sm:p-5 rounded-2xl outline-none font-black text-lg" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#1a1a2e', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }} />
                 </div>
               </div>
             </div>
             <div className="flex gap-4 pt-2">
-              <button onClick={()=>setModal({show: false, data: null})} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs tracking-widest">Voltar</button>
-              <button onClick={handleSave} className="flex-1 py-4 bg-black text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-500 transition-all shadow-xl">Confirmar</button>
+              <button onClick={()=>setModal({show: false, data: null})} className="flex-1 py-4 font-black uppercase text-xs tracking-widest" style={{ color: '#8888a0' }}>Voltar</button>
+              <button onClick={handleSave} className="flex-1 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-500 transition-all" style={{ background: 'linear-gradient(180deg, #38384e 0%, #1a1a2e 60%, #222238 100%)', color: '#fff', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px rgba(20,20,40,0.25)' }}>Confirmar</button>
             </div>
           </div>
-          </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

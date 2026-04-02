@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { AppointmentStatus, Professional, Service, Customer } from '../types';
 import {
@@ -64,6 +64,51 @@ const QUOTES = [
   'Faça hoje o que outros não querem, conquiste amanhã o que outros não podem.',
 ];
 
+const DICAS_SAUDE = [
+  'Beba pelo menos 2 litros de água hoje. Seu corpo e sua mente funcionam melhor hidratados.',
+  'Levante e alongue o corpo a cada 2 horas. Sua coluna agradece no final do expediente.',
+  'Durma de 7 a 8 horas por noite. Sono de qualidade é o melhor investimento em produtividade.',
+  'Respire fundo por 1 minuto antes de começar o dia. Reduz ansiedade e melhora o foco.',
+  'Cuide da sua postura enquanto trabalha. Ombros para trás, coluna reta.',
+  'Faça uma pausa de 10 minutos para um lanche saudável. Frutas e castanhas são ótimas opções.',
+  'Evite o celular 30 minutos antes de dormir. A luz azul prejudica a qualidade do sono.',
+  'Caminhe pelo menos 30 minutos hoje. Movimento é remédio para o corpo e para a mente.',
+  'Pratique gratidão: pense em 3 coisas boas que aconteceram hoje antes de dormir.',
+  'Reduza o açúcar refinado. Energia constante vale mais que picos de disposição.',
+  'Reserve um momento do dia só para você. Autocuidado não é luxo, é necessidade.',
+  'Proteja seus ouvidos em ambientes barulhentos. Audição perdida não volta.',
+  'Cuide das suas mãos — são sua ferramenta de trabalho. Hidrate e descanse elas.',
+  'Ria mais. O humor reduz cortisol e fortalece o sistema imunológico.',
+  'Não pule refeições. Seu cérebro precisa de combustível para tomar boas decisões.',
+  'Tome sol por 15 minutos pela manhã. Vitamina D melhora humor e imunidade.',
+  'Reduza a cafeína depois das 14h. Seu sono à noite será muito melhor.',
+  'Faça exercícios de respiração entre um atendimento e outro. Três respirações profundas bastam.',
+  'Mantenha um hobby fora do trabalho. Equilíbrio mental melhora tudo na vida.',
+  'Cuide da saúde mental tanto quanto da física. Terapia é manutenção, não conserto.',
+  'Troque o elevador pela escada quando puder. Pequenos hábitos geram grandes resultados.',
+  'Evite comparações nas redes sociais. Cuide do seu progresso no seu ritmo.',
+  'Alongue o pescoço e os ombros agora. Tensão acumulada causa dores de cabeça.',
+  'Planeje suas refeições da semana. Alimentação organizada é alimentação saudável.',
+  'Sorria para o espelho toda manhã. Parece bobo, mas muda o tom do seu dia.',
+  'Desconecte-se por pelo menos 1 hora por dia. Silêncio digital é saúde mental.',
+  'Pratique alguma atividade que te dê prazer fora do trabalho. Corpo ativo, mente leve.',
+  'Não deixe de fazer check-ups anuais. Prevenção é sempre mais fácil que tratamento.',
+  'Mantenha seu ambiente de trabalho limpo e organizado. Espaço limpo, mente clara.',
+  'Celebre suas pequenas vitórias. Reconhecer seu progresso alimenta a motivação.',
+];
+
+const weatherLabel = (code: number): string => {
+  if (code === 0) return 'Ceu limpo';
+  if (code <= 3) return 'Nublado';
+  if (code <= 48) return 'Nevoeiro';
+  if (code <= 57) return 'Garoa';
+  if (code <= 67) return 'Chuva';
+  if (code <= 77) return 'Neve';
+  if (code <= 82) return 'Pancadas';
+  if (code <= 86) return 'Neve forte';
+  return 'Tempestade';
+};
+
 const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: (view: string) => void }> = ({ tenantId, tenantName, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -74,18 +119,21 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
   const [settings, setSettings] = useState<any>({});
   const [selectedProfId, setSelectedProfId] = useState<string>('');
   const [period, setPeriod] = useState(30);
+  const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
+  const [weatherCity, setWeatherCity] = useState('');
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [p, a, s, c, e, st] = await Promise.all([
+        const [p, a, s, c, e, st, tenant] = await Promise.all([
           db.getProfessionals(tenantId),
           db.getAppointments(tenantId),
           db.getServices(tenantId),
           db.getCustomers(tenantId),
           db.getExpenses(tenantId),
           db.getSettings(tenantId),
+          db.getTenant(tenantId),
         ]);
         setProfessionals(p);
         setAppointments(a);
@@ -93,6 +141,18 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         setCustomers(c);
         setExpenses(e);
         setSettings(st);
+
+        // Fetch weather if tenant has coordinates
+        if (tenant?.latitude && tenant?.longitude) {
+          setWeatherCity(tenant.cidade || '');
+          try {
+            const wr = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${tenant.latitude}&longitude=${tenant.longitude}&current=temperature_2m,weather_code&timezone=America/Sao_Paulo`);
+            const wd = await wr.json();
+            if (wd?.current) {
+              setWeather({ temp: Math.round(wd.current.temperature_2m), code: wd.current.weather_code });
+            }
+          } catch { /* weather is optional */ }
+        }
       } catch (err) {
         console.error('Erro ao carregar dashboard:', err);
       } finally {
@@ -191,20 +251,6 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
   const pendingCount = todayAppts.filter(a => a.status === AppointmentStatus.PENDING).length;
   const todayFinished = todayAppts.filter(a => a.status === AppointmentStatus.FINISHED).length;
 
-  // Streak: consecutive days with at least 1 finished appointment
-  const streakDays = React.useMemo(() => {
-    let streak = 0;
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const s = d.toISOString().split('T')[0];
-      const hasAppt = appointments.some(a => a.startTime?.startsWith(s) && a.status === AppointmentStatus.FINISHED);
-      if (hasAppt) streak++;
-      else if (i > 0) break; // today can be 0 (still early)
-    }
-    return streak;
-  }, [appointments]);
-
   // Bar chart — last 7 days
   const barData = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now);
@@ -255,11 +301,34 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
     .slice(0, 3);
   const maxRev = topProfs[0]?.revenue || 1;
 
-  // Greeting + daily quote
+  // Greeting + carousel
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const dayOfYear = Math.floor((Date.now() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
-  const todayQuote = QUOTES[dayOfYear % QUOTES.length];
+
+  // 2 slides: frase motivacional + dica de saúde
+  const carouselSlides = React.useMemo(() => [
+    { label: 'FRASE DO DIA', text: QUOTES[dayOfYear % QUOTES.length] },
+    { label: 'SAUDE E BEM-ESTAR', text: DICAS_SAUDE[dayOfYear % DICAS_SAUDE.length] },
+  ], [dayOfYear]);
+
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  const [carouselFade, setCarouselFade] = useState(true);
+
+  const goToSlide = useCallback((idx: number) => {
+    setCarouselFade(false);
+    setTimeout(() => {
+      setCarouselIdx(idx);
+      setCarouselFade(true);
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      goToSlide((carouselIdx + 1) % carouselSlides.length);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [carouselIdx, carouselSlides.length, goToSlide]);
 
   if (loading) {
     return (
@@ -328,25 +397,53 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         </div>
       )}
 
-      {/* Motivational card */}
-      <div className="bg-gradient-to-br from-orange-50 via-amber-50 to-blue-50 rounded-2xl p-6 sm:p-8 shadow-sm border border-orange-100/50 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-blue-100/30 rounded-full -translate-y-1/2 translate-x-1/4" />
-        <div className="absolute bottom-0 left-0 w-32 h-32 bg-orange-100/30 rounded-full translate-y-1/2 -translate-x-1/4" />
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-semibold text-blue-400">{greeting},</p>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-800 leading-tight mt-1">{tenantName || 'Meu Negócio'}</h2>
-            <p className="text-base sm:text-lg text-slate-500 mt-4 italic leading-relaxed max-w-lg font-medium">"{todayQuote}"</p>
+      {/* Motivational card with carousel */}
+      <div className="bg-white dark:bg-[#1a1a2c] rounded-2xl border border-slate-100 dark:border-[#2a2a3c] p-5 sm:p-7">
+        {/* Header — greeting + weather */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="text-sm font-black text-orange-500 uppercase tracking-[0.25em]">{greeting},</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-800 dark:text-[#e0e0f0] leading-tight mt-1">{tenantName || 'Meu Negócio'}</h2>
           </div>
-          <div className="flex items-center gap-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl px-6 py-5 shrink-0 shadow-lg shadow-blue-500/20">
-            <span className="text-3xl">🔥</span>
-            <div>
-              <p className="text-4xl font-black text-white leading-none">
-                <AnimatedNumber value={streakDays} />
-              </p>
-              <p className="text-[10px] font-bold text-blue-100 uppercase tracking-wider mt-0.5">dias seguidos</p>
+          {weather ? (
+            <div className="text-right shrink-0">
+              <p className="text-3xl sm:text-4xl font-black text-slate-800 dark:text-[#e0e0f0] leading-none">{weather.temp}°</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-1">{weatherLabel(weather.code)}</p>
+              {weatherCity && <p className="text-[9px] font-bold text-slate-300 dark:text-[#484860] uppercase tracking-wider mt-0.5">{weatherCity}</p>}
             </div>
+          ) : (
+            <p className="text-[9px] font-bold text-slate-300 dark:text-[#484860] uppercase tracking-wider shrink-0">Configure sua cidade<br/>em Ajustes</p>
+          )}
+        </div>
+
+        {/* Carousel — frase / dica */}
+        <div className="min-h-[90px]">
+          <div
+            className="transition-all duration-500 ease-in-out"
+            style={{ opacity: carouselFade ? 1 : 0, transform: carouselFade ? 'translateY(0)' : 'translateY(12px)' }}
+          >
+            <p className="text-xs font-black text-orange-500 uppercase tracking-[0.3em] mb-3">
+              {carouselSlides[carouselIdx].label}
+            </p>
+            <p className="text-xl sm:text-3xl font-bold text-slate-700 dark:text-[#c8c8dc] leading-relaxed italic">
+              "{carouselSlides[carouselIdx].text}"
+            </p>
           </div>
+        </div>
+
+        {/* Dots */}
+        <div className="flex items-center gap-2 mt-4">
+          {carouselSlides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goToSlide(i)}
+              className={`rounded-full transition-all duration-300 ${
+                i === carouselIdx
+                  ? 'w-8 h-2 bg-orange-500'
+                  : 'w-2 h-2 bg-slate-200 dark:bg-[#2a2a3c] hover:bg-slate-300 dark:hover:bg-[#3a3a4c]'
+              }`}
+            />
+          ))}
         </div>
       </div>
 
