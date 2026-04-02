@@ -49,7 +49,7 @@ const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, c
     if (!instanceName) return;
     const tick = () => evolutionService.checkStatus(instanceName).then(s => setConnected(s === 'open'));
     tick();
-    const interval = setInterval(tick, 30_000);
+    const interval = setInterval(() => { if (!document.hidden) tick(); }, 60_000);
     return () => clearInterval(interval);
   }, [instanceName, setConnected]);
 

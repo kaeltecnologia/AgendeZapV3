@@ -32,13 +32,14 @@ const CampaignsStatusView: React.FC = () => {
     }
   }, []);
 
-  // Auto-refresh every 3s + trigger tick so messages flow while this tab is visible
+  // Auto-refresh every 10s + trigger tick so messages flow while this tab is visible
   useEffect(() => {
     load();
     const interval = setInterval(() => {
+      if (document.hidden) return;
       load();
-      triggerTick(); // keep the Edge Function processing while this tab is open
-    }, 3_000);
+      triggerTick();
+    }, 10_000);
     return () => clearInterval(interval);
   }, [load]);
 

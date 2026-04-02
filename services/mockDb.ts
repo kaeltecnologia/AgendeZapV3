@@ -28,6 +28,49 @@ import {
   parseServiceIds, encodeServiceIds
 } from '../types';
 
+// ─── In-Memory TTL Cache ─────────────────────────────────────────────
+class TtlCache {
+  private store = new Map<string, { data: any; expiry: number }>();
+
+  get<T>(key: string): T | undefined {
+    const entry = this.store.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiry) {
+      this.store.delete(key);
+      return undefined;
+    }
+    return entry.data as T;
+  }
+
+  set(key: string, data: any, ttlMs: number): void {
+    this.store.set(key, { data, expiry: Date.now() + ttlMs });
+  }
+
+  invalidate(prefix: string): void {
+    for (const key of this.store.keys()) {
+      if (key.startsWith(prefix)) this.store.delete(key);
+    }
+  }
+
+  invalidateTenant(tenantId: string): void {
+    for (const key of this.store.keys()) {
+      if (key.includes(tenantId)) this.store.delete(key);
+    }
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+const _cache = new TtlCache();
+
+// Cache TTL constants (ms)
+const TTL_LONG = 300_000;    // 5 min — settings, tenant, breaks, plans, modes
+const TTL_MED = 180_000;     // 3 min — services, professionals, inventory, products, reviews
+const TTL_SHORT = 120_000;   // 2 min — customers, expenses, financial
+const TTL_FAST = 30_000;     // 30s   — appointments, comandas
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function generateId(): string {
@@ -110,12 +153,14 @@ class DatabaseService {
     }
   }
 
-  async getTenant(id: string): Promise<Tenant | null> {
+  async getTenant(id: string, opts?: { fresh?: boolean }): Promise<Tenant | null> {
+    const ck = `getTenant:${id}`;
+    if (!opts?.fresh) { const c = _cache.get<Tenant | null>(ck); if (c !== undefined) return c; }
     try {
       const { data, error } = await supabase.from('tenants').select('*').eq('id', id).maybeSingle();
       if (error) { console.error('[getTenant] Supabase error for id:', id, error); return null; }
       if (!data) { console.warn('[getTenant] No data found for id:', id); return null; }
-      return {
+      const result: Tenant = {
         id: data.id,
         name: data.nome || 'Sem Nome',
         slug: data.slug,
@@ -138,17 +183,21 @@ class DatabaseService {
         descricao: data.descricao,
         marketplaceVisible: data.marketplace_visible ?? false,
       };
+      _cache.set(ck, result, TTL_LONG);
+      return result;
     } catch (err) {
       console.error("Error fetching tenant:", err);
       return null;
     }
   }
 
-  async getTenantBySlug(slug: string): Promise<Tenant | null> {
+  async getTenantBySlug(slug: string, opts?: { fresh?: boolean }): Promise<Tenant | null> {
+    const ck = `getTenantBySlug:${slug}`;
+    if (!opts?.fresh) { const c = _cache.get<Tenant | null>(ck); if (c !== undefined) return c; }
     try {
       const { data, error } = await supabase.from('tenants').select('*').eq('slug', slug).maybeSingle();
       if (error || !data) return null;
-      return {
+      const result: Tenant = {
         id: data.id,
         name: data.nome || 'Sem Nome',
         slug: data.slug,
@@ -171,6 +220,8 @@ class DatabaseService {
         descricao: data.descricao,
         marketplaceVisible: data.marketplace_visible ?? false,
       };
+      _cache.set(ck, result, TTL_LONG);
+      return result;
     } catch (err) {
       console.error("Error fetching tenant by slug:", err);
       return null;
@@ -233,6 +284,8 @@ class DatabaseService {
       if (updates.marketplaceVisible !== undefined) payload.marketplace_visible = updates.marketplaceVisible;
       const { error } = await supabase.from('tenants').update(payload).eq('id', id);
       if (error) throw error;
+      _cache.invalidate(`getTenant:${id}`);
+      _cache.invalidate('getTenantBySlug:');
     } catch (e) {
       console.error("Supabase Tenant Update Error:", e);
       throw e;
@@ -251,14 +304,16 @@ class DatabaseService {
 
   // ─── APPOINTMENTS ───────────────────────────────────────────────────
 
-  async getAppointments(tenantId: string, daysBack: number = 90): Promise<Appointment[]> {
+  async getAppointments(tenantId: string, daysBack: number = 90, opts?: { fresh?: boolean }): Promise<Appointment[]> {
+    const ck = `getAppointments:${tenantId}:${daysBack}`;
+    if (!opts?.fresh) { const c = _cache.get<Appointment[]>(ck); if (c) return c; }
     try {
       const since = new Date();
       since.setDate(since.getDate() - daysBack);
       const sinceISO = since.toISOString().slice(0, 10) + 'T00:00:00';
       const { data, error } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId).gte('inicio', sinceISO);
       if (error) throw error;
-      return (data || []).map(a => {
+      const result = (data || []).map(a => {
         const start = new Date(a.inicio);
         const end = new Date(a.fim);
         const duration = Math.round((end.getTime() - start.getTime()) / 60000);
@@ -278,6 +333,8 @@ class DatabaseService {
           isPlan: a.is_plan ?? false
         };
       });
+      _cache.set(ck, result, TTL_FAST);
+      return result;
     } catch (err) {
       console.error("Error fetching appointments:", err);
       return [];
@@ -343,6 +400,9 @@ class DatabaseService {
         await insertOne({ ...payload, service_id: svcIds[i] });
       }
 
+      _cache.invalidate(`getAppointments:${app.tenant_id}`);
+      _cache.invalidate(`getFinancialSummary:${app.tenant_id}`);
+      _cache.invalidate(`getComandas:${app.tenant_id}`);
       return {
         ...data,
         startTime: data.inicio,
@@ -366,6 +426,8 @@ class DatabaseService {
         extra_value: updates.extraValue
       }).eq('id', id);
       if (error) throw error;
+      _cache.invalidate('getAppointments:');
+      _cache.invalidate('getFinancialSummary:');
     } catch (e) {
       console.error("Supabase Appointment Update Error:", e);
       throw e;
@@ -399,12 +461,16 @@ class DatabaseService {
       fim,
     }).eq('id', id);
     if (error) throw error;
+    _cache.invalidate('getAppointments:');
+    _cache.invalidate('getFinancialSummary:');
   }
 
   async deleteAppointment(id: string): Promise<void> {
     try {
       const { error } = await supabase.from('appointments').delete().eq('id', id);
       if (error) throw error;
+      _cache.invalidate('getAppointments:');
+      _cache.invalidate('getFinancialSummary:');
     } catch (e) {
       console.error("Supabase Appointment Delete Error:", e);
       throw e;
@@ -413,7 +479,9 @@ class DatabaseService {
 
   // ─── PROFESSIONALS ──────────────────────────────────────────────────
 
-  async getProfessionals(tenantId: string): Promise<Professional[]> {
+  async getProfessionals(tenantId: string, opts?: { fresh?: boolean }): Promise<Professional[]> {
+    const ck = `getProfessionals:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Professional[]>(ck); if (c) return c; }
     try {
       const [{ data, error }, settings] = await Promise.all([
         supabase.from('professionals').select('*').eq('tenant_id', tenantId),
@@ -421,7 +489,7 @@ class DatabaseService {
       ]);
       if (error) throw error;
       const profMeta = settings.professionalMeta || {};
-      return (data || []).map(p => ({
+      const result = (data || []).map(p => ({
         id: p.id,
         tenant_id: p.tenant_id,
         name: p.nome || 'Sem Nome',
@@ -430,6 +498,8 @@ class DatabaseService {
         active: p.ativo ?? true,
         role: profMeta[p.id]?.role || 'colab'
       }));
+      _cache.set(ck, result, TTL_MED);
+      return result;
     } catch (err) {
       console.error("Error fetching professionals:", err);
       return [];
@@ -446,6 +516,7 @@ class DatabaseService {
         ativo: pro.active ?? true
       }).select().single();
       if (error) throw error;
+      _cache.invalidate(`getProfessionals:${pro.tenant_id}`);
       return { ...data, name: data.nome, specialty: data.especialidade, active: data.ativo };
     } catch (e) {
       console.error("Supabase Professional Insert Error:", e);
@@ -471,6 +542,7 @@ class DatabaseService {
         meta[id] = { ...(meta[id] || {}), role: pro.role };
         await this.updateSettings(tenantId, { professionalMeta: meta });
       }
+      _cache.invalidate(`getProfessionals:${tenantId}`);
     } catch (e) {
       console.error("Supabase Professional Update Error:", e);
       throw e;
@@ -494,6 +566,8 @@ class DatabaseService {
       // Now safe to delete the professional row
       const { error } = await supabase.from('professionals').delete().eq('id', id).eq('tenant_id', tenantId);
       if (error) throw error;
+      _cache.invalidate(`getProfessionals:${tenantId}`);
+      _cache.invalidate(`getAppointments:${tenantId}`);
     } catch (e) {
       console.error("Supabase Professional Delete Error:", e);
       throw e;
@@ -502,11 +576,13 @@ class DatabaseService {
 
   // ─── SERVICES ───────────────────────────────────────────────────────
 
-  async getServices(tenantId: string): Promise<Service[]> {
+  async getServices(tenantId: string, opts?: { fresh?: boolean }): Promise<Service[]> {
+    const ck = `getServices:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Service[]>(ck); if (c) return c; }
     try {
       const { data, error } = await supabase.from('services').select('*').eq('tenant_id', tenantId);
       if (error) throw error;
-      return (data || []).map(s => ({
+      const result = (data || []).map(s => ({
         id: s.id,
         tenant_id: s.tenant_id,
         name: s.nome || 'Sem Nome',
@@ -514,6 +590,8 @@ class DatabaseService {
         durationMinutes: s.duracao_minutos || 30,
         active: s.ativo ?? true
       }));
+      _cache.set(ck, result, TTL_MED);
+      return result;
     } catch (err) {
       console.error("Error fetching services:", err);
       return [];
@@ -531,6 +609,7 @@ class DatabaseService {
       };
       const { data, error } = await supabase.from('services').insert(payload).select().single();
       if (error) throw error;
+      _cache.invalidate(`getServices:${svc.tenant_id}`);
       return {
         id: data.id,
         tenant_id: data.tenant_id,
@@ -554,6 +633,7 @@ class DatabaseService {
         ativo: svc.active
       }).eq('id', id);
       if (error) throw error;
+      _cache.invalidate('getServices:');
     } catch (e) {
       console.error("Supabase Service Update Error:", e);
       throw e;
@@ -584,7 +664,9 @@ class DatabaseService {
     };
   }
 
-  async getCustomers(tenantId: string): Promise<Customer[]> {
+  async getCustomers(tenantId: string, opts?: { fresh?: boolean }): Promise<Customer[]> {
+    const ck = `getCustomers:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Customer[]>(ck); if (c) return c; }
     try {
       const [{ data, error }, settings] = await Promise.all([
         supabase.from('customers').select('*').eq('tenant_id', tenantId),
@@ -592,7 +674,9 @@ class DatabaseService {
       ]);
       if (error) throw error;
       const customerData = settings.customerData || {};
-      return (data || []).map(c => this.buildCustomer(c, customerData[c.id] || {}));
+      const result = (data || []).map(c => this.buildCustomer(c, customerData[c.id] || {}));
+      _cache.set(ck, result, TTL_SHORT);
+      return result;
     } catch (err: any) {
       console.error("Error fetching customers:", err?.code, err?.message, err?.details);
       return [];
@@ -618,6 +702,7 @@ class DatabaseService {
         console.error("Supabase Customer Insert Error:", error.code, error.message, error.details, error.hint);
         throw error;
       }
+      _cache.invalidate(`getCustomers:${customer.tenant_id}`);
       return this.buildCustomer(data, {});
     } catch (e: any) {
       if (e?.code !== '23505') console.error("Supabase Customer Insert Error:", e);
@@ -665,6 +750,7 @@ class DatabaseService {
         };
         await this.updateSettings(tenantId, { customerData: allCData });
       }
+      _cache.invalidate(`getCustomers:${tenantId}`);
     } catch (e) {
       console.error("Supabase Customer Update Error:", e);
       throw e;
@@ -795,7 +881,9 @@ class DatabaseService {
   // the existing `follow_up` JSONB column under _-prefixed keys so no
   // schema changes are required.
 
-  async getSettings(tenantId: string): Promise<TenantSettings> {
+  async getSettings(tenantId: string, opts?: { fresh?: boolean }): Promise<TenantSettings> {
+    const ck = `getSettings:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<TenantSettings>(ck); if (c) return c; }
     const defaults: TenantSettings = {
       followUp: {
         aviso: { active: true, message: "Aviso", timing: 0, fixedTime: "08:00" },
@@ -831,7 +919,7 @@ class DatabaseService {
       if (error) throw error;
       if (data) {
         const fu = data.follow_up || {};
-        return {
+        const result: TenantSettings = {
           followUp: {
             aviso: fu.aviso || defaults.followUp.aviso,
             lembrete: fu.lembrete || defaults.followUp.lembrete,
@@ -891,10 +979,13 @@ class DatabaseService {
           trendingContent: fu._trendingContent ?? null,
           trendingContentDate: fu._trendingContentDate ?? null,
         };
+        _cache.set(ck, result, TTL_LONG);
+        return result;
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
     }
+    _cache.set(ck, defaults, TTL_LONG);
     return defaults;
   }
 
@@ -969,6 +1060,16 @@ class DatabaseService {
         { onConflict: 'tenant_id' }  // required to avoid duplicate key error
       );
       if (error) throw error;
+      // Invalidate settings and all derived caches
+      _cache.invalidate(`getSettings:${tenantId}`);
+      _cache.invalidate(`getBreaks:${tenantId}`);
+      _cache.invalidate(`getPlans:${tenantId}`);
+      _cache.invalidate(`getAllPlans:${tenantId}`);
+      _cache.invalidate(`getNamedModes:${tenantId}`);
+      _cache.invalidate(`getInventory:${tenantId}`);
+      _cache.invalidate(`getProducts:${tenantId}`);
+      _cache.invalidate(`getCustomers:${tenantId}`);
+      _cache.invalidate(`getProfessionals:${tenantId}`);
     } catch (e) {
       console.error("Error updating settings:", e);
       throw e;
@@ -1057,9 +1158,13 @@ class DatabaseService {
 
   // ─── BREAK PERIODS (convenience wrappers over settings) ─────────────
 
-  async getBreaks(tenantId: string): Promise<BreakPeriod[]> {
+  async getBreaks(tenantId: string, opts?: { fresh?: boolean }): Promise<BreakPeriod[]> {
+    const ck = `getBreaks:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<BreakPeriod[]>(ck); if (c) return c; }
     const s = await this.getSettings(tenantId);
-    return s.breaks || [];
+    const result = s.breaks || [];
+    _cache.set(ck, result, TTL_LONG);
+    return result;
   }
 
   async saveBreaks(tenantId: string, breaks: BreakPeriod[]): Promise<void> {
@@ -1080,15 +1185,23 @@ class DatabaseService {
     return plan as Plan;
   }
 
-  async getPlans(tenantId: string): Promise<Plan[]> {
+  async getPlans(tenantId: string, opts?: { fresh?: boolean }): Promise<Plan[]> {
+    const ck = `getPlans:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Plan[]>(ck); if (c) return c; }
     const s = await this.getSettings(tenantId);
-    return (s.plans || []).filter(p => p.active).map(p => this.migratePlanQuotas(p));
+    const result = (s.plans || []).filter(p => p.active).map(p => this.migratePlanQuotas(p));
+    _cache.set(ck, result, TTL_LONG);
+    return result;
   }
 
   /** Get ALL plans (including inactive) — for admin listing */
-  async getAllPlans(tenantId: string): Promise<Plan[]> {
+  async getAllPlans(tenantId: string, opts?: { fresh?: boolean }): Promise<Plan[]> {
+    const ck = `getAllPlans:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Plan[]>(ck); if (c) return c; }
     const s = await this.getSettings(tenantId);
-    return (s.plans || []).map(p => this.migratePlanQuotas(p));
+    const result = (s.plans || []).map(p => this.migratePlanQuotas(p));
+    _cache.set(ck, result, TTL_LONG);
+    return result;
   }
 
   async addPlan(plan: Omit<Plan, 'id'>): Promise<Plan> {
@@ -1190,13 +1303,17 @@ class DatabaseService {
 
   // ─── FOLLOW-UP NAMED MODES (convenience wrappers) ───────────────────
 
-  async getNamedModes(tenantId: string): Promise<{ aviso: FollowUpNamedMode[]; lembrete: FollowUpNamedMode[]; reativacao: FollowUpNamedMode[] }> {
+  async getNamedModes(tenantId: string, opts?: { fresh?: boolean }): Promise<{ aviso: FollowUpNamedMode[]; lembrete: FollowUpNamedMode[]; reativacao: FollowUpNamedMode[] }> {
+    const ck = `getNamedModes:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<any>(ck); if (c) return c; }
     const s = await this.getSettings(tenantId);
-    return {
+    const result = {
       aviso: s.avisoModes || [],
       lembrete: s.lembreteModes || [],
       reativacao: s.reativacaoModes || []
     };
+    _cache.set(ck, result, TTL_LONG);
+    return result;
   }
 
   // ─── RECURRING APPOINTMENT GENERATOR ────────────────────────────────
@@ -1390,7 +1507,9 @@ class DatabaseService {
 
   // ─── FINANCIAL ──────────────────────────────────────────────────────
 
-  async getFinancialSummary(tenantId: string, period: number, professionalId?: string) {
+  async getFinancialSummary(tenantId: string, period: number, professionalId?: string, opts?: { fresh?: boolean }) {
+    const ck = `getFinancialSummary:${tenantId}:${period}:${professionalId || ''}`;
+    if (!opts?.fresh) { const c = _cache.get<any>(ck); if (c) return c; }
     try {
       const apps = await this.getAppointments(tenantId);
       const startDate = new Date();
@@ -1411,6 +1530,7 @@ class DatabaseService {
         res.totalRevenue += (a.amountPaid || 0);
         if (a.paymentMethod) res[a.paymentMethod] = (res[a.paymentMethod] || 0) + (a.amountPaid || 0);
       });
+      _cache.set(ck, res, TTL_SHORT);
       return res;
     } catch (err) {
       console.error("Error getting financial summary:", err);
@@ -1461,11 +1581,13 @@ class DatabaseService {
     }
   }
 
-  async getExpenses(tenantId: string, _period?: number, _professionalId?: string): Promise<Expense[]> {
+  async getExpenses(tenantId: string, _period?: number, _professionalId?: string, opts?: { fresh?: boolean }): Promise<Expense[]> {
+    const ck = `getExpenses:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Expense[]>(ck); if (c) return c; }
     try {
       const { data, error } = await supabase.from('expenses').select('*').eq('tenant_id', tenantId);
       if (error) throw error;
-      return (data || []).map(e => ({
+      const result = (data || []).map(e => ({
         id: e.id,
         tenant_id: e.tenant_id,
         description: e.description,
@@ -1475,6 +1597,8 @@ class DatabaseService {
         date: e.date,
         paymentMethod: e.payment_method || undefined
       }));
+      _cache.set(ck, result, TTL_SHORT);
+      return result;
     } catch (err) {
       console.error("Error fetching expenses:", err);
       return [];
@@ -1493,6 +1617,8 @@ class DatabaseService {
         payment_method: exp.paymentMethod || null
       });
       if (error) throw error;
+      _cache.invalidate(`getExpenses:${exp.tenant_id}`);
+      _cache.invalidate(`getFinancialSummary:${exp.tenant_id}`);
     } catch (e) {
       console.error("Error adding expense:", e);
       throw e;
@@ -1504,9 +1630,13 @@ class DatabaseService {
 
   // ─── INVENTORY ──────────────────────────────────────────────────────
 
-  async getInventory(tenantId: string): Promise<InventoryItem[]> {
+  async getInventory(tenantId: string, opts?: { fresh?: boolean }): Promise<InventoryItem[]> {
+    const ck = `getInventory:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<InventoryItem[]>(ck); if (c) return c; }
     const s = await this.getSettings(tenantId);
-    return s.inventory || [];
+    const result = s.inventory || [];
+    _cache.set(ck, result, TTL_MED);
+    return result;
   }
 
   async addInventoryItem(tenantId: string, item: Omit<InventoryItem, 'id' | 'lastUpdated'>): Promise<InventoryItem> {
@@ -1602,10 +1732,13 @@ class DatabaseService {
       list.unshift(comanda);
       this._lsSaveComandas(comanda.tenant_id, list);
     }
+    _cache.invalidate(`getComandas:${comanda.tenant_id}`);
     return comanda;
   }
 
-  async getComandas(tenantId: string): Promise<Comanda[]> {
+  async getComandas(tenantId: string, opts?: { fresh?: boolean }): Promise<Comanda[]> {
+    const ck = `getComandas:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Comanda[]>(ck); if (c) return c; }
     try {
       const { data, error } = await supabase
         .from('comandas')
@@ -1614,11 +1747,12 @@ class DatabaseService {
         .order('created_at', { ascending: false });
       if (error) throw new Error(error.message);
       const supabaseList = (data || []).map((r: any) => this._rowToComanda(r));
-      // Merge with localStorage (in case some were created offline)
       const local = this._lsGetComandas(tenantId);
       const supabaseIds = new Set(supabaseList.map(c => c.id));
       const onlyLocal = local.filter(c => !supabaseIds.has(c.id));
-      return [...onlyLocal, ...supabaseList];
+      const result = [...onlyLocal, ...supabaseList];
+      _cache.set(ck, result, TTL_FAST);
+      return result;
     } catch (err) {
       console.warn('[Comandas] Supabase fetch failed, using localStorage:', err);
       return this._lsGetComandas(tenantId);
@@ -1668,6 +1802,7 @@ class DatabaseService {
     } catch (err) {
       console.warn('[Comandas] Supabase update failed, localStorage updated only:', err);
     }
+    _cache.invalidate('getComandas:');
   }
 
   async decrementInventory(tenantId: string, itemId: string, qty: number): Promise<void> {
@@ -1682,9 +1817,13 @@ class DatabaseService {
 
   // ─── PRODUCTS (retail products for sale to clients) ──────────────────
 
-  async getProducts(tenantId: string): Promise<Product[]> {
+  async getProducts(tenantId: string, opts?: { fresh?: boolean }): Promise<Product[]> {
+    const ck = `getProducts:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Product[]>(ck); if (c) return c; }
     const s = await this.getSettings(tenantId);
-    return s.products || [];
+    const result = s.products || [];
+    _cache.set(ck, result, TTL_MED);
+    return result;
   }
 
   async addProduct(tenantId: string, item: Omit<Product, 'id' | 'lastUpdated'>): Promise<Product> {
@@ -2098,6 +2237,7 @@ class DatabaseService {
       comment: review.comment ?? null,
     }).select().single();
     if (error) throw error;
+    _cache.invalidate(`getReviews:${review.tenantId}`);
     return {
       id: data.id,
       tenantId: data.tenant_id,
@@ -2110,14 +2250,16 @@ class DatabaseService {
     };
   }
 
-  async getReviews(tenantId: string): Promise<Review[]> {
+  async getReviews(tenantId: string, opts?: { fresh?: boolean }): Promise<Review[]> {
+    const ck = `getReviews:${tenantId}`;
+    if (!opts?.fresh) { const c = _cache.get<Review[]>(ck); if (c) return c; }
     const { data, error } = await supabase
       .from('reviews')
       .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map(r => ({
+    const result = (data || []).map(r => ({
       id: r.id,
       tenantId: r.tenant_id,
       customerPhone: r.customer_phone,
@@ -2127,6 +2269,8 @@ class DatabaseService {
       comment: r.comment ?? undefined,
       createdAt: r.created_at,
     }));
+    _cache.set(ck, result, TTL_MED);
+    return result;
   }
 
   async getAverageRating(tenantId: string): Promise<{ average: number; count: number }> {
@@ -2705,6 +2849,17 @@ class DatabaseService {
         price: Number(a.amount_paid || 0),
       };
     });
+  }
+
+  // ─── CACHE CONTROL ──────────────────────────────────────────────────
+
+  clearCache(prefix?: string): void {
+    if (prefix) _cache.invalidate(prefix);
+    else _cache.clear();
+  }
+
+  clearTenantCache(tenantId: string): void {
+    _cache.invalidateTenant(tenantId);
   }
 }
 

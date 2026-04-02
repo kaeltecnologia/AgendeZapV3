@@ -125,6 +125,27 @@ function extrairNumero(msg: any): string | null {
 }
 
 async function processarMensagem(tenant: any, msg: any, settings?: any) {
+  const cleanPhone = extrairNumero(msg);
+  if (!cleanPhone) return;
+
+  // ── Check per-lead aiPaused ──────────────────────────────────────────
+  if (settings?.customerData) {
+    let isPaused = !!settings.customerData[`phone:${cleanPhone}`]?.aiPaused;
+    if (!isPaused) {
+      try {
+        const { data: existingCust } = await supabase.from('customers')
+          .select('id').eq('tenant_id', tenant.id).eq('telefone', cleanPhone).maybeSingle();
+        if (existingCust && settings.customerData[existingCust.id]?.aiPaused) {
+          isPaused = true;
+        }
+      } catch {}
+    }
+    if (isPaused) {
+      console.log(`[AiPolling] IA pausada para ${maskPhone(cleanPhone)} — ignorando`);
+      return;
+    }
+  }
+
   let text = (
     msg.message?.conversation ||
     msg.message?.extendedTextMessage?.text ||
@@ -142,7 +163,7 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
       !!msg.message?.pttMessage;
     if (isAudio) {
       audioReceived = true;
-      const geminiKey: string = (settings?.openaiApiKey || '').trim() || tenant.gemini_api_key || '';
+      const geminiKey: string = (settings?.openaiApiKey || '').trim() || (tenant as any).gemini_api_key || '';
       console.log('[AiPolling] Áudio detectado. geminiKey presente:', !!geminiKey, '| msgType:', msgType);
       if (geminiKey) {
         const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
@@ -165,24 +186,18 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
 
   // If audio was received but transcription failed, send a friendly fallback
   if (!text && audioReceived) {
-    const cleanPhone = extrairNumero(msg);
-    if (cleanPhone) {
-      const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
-      await evolutionService.sendMessage(
-        instanceName, cleanPhone,
-        'Recebi seu áudio! 🎵\n\nPoderia escrever sua mensagem? Assim consigo te atender melhor. 😊'
-      );
-    }
+    const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+    await evolutionService.sendMessage(
+      instanceName, cleanPhone,
+      'Recebi seu áudio! 🎵\n\nPoderia escrever sua mensagem? Assim consigo te atender melhor. 😊'
+    );
     return;
   }
 
   if (!text) return;
 
-  const cleanPhone = extrairNumero(msg);
-  if (!cleanPhone) return;
-
   try {
-    console.log(`[AiPolling] processarMensagem: phone=${maskPhone(cleanPhone)} text="${text.substring(0, 50)}" geminiKey=${!!tenant.gemini_api_key}`);
+    console.log(`[AiPolling] processarMensagem: phone=${maskPhone(cleanPhone)} text="${text.substring(0, 50)}" geminiKey=${!!(tenant as any).gemini_api_key}`);
     const profReply = await handleProfessionalMessage(tenant, cleanPhone, text);
     const reply = profReply !== null
       ? profReply
@@ -231,8 +246,7 @@ async function poll(tenantId: string) {
     }
     _aiWasActive = true;
 
-    const { data: tenants } = await supabase.from('tenants').select('*');
-    const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
+    const tenant = await db.getTenant(tenantId);
     if (!tenant) return;
 
     const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
@@ -448,13 +462,11 @@ const AiPollingManager: React.FC<{
       try {
         const settings = await db.getSettings(tenantId);
         if (!settings.aiActive) return;
-        const { data: tenants } = await supabase.from('tenants').select('*');
-        const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
+        const tenant = await db.getTenant(tenantId);
         if (!tenant) return;
         const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
         if (instanceName) {
           await evolutionService.enableWebhook(instanceName, WEBHOOK_URL);
-          // Backfill any follow-up replies missed while computer was off (once per session)
           await backfillFollowUpReplies(tenantId, tenant, instanceName, settings);
         }
       } catch (e) { /* silent */ }
@@ -481,8 +493,7 @@ const AiPollingManager: React.FC<{
         // Generate missing recurring plan appointments (next 4 weeks)
         await db.generateRecurringAppointments(tenantId);
 
-        const { data: tenants } = await supabase.from('tenants').select('*');
-        const tenant = (tenants || []).find((t: any) => t.id === tenantId);
+        const tenant = await db.getTenant(tenantId);
         if (tenant) await runFollowUp(tenant);
         if (tenant) await runDailyProfessionalAgenda(tenant);
         if (tenant) await runRatingRequests(tenant);
@@ -513,7 +524,7 @@ const AiPollingManager: React.FC<{
     };
 
     tick();
-    const interval = setInterval(tick, 60000);
+    const interval = setInterval(() => { if (!document.hidden) tick(); }, 120_000);
     return () => clearInterval(interval);
   }, [tenantId]);
 

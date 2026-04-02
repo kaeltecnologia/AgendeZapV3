@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { evolutionService } from '../services/evolutionService';
-import { supabase } from '../services/supabase';
 import { Customer } from '../types';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -63,20 +62,19 @@ const BroadcastView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     if (!tenantId) return;
     setLoading(true);
     try {
-      const { data: tenants } = await supabase.from('tenants').select('*');
-      const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
-      if (tenant) {
-        const inst = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
-        setInstanceName(inst);
-        const status = await evolutionService.checkStatus(inst);
-        setConnected(status === 'open');
-      }
-      const [custs, appts] = await Promise.all([
+      const [tenant, custs, appts] = await Promise.all([
+        db.getTenant(tenantId),
         db.getCustomers(tenantId),
         db.getAppointments(tenantId),
       ]);
       setAllCustomers(custs);
       setAppointments(appts);
+      if (tenant) {
+        const inst = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+        setInstanceName(inst);
+        // check status without blocking the UI
+        evolutionService.checkStatus(inst).then(s => setConnected(s === 'open')).catch(() => {});
+      }
     } finally {
       setLoading(false);
     }

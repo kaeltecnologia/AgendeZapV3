@@ -41,7 +41,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
       // validation is handled server-side by App.tsx handleLogin
       const parts = cleanEmail.split('@');
       if (parts.length < 2) {
-        setError('Use o e-mail no formato barbearia@agendezap.com');
+        setError('Informe um e-mail válido');
         setLoading(false);
         return;
       }
@@ -52,12 +52,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
       if (domain === 'super.com') {
         // Superadmin login — credentials validated in handleLogin
         await onLogin('SUPERADMIN', undefined, cleanEmail, cleanPassword);
-      } else if (domain === 'agendezap.com') {
-        await onLogin('TENANT', slug, cleanEmail, cleanPassword);
       } else {
-        setError('Por favor, use o e-mail corporativo: @agendezap.com');
-        setLoading(false);
-        return;
+        await onLogin('TENANT', slug, cleanEmail, cleanPassword);
       }
     } catch (err: any) {
       console.error("Submit Error:", err);
@@ -116,7 +112,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="sua-barbearia@agendezap.com"
+              placeholder="seu@email.com"
               className="w-full p-4 sm:p-5 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 transition-all font-bold" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#1a1a2e', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 2px rgba(160,160,190,0.12)' }}
               autoComplete="username"
             />
@@ -149,9 +145,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
         <div className="text-center space-y-4">
           <button
             onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
-            className="text-[10px] font-black uppercase tracking-widest hover:text-orange-500 transition-colors" style={{ color: '#787890' }}
+            className="text-[10px] font-black uppercase tracking-widest hover:text-orange-600 transition-colors" style={{ color: isSignUp ? '#787890' : '#f97316' }}
           >
-            {isSignUp ? 'Já possui uma conta? Entre aqui' : 'Ainda não é cliente? Cadastre sua barbearia'}
+            {isSignUp ? 'Já possui uma conta? Entre aqui' : 'Ainda não é cliente? Clique aqui para criar seu cadastro'}
           </button>
 
           <p className="text-[8px] font-bold uppercase tracking-widest" style={{ color: '#a0a0b0' }}>

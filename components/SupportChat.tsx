@@ -32,10 +32,10 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
     setMessages(msgs);
   }, [tenantId]);
 
-  // Poll every 10s
+  // Poll every 60s (skip when tab hidden)
   useEffect(() => {
     load();
-    intervalRef.current = setInterval(load, 10000);
+    intervalRef.current = setInterval(() => { if (!document.hidden) load(); }, 60_000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [load]);
 

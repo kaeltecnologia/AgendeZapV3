@@ -184,7 +184,7 @@ const App: React.FC = () => {
       } catch {}
     };
     check();
-    const t = setInterval(check, 60000);
+    const t = setInterval(() => { if (!document.hidden) check(); }, 60_000);
     return () => clearInterval(t);
   }, [tenantId, role]);
 
@@ -336,7 +336,7 @@ const App: React.FC = () => {
     };
 
     check();
-    const interval = setInterval(check, 60_000);
+    const interval = setInterval(() => { if (!document.hidden) check(); }, 120_000);
     return () => clearInterval(interval);
   }, [tenantId, role]);
 
@@ -482,7 +482,7 @@ const App: React.FC = () => {
 
   const handleRegister = async (storeName: string, email: string, pass: string, phone: string) => {
     try {
-      const slug = email.split('@')[0].toLowerCase().trim();
+      const slug = storeName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').slice(0, 30);
       const tenants = await db.getAllTenants();
       const exists = tenants.find(t => t.slug === slug);
 

@@ -595,7 +595,7 @@ export function startPolling(_instanceName?: string) {
   log('INFO', 'Polling iniciado — monitorando mensagens...');
 
   if (pollingInterval) clearInterval(pollingInterval);
-  pollingInterval = setInterval(pollingLoop, 8000);
+  pollingInterval = setInterval(pollingLoop, 15_000);
   pollingLoop();
 }
 

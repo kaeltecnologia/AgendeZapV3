@@ -173,8 +173,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
     // Only show the loading indicator on the very first load (no conversations yet)
     if (!importedRef.current) setLoading(true);
     try {
-      const { data: tenants } = await supabase.from('tenants').select('*');
-      const tenant = (tenants || []).find((t: any) => t.id === tenantId || t.slug === tenantId);
+      const tenant = await db.getTenant(tenantId);
       if (!tenant) return;
 
       const inst = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
@@ -190,7 +189,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
       ]);
       setCustomers(custs);
       setCustomerData(settings.customerData || {});
-      const key = (settings.openaiApiKey || '').trim() || (tenant.gemini_api_key || '').trim();
+      const key = (settings.openaiApiKey || '').trim() || ((tenant as any).gemini_api_key || '').trim();
       setApiKey(key);
 
       // ── Sync from Evolution API → save to DB ──────────────────────────
@@ -331,10 +330,12 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh every 5 seconds
+  // Auto-refresh every 30 seconds (skip when tab hidden, refresh on return)
   useEffect(() => {
-    const interval = setInterval(() => { load(); }, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => { if (!document.hidden) load(); }, 30_000);
+    const onVisible = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [load]);
 
   // When opening a conversation: fetch that contact's full history from Evolution API.
