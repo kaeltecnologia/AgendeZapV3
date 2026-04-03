@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { FeatureKey, PlanConfig, PlanId, PLAN_CONFIGS, getPlanConfig, cheapestUpgradePlan } from '../config/planConfig';
+import { FeatureKey, PlanId, PLAN_CONFIGS, getPlanConfig, cheapestUpgradePlan } from '../config/planConfig';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
@@ -73,6 +73,11 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
   const eliteConfig = PLAN_CONFIGS.ELITE;
   const showElite = recommendedConfig.id !== 'ELITE';
 
+  // Plans available for upgrade (exclude current)
+  const upgradePlans = showElite
+    ? [recommendedConfig, eliteConfig]
+    : [eliteConfig];
+
   const [selectedPlan, setSelectedPlan] = useState<PlanId>(recommendedConfig.id);
   const [step, setStep] = useState<Step>('compare');
   const [cpfCnpj, setCpfCnpj] = useState('');
@@ -82,6 +87,9 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedConfig = getPlanConfig(selectedPlan);
+
+  // Features the user GAINS with the selected plan
+  const gains = ALL_FEATURES.filter(f => !currentConfig.permissions[f] && selectedConfig.permissions[f]);
 
   const startPolling = () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
@@ -158,87 +166,131 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
     setStep('cycle');
   };
 
-  /* ─── Plan column renderer ─── */
-  const renderPlanCol = (config: PlanConfig, label: string, isRecommended: boolean) => (
-    <div
-      className={`rounded-2xl border-2 p-4 relative cursor-pointer transition-all ${config.bgClass} ${config.borderClass} ${
-        selectedPlan === config.id && step === 'compare' ? 'ring-2 ring-offset-2 ring-orange-500 scale-[1.02]' : ''
-      }`}
-      onClick={() => { if (config.id !== currentConfig.id) setSelectedPlan(config.id as PlanId); }}
-    >
-      {isRecommended && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
-          <span className="text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest text-white" style={{ backgroundColor: config.color }}>
-            Recomendado
-          </span>
-        </div>
-      )}
-      <div className="mb-3">
-        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{label}</p>
-        <p className={`text-xs font-black uppercase ${config.textClass}`}>{config.emoji} {config.name}</p>
-        <p className={`text-[10px] font-bold ${config.textClass}`}>
-          {config.price === 0 ? 'Grátis' : `R$${fmt(config.price)}/mês`}
-        </p>
-      </div>
-      <div className="space-y-1.5">
-        {ALL_FEATURES.map(f => (
-          <div key={f} className={`flex items-start gap-1 ${f === feature ? 'bg-white/60 rounded-md px-1 -mx-1' : ''}`}>
-            <span className={`text-[10px] font-black shrink-0 mt-px ${config.permissions[f] ? config.textClass : 'text-slate-200'}`}>
-              {config.permissions[f] ? '✓' : '✗'}
-            </span>
-            <span className={`text-[9px] leading-tight ${config.permissions[f] ? 'text-slate-600 font-bold' : 'text-slate-300'} ${f === feature ? 'font-black' : ''}`}>
-              {FEATURE_LABELS[f]}
-              {f === feature && !config.permissions[f] && config.id === currentConfig.id && (
-                <span className="ml-1 text-[7px] font-black px-1 py-0.5 rounded bg-red-100 text-red-500">BLOQUEADO</span>
-              )}
-              {f === feature && config.permissions[f] && config.id !== currentConfig.id && (
-                <span className={`ml-1 text-[7px] font-black px-1 py-0.5 rounded ${config.bgClass} ${config.textClass}`}>NOVO</span>
-              )}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`bg-white rounded-[32px] w-full ${showElite ? 'max-w-3xl' : 'max-w-lg'} p-8 space-y-5 animate-scaleUp max-h-[95vh] overflow-y-auto`}
+        className="bg-white rounded-[32px] w-full max-w-md p-7 space-y-5 animate-scaleUp max-h-[95vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="text-center space-y-1">
-          <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl mx-auto">🔒</div>
-          <p className="text-lg font-black text-black uppercase tracking-tight">Recurso Bloqueado</p>
-          <p className="text-[11px] font-bold text-slate-500">
-            <strong>{FEATURE_LABELS[feature]}</strong> está disponível a partir do{' '}
-            <span style={{ color: recommendedConfig.color }} className="font-black">{recommendedConfig.badge}</span>
-          </p>
-        </div>
-
-        {/* Plan comparison grid */}
-        <div className={`grid gap-3 ${showElite ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {renderPlanCol(currentConfig, 'Seu plano atual', false)}
-          {renderPlanCol(recommendedConfig, 'Fazer upgrade para', true)}
-          {showElite && renderPlanCol(eliteConfig, 'Plano completo', false)}
+        <div className="text-center space-y-2">
+          <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-2xl mx-auto">
+            {step === 'waiting' ? '📄' : step === 'loading' ? '⏳' : '🔒'}
+          </div>
+          {step === 'compare' && (
+            <>
+              <p className="text-lg font-black text-black uppercase tracking-tight">Faça o Upgrade</p>
+              <p className="text-xs text-slate-500">
+                <strong>{FEATURE_LABELS[feature]}</strong> requer o plano{' '}
+                <span style={{ color: recommendedConfig.color }} className="font-black">{recommendedConfig.name}</span> ou superior
+              </p>
+            </>
+          )}
+          {step === 'cpf' && (
+            <>
+              <p className="text-lg font-black text-black uppercase tracking-tight">CPF ou CNPJ</p>
+              <p className="text-xs text-slate-400">Necessário para emissão da cobrança</p>
+            </>
+          )}
+          {step === 'cycle' && (
+            <>
+              <p className="text-lg font-black text-black uppercase tracking-tight">Período</p>
+              <p className="text-xs text-slate-400">Quanto maior o período, maior o desconto</p>
+            </>
+          )}
+          {step === 'payment' && (
+            <>
+              <p className="text-lg font-black text-black uppercase tracking-tight">Pagamento</p>
+              <p className="text-xs text-slate-400">
+                {selectedConfig.emoji} {selectedConfig.name} — {CYCLE_OPTIONS.find(c => c.id === selectedCycle)?.label} — R${fmt(
+                  calcCyclePrice(selectedConfig.price, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.months, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.discount)
+                )}
+              </p>
+            </>
+          )}
+          {step === 'loading' && (
+            <>
+              <p className="text-lg font-black text-black uppercase tracking-tight">Gerando cobrança...</p>
+              <p className="text-xs text-slate-400">Aguarde, estamos criando sua assinatura</p>
+            </>
+          )}
+          {step === 'waiting' && (
+            <>
+              <p className="text-lg font-black text-black uppercase tracking-tight">Cobrança Gerada!</p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Uma nova aba foi aberta com o link de pagamento.<br />
+                Após pagar, clique abaixo para ativar seu plano.
+              </p>
+            </>
+          )}
         </div>
 
         {/* ── STEP: Compare ── */}
         {step === 'compare' && (
-          <div className="space-y-3">
-            {/* Gains summary */}
-            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100">
-              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">O que você ganha com o {selectedConfig.name}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {ALL_FEATURES.filter(f => !currentConfig.permissions[f] && selectedConfig.permissions[f]).map(f => (
-                  <span key={f} className={`text-[8px] font-black px-2 py-0.5 rounded-lg border uppercase ${selectedConfig.bgClass} ${selectedConfig.textClass} ${selectedConfig.borderClass}`}>
-                    ✓ {FEATURE_LABELS[f]}
-                  </span>
-                ))}
-              </div>
+          <div className="space-y-4">
+            {/* Plan cards */}
+            <div className="space-y-2.5">
+              {upgradePlans.map(plan => {
+                const isSelected = selectedPlan === plan.id;
+                const planGains = ALL_FEATURES.filter(f => !currentConfig.permissions[f] && plan.permissions[f]);
+                return (
+                  <button
+                    key={plan.id}
+                    onClick={() => setSelectedPlan(plan.id as PlanId)}
+                    className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${
+                      isSelected
+                        ? 'border-orange-400 bg-orange-50 shadow-md'
+                        : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{plan.emoji}</span>
+                        <div>
+                          <p className="text-sm font-black text-black">{plan.name}</p>
+                          <p className="text-[10px] text-slate-400 font-bold">{plan.subtitle}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-black" style={{ color: plan.color }}>
+                          R${fmt(plan.price)}<span className="text-[9px] font-bold text-slate-400">/mês</span>
+                        </p>
+                        {plan.maxProfessionals >= 9999
+                          ? <p className="text-[9px] text-slate-400 font-bold">Profissionais ilimitados</p>
+                          : <p className="text-[9px] text-slate-400 font-bold">Até {plan.maxProfessionals} profissionais</p>
+                        }
+                      </div>
+                    </div>
+                    {/* Gains chips */}
+                    <div className="flex flex-wrap gap-1">
+                      {planGains.map(f => (
+                        <span
+                          key={f}
+                          className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
+                            f === feature
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-white text-slate-500 border border-slate-200'
+                          }`}
+                        >
+                          {f === feature ? '★ ' : '+ '}{FEATURE_LABELS[f]}
+                        </span>
+                      ))}
+                    </div>
+                    {/* Selection indicator */}
+                    {isSelected && (
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <div className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center">
+                          <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </div>
+                        <span className="text-[10px] font-black text-orange-600 uppercase">Selecionado</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
+            {/* CTA */}
             <button
               onClick={() => { setError(null); setStep('cpf'); }}
               className="w-full py-3.5 rounded-2xl font-black uppercase text-xs tracking-widest text-white transition-all hover:opacity-90 shadow-lg"
@@ -246,7 +298,7 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
             >
               Assinar {selectedConfig.name} — R${fmt(selectedConfig.price)}/mês
             </button>
-            <button onClick={onClose} className="w-full py-2.5 font-black text-slate-400 uppercase text-[10px] hover:text-slate-600 transition-all">
+            <button onClick={onClose} className="w-full py-1 font-bold text-slate-400 text-[10px] hover:text-slate-600 transition-all">
               Fechar
             </button>
           </div>
@@ -255,10 +307,6 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
         {/* ── STEP: CPF/CNPJ ── */}
         {step === 'cpf' && (
           <div className="space-y-3">
-            <div className="text-center">
-              <p className="text-xs font-black text-black uppercase tracking-widest">CPF ou CNPJ</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Necessário para emissão da cobrança</p>
-            </div>
             <input
               type="text"
               value={cpfCnpj}
@@ -282,10 +330,6 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
         {/* ── STEP: Cycle ── */}
         {step === 'cycle' && (
           <div className="space-y-3">
-            <div className="text-center">
-              <p className="text-xs font-black text-black uppercase tracking-widest">Período de cobrança</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Quanto maior o período, maior o desconto</p>
-            </div>
             <div className="grid grid-cols-2 gap-2">
               {CYCLE_OPTIONS.map(opt => {
                 const total = calcCyclePrice(selectedConfig.price, opt.months, opt.discount);
@@ -315,9 +359,7 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
                       R${fmt(total)}
                     </p>
                     {opt.months > 1 && (
-                      <p className="text-[9px] text-slate-400 font-bold">
-                        = R${fmt(perMonth)}/mês
-                      </p>
+                      <p className="text-[9px] text-slate-400 font-bold">= R${fmt(perMonth)}/mês</p>
                     )}
                   </button>
                 );
@@ -337,14 +379,6 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
         {/* ── STEP: Payment ── */}
         {step === 'payment' && (
           <div className="space-y-3">
-            <div className="text-center">
-              <p className="text-xs font-black text-black uppercase tracking-widest">Forma de Pagamento</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                {selectedConfig.name} — {CYCLE_OPTIONS.find(c => c.id === selectedCycle)?.label} — R${fmt(
-                  calcCyclePrice(selectedConfig.price, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.months, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.discount)
-                )}
-              </p>
-            </div>
             {error && <p className="text-[10px] font-bold text-red-500 text-center">{error}</p>}
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -364,7 +398,7 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
                 <span className="text-[9px] text-blue-600 font-bold">Crédito</span>
               </button>
             </div>
-            <button onClick={() => { setError(null); setStep('cycle'); }} className="w-full py-2.5 font-black text-slate-400 uppercase text-[10px] hover:text-slate-600 transition-all">
+            <button onClick={() => { setError(null); setStep('cycle'); }} className="w-full py-2 font-bold text-slate-400 text-[10px] hover:text-slate-600 transition-all">
               Voltar
             </button>
           </div>
@@ -372,23 +406,15 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
 
         {/* ── STEP: Loading ── */}
         {step === 'loading' && (
-          <div className="text-center py-6 space-y-3">
-            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs font-black text-black uppercase">Gerando cobrança...</p>
-            <p className="text-[10px] text-slate-400 font-bold">Aguarde, estamos criando sua assinatura</p>
+          <div className="flex justify-center py-4">
+            <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
         {/* ── STEP: Waiting ── */}
         {step === 'waiting' && (
-          <div className="text-center space-y-3">
-            <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center text-2xl mx-auto">📄</div>
-            <p className="text-sm font-black text-black uppercase">Cobrança Gerada!</p>
-            <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
-              Uma nova aba foi aberta com o link de pagamento.<br />
-              Após pagar, clique no botão abaixo para ativar seu plano.
-            </p>
-            {error && <p className="text-[10px] font-bold text-red-500">{error}</p>}
+          <div className="space-y-3">
+            {error && <p className="text-[10px] font-bold text-red-500 text-center">{error}</p>}
             <button
               onClick={handleVerifyPayment}
               disabled={verifying}
@@ -396,7 +422,7 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
             >
               {verifying ? 'Verificando...' : '✓ Já paguei — Verificar Pagamento'}
             </button>
-            <button onClick={onClose} className="w-full py-2.5 font-black text-slate-400 uppercase text-[10px] hover:text-slate-600 transition-all">
+            <button onClick={onClose} className="w-full py-1 font-bold text-slate-400 text-[10px] hover:text-slate-600 transition-all">
               Fechar
             </button>
           </div>
