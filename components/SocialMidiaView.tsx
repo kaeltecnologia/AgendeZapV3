@@ -105,14 +105,14 @@ const SocialMidiaView: React.FC<Props> = ({ tenantId }) => {
   // Show onboarding if no profile and not on Publicar tab
   if (!profile && tab !== 'publicar') {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {/* Tab bar still visible so user can go to Publicar */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
           {TABS.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-display font-bold text-xs transition-all duration-300 ${
+              className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-display font-bold text-[11px] sm:text-xs whitespace-nowrap transition-all duration-300 ${
                 tab === t.id
                   ? 'bg-slate-900 text-white shadow-lg'
                   : 'bg-white text-slate-500 border border-slate-100 hover:border-slate-200 hover:shadow-sm'
@@ -136,47 +136,49 @@ const SocialMidiaView: React.FC<Props> = ({ tenantId }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Tab bar */}
-      <div className="flex items-center gap-2">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-display font-bold text-xs transition-all duration-300 ${
-              tab === t.id
-                ? 'bg-slate-900 text-white shadow-lg'
-                : 'bg-white text-slate-500 border border-slate-100 hover:border-slate-200 hover:shadow-sm'
-            }`}
-          >
-            <span>{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
-        <div className="flex-1" />
-        {(() => {
-          const currentKey = getCurrentMonthKey();
-          const effectiveCount = resetMonth === currentKey ? resetCount : 0;
-          const remaining = MAX_RESETS_PER_MONTH - effectiveCount;
-          const blocked = remaining <= 0;
-          return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+          {TABS.map(t => (
             <button
-              onClick={blocked ? () => setShowResetWarning(true) : handleResetProfile}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-medium text-xs border transition-all duration-300 ${
-                blocked
-                  ? 'text-slate-300 border-slate-100 cursor-not-allowed'
-                  : 'text-slate-400 hover:text-red-500 hover:bg-red-50 border-slate-100 hover:border-red-200'
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-display font-bold text-[11px] sm:text-xs whitespace-nowrap transition-all duration-300 ${
+                tab === t.id
+                  ? 'bg-slate-900 text-white shadow-lg'
+                  : 'bg-white text-slate-500 border border-slate-100 hover:border-slate-200 hover:shadow-sm'
               }`}
-              title={blocked ? 'Limite de resets atingido este mês' : `Refazer quiz (${remaining} restante${remaining !== 1 ? 's' : ''} este mês)`}
             >
-              <span>🔄</span>
-              Refazer Quiz
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${remaining <= 1 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
-                {remaining}/{MAX_RESETS_PER_MONTH}
-              </span>
+              <span>{t.icon}</span>
+              {t.label}
             </button>
-          );
-        })()}
+          ))}
+          <div className="flex-1 min-w-0" />
+          {(() => {
+            const currentKey = getCurrentMonthKey();
+            const effectiveCount = resetMonth === currentKey ? resetCount : 0;
+            const remaining = MAX_RESETS_PER_MONTH - effectiveCount;
+            const blocked = remaining <= 0;
+            return (
+              <button
+                onClick={blocked ? () => setShowResetWarning(true) : handleResetProfile}
+                className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl font-medium text-[10px] sm:text-xs border whitespace-nowrap transition-all duration-300 flex-shrink-0 ${
+                  blocked
+                    ? 'text-slate-300 border-slate-100 cursor-not-allowed'
+                    : 'text-slate-400 hover:text-red-500 hover:bg-red-50 border-slate-100 hover:border-red-200'
+                }`}
+                title={blocked ? 'Limite de resets atingido este mês' : `Refazer quiz (${remaining} restante${remaining !== 1 ? 's' : ''} este mês)`}
+              >
+                <span>🔄</span>
+                <span className="hidden sm:inline">Refazer Quiz</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${remaining <= 1 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
+                  {remaining}/{MAX_RESETS_PER_MONTH}
+                </span>
+              </button>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Reset warning modal */}

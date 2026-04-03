@@ -176,8 +176,8 @@ Retorne JSON com chave "trends" contendo o array.`;
   return (
     <div className="space-y-6 max-w-3xl mx-auto animate-fadeIn">
       {/* Header */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[24px] p-8 text-white space-y-3">
-        <div className="flex items-center justify-between">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[24px] p-4 sm:p-8 text-white space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center text-xl shadow-lg">🔥</div>

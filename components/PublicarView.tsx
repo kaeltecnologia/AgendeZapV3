@@ -202,7 +202,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       {/* Header */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-6">
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
         <h2 className="text-sm font-black uppercase tracking-widest text-slate-700 flex items-center gap-2">
           <svg className="w-5 h-5 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
           Publicar
@@ -211,7 +211,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
       </div>
 
       {/* Upload + Caption + Channels */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 space-y-5">
         {/* Image upload */}
         {!preview ? (
           <div
@@ -369,9 +369,9 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
 
       {/* Post history */}
       {posts.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 space-y-4">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Publicações recentes</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
             {posts.slice(0, 12).map(p => (
               <div key={p.id} className="group relative">
                 <img

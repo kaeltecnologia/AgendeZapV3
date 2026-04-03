@@ -232,7 +232,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
       </div>
 
       {/* Step content */}
-      <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm p-8 space-y-6">
+      <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm p-4 sm:p-8 space-y-6">
         <div className="space-y-1">
           <h2 className="font-display text-base font-extrabold text-slate-900">{currentStep.title}</h2>
           <p className="text-sm text-slate-400">{currentStep.subtitle}</p>
@@ -332,7 +332,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
         {step === 7 && (
           <div className="space-y-4">
             <p className="text-xs font-semibold text-slate-500">Selecione os dias que você quer postar</p>
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
               {DIAS_SEMANA.map(d => {
                 const selected = diasSemana.includes(d.id);
                 return (

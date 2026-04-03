@@ -568,11 +568,14 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     setSendingAnnounce(true);
     setAnnounceResult(null);
     let ok = 0, fail = 0;
+    // Use central instance for all announcements
+    const cfg = await db.getGlobalConfig();
+    const instance = cfg['central_instance'] || centralInstanceName || 'central_AgendeZap';
     const targets = announceTo === 'active' ? tenants.filter(t => t.status === TenantStatus.ACTIVE) : tenants;
     for (const t of targets) {
-      if (!t.phone || !t.evolution_instance) { fail++; continue; }
+      if (!t.phone) { fail++; continue; }
       try {
-        await evolutionService.sendMessage(t.evolution_instance, t.phone, announceMsg);
+        await evolutionService.sendMessage(instance, t.phone, announceMsg);
         ok++;
       } catch { fail++; }
     }
@@ -599,8 +602,12 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
       return;
     }
 
+    // Use central instance for all billing messages
+    const cfg = await db.getGlobalConfig();
+    const instance = cfg['central_instance'] || centralInstanceName || 'central_AgendeZap';
+
     for (const t of tenants) {
-      if (!t.due_day || !t.phone || !t.evolution_instance) continue;
+      if (!t.due_day || !t.phone) continue;
       if (t.status !== TenantStatus.ACTIVE && t.status !== TenantStatus.PENDING_PAYMENT) continue;
 
       const dueDate = new Date(now.getFullYear(), now.getMonth(), t.due_day);
@@ -621,7 +628,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
           .replace(/\{dia\}/gi, String(t.due_day));
 
         try {
-          await evolutionService.sendMessage(t.evolution_instance, t.phone, msg);
+          await evolutionService.sendMessage(instance, t.phone, msg);
           sent[key] = new Date().toISOString();
           ok++;
         } catch { skip++; }
