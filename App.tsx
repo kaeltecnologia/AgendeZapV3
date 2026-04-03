@@ -816,8 +816,6 @@ const App: React.FC = () => {
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.MARKETPLACE} onClick={navTo(() => setCurrentView(View.MARKETPLACE))} icon={<IconGlobe />} label="Marketplace" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.OTIMIZACAO} onClick={navTo(() => setCurrentView(View.OTIMIZACAO))} icon={<IconTerminal />} label="Dados IA" />
               </div>
             </>
           )}
