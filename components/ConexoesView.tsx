@@ -4,6 +4,7 @@ import AiAgentConfig from './AiAgentConfig';
 import InstagramConfig from './InstagramConfig';
 import GoogleBusinessConfig from './GoogleBusinessConfig';
 import { db } from '../services/mockDb';
+import { hasFeature } from '../config/planConfig';
 
 type Tab = 'whatsapp' | 'agente' | 'linkweb' | 'instagram' | 'google';
 
@@ -52,8 +53,14 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
       <div>
         {tab === 'whatsapp' && <EvolutionConfig tenantId={tenantId} tenantSlug={tenantSlug} />}
         {tab === 'agente'   && <AiAgentConfig   tenantId={tenantId} tenantPlan={tenantPlan} />}
-        {tab === 'instagram' && <InstagramConfig tenantId={tenantId} />}
-        {tab === 'google'   && <GoogleBusinessConfig tenantId={tenantId} />}
+        {tab === 'instagram' && (hasFeature(tenantPlan, 'socialMidia')
+          ? <InstagramConfig tenantId={tenantId} />
+          : <UpgradeNotice feature="Instagram" />
+        )}
+        {tab === 'google' && (hasFeature(tenantPlan, 'socialMidia')
+          ? <GoogleBusinessConfig tenantId={tenantId} />
+          : <UpgradeNotice feature="Google Business" />
+        )}
         {tab === 'linkweb'  && (
           <div className="space-y-6">
             {/* Info card */}
@@ -141,6 +148,16 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
     </div>
   );
 };
+
+const UpgradeNotice: React.FC<{ feature: string }> = ({ feature }) => (
+  <div className="bg-orange-50 border-2 border-orange-200 rounded-3xl p-8 text-center space-y-3">
+    <span className="text-4xl">🔒</span>
+    <p className="font-black text-orange-700 text-sm uppercase tracking-widest">{feature} — Plano Profissional+</p>
+    <p className="text-xs text-orange-600 leading-relaxed max-w-md mx-auto">
+      A integração com {feature} está disponível a partir do plano Profissional. Faça upgrade para conectar sua conta.
+    </p>
+  </div>
+);
 
 const TabBtn: React.FC<{ active: boolean; onClick: () => void; icon: string; label: string }> = ({ active, onClick, icon, label }) => (
   <button
