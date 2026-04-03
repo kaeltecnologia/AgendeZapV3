@@ -294,8 +294,18 @@ class DatabaseService {
 
   async deleteTenant(id: string) {
     try {
-      // Usa RPC com SECURITY DEFINER para deletar tudo em uma transação
-      const { error } = await supabase.rpc('delete_tenant_cascade', { p_tenant_id: id });
+      // Deleta dados relacionados (ignora erros em tabelas que podem não existir)
+      const tables = [
+        'whatsapp_messages', 'agent_sessions', 'appointments', 'customers',
+        'professionals', 'services', 'expenses', 'tenant_settings',
+        'support_requests', 'reviews', 'central_bookings', 'marketplace_posts',
+        'customer_favorites', 'comandas',
+      ];
+      for (const t of tables) {
+        try { await supabase.from(t).delete().eq('tenant_id', id); } catch { /* tabela pode não existir */ }
+      }
+      // Finalmente, o tenant
+      const { error } = await supabase.from('tenants').delete().eq('id', id);
       if (error) throw error;
       _cache.invalidateTenant(id);
     } catch (e) {
