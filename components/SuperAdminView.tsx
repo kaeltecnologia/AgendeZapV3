@@ -903,7 +903,7 @@ END $$;`.trim();
                           <button onClick={() => setEditingTenant({ ...t })} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase hover:bg-slate-200 transition-all">
                             Editar
                           </button>
-                          <button onClick={() => setDeleteId(t.id)} className="px-3 py-1.5 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase hover:bg-red-100 transition-all">
+                          <button onClick={async (e) => { e.stopPropagation(); if (window.confirm(`Excluir "${t.name}"? Esta ação não pode ser desfeita.`)) { try { await db.deleteTenant(t.id); saveAdminLog('TENANT_DELETED', t.name); load(); } catch { alert('Erro ao excluir tenant'); } } }} className="px-3 py-1.5 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase hover:bg-red-100 transition-all">
                             ✕
                           </button>
                         </div>
