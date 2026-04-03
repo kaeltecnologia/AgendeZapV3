@@ -122,7 +122,7 @@ class DatabaseService {
 
   async getAllTenants(): Promise<Tenant[]> {
     try {
-      const { data, error } = await supabase.from('tenants').select('*');
+      const { data, error } = await supabase.from('tenants').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []).map(t => ({
         id: t.id,
