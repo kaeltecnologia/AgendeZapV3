@@ -1114,7 +1114,7 @@ const App: React.FC = () => {
       {isAuthenticated && role === 'TENANT' && tenantId && (
         <>
           {/* Floating Tutorials button */}
-          <div className="fixed bottom-[10.5rem] right-6 z-50">
+          <div className="fixed bottom-24 right-6 z-50">
             <button
               onClick={() => setShowTutorials(true)}
               title="Tutoriais"
