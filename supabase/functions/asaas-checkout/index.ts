@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { tenantId, planId, billingType, cycle = 'MONTHLY', cpfCnpj, addon } = body;
+    const { tenantId, planId, billingType, cycle = 'MONTHLY', cpfCnpj, addon, extraProfessionals = 0 } = body;
 
     // ── Validate input ──────────────────────────────────────────────────
     if (!tenantId || !billingType) {
@@ -235,6 +235,30 @@ Deno.serve(async (req) => {
       invoiceUrl = `https://www.asaas.com/i/${firstPayment.id}`;
     }
 
+    // ── Create addon subscriptions for extra professionals ───────────────
+    const addonSubs: string[] = [];
+    const ADDON_PRICE = 19.90;
+    for (let i = 0; i < extraProfessionals; i++) {
+      try {
+        const addonSub = await asaasFetch('/subscriptions', {
+          method: 'POST',
+          body: JSON.stringify({
+            customer: asaasCustomerId,
+            billingType,
+            value: ADDON_PRICE,
+            cycle: 'MONTHLY',
+            nextDueDate,
+            description: 'AgendeZap — Profissional Adicional',
+            externalReference: `${tenantId}::ADDON_PROF::${i + 1}`,
+          }),
+        });
+        addonSubs.push(addonSub.id);
+        console.log(`[asaas] Addon subscription created: ${addonSub.id}`);
+      } catch (e) {
+        console.error(`[asaas] Failed to create addon subscription ${i + 1}:`, e);
+      }
+    }
+
     // ── Save Asaas IDs in tenant_settings JSONB ─────────────────────────
     const updatedFup = {
       ...fup,
@@ -242,6 +266,10 @@ Deno.serve(async (req) => {
       _asaasSubscriptionId: subscriptionId,
       _asaasPlanId: planId,
       _asaasCycle: cycle,
+      ...(extraProfessionals > 0 ? {
+        _extraProfessionals: extraProfessionals,
+        _addonSubscriptions: [...(fup._addonSubscriptions || []), ...addonSubs],
+      } : {}),
     };
 
     await supabase.from('tenant_settings').upsert(
@@ -250,13 +278,13 @@ Deno.serve(async (req) => {
     );
 
     // Also update tenant plan optimistically
-    const extraPros = fup._extraProfessionals || 0;
+    const totalExtra = updatedFup._extraProfessionals || 0;
     await supabase.from('tenants').update({
       plan: planId,
-      mensalidade: cycleValue + (extraPros * 19.90),
+      mensalidade: cycleValue + (totalExtra * ADDON_PRICE),
     }).eq('id', tenantId);
 
-    console.log(`[asaas] Checkout complete for tenant ${tenantId}: plan=${planId}, sub=${subscriptionId}`);
+    console.log(`[asaas] Checkout complete for tenant ${tenantId}: plan=${planId}, sub=${subscriptionId}, extraPros=${totalExtra}`);
 
     return json({
       invoiceUrl,

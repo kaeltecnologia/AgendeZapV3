@@ -117,6 +117,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [newDueDay, setNewDueDay] = useState('');
   const [newNicho, setNewNicho] = useState('Barbearia');
   const [newSubscriptionPlan, setNewSubscriptionPlan] = useState('START');
+  const [newProCount, setNewProCount] = useState(1);
   const [newIsDemo, setNewIsDemo] = useState(false);
 
   // Edit modal
@@ -467,12 +468,14 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
       // Also inject the shared OpenAI key if one is configured globally
       const globalCfg = await db.getGlobalConfig().catch(() => ({} as Record<string, string>));
       const inheritedKey = (globalCfg['shared_openai_key'] || '').trim();
+      const extraProsCount = newSubscriptionPlan === 'START' ? Math.max(0, newProCount - 1) : 0;
       await db.updateSettings(t.id, {
         themeColor: '#f97316',
         aiActive: false,
         trialStartDate: newIsDemo ? new Date().toISOString() : null,
         ...(inheritedKey ? { openaiApiKey: inheritedKey } : {}),
-      });
+        ...(extraProsCount > 0 ? { follow_up: { _extraProfessionals: extraProsCount } } : {}),
+      } as any);
 
       try {
         await Promise.race([
@@ -482,7 +485,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
       } catch { /* Evolution timeout is non-fatal */ }
 
       setSuccessData({ email, pass, slug, isDemo: newIsDemo });
-      setNewName(''); setNewEmail(''); setNewPass(''); setNewFee('0'); setNewPhone(''); setNewDueDay(''); setNewNicho('Barbearia'); setNewSubscriptionPlan('START'); setNewIsDemo(false);
+      setNewName(''); setNewEmail(''); setNewPass(''); setNewFee('0'); setNewPhone(''); setNewDueDay(''); setNewNicho('Barbearia'); setNewSubscriptionPlan('START'); setNewProCount(1); setNewIsDemo(false);
       saveAdminLog('TENANT_CREATED', `${newName} (${email})${newIsDemo ? ' [DEMO]' : ''}`);
       setLogs(loadAdminLogs());
       load();
@@ -2106,7 +2109,13 @@ END $$;`.trim();
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => setNewSubscriptionPlan(p.id)}
+                            onClick={() => {
+                              setNewSubscriptionPlan(p.id);
+                              if (p.id !== 'START') setNewProCount(1);
+                              // Auto-update fee
+                              const extra = p.id === 'START' ? Math.max(0, newProCount - 1) : 0;
+                              setNewFee(String((p.price + extra * (p.additionalProfessionalPrice || 0)).toFixed(2)));
+                            }}
                             className={`p-3 rounded-2xl border-2 text-center transition-all ${newSubscriptionPlan === p.id ? `${p.bgClass} ${p.borderClass}` : 'bg-white border-slate-100 hover:border-slate-300'}`}
                           >
                             <p className="text-lg">{p.emoji}</p>
@@ -2116,6 +2125,45 @@ END $$;`.trim();
                         ))}
                       </div>
                     </div>
+                    {/* Professional count for START */}
+                    {newSubscriptionPlan === 'START' && (
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Quantidade de Profissionais</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[1, 2].map(n => {
+                            const addonPrice = PLAN_CONFIGS.START.additionalProfessionalPrice || 19.90;
+                            const total = PLAN_CONFIGS.START.price + (n - 1) * addonPrice;
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => {
+                                  setNewProCount(n);
+                                  setNewFee(String(total.toFixed(2)));
+                                }}
+                                className={`p-4 rounded-2xl border-2 text-center transition-all ${
+                                  newProCount === n
+                                    ? 'bg-green-50 border-green-300'
+                                    : 'bg-white border-slate-100 hover:border-slate-300'
+                                }`}
+                              >
+                                <p className="text-2xl font-black">{n}</p>
+                                <p className={`text-[10px] font-black uppercase ${newProCount === n ? 'text-green-700' : 'text-slate-500'}`}>
+                                  {n === 1 ? 'profissional' : 'profissionais'}
+                                </p>
+                                <p className={`text-xs font-black mt-1 ${newProCount === n ? 'text-green-600' : 'text-slate-400'}`}>
+                                  R$ {total.toFixed(2).replace('.', ',')}
+                                  <span className="text-[9px] font-bold">/mês</span>
+                                </p>
+                                {n === 2 && (
+                                  <p className="text-[8px] font-bold text-orange-500 mt-0.5">+R$ {addonPrice.toFixed(2).replace('.', ',')} adicional</p>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {/* Demo / Trial toggle */}
                     <button
                       type="button"
