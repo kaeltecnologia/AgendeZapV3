@@ -142,12 +142,21 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
               label="IA para Leads"
               description="Responde automaticamente novos contatos via WhatsApp e converte em agendamentos"
             />
-            <Toggle
-              checked={aiProfessionalActive}
-              onChange={handleToggleProfessional}
-              label="Assessor do Profissional"
-              description="Notifica e interage com os profissionais sobre agenda, confirmações e cancelamentos"
-            />
+            {hasFeature(tenantPlan, 'assistenteAdmin') ? (
+              <Toggle
+                checked={aiProfessionalActive}
+                onChange={handleToggleProfessional}
+                label="Assessor do Profissional"
+                description="Notifica e interage com os profissionais sobre agenda, confirmações e cancelamentos"
+              />
+            ) : (
+              <div className="flex items-center justify-between gap-4 bg-slate-50 rounded-2xl p-5 opacity-60">
+                <div>
+                  <p className="text-xs font-black text-black uppercase tracking-wide">🔒 Assessor do Profissional</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">Disponível a partir do plano Elite</p>
+                </div>
+              </div>
+            )}
             {!active && (
               <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest text-center pt-2">Ative o sistema acima para os modos funcionarem</p>
             )}
