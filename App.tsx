@@ -642,7 +642,7 @@ const App: React.FC = () => {
         </PlanGate>
       );
       case View.NOTAS_FISCAIS: return (
-        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate feature="caixaAvancado" tenantPlan={tenantPlan}>
           <NotasFiscaisView tenantId={tenantId} />
         </PlanGate>
       );
@@ -783,7 +783,7 @@ const App: React.FC = () => {
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'financeiro'))} icon={<IconDoc />} label="Notas Fiscais" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />
                 {/* Relatórios */}
                 {sidebarCollapsed ? (
