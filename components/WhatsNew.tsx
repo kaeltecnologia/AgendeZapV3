@@ -57,8 +57,19 @@ const WhatsNew: React.FC = () => {
           ))}
         </div>
 
+        {/* Tutorial hint */}
+        <div className="mx-7 mt-1 mb-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-4 flex items-center gap-3">
+          <span className="text-2xl animate-bounce">👉</span>
+          <div>
+            <p className="text-[11px] font-black text-purple-700 dark:text-purple-300 uppercase tracking-wide">Primeira vez aqui?</p>
+            <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-0.5 leading-relaxed">
+              Clique no <span className="font-black">botão roxo</span> no canto inferior direito da tela para ver os <span className="font-black">tutoriais passo a passo</span>!
+            </p>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="px-7 pb-7 pt-4 flex-shrink-0">
+        <div className="px-7 pb-7 pt-2 flex-shrink-0">
           <button
             onClick={dismiss}
             className="w-full py-3 bg-orange-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-orange-600 transition-all shadow-md shadow-orange-500/30"
