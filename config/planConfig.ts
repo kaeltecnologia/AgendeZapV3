@@ -4,7 +4,7 @@
  * START | PROFISSIONAL | ELITE
  */
 
-export type PlanId = 'START' | 'PROFISSIONAL' | 'ELITE';
+export type PlanId = 'GRATIS' | 'START' | 'PROFISSIONAL' | 'ELITE';
 
 export type FeatureKey =
   | 'agenteIA'            // Agente IA de agendamento via WhatsApp — START+
@@ -37,6 +37,54 @@ export interface PlanConfig {
 }
 
 export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
+
+  // ─── GRÁTIS ───────────────────────────────────────────────────────
+  GRATIS: {
+    id: 'GRATIS',
+    name: 'Grátis',
+    subtitle: 'Plano Gratuito',
+    price: 0,
+    additionalProfessionalPrice: 19.90,
+    maxProfessionals: 1,
+    color: '#6b7280',
+    bgClass: 'bg-gray-50',
+    textClass: 'text-gray-700',
+    borderClass: 'border-gray-200',
+    emoji: '⚪',
+    badge: '⚪ Grátis',
+    features: [
+      'Agenda inteligente',
+      '1 profissional',
+      'Confirmação automática',
+      'Lembretes automáticos',
+      'Faturamento bruto básico',
+      'Relatório de agendamentos',
+      'Link de agendamento online',
+    ],
+    notIncluded: [
+      'Agente IA de agendamento via WhatsApp',
+      'Despesas e lucro líquido',
+      'Comissão automática',
+      'Ranking e metas de equipe',
+      'Caixa diário e taxas de cartão',
+      'Disparador de mensagens',
+      'Reativação automática',
+      'Social Mídia (calendário e roteiros)',
+      'Assistente admin via WhatsApp',
+    ],
+    permissions: {
+      agenteIA: false,
+      financeiro: false,
+      performance: false,
+      caixaAvancado: false,
+      relatorios: false,
+      relatoriosAvancados: false,
+      reativacao: false,
+      disparo: false,
+      socialMidia: false,
+      assistenteAdmin: false,
+    },
+  },
 
   // ─── START ─────────────────────────────────────────────────────────
   START: {
@@ -186,6 +234,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
 
 /** Resolve plan config — unknown/legacy values fallback to START. */
 export function getPlanConfig(planId?: string | null): PlanConfig {
+  if (planId === 'GRATIS') return PLAN_CONFIGS.GRATIS;
   if (planId === 'PROFISSIONAL') return PLAN_CONFIGS.PROFISSIONAL;
   if (planId === 'ELITE') return PLAN_CONFIGS.ELITE;
   // Legacy aliases
@@ -204,7 +253,7 @@ export function hasFeature(planId: string | null | undefined, feature: FeatureKe
  * Used in upgrade prompts.
  */
 export function cheapestUpgradePlan(feature: FeatureKey): PlanConfig {
-  const order: PlanId[] = ['START', 'PROFISSIONAL', 'ELITE'];
+  const order: PlanId[] = ['GRATIS', 'START', 'PROFISSIONAL', 'ELITE'];
   for (const id of order) {
     if (PLAN_CONFIGS[id].permissions[feature]) return PLAN_CONFIGS[id];
   }

@@ -2106,9 +2106,9 @@ END $$;`.trim();
                             type="button"
                             onClick={() => {
                               setNewSubscriptionPlan(p.id);
-                              if (p.id !== 'START') setNewProCount(1);
+                              if (p.id !== 'START' && p.id !== 'GRATIS') setNewProCount(1);
                               // Auto-update fee
-                              const extra = p.id === 'START' ? Math.max(0, newProCount - 1) : 0;
+                              const extra = (p.id === 'START' || p.id === 'GRATIS') ? Math.max(0, newProCount - 1) : 0;
                               setNewFee(String((p.price + extra * (p.additionalProfessionalPrice || 0)).toFixed(2)));
                             }}
                             className={`p-3 rounded-2xl border-2 text-center transition-all ${newSubscriptionPlan === p.id ? `${p.bgClass} ${p.borderClass}` : 'bg-white border-slate-100 hover:border-slate-300'}`}
