@@ -77,20 +77,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tenantId, planId, billingType, cycle = 'MONTHLY', cpfCnpj } = await req.json();
+    const body = await req.json();
+    const { tenantId, planId, billingType, cycle = 'MONTHLY', cpfCnpj, addon } = body;
 
     // ── Validate input ──────────────────────────────────────────────────
-    if (!tenantId || !planId || !billingType) {
-      return json({ error: 'Missing tenantId, planId, or billingType' }, 400);
-    }
-    if (!PLAN_PRICES[planId]) {
-      return json({ error: `Invalid planId: ${planId}` }, 400);
+    if (!tenantId || !billingType) {
+      return json({ error: 'Missing tenantId or billingType' }, 400);
     }
     if (!['PIX', 'CREDIT_CARD'].includes(billingType)) {
       return json({ error: `Invalid billingType: ${billingType}. Use PIX or CREDIT_CARD` }, 400);
-    }
-    if (!CYCLE_CONFIG[cycle]) {
-      return json({ error: `Invalid cycle: ${cycle}. Use MONTHLY, QUARTERLY, SEMIANNUALLY, or YEARLY` }, 400);
     }
 
     // ── Fetch tenant ────────────────────────────────────────────────────
@@ -130,9 +125,85 @@ Deno.serve(async (req) => {
       console.log(`[asaas] Customer created: ${asaasCustomerId}`);
     }
 
-    // ── Create subscription ─────────────────────────────────────────────
     const today = new Date();
     const nextDueDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ADDON: Additional professional (R$19.90/month)
+    // ══════════════════════════════════════════════════════════════════════
+    if (addon === 'additional_professional') {
+      const ADDON_PRICE = 19.90;
+
+      const addonSub = await asaasFetch('/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer: asaasCustomerId,
+          billingType,
+          value: ADDON_PRICE,
+          cycle: 'MONTHLY',
+          nextDueDate,
+          description: 'AgendeZap — Profissional Adicional',
+          externalReference: `${tenantId}::ADDON_PROF`,
+        }),
+      });
+
+      console.log(`[asaas] Addon subscription created: ${addonSub.id}`);
+
+      await new Promise(r => setTimeout(r, 1500));
+
+      const addonPayments = await asaasFetch(`/subscriptions/${addonSub.id}/payments`);
+      const firstPay = addonPayments.data?.[0];
+      let invoiceUrl = firstPay?.invoiceUrl || '';
+      if (!invoiceUrl && firstPay?.id) {
+        invoiceUrl = `https://www.asaas.com/i/${firstPay.id}`;
+      }
+
+      // Save addon subscription ID + increment extra professionals count
+      const extraPros = (fup._extraProfessionals || 0) + 1;
+      const addonSubs = fup._addonSubscriptions || [];
+      addonSubs.push(addonSub.id);
+
+      const updatedFup = {
+        ...fup,
+        _asaasCustomerId: asaasCustomerId,
+        _extraProfessionals: extraPros,
+        _addonSubscriptions: addonSubs,
+      };
+
+      await supabase.from('tenant_settings').upsert(
+        { tenant_id: tenantId, follow_up: updatedFup },
+        { onConflict: 'tenant_id' }
+      );
+
+      // Update mensalidade (base plan + addons)
+      const currentPlan = fup._asaasPlanId || 'START';
+      const baseMensalidade = PLAN_PRICES[currentPlan] || 39.90;
+      await supabase.from('tenants').update({
+        mensalidade: baseMensalidade + (extraPros * ADDON_PRICE),
+      }).eq('id', tenantId);
+
+      console.log(`[asaas] Addon complete for tenant ${tenantId}: extraPros=${extraPros}`);
+
+      return json({
+        invoiceUrl,
+        subscriptionId: addonSub.id,
+        customerId: asaasCustomerId,
+        extraProfessionals: extraPros,
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // NORMAL: Plan subscription
+    // ══════════════════════════════════════════════════════════════════════
+    if (!planId) {
+      return json({ error: 'Missing planId' }, 400);
+    }
+    if (!PLAN_PRICES[planId]) {
+      return json({ error: `Invalid planId: ${planId}` }, 400);
+    }
+    if (!CYCLE_CONFIG[cycle]) {
+      return json({ error: `Invalid cycle: ${cycle}. Use MONTHLY, QUARTERLY, SEMIANNUALLY, or YEARLY` }, 400);
+    }
 
     const cycleCfg = CYCLE_CONFIG[cycle];
     const cycleValue = calcCycleValue(PLAN_PRICES[planId], cycle);
@@ -154,7 +225,6 @@ Deno.serve(async (req) => {
     console.log(`[asaas] Subscription created: ${subscriptionId}`);
 
     // ── Get first payment to retrieve invoiceUrl ────────────────────────
-    // Wait briefly for Asaas to generate the first payment
     await new Promise(r => setTimeout(r, 1500));
 
     const paymentsData = await asaasFetch(`/subscriptions/${subscriptionId}/payments`);
@@ -162,7 +232,6 @@ Deno.serve(async (req) => {
 
     let invoiceUrl = firstPayment?.invoiceUrl || '';
     if (!invoiceUrl && firstPayment?.id) {
-      // Fallback: construct the invoice URL
       invoiceUrl = `https://www.asaas.com/i/${firstPayment.id}`;
     }
 
@@ -181,9 +250,10 @@ Deno.serve(async (req) => {
     );
 
     // Also update tenant plan optimistically
+    const extraPros = fup._extraProfessionals || 0;
     await supabase.from('tenants').update({
       plan: planId,
-      mensalidade: cycleValue,
+      mensalidade: cycleValue + (extraPros * 19.90),
     }).eq('id', tenantId);
 
     console.log(`[asaas] Checkout complete for tenant ${tenantId}: plan=${planId}, sub=${subscriptionId}`);

@@ -593,7 +593,7 @@ const App: React.FC = () => {
       case View.DASHBOARD: return <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} />;
       case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} />;
       case View.SERVICOS: return <ServicesView tenantId={tenantId} />;
-      case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} />;
+      case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={tenantPlan} onNavigate={(v) => setCurrentView(v as View)} />;
       case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
       case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
       case View.FINANCEIRO: return (

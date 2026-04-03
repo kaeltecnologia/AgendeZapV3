@@ -1,6 +1,10 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { Professional, AppointmentStatus, Appointment, Expense, BreakPeriod } from '../types';
+import { getPlanConfig, PLAN_CONFIGS } from '../config/planConfig';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
 
 function genId() {
   return typeof crypto !== 'undefined' && crypto.randomUUID
@@ -10,7 +14,7 @@ function genId() {
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNavigate?: (view: string) => void }> = ({ tenantId, tenantPlan, onNavigate }) => {
   const [pros, setPros] = useState<Professional[]>([]);
   const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
@@ -43,6 +47,11 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [deleteProId, setDeleteProId] = useState<string | null>(null);
   const [deletingPro, setDeletingPro] = useState(false);
 
+  // Upsell popup state
+  const [showUpsell, setShowUpsell] = useState(false);
+  const [upsellLoading, setUpsellLoading] = useState(false);
+  const [extraPros, setExtraPros] = useState(0);
+
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [presetPeriod, setPresetPeriod] = useState<string>('custom');
@@ -54,18 +63,22 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const load = useCallback(async () => {
     try {
-      const [p, a, e, s, svc] = await Promise.all([
+      const [p, a, e, s, svc, settings] = await Promise.all([
         db.getProfessionals(tenantId),
         db.getAppointments(tenantId),
         db.getExpenses(tenantId),
         db.getBreaks(tenantId),
         db.getServices(tenantId),
+        db.getSettings(tenantId),
       ]);
       setPros(p);
       setAllAppointments(a);
       setAllExpenses(e);
       setBreaks(s);
       setAllServices(svc.map(s => ({ id: s.id, name: s.name })));
+      // Load extra professionals from settings
+      const fup = (settings as any).follow_up || {};
+      setExtraPros(fup._extraProfessionals || 0);
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
     }
@@ -75,6 +88,15 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
   const handleAdd = async () => {
     if (!name || !phone) { alert('Nome e Telefone são obrigatórios!'); return; }
+
+    // Check plan limit
+    const planCfg = getPlanConfig(tenantPlan);
+    const maxAllowed = planCfg.maxProfessionals + extraPros;
+    if (pros.length >= maxAllowed) {
+      setShowUpsell(true);
+      return;
+    }
+
     setSaving(true);
     try {
       const newPro = await db.addProfessional({ tenant_id: tenantId, name, phone, specialty, active: true });
@@ -85,6 +107,35 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } catch (err: any) {
       alert('Erro ao salvar: ' + (err.message || 'Erro desconhecido'));
     } finally { setSaving(false); }
+  };
+
+  const handleAddonPurchase = async (billingType: 'PIX' | 'CREDIT_CARD') => {
+    setUpsellLoading(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/asaas-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          tenantId,
+          billingType,
+          addon: 'additional_professional',
+        }),
+      });
+      const data = await res.json();
+      if (data.invoiceUrl) {
+        window.open(data.invoiceUrl, '_blank');
+        setShowUpsell(false);
+        // Reload to get updated extraPros count
+        setTimeout(() => load(), 3000);
+      } else {
+        alert('Erro ao gerar cobrança: ' + (data.error || 'Tente novamente'));
+      }
+    } catch (err: any) {
+      alert('Erro: ' + (err.message || 'Falha na conexão'));
+    } finally { setUpsellLoading(false); }
   };
 
   const handleEdit = async () => {
@@ -305,7 +356,15 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Equipe de Barbeiros</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Gestão de performance individual</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all w-full sm:w-auto">
+        <button onClick={() => {
+          const planCfg = getPlanConfig(tenantPlan);
+          const maxAllowed = planCfg.maxProfessionals + extraPros;
+          if (pros.length >= maxAllowed) {
+            setShowUpsell(true);
+          } else {
+            setShowModal(true);
+          }
+        }} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all w-full sm:w-auto">
           + Novo Barbeiro
         </button>
       </div>
@@ -754,6 +813,85 @@ const ProfessionalsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           </div>
         </div>
       )}
+
+      {/* ═══ Upsell Popup ═══ */}
+      {showUpsell && (() => {
+        const planCfg = getPlanConfig(tenantPlan);
+        const isStart = (tenantPlan || 'START') === 'START';
+        const canAddMore = isStart && (planCfg.maxProfessionals + extraPros) < 2;
+        const addonPrice = planCfg.additionalProfessionalPrice || 19.90;
+        const proPlan = PLAN_CONFIGS.PROFISSIONAL;
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setShowUpsell(false)}>
+            <div className="bg-white rounded-[32px] w-full max-w-md p-8 space-y-6 animate-scaleUp border-2 border-orange-500" onClick={e => e.stopPropagation()}>
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-3xl mx-auto">👥</div>
+                <h2 className="text-xl font-black text-black uppercase tracking-tight">Limite de Profissionais</h2>
+                <p className="text-sm text-slate-500">
+                  Seu plano <span className="font-bold">{planCfg.name}</span> permite até{' '}
+                  <span className="font-bold">{planCfg.maxProfessionals + extraPros}</span> profissional{(planCfg.maxProfessionals + extraPros) !== 1 ? 'is' : ''}.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {/* Option 1: Add professional addon (only for START, max 2 total) */}
+                {isStart && canAddMore && (
+                  <div className="border-2 border-green-200 bg-green-50/50 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-black text-sm text-black">+1 Profissional</p>
+                        <p className="text-xs text-slate-500">Adicione mais um acesso ao seu plano</p>
+                      </div>
+                      <p className="text-lg font-black text-green-600">R$ {addonPrice.toFixed(2).replace('.', ',')}<span className="text-[10px] font-bold text-slate-400">/mês</span></p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleAddonPurchase('PIX')}
+                        disabled={upsellLoading}
+                        className="flex-1 py-3 bg-green-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all disabled:opacity-50"
+                      >
+                        {upsellLoading ? '...' : '💠 Pagar com PIX'}
+                      </button>
+                      <button
+                        onClick={() => handleAddonPurchase('CREDIT_CARD')}
+                        disabled={upsellLoading}
+                        className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all disabled:opacity-50"
+                      >
+                        {upsellLoading ? '...' : '💳 Cartão'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Option 2: Upgrade to PROFISSIONAL */}
+                <div className="border-2 border-blue-200 bg-blue-50/50 rounded-2xl p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-black text-sm text-black">🔵 Upgrade para Profissional</p>
+                      <p className="text-xs text-slate-500">Até {proPlan.maxProfessionals} profissionais + IA + financeiro</p>
+                    </div>
+                    <p className="text-lg font-black text-blue-600">R$ {proPlan.price.toFixed(2).replace('.', ',')}<span className="text-[10px] font-bold text-slate-400">/mês</span></p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowUpsell(false);
+                      if (onNavigate) onNavigate('PLANOS');
+                    }}
+                    className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all"
+                  >
+                    Ver Plano Profissional
+                  </button>
+                </div>
+              </div>
+
+              <button onClick={() => setShowUpsell(false)} className="w-full py-3 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-slate-600 transition-all">
+                Fechar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 };
