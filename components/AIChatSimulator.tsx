@@ -4,7 +4,7 @@ import { processWhatsAppMessage } from '../services/geminiService';
 
 const AIChatSimulator: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [messages, setMessages] = useState<any[]>([
-    { role: 'ai', text: 'E aí, beleza? Sou o assistente da barbearia. O que vamos fazer hoje? Pode ser um corte, barba ou os dois?' }
+    { role: 'ai', text: 'Olá! Sou o assistente do estabelecimento. Como posso te ajudar hoje? 😊' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);

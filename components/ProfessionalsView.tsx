@@ -353,7 +353,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     <div className="space-y-10 animate-fadeIn">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Equipe de Barbeiros</h1>
+          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Equipe de Profissionais</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Gestão de performance individual</p>
         </div>
         <button onClick={() => {
@@ -365,7 +365,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
             setShowModal(true);
           }
         }} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all w-full sm:w-auto">
-          + Novo Barbeiro
+          + Novo Profissional
         </button>
       </div>
 
@@ -382,7 +382,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-black leading-tight">{p.name}</h3>
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{p.specialty || 'Master Barbeiro'}</p>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{p.specialty || 'Profissional'}</p>
                   <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${p.role === 'admin' ? 'bg-black text-white' : 'bg-slate-100 text-slate-500'}`}>
                     {p.role === 'admin' ? '👑 Admin' : '💈 Colab'}
                   </span>
@@ -774,7 +774,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] w-full max-w-md p-8 space-y-6 animate-scaleUp border-4 border-black max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-black text-black uppercase tracking-tight italic">
-              {editingPro ? 'Editar Barbeiro' : 'Novo Barbeiro'}
+              {editingPro ? 'Editar Profissional' : 'Novo Profissional'}
             </h2>
             <div className="space-y-4">
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome Completo"

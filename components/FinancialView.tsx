@@ -650,7 +650,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
         <div className="space-y-8 max-w-2xl">
           {/* Meta mensal */}
           <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
-            <h3 className="font-black text-sm text-black uppercase tracking-widest">Meta Mensal da Barbearia</h3>
+            <h3 className="font-black text-sm text-black uppercase tracking-widest">Meta Mensal do Estabelecimento</h3>
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Meta de Faturamento (R$)</label>
               <input

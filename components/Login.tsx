@@ -76,7 +76,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
           </div>
           <h1 className="text-3xl sm:text-5xl font-black italic tracking-tighter uppercase" style={{ color: '#1a1a2e' }}>AgendeZap</h1>
           <p className="text-[9px] font-black uppercase tracking-[0.4em]" style={{ color: '#787890' }}>
-            {isSignUp ? 'Crie sua conta multi-tenant' : 'Gestão de Barbearia Inteligente'}
+            {isSignUp ? 'Crie sua conta multi-tenant' : 'Gestão de Agendamentos Inteligente'}
           </p>
         </div>
 
@@ -89,7 +89,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                   type="text"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
-                  placeholder="Ex: Barbearia do Centro"
+                  placeholder="Ex: Meu Estabelecimento"
                   className="w-full p-4 sm:p-5 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 transition-all font-bold" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#1a1a2e', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 2px rgba(160,160,190,0.12)' }}
                 />
               </div>

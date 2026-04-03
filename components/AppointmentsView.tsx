@@ -696,15 +696,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         {/* ─── Sidebar ─────────────────────────────── */}
         <div className="w-full lg:w-72 shrink-0 space-y-6">
 
-          {/* Barbeiro Filter */}
+          {/* Professional Filter */}
           <div className="bg-white p-6 rounded-[30px] border-2 border-slate-100 shadow-lg space-y-4">
-            <h3 className="font-black text-black text-xs uppercase tracking-widest">Filtrar por Barbeiro</h3>
+            <h3 className="font-black text-black text-xs uppercase tracking-widest">Filtrar por Profissional</h3>
             <select
               value={filterProfId}
               onChange={e => setFilterProfId(e.target.value)}
               className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none font-bold text-xs focus:border-orange-500 transition-colors"
             >
-              <option value="">Todos os barbeiros</option>
+              <option value="">Todos os profissionais</option>
               {professionals.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -1441,7 +1441,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
               {brkType !== 'holiday' && (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Barbeiro (opcional)</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Profissional (opcional)</label>
                   <select value={brkProfId} onChange={e => setBrkProfId(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
                     <option value="">Todos os profissionais</option>
                     {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

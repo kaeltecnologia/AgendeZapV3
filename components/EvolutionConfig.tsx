@@ -50,7 +50,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       
       return '';
     } catch (e) {
-      console.error("Erro ao identificar barbearia:", e);
+      console.error("Erro ao identificar estabelecimento:", e);
       return '';
     }
   }, [tenantId, tenantSlug]);
@@ -65,7 +65,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
     try {
       const name = await refreshInstanceInfo();
       if (!name) {
-        throw new Error("Falha Crítica: Não conseguimos identificar o slug da sua barbearia. Tente sair e entrar novamente.");
+        throw new Error("Falha Crítica: Não conseguimos identificar o slug do seu estabelecimento. Tente sair e entrar novamente.");
       }
 
       if (forceReset) {

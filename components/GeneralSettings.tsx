@@ -125,11 +125,11 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome da Barbearia</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Estabelecimento</label>
               <input
                 value={storeName}
                 onChange={e => setStoreName(e.target.value)}
-                placeholder="Ex: Barbearia Dom Barão"
+                placeholder="Ex: Meu Estabelecimento"
                 className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm uppercase focus:border-orange-500 transition-all"
               />
             </div>

@@ -952,7 +952,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                           </div>
                         </div>
                         {conv.isProfessional && (
-                          <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Barbeiro</span>
+                          <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Profissional</span>
                         )}
                         <p className={`text-[10px] truncate mt-0.5 ${isUnread(conv) && selectedPhone !== conv.phone ? 'text-slate-600 font-semibold' : 'text-slate-400'}`}>{
                           conv.lastMessage === '[imagem]' ? '📷 Imagem'

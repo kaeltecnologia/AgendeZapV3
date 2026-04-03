@@ -172,7 +172,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
     (async () => {
       try {
         const t = await db.getTenantBySlug(slug || '');
-        if (!t) { setError('Barbearia não encontrada.'); setLoading(false); return; }
+        if (!t) { setError('Estabelecimento não encontrado.'); setLoading(false); return; }
         setTenant(t);
         const [svcs, profs, sett] = await Promise.all([
           db.getServices(t.id),
@@ -191,7 +191,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         // Track marketplace page view
         db.incrementTenantView(t.id).catch(() => {});
       } catch {
-        setError('Erro ao carregar dados da barbearia.');
+        setError('Erro ao carregar dados do estabelecimento.');
       } finally {
         setLoading(false);
       }
@@ -365,7 +365,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         <div className="max-w-lg mx-auto px-6 py-5 flex items-center justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Agendamento Online</p>
-            <h1 className="text-xl font-black uppercase tracking-tight">{tenant?.name || 'Barbearia'}</h1>
+            <h1 className="text-xl font-black uppercase tracking-tight">{tenant?.name || 'Estabelecimento'}</h1>
             {tenantRating && (
               <div className="flex items-center gap-1 mt-1">
                 <span className="text-orange-400 text-xs">{'★'.repeat(Math.round(tenantRating.average / 2))}</span>

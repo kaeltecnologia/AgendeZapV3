@@ -23,7 +23,7 @@ const Toggle = ({ checked, onChange, label, description }: {
   </div>
 );
 
-const DEFAULT_PROMPT = 'Você é o assistente oficial da Barbearia. Use um tom amigável, moderno e focado na conversão de agendamentos. Pergunte o que o cliente deseja e guie-o até a confirmação de horário, profissional e serviço.';
+const DEFAULT_PROMPT = 'Você é o assistente oficial do estabelecimento. Use um tom amigável, moderno e focado na conversão de agendamentos. Pergunte o que o cliente deseja e guie-o até a confirmação de horário, profissional e serviço.';
 const DEFAULT_AGENT_NAME = 'Agente Inteligente AgendeZap';
 
 const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {

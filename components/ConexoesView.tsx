@@ -63,7 +63,7 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
                 <p className="font-black text-orange-700 text-sm uppercase tracking-widest">Link de Agendamento Online</p>
                 <p className="text-xs text-orange-600 mt-1 leading-relaxed">
                   Compartilhe este link com seus clientes para que possam agendar sozinhos, 24h por dia.
-                  Eles escolhem o serviço, dia, barbeiro e horário. O agendamento cai direto na agenda e ambos recebem confirmação no WhatsApp.
+                  Eles escolhem o serviço, dia, profissional e horário. O agendamento cai direto na agenda e ambos recebem confirmação no WhatsApp.
                 </p>
               </div>
             </div>
@@ -104,7 +104,7 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
                 {[
                   { n: '1', title: 'Escolhe o serviço', desc: 'O cliente vê todos os serviços com preços e duração.' },
                   { n: '2', title: 'Seleciona o dia', desc: 'Calendário mostra apenas dias com horários disponíveis.' },
-                  { n: '3', title: 'Escolhe o barbeiro', desc: 'Pode escolher um profissional específico ou qualquer um.' },
+                  { n: '3', title: 'Escolhe o profissional', desc: 'Pode escolher um profissional específico ou qualquer um.' },
                   { n: '4', title: 'Confirma o horário', desc: 'Preenche nome e telefone e recebe confirmação no WhatsApp.' },
                 ].map(s => (
                   <div key={s.n} className="flex gap-3 items-start p-4 bg-slate-50 rounded-2xl">
@@ -124,7 +124,7 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
               <ul className="space-y-2">
                 {[
                   'Adicione o link na bio do Instagram e TikTok',
-                  'Envie no grupo do WhatsApp da barbearia',
+                  'Envie no grupo do WhatsApp do estabelecimento',
                   'Coloque um QR Code impresso na recepção',
                   'Compartilhe em posts e stories com a chamada "Agende Online 24h"',
                 ].map((tip, i) => (
