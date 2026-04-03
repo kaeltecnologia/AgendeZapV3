@@ -57,9 +57,9 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
           ? <InstagramConfig tenantId={tenantId} />
           : <UpgradeNotice feature="Instagram" />
         )}
-        {tab === 'google' && (hasFeature(tenantPlan, 'socialMidia')
+        {tab === 'google' && (hasFeature(tenantPlan, 'caixaAvancado')
           ? <GoogleBusinessConfig tenantId={tenantId} />
-          : <UpgradeNotice feature="Google Business" />
+          : <UpgradeNotice feature="Google Meu Negócio (exclusivo Elite)" />
         )}
         {tab === 'linkweb'  && (
           <div className="space-y-6">
