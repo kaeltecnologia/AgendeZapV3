@@ -82,10 +82,10 @@ export async function runFollowUp(tenant: any): Promise<void> {
     const findSvc  = (id: string) => services.find(s => s.id === id);
 
     // ─────────────────────────────────────────────────────────────────────
-    // 1. CHECK-IN DIÁRIO
-    //    Trigger: appointment is today (PENDING or CONFIRMED) AND
+    // 1. CHECK-IN / AVISO COM ANTECEDÊNCIA
+    //    Trigger: appointment date - daysBefore == today AND
     //             current wall-clock time >= mode.fixedTime AND
-    //             not yet sent today.
+    //             not yet sent for this appointment+daysBefore combo.
     // ─────────────────────────────────────────────────────────────────────
     for (const appt of allAppts) {
       if (
@@ -93,19 +93,26 @@ export async function runFollowUp(tenant: any): Promise<void> {
         appt.status !== AppointmentStatus.CONFIRMED
       ) continue;
 
-      // Appointment must be today
-      const apptDate = appt.startTime.slice(0, 10);
-      if (apptDate !== nowDate) continue;
-
       const cust = findCust(appt.customer_id);
       if (!cust?.phone) continue;
 
       const mode = avisoModes.find(m => m.id === cust.avisoModeId && m.active);
       if (!mode) continue;
 
-      // Dedup by customer+day (not just apptId) so duplicate appointments don't send twice
-      const sentKey     = `aviso::${appt.id}`;
-      const custDayKey  = `aviso::cust::${cust.id}::${nowDate}`;
+      // Compute the send date: apptDate minus daysBefore days
+      const apptDate = appt.startTime.slice(0, 10);
+      const daysBefore = mode.daysBefore || 0;
+      const sendDate = (() => {
+        const d = new Date(apptDate + 'T12:00:00');
+        d.setDate(d.getDate() - daysBefore);
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      })();
+      if (sendDate !== nowDate) continue;
+
+      // Dedup by customer+apptDate+daysBefore
+      const sentKey     = `aviso::${appt.id}::${daysBefore}`;
+      const custDayKey  = `aviso::cust::${cust.id}::${apptDate}::${daysBefore}`;
       if (newSent[sentKey] || newSent[custDayKey]) continue;
       if (followUpSentMemory.has(custDayKey)) continue; // same-session guard
 
@@ -114,10 +121,12 @@ export async function runFollowUp(tenant: any): Promise<void> {
 
       const svc = findSvc(appt.service_id);
       const apptTime = new Date(appt.startTime);
+      const apptDateFormatted = new Date(apptDate + 'T12:00:00').toLocaleDateString('pt-BR');
+      const diaLabel = daysBefore === 0 ? 'hoje' : daysBefore === 1 ? 'amanhã' : apptDateFormatted;
 
       const msg = interpolate(mode.message, {
         nome:    cust.name,
-        dia:     'hoje',
+        dia:     diaLabel,
         hora:    apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         servico: svc?.name || '',
       });
@@ -129,7 +138,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
       }
 
       // Atomic cross-tab claim via Supabase unique constraint (prevents multi-tab duplicate sends)
-      const claimKey = `fu::aviso::${cust.id}::${nowDate}`;
+      const claimKey = `fu::aviso::${cust.id}::${apptDate}::${daysBefore}`;
       const claimed = await db.claimMessage(claimKey);
       if (!claimed) continue; // another tab already claimed this send
       followUpSentMemory.add(custDayKey); // same-tab guard for subsequent cycles
@@ -139,7 +148,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
         newSent[sentKey]    = nowDate;
         newSent[custDayKey] = nowDate;
         anySent = true;
-        console.log(`[FollowUp] Aviso enviado → ${cust.name} (${maskPhone(cust.phone)})`);
+        console.log(`[FollowUp] Aviso enviado (${daysBefore}d antes) → ${cust.name} (${maskPhone(cust.phone)})`);
         registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
           apptId: appt.id,
           apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),

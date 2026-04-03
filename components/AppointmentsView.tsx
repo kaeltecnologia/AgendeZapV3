@@ -200,7 +200,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   // break modal form
   const [brkLabel, setBrkLabel] = useState('');
   const [brkProfId, setBrkProfId] = useState('');
-  const [brkType, setBrkType] = useState<'specific' | 'recurring'>('recurring');
+  const [brkType, setBrkType] = useState<'specific' | 'recurring' | 'holiday'>('recurring');
+  const [brkAllDay, setBrkAllDay] = useState(true);
   const [brkDate, setBrkDate] = useState('');
   const [brkDayOfWeek, setBrkDayOfWeek] = useState<number>(1);
   const [brkStart, setBrkStart] = useState('12:00');
@@ -606,10 +607,29 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const openBreakModal = () => {
     setBrkLabel(''); setBrkProfId(''); setBrkType('recurring');
     setBrkDate(''); setBrkDayOfWeek(1); setBrkStart('12:00'); setBrkEnd('13:00');
+    setBrkAllDay(true);
     setShowBreakModal(true);
   };
 
   const handleCreateBreak = async () => {
+    if (brkType === 'holiday') {
+      if (!brkLabel || !brkDate) return;
+      const newBreak: BreakPeriod = {
+        id: generateId(),
+        label: brkLabel,
+        type: 'holiday',
+        professionalId: null,
+        date: brkDate,
+        dayOfWeek: null,
+        startTime: brkAllDay ? '00:00' : brkStart,
+        endTime: brkAllDay ? '23:59' : brkEnd,
+      };
+      const updated = [...breaks, newBreak];
+      await db.saveBreaks(tenantId, updated);
+      setBreaks(updated);
+      setShowBreakModal(false);
+      return;
+    }
     if (!brkLabel || !brkStart || !brkEnd) return;
     const newBreak: BreakPeriod = {
       id: generateId(),
@@ -633,6 +653,11 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   };
 
   const breakLabel = (b: BreakPeriod) => {
+    if (b.type === 'holiday') {
+      const dateStr = b.date ? new Date(b.date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+      const isAllDay = b.startTime === '00:00' && (b.endTime === '23:59' || b.endTime === '23:00');
+      return isAllDay ? `${dateStr} · Dia inteiro` : `${dateStr} · A partir das ${b.startTime}`;
+    }
     const profName = b.professionalId
       ? professionals.find(p => p.id === b.professionalId)?.name || '?'
       : 'Todos';
@@ -721,6 +746,34 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
             </div>
           </div>
 
+          {/* Holidays */}
+          <div className="bg-white p-6 rounded-[30px] border-2 border-slate-100 shadow-lg space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-black text-black text-xs uppercase tracking-widest">Feriados</h3>
+              <button
+                onClick={() => { openBreakModal(); setBrkType('holiday'); setBrkLabel('Feriado'); setBrkAllDay(true); }}
+                className="text-[9px] font-black uppercase px-3 py-1.5 rounded-xl border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+              >
+                + Feriado
+              </button>
+            </div>
+            {breaks.filter(b => b.type === 'holiday').length === 0 ? (
+              <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest text-center py-4">Nenhum feriado cadastrado</p>
+            ) : (
+              <div className="space-y-2">
+                {breaks.filter(b => b.type === 'holiday').map(b => (
+                  <div key={b.id} className="flex items-start justify-between bg-red-50 rounded-2xl p-3 gap-2">
+                    <div>
+                      <p className="text-[10px] font-black text-red-700 uppercase">{b.label}</p>
+                      <p className="text-[9px] font-bold text-red-400 mt-0.5">{breakLabel(b)}</p>
+                    </div>
+                    <button onClick={() => handleDeleteBreak(b.id)} className="text-red-300 hover:text-red-600 text-xs font-black transition-colors shrink-0">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Break Periods */}
           <div className="bg-white p-6 rounded-[30px] border-2 border-slate-100 shadow-lg space-y-4">
             <div className="flex justify-between items-center">
@@ -732,11 +785,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 + Gerar
               </button>
             </div>
-            {breaks.length === 0 ? (
+            {breaks.filter(b => b.type !== 'holiday').length === 0 ? (
               <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest text-center py-4">Nenhum intervalo cadastrado</p>
             ) : (
               <div className="space-y-2">
                 {breaks
+                  .filter(b => b.type !== 'holiday')
                   .filter(b => !filterProfId || !b.professionalId || b.professionalId === filterProfId)
                   .map(b => (
                     <div key={b.id} className="flex items-start justify-between bg-slate-50 rounded-2xl p-3 gap-2">
@@ -1377,30 +1431,35 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
           <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
           <div className="bg-white rounded-[40px] w-full max-w-md p-10 space-y-6 animate-scaleUp border-4 border-black">
-            <h2 className="text-2xl font-black text-black uppercase tracking-tight">Gerar Intervalo</h2>
+            <h2 className="text-2xl font-black text-black uppercase tracking-tight">{brkType === 'holiday' ? 'Novo Feriado' : 'Gerar Intervalo'}</h2>
 
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Intervalo</label>
-                <input value={brkLabel} onChange={e => setBrkLabel(e.target.value)} placeholder="Ex: Almoço, Intervalo" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500" />
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">{brkType === 'holiday' ? 'Nome do Feriado' : 'Nome do Intervalo'}</label>
+                <input value={brkLabel} onChange={e => setBrkLabel(e.target.value)} placeholder={brkType === 'holiday' ? 'Ex: Natal, Ano Novo, Carnaval' : 'Ex: Almoço, Intervalo'} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500" />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Barbeiro (opcional)</label>
-                <select value={brkProfId} onChange={e => setBrkProfId(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
-                  <option value="">Todos os profissionais</option>
-                  {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
+              {brkType !== 'holiday' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Barbeiro (opcional)</label>
+                  <select value={brkProfId} onChange={e => setBrkProfId(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
+                    <option value="">Todos os profissionais</option>
+                    {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tipo</label>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <button onClick={() => setBrkType('recurring')} className={`flex-1 py-3 rounded-2xl text-xs font-black uppercase transition-all ${brkType === 'recurring' ? 'bg-orange-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
                     Semanal
                   </button>
                   <button onClick={() => setBrkType('specific')} className={`flex-1 py-3 rounded-2xl text-xs font-black uppercase transition-all ${brkType === 'specific' ? 'bg-orange-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
                     Dia Específico
+                  </button>
+                  <button onClick={() => { setBrkType('holiday'); setBrkLabel(l => l || 'Feriado'); setBrkAllDay(true); }} className={`flex-1 py-3 rounded-2xl text-xs font-black uppercase transition-all ${brkType === 'holiday' ? 'bg-red-500 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                    Feriado
                   </button>
                 </div>
               </div>
@@ -1414,28 +1473,44 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 </div>
               )}
 
-              {brkType === 'specific' && (
+              {(brkType === 'specific' || brkType === 'holiday') && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Data</label>
                   <input type="date" value={brkDate} onChange={e => setBrkDate(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs" />
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Início</label>
-                  <input type="time" value={brkStart} onChange={e => setBrkStart(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs" />
+              {brkType === 'holiday' && (
+                <div className="flex items-center gap-3 px-4">
+                  <button
+                    onClick={() => setBrkAllDay(!brkAllDay)}
+                    className={`w-12 h-7 rounded-full transition-all relative ${brkAllDay ? 'bg-red-500' : 'bg-slate-200'}`}
+                  >
+                    <div className={`w-5 h-5 rounded-full bg-white shadow absolute top-1 transition-all ${brkAllDay ? 'left-6' : 'left-1'}`} />
+                  </button>
+                  <span className="text-xs font-bold text-slate-600">Dia inteiro</span>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Fim</label>
-                  <input type="time" value={brkEnd} onChange={e => setBrkEnd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs" />
+              )}
+
+              {(brkType !== 'holiday' || !brkAllDay) && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">{brkType === 'holiday' ? 'Fecha a partir de' : 'Início'}</label>
+                    <input type="time" value={brkStart} onChange={e => setBrkStart(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs" />
+                  </div>
+                  {brkType !== 'holiday' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Fim</label>
+                      <input type="time" value={brkEnd} onChange={e => setBrkEnd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs" />
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="flex gap-4 pt-2">
               <button onClick={() => setShowBreakModal(false)} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs">Cancelar</button>
-              <button onClick={handleCreateBreak} className="flex-1 py-4 bg-black text-white rounded-2xl font-black uppercase text-xs hover:bg-orange-500 transition-all">Salvar Intervalo</button>
+              <button onClick={handleCreateBreak} className={`flex-1 py-4 text-white rounded-2xl font-black uppercase text-xs transition-all ${brkType === 'holiday' ? 'bg-red-500 hover:bg-red-600' : 'bg-black hover:bg-orange-500'}`}>{brkType === 'holiday' ? 'Salvar Feriado' : 'Salvar Intervalo'}</button>
             </div>
           </div>
           </div>

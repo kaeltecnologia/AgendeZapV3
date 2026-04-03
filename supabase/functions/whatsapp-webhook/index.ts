@@ -281,6 +281,13 @@ async function getAvailableSlots(
     });
     if (conflict) { cursor += 30; continue; }
     const brk = breaks.some((b: any) => {
+      // Feriado: aplica a TODOS os profissionais
+      if (b.type === 'holiday' && !b.professionalId && b.date === date) {
+        // Dia inteiro
+        if (b.startTime === '00:00' && (b.endTime === '23:59' || b.endTime === '23:00')) return true;
+        // Meio período: bloqueia a partir do startTime
+        return label >= b.startTime;
+      }
       // Férias: EXIGE professionalId explícito (sem professionalId = não aplica a ninguém)
       if (b.type === 'vacation') {
         if (!b.professionalId || b.professionalId !== professionalId) return false;
@@ -3008,15 +3015,24 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     return `• ${p.name} — de férias, retorna ${retorno}`;
   }).join('\n')}\n⚠️ Se o cliente pedir ESPECIFICAMENTE um profissional de férias, INFORME que está de férias e quando retorna. NÃO insista em outro profissional se o cliente disser que quer SOMENTE aquele.` : '';
 
+  // ── Build holiday context for AI prompt ──────────────────────────
+  const _holidayWh = _breaksWh.find((b: any) => b.type === 'holiday' && !b.professionalId && b.date === _targetDateWh);
+  let _holidayCtxWh = '';
+  if (_holidayWh) {
+    const isAllDay = _holidayWh.startTime === '00:00' && (_holidayWh.endTime === '23:59' || _holidayWh.endTime === '23:00');
+    _holidayCtxWh = `\n🎉 FERIADO: ${_holidayWh.label || 'Feriado'} em ${formatDate(_targetDateWh)}${isAllDay ? ' — Estabelecimento FECHADO o dia todo' : ` — Fechado a partir das ${_holidayWh.startTime}`}. Informe o cliente e sugira outro dia.`;
+  }
+  const _fullCtxWh = [_vacCtxWh, _holidayCtxWh].filter(Boolean).join('\n') || undefined;
+
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
 
   // Fallback: if primary key failed and it was OpenAI, retry with Gemini key
   if (!brain && apiKey.startsWith('sk-')) {
     const geminiKey = (tenant.gemini_api_key || '').trim();
     if (geminiKey) {
       console.log(`[Agent] OpenAI failed, retrying with Gemini key for ${tenantId}`);
-      brain = await callBrain(geminiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+      brain = await callBrain(geminiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
     }
   }
 
@@ -3093,9 +3109,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    let brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+    let brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
     if (!brain2 && apiKey.startsWith('sk-') && (tenant.gemini_api_key || '').trim()) {
-      brain2 = await callBrain(tenant.gemini_api_key.trim(), tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+      brain2 = await callBrain(tenant.gemini_api_key.trim(), tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
     }
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {

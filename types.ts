@@ -79,7 +79,7 @@ export interface RecurringEntry {
 export interface BreakPeriod {
   id: string;
   label: string;
-  type?: 'break' | 'lunch' | 'vacation'; // default 'break'
+  type?: 'break' | 'lunch' | 'vacation' | 'holiday'; // default 'break'
   professionalId?: string | null; // null or absent = applies to all professionals
   date?: string | null;           // YYYY-MM-DD, one-time; null = recurring
   vacationEndDate?: string | null; // for type='vacation': last day of vacation
@@ -167,6 +167,7 @@ export interface FollowUpNamedMode {
   message: string;
   timing: number;        // minutes (lembrete), days (reativacao), irrelevant for aviso
   fixedTime?: string;   // HH:mm — used by aviso type
+  daysBefore?: number;  // aviso: 0 = no dia, 1 = 1 dia antes, etc.
 }
 
 // ── NFS-e / Nota Fiscal de Serviço ──────────────────────────────────────────

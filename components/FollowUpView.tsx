@@ -43,6 +43,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
   const [newMsg, setNewMsg] = useState('');
   const [newTiming, setNewTiming] = useState<number>(60);
   const [newFixedTime, setNewFixedTime] = useState('08:00');
+  const [newDaysBefore, setNewDaysBefore] = useState<number>(0);
 
   // Edit state for each mode (by id)
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -90,7 +91,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
   useEffect(() => { setShowAddForm(false); setEditingId(null); resetAddForm(); }, [activeTab]);
 
   function resetAddForm() {
-    setNewName(''); setNewMsg(''); setNewTiming(60); setNewFixedTime('08:00');
+    setNewName(''); setNewMsg(''); setNewTiming(60); setNewFixedTime('08:00'); setNewDaysBefore(0);
   }
 
   const getModes = (tab: MainTab) => tab === 'aviso' ? avisoModes : tab === 'lembrete' ? lembreteModes : reativacaoModes;
@@ -113,7 +114,8 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
       active: true,
       message: msg,
       timing: cfg.timingType === 'fixed' ? 0 : newTiming,
-      fixedTime: cfg.timingType === 'fixed' ? newFixedTime : undefined
+      fixedTime: cfg.timingType === 'fixed' ? newFixedTime : undefined,
+      ...(cfg.timingType === 'fixed' ? { daysBefore: newDaysBefore } : {}),
     };
     const updated = [...getModes(activeTab), mode];
     await db.updateSettings(tenantId, { [getKey(activeTab)]: updated });
@@ -358,8 +360,18 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">{cfg.timingLabel}</label>
               {cfg.timingType === 'fixed' && (
-                <input type="time" value={newFixedTime} onChange={e => setNewFixedTime(e.target.value)}
-                  className="p-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-xl outline-none focus:border-orange-500" />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <input type="number" min={0} max={7} value={newDaysBefore} onChange={e => setNewDaysBefore(Math.max(0, Math.min(7, Number(e.target.value))))}
+                      className="w-20 p-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-center text-xl outline-none focus:border-orange-500" />
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{newDaysBefore === 0 ? 'No dia do agendamento' : newDaysBefore === 1 ? 'dia antes' : 'dias antes'}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input type="time" value={newFixedTime} onChange={e => setNewFixedTime(e.target.value)}
+                      className="p-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-xl outline-none focus:border-orange-500" />
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Horário de envio</span>
+                  </div>
+                </div>
               )}
               {cfg.timingType === 'minutes' && (
                 <select value={newTiming} onChange={e => setNewTiming(Number(e.target.value))}
@@ -428,9 +440,20 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">{cfg.timingLabel}</label>
                     {cfg.timingType === 'fixed' && (
-                      <input type="time" value={editFields.fixedTime || '08:00'}
-                        onChange={e => setEditFields(f => ({ ...f, fixedTime: e.target.value }))}
-                        className="p-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-xl outline-none focus:border-orange-500" />
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <input type="number" min={0} max={7} value={editFields.daysBefore ?? 0}
+                            onChange={e => setEditFields(f => ({ ...f, daysBefore: Math.max(0, Math.min(7, Number(e.target.value))) }))}
+                            className="w-20 p-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-center text-xl outline-none focus:border-orange-500" />
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{(editFields.daysBefore ?? 0) === 0 ? 'No dia' : (editFields.daysBefore ?? 0) === 1 ? 'dia antes' : 'dias antes'}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input type="time" value={editFields.fixedTime || '08:00'}
+                            onChange={e => setEditFields(f => ({ ...f, fixedTime: e.target.value }))}
+                            className="p-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-xl outline-none focus:border-orange-500" />
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Horário de envio</span>
+                        </div>
+                      </div>
                     )}
                     {cfg.timingType === 'minutes' && (
                       <select value={editFields.timing}
@@ -474,7 +497,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
                             {mode.active ? 'Ativo' : 'Inativo'}
                           </span>
                           {cfg.timingType === 'fixed' && (
-                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">⏰ {mode.fixedTime}</span>
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">⏰ {mode.daysBefore ? `${mode.daysBefore}d antes, ` : ''}{mode.fixedTime}</span>
                           )}
                           {cfg.timingType === 'minutes' && (
                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">⏰ {mode.timing}min antes</span>

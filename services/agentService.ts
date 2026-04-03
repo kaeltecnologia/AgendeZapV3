@@ -420,6 +420,11 @@ export async function getAvailableSlots(
     if (hasAppConflict) { cursor += INTERVAL_MIN; continue; }
 
     const hasBreakConflict = breaks.some(brk => {
+      // Feriado: aplica a TODOS os profissionais
+      if ((brk as any).type === 'holiday' && !brk.professionalId && brk.date === date) {
+        if (brk.startTime === '00:00' && (brk.endTime === '23:59' || brk.endTime === '23:00')) return true;
+        return label >= brk.startTime;
+      }
       // Férias: EXIGE professionalId explícito (sem professionalId = não aplica a ninguém)
       if ((brk as any).type === 'vacation') {
         if (!brk.professionalId || brk.professionalId !== professionalId) return false;
@@ -2743,6 +2748,15 @@ async function _handleMessage(
     return `• ${p.name} — de férias, retorna ${retorno}`;
   }).join('\n')}\n⚠️ Se o cliente pedir ESPECIFICAMENTE um profissional de férias, INFORME que está de férias e quando retorna. NÃO insista em outro profissional se o cliente disser que quer SOMENTE aquele. Respeite a escolha do cliente.` : '';
 
+  // ─── Build holiday context for AI prompt ────────────────────────────
+  const _holiday = _breaks.find(b => (b as any).type === 'holiday' && !b.professionalId && b.date === _targetDate);
+  let _holidayCtx = '';
+  if (_holiday) {
+    const isAllDay = _holiday.startTime === '00:00' && (_holiday.endTime === '23:59' || _holiday.endTime === '23:00');
+    _holidayCtx = `\n🎉 FERIADO: ${_holiday.label || 'Feriado'} em ${formatDate(_targetDate)}${isAllDay ? ' — Estabelecimento FECHADO o dia todo' : ` — Fechado a partir das ${_holiday.startTime}`}. Informe o cliente e sugira outro dia.`;
+  }
+  const _fullCtx = [_vacCtx, _holidayCtx].filter(Boolean).join('\n') || '';
+
   // ─── First AI Brain call ────────────────────────────────────────────
   const tenantNicho: string = (tenant.nicho as string) || 'Barbearia';
   const groupBookingCtx = buildGroupCtx(session.data);
@@ -2752,7 +2766,7 @@ async function _handleMessage(
     session.history, session.data, prefetchedSlots, customPrompt || undefined,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
     tenantNicho, tenantId, phone, options?.isAudio,
-    _vacCtx || undefined, settings
+    _fullCtx || undefined, settings
   );
 
   if (!brain) {
@@ -3045,7 +3059,7 @@ async function _handleMessage(
       session.history, session.data, newSlots, customPrompt || undefined,
       false, brasiliaGreeting, groupBookingCtx2 || undefined,
       tenantNicho, tenantId, phone, false,
-      _vacCtx || undefined, settings
+      _fullCtx || undefined, settings
     );
     if (brain2) {
       // Apply any new extractions from second call
