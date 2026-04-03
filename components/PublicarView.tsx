@@ -30,7 +30,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
 
   // Channels
   const [chWa, setChWa] = useState(true);
-  const [chAz, setChAz] = useState(true);
+  const chAz = false;
   const [chIg, setChIg] = useState(false);
   const [chGoogle, setChGoogle] = useState(false);
 
@@ -98,7 +98,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
 
   const handlePublish = async () => {
     if (!file) return;
-    if (!chWa && !chAz && !chIg && !chGoogle) { alert('Selecione pelo menos um canal.'); return; }
+    if (!chWa && !chIg && !chGoogle) { alert('Selecione pelo menos um canal.'); return; }
     setPublishing(true);
     setResult(null);
     const res: { wa?: string; az?: string; ig?: string; google?: string } = {};
@@ -289,17 +289,6 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
             </div>
           )}
 
-          {/* Feed AZ */}
-          <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${chAz ? 'border-orange-400 bg-orange-50' : 'border-slate-100'}`}>
-            <input type="checkbox" checked={chAz} onChange={e => setChAz(e.target.checked)} className="w-4 h-4 accent-orange-500" />
-            <span className="text-lg">🌐</span>
-            <div className="flex-1">
-              <p className="text-xs font-black text-slate-700">Feed AZ (Marketplace)</p>
-              <p className="text-[10px] text-slate-400">Aparece no seu perfil público</p>
-            </div>
-            <span className="text-[9px] font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Ativo</span>
-          </label>
-
           {/* Google Maps */}
           {googleConnected ? (
             <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${chGoogle ? 'border-blue-400 bg-blue-50' : 'border-slate-100'}`}>
@@ -337,11 +326,6 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
                 {result.ig === 'ok' ? '✓ Story Instagram publicado!' : `✗ Instagram: ${result.ig}`}
               </p>
             )}
-            {result.az !== undefined && (
-              <p className={`text-xs font-bold ${result.az === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
-                {result.az === 'ok' ? '✓ Publicado no Feed AZ!' : `✗ Feed AZ: ${result.az}`}
-              </p>
-            )}
             {result.google !== undefined && (
               <p className={`text-xs font-bold ${result.google === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
                 {result.google === 'ok' ? '✓ Publicado no Google Maps!' : `✗ Google Maps: ${result.google}`}
@@ -353,7 +337,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
         {/* Publish button */}
         <button
           onClick={handlePublish}
-          disabled={!file || publishing || (!chWa && !chAz && !chIg && !chGoogle)}
+          disabled={!file || publishing || (!chWa && !chIg && !chGoogle)}
           className="w-full bg-orange-500 text-white py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {publishing ? (
