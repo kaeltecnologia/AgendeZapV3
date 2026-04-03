@@ -15,20 +15,21 @@ export interface NichoConfig {
 
 export const NICHOS = [
   'Barbearia',
-  'Salão de Beleza',
-  'Manicure/Pedicure',
+  'Bronzeamento',
+  'Cílios e Extensões',
+  'Clínica de Estética',
+  'Depilação',
+  'Design de Sobrancelhas',
   'Estética Corporal',
   'Estética Facial',
-  'Depilação',
-  'Micropigmentação',
-  'Design de Sobrancelhas',
-  'Cílios e Extensões',
+  'Manicure/Pedicure',
   'Maquiagem',
-  'Spa',
-  'Clínica de Estética',
-  'Bronzeamento',
-  'Podologia',
   'Massoterapia',
+  'Micropigmentação',
+  'Nutrição',
+  'Podologia',
+  'Salão de Beleza',
+  'Spa',
 ] as const;
 
 export type NichoKey = typeof NICHOS[number];
@@ -216,6 +217,20 @@ export const nichoConfigs: Record<NichoKey, NichoConfig> = {
     regrasEspecificas: [
       'Perguntar objetivo: relaxamento, dor muscular, tensão específica, pós-treino',
       'Perguntar sobre regiões de tensão quando relevante',
+    ],
+  },
+
+  // ─── NUTRIÇÃO ────────────────────────────────────────────────────────
+  'Nutrição': {
+    nome: 'Nutrição',
+    introLinha: 'Imite exatamente o estilo de um(a) nutricionista brasileiro(a) — profissional, acolhedor(a) e que transmite saúde e bem-estar.',
+    tomFormatado: '• Tom: profissional e acolhedor — "paciente", "cliente", linguagem de saúde acessível e motivadora',
+    emojisHint: '(🥗 😊 💪 🌿)',
+    regrasEspecificas: [
+      'Nutrição é área da saúde — tom profissional e empático, sem ser excessivamente informal',
+      'Se houver mais de um serviço (presencial e online), perguntar qual modalidade o cliente prefere',
+      'Não dar orientações nutricionais nem diagnósticos — apenas agendar a consulta',
+      'Se cliente perguntar sobre dieta ou plano alimentar, dizer que o nutricionista irá orientar na consulta',
     ],
   },
 };

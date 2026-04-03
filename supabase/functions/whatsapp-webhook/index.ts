@@ -339,6 +339,26 @@ async function logAIUsage(params: {
   } catch (_e) { /* non-critical */ }
 }
 
+// ── Nicho configs (inline for edge function) ────────────────────────
+const NICHO_CFG: Record<string, { intro: string; tom: string; emojis: string; regras: string[] }> = {
+  'Barbearia': { intro: 'Imite exatamente o estilo de um atendente humano brasileiro de barbearia — informal, caloroso, direto.', tom: '• Tom: brasileiro informal — "meu querido", "luquinha", "beleza", "fechou"', emojis: '(👍 😊 ✂️ 💈)', regras: [] },
+  'Salão de Beleza': { intro: 'Imite o estilo de uma atendente de salão de beleza — acolhedora, carinhosa, feminina e direta.', tom: '• Tom: acolhedor, carinhoso — "querida", "linda", "flor", "amor"', emojis: '(💇 😊 ✨ 💅)', regras: ['Sempre perguntar se quer tratamento junto com o corte (hidratação, botox, progressiva)'] },
+  'Manicure/Pedicure': { intro: 'Imite o estilo de uma manicure brasileira — delicada, carinhosa e direta.', tom: '• Tom: delicado, feminino — "linda", "querida", "flor"', emojis: '(💅 😊 ✨ 💗)', regras: ['Oferecer combo mãos + pés quando cliente pede apenas um'] },
+  'Estética Corporal': { intro: 'Imite o estilo de uma esteticista corporal — profissional, acolhedora e técnica.', tom: '• Tom: profissional e acolhedor — "querida", "vamos cuidar de você"', emojis: '(✨ 😊 💆 💪)', regras: ['Perguntar sobre o objetivo: relaxamento, redução de medidas, drenagem, tonificação'] },
+  'Estética Facial': { intro: 'Imite o estilo de uma esteticista facial — profissional, cuidadosa e inspiradora de confiança.', tom: '• Tom: técnico e acolhedor — "querida", "linda"', emojis: '(✨ 😊 🌿 💆)', regras: ['Perguntar tipo de pele quando relevante (oleosa, seca, mista, sensível)'] },
+  'Depilação': { intro: 'Imite o estilo de uma depiladora brasileira — profissional, direta e tranquilizadora.', tom: '• Tom: direto e profissional — "querida", "linda"', emojis: '(✨ 😊 💆 🌸)', regras: ['Perguntar quais áreas logo no início', 'Sugerir combos de áreas quando oportuno'] },
+  'Micropigmentação': { intro: 'Imite o estilo de uma micropigmentadora — profissional, técnica, que transmite confiança.', tom: '• Tom: profissional, técnico — "linda", "querida"', emojis: '(✨ 😊 🌟 💄)', regras: ['Perguntar se é primeira vez ou retoque'] },
+  'Design de Sobrancelhas': { intro: 'Imite o estilo de uma designer de sobrancelhas — acolhedora, feminina.', tom: '• Tom: carinhoso — "linda", "querida", "amor"', emojis: '(✨ 😊 💛 🌸)', regras: ['Perguntar se é manutenção ou primeiro design'] },
+  'Cílios e Extensões': { intro: 'Imite o estilo de uma lash designer — delicada, técnica e feminina.', tom: '• Tom: delicado, técnico — "linda", "querida"', emojis: '(✨ 😊 👁️ 💗)', regras: ['Perguntar estilo desejado: natural, volume ou dramático'] },
+  'Maquiagem': { intro: 'Imite o estilo de uma maquiadora brasileira — animada, feminina, faz a cliente se sentir especial.', tom: '• Tom: animado — "linda", "princesa", "querida"', emojis: '(💄 😊 ✨ 💗)', regras: ['Perguntar tipo de ocasião: casamento, formatura, festa, dia a dia'] },
+  'Spa': { intro: 'Imite o estilo de um(a) atendente de spa — sereno, acolhedor, transmite paz.', tom: '• Tom: sereno e acolhedor — "querida", foco em bem-estar', emojis: '(🌿 😊 💆 ✨)', regras: ['Sugerir pacotes combinados para experiência mais completa'] },
+  'Clínica de Estética': { intro: 'Imite o estilo de uma recepcionista de clínica de estética — profissional, confiável e técnica.', tom: '• Tom: profissional e formal — inspire confiança', emojis: '(✨ 😊 🌟 💉)', regras: ['Tom mais formal (ambiente clínico)', 'Mencionar avaliação prévia para procedimentos invasivos'] },
+  'Bronzeamento': { intro: 'Imite o estilo de uma bronzeadora brasileira — animada, leve e direta.', tom: '• Tom: animado e leve — "querida", "linda"', emojis: '(☀️ 😊 ✨ 🌴)', regras: ['Sugerir pacote de sessões para resultado gradual'] },
+  'Podologia': { intro: 'Imite o estilo de um(a) podólogo(a) — profissional, cuidadoso(a), técnico(a) (área de saúde).', tom: '• Tom: profissional e técnico — "paciente", linguagem de saúde acessível', emojis: '(👣 😊 ✅ 🩺)', regras: ['Tom mais formal — podologia é área da saúde', 'Perguntar sobre o problema: unha encravada, calosidade, micose, dor'] },
+  'Massoterapia': { intro: 'Imite o estilo de um(a) massoterapeuta — profissional, acolhedor(a), transmite cuidado.', tom: '• Tom: profissional e acolhedor — "cliente", foco em bem-estar', emojis: '(💆 😊 🌿 ✨)', regras: ['Perguntar objetivo: relaxamento, dor muscular, tensão, pós-treino'] },
+  'Nutrição': { intro: 'Imite o estilo de um(a) nutricionista brasileiro(a) — profissional, acolhedor(a), transmite saúde e bem-estar.', tom: '• Tom: profissional e acolhedor — "paciente", "cliente", linguagem de saúde acessível e motivadora', emojis: '(🥗 😊 💪 🌿)', regras: ['Nutrição é área da saúde — tom profissional e empático, sem ser excessivamente informal', 'Se houver mais de um serviço (presencial e online), perguntar qual modalidade o cliente prefere', 'Não dar orientações nutricionais nem diagnósticos — apenas agendar a consulta', 'Se cliente perguntar sobre dieta ou plano alimentar, dizer que o nutricionista irá orientar na consulta'] },
+};
+
 // ── AI Brain ─────────────────────────────────────────────────────────
 async function callBrain(
   apiKey: string, tenantName: string, today: string,
@@ -348,7 +368,8 @@ async function callBrain(
   shouldGreet?: boolean, brasiliaGreeting?: string,
   tenantId?: string, phone?: string,
   vacationCtx?: string,
-  operatingHours?: Record<number, { active: boolean; start?: string; end?: string }>
+  operatingHours?: Record<number, { active: boolean; start?: string; end?: string }>,
+  nichoName?: string
 ): Promise<any | null> {
   // ── Data preparation (unchanged) ──────────────────────────────────
   const svcList = services.map(s => `- ${s.name || 'Serviço'} (${s.durationMinutes || 30}min, R$${(Number(s.price) || 0).toFixed(2)}) -- ID:"${s.id}"`).join('\n');
@@ -372,6 +393,7 @@ async function callBrain(
     }
   }
   if (data.preferredTime && !data.time) known.push(`Preferência de horário: a partir das ${data.preferredTime}`);
+  if (data.numberedMode) known.push(`MODO NUMERADO ATIVO: Cliente teve dificuldade. Respostas CURTAS e DIRETAS. NAO liste opcoes — o sistema envia lista numerada separadamente. Apenas confirme a selecao e avance para o proximo passo.`);
   if ((data as any).requestedQuantity && (data as any).requestedQuantity > 1) known.push(`Quantidade: ${(data as any).requestedQuantity} horários/pessoas`);
   if (data.pendingReschedule) {
     if (data.pendingReschedule.isEarlierSlot) {
@@ -430,10 +452,18 @@ Profissional ainda não definido. Disponíveis: ${professionals.map((p: any) => 
   const todayDow = DOW_PT[new Date(todayISOClean+'T12:00:00Z').getUTCDay()];
   const tomorrowDow = DOW_PT[tomorrowDate.getUTCDay()];
 
+  // ── Nicho-specific prompt elements ──────────────────────────────────
+  const _nicho = nichoName || 'Barbearia';
+  const _nichoCfg = NICHO_CFG[_nicho] || NICHO_CFG['Barbearia'];
+  const _nichoRules = _nichoCfg.regras.length > 0 && _nicho !== 'Barbearia'
+    ? `\n## Regras do Nicho (${_nicho})\n${_nichoCfg.regras.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n`
+    : '';
+
   // ── System Prompt (static rules — # markdown headers for GPT-4.1-mini) ──
   const systemPrompt = `# Papel
 Você é o atendente de WhatsApp de "${tenantName}". Hoje é ${todayFormatted} (${todayDow}).
-Atendente brasileiro -- informal, caloroso, direto. Máximo 2-3 linhas por resposta.
+${_nichoCfg.intro} Máximo 2-3 linhas por resposta.
+${_nichoCfg.tom}
 ${customSystemPrompt ? `\n## Regras do Estabelecimento\n${customSystemPrompt}\n` : ''}
 # Fluxo de Agendamento
 Siga nesta ordem, pule etapas já presentes no CONTEXTO ATUAL:
@@ -550,7 +580,7 @@ REGRA: NÃO force agendamento quando o cliente claramente NÃO está pedindo um.
 ## Estilo
 - Máximo 2-3 linhas.
 - Tom informal brasileiro.
-- Emojis: use APENAS na saudação inicial ou ao confirmar agendamento. Demais mensagens sem emoji.
+- Emojis ${_nichoCfg.emojis}: use APENAS na saudação inicial ou ao confirmar agendamento. Demais mensagens sem emoji.
 - Sempre termine com pergunta.
 
 ## Ao Oferecer Horário (profissional já definido)
@@ -581,7 +611,7 @@ Aceite naturalmente, sem drama.
   - Ofereça horários mais cedo.
   - Cliente escolheu -> extraia time, confirmed:true.
   - Cliente prefere manter -> "Mantenho o das [hora_original] então!", confirmed:false.
-
+${_nichoRules}
 # Regras de Extração
 - Horários: "nove horas"->"09:00", "três da tarde"->"15:00", "meio dia"->"12:00", "5 e meia"->"17:30", "as 4"->"16:00"
 - O sistema já detecta horários coloquiais automaticamente. Se CONTEXTO ATUAL tem "HORÁRIO DETECTADO", extraia esse time.
@@ -730,43 +760,31 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
   }
 }
 
-// ── Send WhatsApp interactive buttons (max 3) ────────────────────────
+// ── Send WhatsApp interactive buttons as formatted text ───────────────
+// NOTE: sendButtons/sendList endpoints are broken in Evolution API v2.3.7
+// (bug: "this.isZero is not a function" / nativeFlowMessage not rendered).
+// Using formatted text with numbered options as reliable fallback.
 async function sendButtons(instanceName: string, phone: string, title: string, description: string, buttons: Array<{id: string; text: string}>, tenantId?: string) {
   try {
-    await fetch(`${EVO_URL}/message/sendButtons/${instanceName}`, {
-      method: 'POST', headers: EVO_HEADERS,
-      body: JSON.stringify({
-        number: phone, title, description, footerText: 'AgendeZap',
-        buttons: buttons.slice(0, 3).map(b => ({ buttonId: b.id, buttonText: { displayText: b.text } })),
-      }),
-    });
-    if (tenantId) {
-      saveWaMsg(tenantId, `out_btn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        phone, `[Botões: ${buttons.map(b => b.text).join(' | ')}]`, Math.floor(Date.now() / 1000), 'Bot', 'buttons', true
-      ).catch(() => {});
-    }
+    const lines = buttons.map((b, i) => `*${i + 1}.* ${b.text}`);
+    const msg = `*${title}*\n${description}\n\n${lines.join('\n')}\n\n_Responda com o numero ou nome da opcao_`;
+    await sendMsg(instanceName, phone, msg, tenantId);
   } catch (e) { console.error('[sendButtons] error:', e); }
 }
 
-// ── Send WhatsApp list message (many options) ─────────────────────────
-async function sendListMessage(instanceName: string, phone: string, title: string, description: string, buttonText: string, sections: Array<{title: string; rows: Array<{id: string; title: string; description?: string}>}>, tenantId?: string) {
+// ── Send WhatsApp list message as formatted text ─────────────────────
+async function sendListMessage(instanceName: string, phone: string, title: string, description: string, _buttonText: string, sections: Array<{title: string; rows: Array<{id: string; title: string; description?: string}>}>, tenantId?: string) {
   try {
-    await fetch(`${EVO_URL}/message/sendList/${instanceName}`, {
-      method: 'POST', headers: EVO_HEADERS,
-      body: JSON.stringify({
-        number: phone, title, description, buttonText, footerText: 'AgendeZap',
-        sections: sections.map(sec => ({
-          title: sec.title,
-          rows: sec.rows.slice(0, 10).map(r => ({ rowId: r.id, title: (r.title || '').slice(0, 24), description: (r.description || '').slice(0, 72) })),
-        })).slice(0, 10),
-      }),
-    });
-    if (tenantId) {
-      const rowCount = sections.reduce((s, sec) => s + sec.rows.length, 0);
-      saveWaMsg(tenantId, `out_list_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        phone, `[Lista: ${rowCount} opções]`, Math.floor(Date.now() / 1000), 'Bot', 'list', true
-      ).catch(() => {});
+    let msg = `*${title}*\n${description}\n`;
+    let idx = 1;
+    for (const sec of sections) {
+      for (const r of sec.rows.slice(0, 10)) {
+        msg += `\n*${idx}.* ${r.title}${r.description ? ` _(${r.description})_` : ''}`;
+        idx++;
+      }
     }
+    msg += '\n\n_Responda com o numero ou nome da opcao_';
+    await sendMsg(instanceName, phone, msg, tenantId);
   } catch (e) { console.error('[sendListMessage] error:', e); }
 }
 
@@ -1459,10 +1477,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const _pb = session.data._pendingButtons as PendingButtons | undefined;
   if (_pb && _pb.sentAt > Date.now() - 30 * 60 * 1000) {
     const _normText = text.trim().toLowerCase();
-    const _matched = _pb.options.find(o =>
-      _normText === o.id.toLowerCase() || _normText === o.label.toLowerCase() ||
-      text.includes(o.id) || text.includes(o.label)
-    );
+    // Match by: exact id, exact label, partial match, OR numeric index (1, 2, 3...)
+    const _numIdx = /^\d+$/.test(_normText.trim()) ? parseInt(_normText.trim(), 10) - 1 : -1;
+    const _matched = (_numIdx >= 0 && _numIdx < _pb.options.length)
+      ? _pb.options[_numIdx]
+      : _pb.options.find(o =>
+          _normText === o.id.toLowerCase() || _normText === o.label.toLowerCase() ||
+          text.includes(o.id) || text.includes(o.label)
+        );
     if (_matched) {
       const _id = _matched.id;
       if (_pb.type === 'service' && _id.startsWith('svc_')) {
@@ -1919,17 +1941,62 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       'voce nao ta entendendo', 'vc nao ta entendendo',
     ];
     if (CONFUSION_KW.some(k => normConf.includes(k))) {
+      session.data.confusionCount = (session.data.confusionCount || 0) + 1;
+      console.log(`[Agent] Confusion KW detected (count: ${session.data.confusionCount}) for ${phone}`);
       session.data.pendingReschedule = undefined;
       session.data.pendingRescheduleSearch = undefined;
       session.data.serviceId = undefined;
       session.data.date = undefined;
       session.data.time = undefined;
       session.data.professionalId = undefined;
+      // Activate numbered mode on 2nd confusion
+      if (session.data.confusionCount >= 2 && !session.data.numberedMode) {
+        session.data.numberedMode = true;
+        console.log(`[Agent] NUMBERED MODE ACTIVATED for ${phone}`);
+        const transitionMsg = 'Desculpe a confusao! Responda apenas o numero da opcao desejada:';
+        session.history.push({ role: 'user', text: text }, { role: 'bot', text: transitionMsg });
+        await sendMsg(instanceName, phone, transitionMsg, tenantId);
+        const _btnResult = await maybeSendInteractiveButtons(instanceName, phone, session.data, services, professionalsVisible, session.data.availableSlots, tenantId);
+        if (_btnResult) session.data._pendingButtons = _btnResult;
+        await saveSession(tenantId, phone, session.data, session.history);
+        return;
+      }
       const confReply = 'Desculpe a confusão! 😅 Pode me contar de novo o que você precisa que eu te ajudo certinho?';
       session.history.push({ role: 'user', text: text }, { role: 'bot', text: confReply });
       await saveSession(tenantId, phone, session.data, session.history);
       await sendMsg(instanceName, phone, confReply, tenantId);
       return;
+    }
+  }
+
+  // ── Global confusion detection (outside reschedule context) ──────────
+  {
+    const _normConfG = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.,!?]/g, '').trim();
+    const CONFUSION_KW_G = [
+      'nao entendi', 'nao to entendendo', 'nao estou entendendo',
+      'ta errado', 'esta errado', 'isso nao e o que eu disse',
+      'nao foi isso', 'nao e isso', 'nao disse isso', 'nao era isso',
+      'voce nao ta entendendo', 'vc nao ta entendendo',
+      'errado', 'o que voce entendeu', 'o que vc entendeu',
+    ];
+    if (CONFUSION_KW_G.some(k => _normConfG.includes(k))) {
+      session.data.confusionCount = (session.data.confusionCount || 0) + 1;
+      console.log(`[Agent] Global confusion detected (count: ${session.data.confusionCount}) for ${phone}`);
+      if (session.data.confusionCount >= 2 && !session.data.numberedMode) {
+        session.data.numberedMode = true;
+        console.log(`[Agent] NUMBERED MODE ACTIVATED (global) for ${phone}`);
+        session.data.serviceId = undefined;
+        session.data.date = undefined;
+        session.data.time = undefined;
+        const transitionMsg = 'Desculpe a confusao! Responda apenas o numero da opcao desejada:';
+        session.history.push({ role: 'user', text: text }, { role: 'bot', text: transitionMsg });
+        await sendMsg(instanceName, phone, transitionMsg, tenantId);
+        const _btnResult = await maybeSendInteractiveButtons(instanceName, phone, session.data, services, professionalsVisible, session.data.availableSlots, tenantId);
+        if (_btnResult) session.data._pendingButtons = _btnResult;
+        await saveSession(tenantId, phone, session.data, session.history);
+        return;
+      }
+      // First confusion outside reschedule — let AI handle normally
     }
   }
 
@@ -2774,7 +2841,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (_hasCorrectionIntent) {
       const _corrMatch = matchServiceByKeywords(_normCorr, services);
       if (_corrMatch && _corrMatch.id !== session.data.serviceId) {
-        console.log(`[Agent] Service correction: "${session.data.serviceName}" → "${_corrMatch.name}"`);
+        session.data.confusionCount = (session.data.confusionCount || 0) + 1;
+        console.log(`[Agent] Service correction: "${session.data.serviceName}" → "${_corrMatch.name}" (confusionCount: ${session.data.confusionCount})`);
         session.data.serviceId = _corrMatch.id;
         session.data.serviceName = _corrMatch.name;
         session.data.serviceDuration = _corrMatch.durationMinutes;
@@ -2944,11 +3012,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         session.data.availableSlots = _foundNextSlots;
         session.history.push({ role: 'bot', text: noAvail });
         await sendMsg(instanceName, phone, noAvail, tenantId);
-        // Send time slot buttons for the alternative day
-        if (_foundNextSlots.length > 0) {
-          const _slotRows = _foundNextSlots.slice(0, 10).map(s => ({ id: `slot_${s.replace(':', '')}`, title: s }));
-          await sendListMessage(instanceName, phone, 'Horários', 'Escolha um horário:', 'Ver horários', [{ title: 'Horários disponíveis', rows: _slotRows }], tenantId);
-          session.data._pendingButtons = { type: 'time' as const, options: _slotRows.map(r => ({ id: r.id, label: r.title })), sentAt: Date.now() };
+        if (session.data.numberedMode) {
+          const _btnR = await maybeSendInteractiveButtons(instanceName, phone, session.data, services, professionalsVisible, session.data.availableSlots, tenantId);
+          if (_btnR) session.data._pendingButtons = _btnR;
         }
         saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
         return;
@@ -3025,14 +3091,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const _fullCtxWh = [_vacCtxWh, _holidayCtxWh].filter(Boolean).join('\n') || undefined;
 
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
+  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any, tenant.nicho);
 
   // Fallback: if primary key failed and it was OpenAI, retry with Gemini key
   if (!brain && apiKey.startsWith('sk-')) {
     const geminiKey = (tenant.gemini_api_key || '').trim();
     if (geminiKey) {
       console.log(`[Agent] OpenAI failed, retrying with Gemini key for ${tenantId}`);
-      brain = await callBrain(geminiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
+      brain = await callBrain(geminiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any, tenant.nicho);
     }
   }
 
@@ -3109,9 +3175,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    let brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
+    let brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any, tenant.nicho);
     if (!brain2 && apiKey.startsWith('sk-') && (tenant.gemini_api_key || '').trim()) {
-      brain2 = await callBrain(tenant.gemini_api_key.trim(), tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any);
+      brain2 = await callBrain(tenant.gemini_api_key.trim(), tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any, tenant.nicho);
     }
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
@@ -3237,11 +3303,9 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         if (freshSlots.length === 0) session.data.date = undefined;
         session.history.push({ role: 'bot', text: takenMsg });
         await sendMsg(instanceName, phone, takenMsg, tenantId);
-        // Send time slot buttons for fresh alternatives
-        if (freshSlots.length > 0) {
-          const _freshRows = freshSlots.slice(0, 10).map(s => ({ id: `slot_${s.replace(':', '')}`, title: s }));
-          await sendListMessage(instanceName, phone, 'Horários', 'Escolha um horário:', 'Ver horários', [{ title: 'Horários disponíveis', rows: _freshRows }], tenantId);
-          session.data._pendingButtons = { type: 'time' as const, options: _freshRows.map(r => ({ id: r.id, label: r.title })), sentAt: Date.now() };
+        if (session.data.numberedMode) {
+          const _btnR2 = await maybeSendInteractiveButtons(instanceName, phone, session.data, services, professionalsVisible, freshSlots, tenantId);
+          if (_btnR2) session.data._pendingButtons = _btnR2;
         }
         saveSession(tenantId, phone, session.data, session.history).catch(() => {});
         return;
@@ -3456,16 +3520,28 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     console.log('[Agent] Loop guard triggered — replaced generic repeat with fallback');
   }
 
+  // ── Confusion detection from AI reply ──────────────────────────────
+  {
+    const _brainNorm = brain.reply.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (/nao entendi|pode repetir|nao compreendi|pode explicar melhor|nao estamos nos entendendo/.test(_brainNorm)) {
+      session.data.confusionCount = (session.data.confusionCount || 0) + 1;
+      console.log(`[Agent] AI confusion in reply (count: ${session.data.confusionCount}) for ${phone}`);
+      if (session.data.confusionCount >= 2 && !session.data.numberedMode) {
+        session.data.numberedMode = true;
+        console.log(`[Agent] NUMBERED MODE ACTIVATED (AI reply) for ${phone}`);
+      }
+    }
+  }
+
   if (shouldGreet || richFirstMessage) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
   await sendMsg(instanceName, phone, brain.reply, tenantId);
 
-  // ── Send interactive buttons after AI reply ──────────────────────────
-  const _btnResult = await maybeSendInteractiveButtons(
-    instanceName, phone, session.data, services, professionalsVisible,
-    prefetchedSlots || session.data.availableSlots, tenantId
-  );
-  if (_btnResult) session.data._pendingButtons = _btnResult;
+  // ── Interactive buttons (numbered mode only) ──────────────────────
+  if (session.data.numberedMode) {
+    const _btnResult = await maybeSendInteractiveButtons(instanceName, phone, session.data, services, professionalsVisible, session.data.availableSlots, tenantId);
+    if (_btnResult) session.data._pendingButtons = _btnResult;
+  }
 
   saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
 }
