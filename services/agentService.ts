@@ -1332,11 +1332,32 @@ async function _handleMessage(
       ['agendar', 'marcar', 'horario', 'horário', 'mudar', 'trocar', 'reagendar'].some(k => norm.includes(k));
 
     const isEmojiAffirmFU = /[👍✅👌✔️🤙]/u.test(text);
-    const isAffirm = !hasBookingIntent && (isEmojiAffirmFU || AFFIRM.some(a => wds.includes(a) || norm === a));
-    const isDeny   = DENY.some(d => wds.includes(d));
+
+    // Filter out false-positive affirm words:
+    // - 'boa' when followed by 'noite/tarde/dia' (greeting, not affirmation)
+    // - any affirm word preceded by 'nao/não' (negated, e.g. "não vou")
+    const affirmWords = AFFIRM.filter(a => {
+      const idx = wds.indexOf(a);
+      if (idx < 0 && norm !== a) return false;
+      if (a === 'boa' && idx >= 0 && ['noite', 'tarde', 'dia', 'madrugada'].includes(wds[idx + 1])) return false;
+      if (idx > 0 && ['nao', 'não'].includes(wds[idx - 1])) return false;
+      return true;
+    });
+
+    // Explicit cancellation phrases always override affirm words
+    const CANCEL_PHRASES = [
+      'nao vou', 'nao posso', 'nao poder', 'nao da', 'nao consigo',
+      'nao tenho como', 'nao vai dar', 'nao vou poder', 'vou cancelar',
+      'quero cancelar', 'preciso cancelar', 'nao vai rolar',
+    ];
+    const isCancelPhrase = CANCEL_PHRASES.some(p => norm.includes(p));
+
+    let isAffirm = !hasBookingIntent && !isCancelPhrase && (isEmojiAffirmFU || affirmWords.length > 0);
+    let isDeny   = DENY.some(d => wds.includes(d)) || isCancelPhrase;
     // Brazilian "Não, [affirmative]" filler: "nao" used as emphasis before affirming
     // e.g. "Não, tá confirmado, mais que confirmado, preciso cortar o cabelo"
-    const denyAsFiller = isDeny && AFFIRM.filter(a => wds.includes(a)).length >= 2;
+    // Only if no explicit cancel phrase is present
+    const denyAsFiller = !isCancelPhrase && isDeny && affirmWords.length >= 2;
 
     // ── aviso / lembrete: rescheduling request → offer slots directly ───────
     if ((fType === 'aviso' || fType === 'lembrete') && wantsReschedule) {
@@ -1448,6 +1469,37 @@ async function _handleMessage(
           }
         })();
       }
+      preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+      saveSession(preSession);
+      return reply;
+    }
+
+    // ── aviso / lembrete: denial → acknowledge cancellation, offer reschedule ───
+    if ((fType === 'aviso' || fType === 'lembrete') && isDeny && !isAffirm) {
+      const fp0 = makeFingerprint(tenantId, phone, text);
+      if (isLocalDuplicate(fp0)) return null;
+      const claimed0d = await db.claimMessage(fp0);
+      if (!claimed0d) { console.log('[Agent] Follow-up aviso/lembrete deny blocked by DB dedup'); return null; }
+      const apptTime = preSession.data.followUpApptTime;
+      const reply = apptTime
+        ? `Entendi! Sem problemas. 😊 Vou cancelar seu horário das *${apptTime}*.\n\nSe quiser remarcar para outro dia, é só me chamar!`
+        : `Entendi! Sem problemas. 😊\n\nSe quiser remarcar para outro dia, é só me chamar!`;
+      // Cancel the appointment
+      const _cancelApptId = preSession.data.followUpApptId;
+      if (_cancelApptId) {
+        (async () => {
+          try {
+            await supabase.from('appointments').update({ status: 'cancelado' }).eq('id', _cancelApptId);
+            console.log(`[Agent] Appointment ${_cancelApptId} cancelled via lembrete denial`);
+          } catch (e: any) {
+            console.error('[Agent] Falha ao cancelar agendamento:', e.message);
+          }
+        })();
+      }
+      preSession.data.pendingFollowUpType = undefined;
+      const _fuDateStr3 = getBrasiliaGreeting().dateStr;
+      preSession.data.greetedAt = _fuDateStr3;
+      _greetedToday.set(`${tenantId}::${phone}`, _fuDateStr3);
       preSession.history.push({ role: 'user', text }, { role: 'bot', text: reply });
       saveSession(preSession);
       return reply;
