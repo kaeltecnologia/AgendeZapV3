@@ -542,23 +542,18 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     // 1. Save to global config (localStorage + Supabase global_settings if table exists)
     await db.saveGlobalConfig({ shared_openai_key: key });
 
-    // 2. Propagate to ALL tenants that don't have their own key configured
+    // 2. Propagate to ALL tenants (overwrite existing keys with the shared one)
     //    This ensures Edge Functions (server-side) also get the key via tenant_settings
     try {
       const allTenants = tenants.length > 0 ? tenants : await db.getAllTenants();
       let propagated = 0;
       for (const t of allTenants) {
         try {
-          const s = await db.getSettings(t.id);
-          if (!(s.openaiApiKey || '').trim()) {
-            await db.updateSettings(t.id, { openaiApiKey: key });
-            propagated++;
-          }
+          await db.updateSettings(t.id, { openaiApiKey: key });
+          propagated++;
         } catch { /* skip individual tenant errors */ }
       }
-      if (propagated > 0) {
-        console.log(`[SharedKey] Propagated to ${propagated} tenant(s)`);
-      }
+      console.log(`[SharedKey] Propagated to ${propagated}/${allTenants.length} tenant(s)`);
     } catch { /* non-fatal */ }
 
     setSavingSharedKey(false);

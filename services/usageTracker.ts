@@ -14,7 +14,7 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'gpt-4.1':          { input: 2.00  / 1_000_000, output: 8.00  / 1_000_000 },
   'gpt-4o-mini':      { input: 0.150 / 1_000_000, output: 0.600 / 1_000_000 },
   'gpt-4o':           { input: 2.50  / 1_000_000, output: 10.00 / 1_000_000 },
-  'gemini-2.0-flash': { input: 0,                 output: 0 },
+  'gemini-2.5-flash': { input: 0,                 output: 0 },
   'gemini-1.5-flash': { input: 0,                 output: 0 },
   'gemini-1.5-pro':   { input: 0,                 output: 0 },
 };

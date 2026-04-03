@@ -837,7 +837,7 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
 
     } else {
       // Gemini REST API
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -862,7 +862,7 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem \`\`\`):
           phone_number: phone,
           input_tokens:  usage?.promptTokenCount     ?? estimateTokens(prompt),
           output_tokens: usage?.candidatesTokenCount ?? estimateTokens(result?.reply ?? ''),
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           success: !!result,
         }).catch(() => {});
       }

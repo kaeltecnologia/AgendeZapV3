@@ -170,7 +170,7 @@ async function _transcribeWithGemini(
 ): Promise<string | null> {
   // WhatsApp sends audio/ogg (Opus codec) — Gemini needs the codec hint
   const normalizedMime = mimeType === 'audio/ogg' ? 'audio/ogg; codecs=opus' : mimeType;
-  const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
   for (const model of models) {
     let attempt = await _callGeminiTranscribe(apiKey, base64, normalizedMime, model);
@@ -439,7 +439,7 @@ Situação: cliente mudou de ideia ("na verdade quero com o felipe")
     ];
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents,
       config: {
         systemInstruction: systemPrompt,

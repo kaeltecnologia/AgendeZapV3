@@ -176,7 +176,7 @@ async function transcribeAudio(apiKey: string, base64: string, mimeType: string)
     // Gemini
     try {
       const mime = mimeType === 'audio/ogg' ? 'audio/ogg; codecs=opus' : mimeType;
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -220,7 +220,7 @@ Texto do áudio: "${raw}"`;
       const j = await res.json();
       return j.choices?.[0]?.message?.content?.trim() || raw;
     } else {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,7 +304,7 @@ async function getAvailableSlots(
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'gpt-4o-mini':      { input: 0.150 / 1_000_000, output: 0.600 / 1_000_000 },
   'gpt-4.1-mini':     { input: 0.400 / 1_000_000, output: 1.600 / 1_000_000 },
-  'gemini-2.0-flash': { input: 0, output: 0 },
+  'gemini-2.5-flash': { input: 0, output: 0 },
 };
 
 function estimateTokens(text: string): number {
@@ -650,21 +650,25 @@ ${histStr}`;
     } else {
       // Gemini path: single user message (no system prompt support)
       const geminiPrompt = systemPrompt + '\n\n---\n\n' + userPrompt;
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: geminiPrompt }] }], generationConfig: { responseMimeType: 'application/json' } })
       });
-      if (!res.ok) { console.error('[Brain] Gemini', res.status); return null; }
+      if (!res.ok) { console.error('[Brain] Gemini', res.status, await res.text().catch(() => '')); return null; }
       const gd = await res.json();
-      const gResult = JSON.parse(gd.candidates?.[0]?.content?.parts?.[0]?.text || 'null');
+      if (!gd.candidates?.[0]?.content?.parts?.[0]?.text) {
+        console.error('[Brain] Gemini empty response:', JSON.stringify({ blockReason: gd.promptFeedback?.blockReason, finishReason: gd.candidates?.[0]?.finishReason }));
+        return null;
+      }
+      const gResult = JSON.parse(gd.candidates[0].content.parts[0].text);
       if (tenantId) {
         const usage = gd.usageMetadata;
         logAIUsage({
           tenant_id: tenantId, phone_number: phone,
           input_tokens: usage?.promptTokenCount ?? estimateTokens(geminiPrompt),
           output_tokens: usage?.candidatesTokenCount ?? estimateTokens(gResult?.reply ?? ''),
-          model: 'gemini-2.0-flash', success: !!gResult,
+          model: 'gemini-2.5-flash', success: !!gResult,
         }).catch(() => {});
       }
       return gResult;
@@ -3006,7 +3010,18 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // First brain call
   let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+
+  // Fallback: if primary key failed and it was OpenAI, retry with Gemini key
+  if (!brain && apiKey.startsWith('sk-')) {
+    const geminiKey = (tenant.gemini_api_key || '').trim();
+    if (geminiKey) {
+      console.log(`[Agent] OpenAI failed, retrying with Gemini key for ${tenantId}`);
+      brain = await callBrain(geminiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+    }
+  }
+
   if (!brain) {
+    console.error(`[Agent] All AI calls failed for ${tenantId}, key prefix: ${apiKey.slice(0, 6)}...`);
     const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
     session.history.push({ role: 'bot', text: fallback });
     await sendMsg(instanceName, phone, fallback, tenantId);
@@ -3078,7 +3093,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
       return;
     }
-    const brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+    let brain2 = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+    if (!brain2 && apiKey.startsWith('sk-') && (tenant.gemini_api_key || '').trim()) {
+      brain2 = await callBrain(tenant.gemini_api_key.trim(), tenantName, todayISO, services, professionalsVisible, session.history, session.data, newSlots, customPrompt || undefined, false, brasiliaGreeting, tenantId, phone, _vacCtxWh || undefined, settings.operatingHours as any);
+    }
     if (brain2) {
       if (brain2.extracted.time && !session.data.time && newSlots.includes(brain2.extracted.time)) {
         session.data.time = brain2.extracted.time;
