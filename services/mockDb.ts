@@ -294,18 +294,8 @@ class DatabaseService {
 
   async deleteTenant(id: string) {
     try {
-      // Delete related data first (foreign key constraints block tenant deletion)
-      await supabase.from('whatsapp_messages').delete().eq('tenant_id', id);
-      await supabase.from('agent_sessions').delete().eq('tenant_id', id);
-      await supabase.from('appointments').delete().eq('tenant_id', id);
-      await supabase.from('customers').delete().eq('tenant_id', id);
-      await supabase.from('professionals').delete().eq('tenant_id', id);
-      await supabase.from('services').delete().eq('tenant_id', id);
-      await supabase.from('expenses').delete().eq('tenant_id', id);
-      await supabase.from('tenant_settings').delete().eq('tenant_id', id);
-      await supabase.from('support_requests').delete().eq('tenant_id', id);
-      // Finally delete the tenant itself
-      const { error } = await supabase.from('tenants').delete().eq('id', id);
+      // Usa RPC com SECURITY DEFINER para deletar tudo em uma transação
+      const { error } = await supabase.rpc('delete_tenant_cascade', { p_tenant_id: id });
       if (error) throw error;
       _cache.invalidateTenant(id);
     } catch (e) {
