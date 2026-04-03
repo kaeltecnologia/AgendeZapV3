@@ -653,7 +653,6 @@ const App: React.FC = () => {
       );
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
-      case View.MARKETPLACE: return <MarketplacePreview tenantId={tenantId} />;
       case View.SOCIAL_MIDIA: return <PlanGate feature="socialMidia" tenantPlan={tenantPlan}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
       default: return <Dashboard tenantId={tenantId} />;
     }
@@ -1127,18 +1126,6 @@ const App: React.FC = () => {
             </button>
           </div>
           <TutorialsPanel open={showTutorials} onClose={() => setShowTutorials(false)} />
-          {/* Floating Marketplace button — opens in new tab */}
-          <div className="fixed bottom-24 right-6 z-50">
-            <button
-              onClick={() => window.open(`${window.location.origin}/#/marketplace?tid=${tenantId}&tn=${encodeURIComponent(tenantName)}`, '_blank')}
-              title="Visitar Marketplace"
-              className="w-14 h-14 bg-black rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:bg-orange-500 transition-all cursor-pointer"
-            >
-              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
-            </button>
-          </div>
           <SupportChat tenantId={tenantId} tenantName={tenantName} />
         </>
       )}
