@@ -651,7 +651,7 @@ const App: React.FC = () => {
           <FolhaPagamentoView tenantId={tenantId} />
         </PlanGate>
       );
-      case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} />;
+      case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
       case View.SOCIAL_MIDIA: return <PlanGate feature="socialMidia" tenantPlan={tenantPlan}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
       default: return <Dashboard tenantId={tenantId} />;

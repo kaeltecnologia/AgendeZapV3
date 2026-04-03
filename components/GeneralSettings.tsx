@@ -3,13 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDb';
 import { WorkingDay, FocusNfeConfig } from '../types';
 import { geocodeAddress } from '../services/geocodingService';
+import { hasFeature } from '../config/planConfig';
 
 const DEFAULT_NFE: FocusNfeConfig = {
   token: '', cnpj: '', inscricaoMunicipal: '', codigoServico: '7.02',
   aliquotaIss: 5, municipio: 0, ambiente: 'homologacao',
 };
 
-const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
   const [operatingHours, setOperatingHours] = useState<{ [key: number]: WorkingDay }>({});
   const [storeName, setStoreName] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -238,7 +239,8 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </button>
       </div>
 
-      {/* Fiscal (NFS-e) */}
+      {/* Fiscal (NFS-e) — Elite only */}
+      {hasFeature(tenantPlan || '', 'caixaAvancado') ? (
       <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-10">
         <div className="space-y-8">
           <div className="flex items-center space-x-4 border-b-2 border-slate-50 pb-4">
@@ -354,6 +356,21 @@ const GeneralSettings: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {savingNfe ? 'Salvando...' : 'Salvar Configuração Fiscal'}
         </button>
       </div>
+      ) : (
+      <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50">
+        <div className="flex items-center space-x-4 border-b-2 border-slate-50 pb-4 mb-6">
+          <div className="w-10 h-10 bg-slate-200 text-white rounded-xl flex items-center justify-center">🔒</div>
+          <div>
+            <h3 className="font-black text-black uppercase tracking-widest text-sm">Fiscal (NFS-e)</h3>
+            <p className="text-[10px] font-bold text-slate-400 mt-0.5">Configuração FocusNFe para emissão de Notas Fiscais de Serviço</p>
+          </div>
+        </div>
+        <div className="text-center py-6">
+          <p className="text-sm font-black text-slate-400">Disponível a partir do plano <span className="text-purple-600">Elite</span></p>
+          <p className="text-xs text-slate-300 mt-1">Faça upgrade para emitir notas fiscais automaticamente</p>
+        </div>
+      </div>
+      )}
     </div>
   );
 };
