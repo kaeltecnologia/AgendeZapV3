@@ -950,6 +950,7 @@ const App: React.FC = () => {
           tenantPlan={tenantPlan}
           tenantId={tenantId}
           onClose={() => setUpgradeModal(null)}
+          onActivated={() => window.location.reload()}
         />
       )}
 
