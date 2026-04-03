@@ -3,6 +3,10 @@
  *
  * Creates an Asaas customer + subscription for a tenant,
  * returns the invoiceUrl so the frontend can redirect the user to pay.
+ *
+ * UPGRADE PRO-RATA RULE:
+ *   Dias 1-15 após pagamento → desconto = 100% do plano atual
+ *   Dia 16+                  → desconto = proporcional aos dias restantes
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -51,7 +55,27 @@ const CYCLE_CONFIG: Record<string, { asaasCycle: string; months: number; discoun
 function calcCycleValue(monthlyPrice: number, cycle: string): number {
   const cfg = CYCLE_CONFIG[cycle] || CYCLE_CONFIG.MONTHLY;
   const total = monthlyPrice * cfg.months * (1 - cfg.discount);
-  return Math.round(total * 100) / 100; // round to 2 decimals
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Calculate pro-rata upgrade discount.
+ * Days 1-15:  100% of current plan price
+ * Days 16+:   proportional to remaining days (of 30-day cycle)
+ */
+function calcUpgradeDiscount(currentPlanPrice: number, lastPaymentDate: string): { discount: number; daysElapsed: number; daysRemaining: number } {
+  const last = new Date(lastPaymentDate + 'T00:00:00Z');
+  const now = new Date();
+  const diffMs = now.getTime() - last.getTime();
+  const daysElapsed = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+  if (daysElapsed <= 15) {
+    return { discount: currentPlanPrice, daysElapsed, daysRemaining: 30 - daysElapsed };
+  }
+
+  const daysRemaining = Math.max(0, 30 - daysElapsed);
+  const discount = Math.round(currentPlanPrice * (daysRemaining / 30) * 100) / 100;
+  return { discount, daysElapsed, daysRemaining };
 }
 
 async function asaasFetch(path: string, options: RequestInit = {}) {
@@ -69,6 +93,17 @@ async function asaasFetch(path: string, options: RequestInit = {}) {
     throw new Error(body.errors?.[0]?.description || `Asaas API error ${res.status}`);
   }
   return body;
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function nextMonthStr() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 Deno.serve(async (req) => {
@@ -91,7 +126,7 @@ Deno.serve(async (req) => {
     // ── Fetch tenant ────────────────────────────────────────────────────
     const { data: tenant, error: tenantErr } = await supabase
       .from('tenants')
-      .select('id, nome, email, phone')
+      .select('id, nome, email, phone, plan')
       .eq('id', tenantId)
       .single();
 
@@ -125,9 +160,6 @@ Deno.serve(async (req) => {
       console.log(`[asaas] Customer created: ${asaasCustomerId}`);
     }
 
-    const today = new Date();
-    const nextDueDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
     // ══════════════════════════════════════════════════════════════════════
     // ADDON: Additional professional (R$19.90/month)
     // ══════════════════════════════════════════════════════════════════════
@@ -141,7 +173,7 @@ Deno.serve(async (req) => {
           billingType,
           value: ADDON_PRICE,
           cycle: 'MONTHLY',
-          nextDueDate,
+          nextDueDate: todayStr(),
           description: 'AgendeZap — Profissional Adicional',
           externalReference: `${tenantId}::ADDON_PROF`,
         }),
@@ -158,7 +190,6 @@ Deno.serve(async (req) => {
         invoiceUrl = `https://www.asaas.com/i/${firstPay.id}`;
       }
 
-      // Save addon subscription ID + increment extra professionals count
       const extraPros = (fup._extraProfessionals || 0) + 1;
       const addonSubs = fup._addonSubscriptions || [];
       addonSubs.push(addonSub.id);
@@ -175,7 +206,6 @@ Deno.serve(async (req) => {
         { onConflict: 'tenant_id' }
       );
 
-      // Update mensalidade (base plan + addons)
       const currentPlan = fup._asaasPlanId || 'START';
       const baseMensalidade = PLAN_PRICES[currentPlan] || 39.90;
       await supabase.from('tenants').update({
@@ -193,7 +223,7 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // NORMAL: Plan subscription
+    // PLAN SUBSCRIPTION (new or upgrade)
     // ══════════════════════════════════════════════════════════════════════
     if (!planId) {
       return json({ error: 'Missing planId' }, 400);
@@ -208,6 +238,118 @@ Deno.serve(async (req) => {
     const cycleCfg = CYCLE_CONFIG[cycle];
     const cycleValue = calcCycleValue(PLAN_PRICES[planId], cycle);
 
+    // ── Detect upgrade ──────────────────────────────────────────────────
+    const oldSubId = fup._asaasSubscriptionId || null;
+    const oldPlanId = fup._asaasPlanId || null;
+    const lastPaymentDate = fup._asaasLastPaymentDate || null;
+    const isUpgrade = !!(oldSubId && oldPlanId && PLAN_PRICES[oldPlanId] && planId !== oldPlanId && lastPaymentDate);
+
+    let upgradeDiscount = 0;
+    let upgradeInfo: any = null;
+
+    if (isUpgrade) {
+      const result = calcUpgradeDiscount(PLAN_PRICES[oldPlanId], lastPaymentDate);
+      upgradeDiscount = result.discount;
+      upgradeInfo = result;
+      console.log(`[asaas] UPGRADE detected: ${oldPlanId} → ${planId}, days elapsed: ${result.daysElapsed}, discount: R$${upgradeDiscount.toFixed(2)}`);
+    }
+
+    if (isUpgrade && upgradeDiscount > 0) {
+      // ══════════════════════════════════════════════════════════════════
+      // UPGRADE FLOW: standalone charge (discounted) + new subscription
+      // ══════════════════════════════════════════════════════════════════
+
+      const firstMonthValue = Math.max(0, Math.round((PLAN_PRICES[planId] - upgradeDiscount) * 100) / 100);
+
+      // 1. Create new subscription starting NEXT month (full price)
+      const subscriptionData = await asaasFetch('/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer: asaasCustomerId,
+          billingType,
+          value: cycleValue,
+          cycle: cycleCfg.asaasCycle,
+          nextDueDate: nextMonthStr(),
+          description: `${PLAN_NAMES[planId]} — Assinatura ${cycleCfg.label}`,
+          externalReference: `${tenantId}::${planId}::${cycle}`,
+        }),
+      });
+
+      const newSubId = subscriptionData.id;
+      console.log(`[asaas] New subscription created: ${newSubId} (starts next month)`);
+
+      // 2. Update tenant_settings with NEW sub ID BEFORE canceling old
+      //    (so webhook SUBSCRIPTION_DELETED for old sub won't find a match → skips)
+      const updatedFup = {
+        ...fup,
+        _asaasCustomerId: asaasCustomerId,
+        _asaasSubscriptionId: newSubId,
+        _asaasPlanId: planId,
+        _asaasCycle: cycle,
+        _asaasLastPaymentDate: todayStr(),
+        _asaasUpgradeFrom: oldPlanId,
+        _asaasUpgradeDiscount: upgradeDiscount,
+      };
+
+      await supabase.from('tenant_settings').upsert(
+        { tenant_id: tenantId, follow_up: updatedFup },
+        { onConflict: 'tenant_id' }
+      );
+
+      // 3. Cancel old subscription
+      try {
+        await asaasFetch(`/subscriptions/${oldSubId}`, { method: 'DELETE' });
+        console.log(`[asaas] Old subscription ${oldSubId} canceled`);
+      } catch (e) {
+        console.error(`[asaas] Failed to cancel old subscription ${oldSubId}:`, e);
+      }
+
+      // 4. Create standalone charge for this month (discounted)
+      let invoiceUrl = '';
+      if (firstMonthValue > 0) {
+        const chargeData = await asaasFetch('/payments', {
+          method: 'POST',
+          body: JSON.stringify({
+            customer: asaasCustomerId,
+            billingType,
+            value: firstMonthValue,
+            dueDate: todayStr(),
+            description: `Upgrade ${PLAN_NAMES[oldPlanId] || oldPlanId} → ${PLAN_NAMES[planId]} (desconto pro-rata: -R$${upgradeDiscount.toFixed(2)})`,
+            externalReference: `${tenantId}::UPGRADE::${planId}`,
+          }),
+        });
+
+        invoiceUrl = chargeData.invoiceUrl || '';
+        if (!invoiceUrl && chargeData.id) {
+          invoiceUrl = `https://www.asaas.com/i/${chargeData.id}`;
+        }
+        console.log(`[asaas] Upgrade charge created: R$${firstMonthValue.toFixed(2)} (discount: R$${upgradeDiscount.toFixed(2)})`);
+      }
+
+      // 5. Update tenant plan optimistically
+      const totalExtra = updatedFup._extraProfessionals || 0;
+      const ADDON_PRICE = 19.90;
+      await supabase.from('tenants').update({
+        plan: planId,
+        mensalidade: PLAN_PRICES[planId] + (totalExtra * ADDON_PRICE),
+      }).eq('id', tenantId);
+
+      console.log(`[asaas] Upgrade complete: ${oldPlanId} → ${planId}, tenant ${tenantId}`);
+
+      return json({
+        invoiceUrl,
+        subscriptionId: newSubId,
+        customerId: asaasCustomerId,
+        upgrade: true,
+        discount: upgradeDiscount,
+        firstMonthValue,
+        fullMonthlyValue: PLAN_PRICES[planId],
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // NORMAL FLOW: New subscription (no upgrade discount)
+    // ══════════════════════════════════════════════════════════════════════
     const subscriptionData = await asaasFetch('/subscriptions', {
       method: 'POST',
       body: JSON.stringify({
@@ -215,7 +357,7 @@ Deno.serve(async (req) => {
         billingType,
         value: cycleValue,
         cycle: cycleCfg.asaasCycle,
-        nextDueDate,
+        nextDueDate: todayStr(),
         description: `${PLAN_NAMES[planId]} — Assinatura ${cycleCfg.label}`,
         externalReference: `${tenantId}::${planId}::${cycle}`,
       }),
@@ -247,7 +389,7 @@ Deno.serve(async (req) => {
             billingType,
             value: ADDON_PRICE,
             cycle: 'MONTHLY',
-            nextDueDate,
+            nextDueDate: todayStr(),
             description: 'AgendeZap — Profissional Adicional',
             externalReference: `${tenantId}::ADDON_PROF::${i + 1}`,
           }),
@@ -266,6 +408,7 @@ Deno.serve(async (req) => {
       _asaasSubscriptionId: subscriptionId,
       _asaasPlanId: planId,
       _asaasCycle: cycle,
+      _asaasLastPaymentDate: todayStr(),
       ...(extraProfessionals > 0 ? {
         _extraProfessionals: extraProfessionals,
         _addonSubscriptions: [...(fup._addonSubscriptions || []), ...addonSubs],

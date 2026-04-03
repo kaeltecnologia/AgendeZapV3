@@ -1,6 +1,7 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FeatureKey, PlanId, PLAN_CONFIGS, getPlanConfig, cheapestUpgradePlan } from '../config/planConfig';
+import { db } from '../services/mockDb';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
@@ -67,13 +68,28 @@ function isValidCpfCnpj(value: string): boolean {
   return digits.length === 11 || digits.length === 14;
 }
 
+/** Calculate pro-rata upgrade discount (mirrors edge function logic) */
+function calcUpgradeDiscount(currentPlanPrice: number, lastPaymentDate: string): { discount: number; daysElapsed: number } {
+  const last = new Date(lastPaymentDate + 'T00:00:00');
+  const now = new Date();
+  const diffMs = now.getTime() - last.getTime();
+  const daysElapsed = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+  if (daysElapsed <= 15) {
+    return { discount: currentPlanPrice, daysElapsed };
+  }
+
+  const daysRemaining = Math.max(0, 30 - daysElapsed);
+  const discount = Math.round(currentPlanPrice * (daysRemaining / 30) * 100) / 100;
+  return { discount, daysElapsed };
+}
+
 const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onClose, onActivated }) => {
   const currentConfig = getPlanConfig(tenantPlan);
   const recommendedConfig = cheapestUpgradePlan(feature);
   const eliteConfig = PLAN_CONFIGS.ELITE;
   const showElite = recommendedConfig.id !== 'ELITE';
 
-  // Plans available for upgrade (exclude current)
   const upgradePlans = showElite
     ? [recommendedConfig, eliteConfig]
     : [eliteConfig];
@@ -86,10 +102,28 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
   const [verifying, setVerifying] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Upgrade discount state
+  const [lastPaymentDate, setLastPaymentDate] = useState<string | null>(null);
+  const [asaasPlanId, setAsaasPlanId] = useState<string | null>(null);
+
   const selectedConfig = getPlanConfig(selectedPlan);
 
-  // Features the user GAINS with the selected plan
-  const gains = ALL_FEATURES.filter(f => !currentConfig.permissions[f] && selectedConfig.permissions[f]);
+  // Fetch payment date for discount calculation
+  useEffect(() => {
+    db.getSettings(tenantId).then(s => {
+      if (s.asaasLastPaymentDate) setLastPaymentDate(s.asaasLastPaymentDate);
+      if (s.asaasPlanId) setAsaasPlanId(s.asaasPlanId);
+    });
+  }, [tenantId]);
+
+  // Calculate discount if upgrade
+  const isUpgrade = !!(lastPaymentDate && asaasPlanId && currentConfig.price > 0);
+  const upgradeResult = isUpgrade ? calcUpgradeDiscount(currentConfig.price, lastPaymentDate) : null;
+  const upgradeDiscount = upgradeResult?.discount || 0;
+
+  const firstMonthValue = isUpgrade
+    ? Math.max(0, Math.round((selectedConfig.price - upgradeDiscount) * 100) / 100)
+    : selectedConfig.price;
 
   const startPolling = () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
@@ -202,9 +236,11 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
             <>
               <p className="text-lg font-black text-black uppercase tracking-tight">Pagamento</p>
               <p className="text-xs text-slate-400">
-                {selectedConfig.emoji} {selectedConfig.name} — {CYCLE_OPTIONS.find(c => c.id === selectedCycle)?.label} — R${fmt(
-                  calcCyclePrice(selectedConfig.price, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.months, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.discount)
-                )}
+                {selectedConfig.emoji} {selectedConfig.name} — {CYCLE_OPTIONS.find(c => c.id === selectedCycle)?.label}
+                {isUpgrade && upgradeDiscount > 0
+                  ? ` — 1a cobrança: R$${fmt(firstMonthValue)}`
+                  : ` — R$${fmt(calcCyclePrice(selectedConfig.price, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.months, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.discount))}`
+                }
               </p>
             </>
           )}
@@ -233,6 +269,9 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
               {upgradePlans.map(plan => {
                 const isSelected = selectedPlan === plan.id;
                 const planGains = ALL_FEATURES.filter(f => !currentConfig.permissions[f] && plan.permissions[f]);
+                const planFirstMonth = isUpgrade
+                  ? Math.max(0, Math.round((plan.price - upgradeDiscount) * 100) / 100)
+                  : plan.price;
                 return (
                   <button
                     key={plan.id}
@@ -261,6 +300,15 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
                         }
                       </div>
                     </div>
+                    {/* Upgrade discount badge */}
+                    {isUpgrade && upgradeDiscount > 0 && (
+                      <div className="mb-2 bg-green-50 border border-green-200 rounded-xl px-3 py-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-bold text-green-700">Desconto pro-rata: -R${fmt(upgradeDiscount)}</span>
+                          <span className="text-[9px] font-black text-green-700">1a cobrança: R${fmt(planFirstMonth)}</span>
+                        </div>
+                      </div>
+                    )}
                     {/* Gains chips */}
                     <div className="flex flex-wrap gap-1">
                       {planGains.map(f => (
@@ -296,7 +344,10 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
               className="w-full py-3.5 rounded-2xl font-black uppercase text-xs tracking-widest text-white transition-all hover:opacity-90 shadow-lg"
               style={{ backgroundColor: selectedConfig.color }}
             >
-              Assinar {selectedConfig.name} — R${fmt(selectedConfig.price)}/mês
+              {isUpgrade && upgradeDiscount > 0
+                ? `Upgrade para ${selectedConfig.name} — R$${fmt(firstMonthValue)} hoje`
+                : `Assinar ${selectedConfig.name} — R$${fmt(selectedConfig.price)}/mês`
+              }
             </button>
             <button onClick={onClose} className="w-full py-1 font-bold text-slate-400 text-[10px] hover:text-slate-600 transition-all">
               Fechar
@@ -365,6 +416,14 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
                 );
               })}
             </div>
+            {/* Upgrade discount reminder */}
+            {isUpgrade && upgradeDiscount > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-center">
+                <p className="text-[9px] font-black text-green-700">
+                  Desconto pro-rata aplicado na 1a cobrança: -R${fmt(upgradeDiscount)}
+                </p>
+              </div>
+            )}
             <div className="flex gap-3">
               <button onClick={() => { setError(null); setStep('cpf'); }} className="flex-1 py-3 font-black text-slate-400 uppercase text-xs border-2 border-slate-100 rounded-2xl hover:border-slate-300 transition-all">
                 Voltar

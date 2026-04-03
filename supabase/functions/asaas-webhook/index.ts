@@ -72,27 +72,43 @@ Deno.serve(async (req) => {
       return json({ error: 'Missing event' }, 400);
     }
 
-    // ── Find tenant by subscription ID ────────────────────────────────
+    // ── Find tenant by subscription ID or externalReference ─────────────
     const subscriptionId = payment?.subscription || subscription?.id;
-    if (!subscriptionId) {
-      console.log(`[asaas-webhook] No subscription in event ${event}, skipping`);
-      return json({ ok: true, skipped: true });
+    const extRef = payment?.externalReference || subscription?.externalReference || '';
+
+    let tenantId: string | null = null;
+    let fup: any = {};
+    let rows: any[] | null = null;
+
+    if (subscriptionId) {
+      // Normal flow: find by subscription ID
+      const { data } = await supabase
+        .from('tenant_settings')
+        .select('tenant_id, follow_up')
+        .filter('follow_up->>_asaasSubscriptionId', 'eq', subscriptionId);
+      rows = data;
     }
 
-    // Query tenant_settings where follow_up JSONB contains _asaasSubscriptionId
-    const { data: rows } = await supabase
-      .from('tenant_settings')
-      .select('tenant_id, follow_up')
-      .filter('follow_up->>_asaasSubscriptionId', 'eq', subscriptionId);
+    // Fallback: find by tenantId in externalReference (for standalone upgrade charges)
+    if ((!rows || rows.length === 0) && extRef) {
+      const refTenantId = extRef.split('::')[0];
+      if (refTenantId) {
+        const { data } = await supabase
+          .from('tenant_settings')
+          .select('tenant_id, follow_up')
+          .eq('tenant_id', refTenantId);
+        rows = data;
+      }
+    }
 
     if (!rows || rows.length === 0) {
-      console.warn(`[asaas-webhook] No tenant found for subscription ${subscriptionId}`);
+      console.warn(`[asaas-webhook] No tenant found for subscription ${subscriptionId || 'N/A'}, ref ${extRef}`);
       return json({ ok: true, skipped: true });
     }
 
-    const tenantId = rows[0].tenant_id;
-    const fup = rows[0].follow_up || {};
-    const ref = parseRef(payment?.externalReference || subscription?.externalReference);
+    tenantId = rows[0].tenant_id;
+    fup = rows[0].follow_up || {};
+    const ref = parseRef(extRef);
     const planId = ref.planId || fup._asaasPlanId || 'START';
     const cycle = ref.cycle || fup._asaasCycle || 'MONTHLY';
 
@@ -108,14 +124,21 @@ Deno.serve(async (req) => {
           mensalidade: PLAN_PRICES[planId] || payment?.value || 0,
         }).eq('id', tenantId);
 
-        // Clear trial and enable AI
-        const updatedFup = { ...fup, trialStartDate: null, trialWarningSent: false };
+        // Clear trial, enable AI, save last payment date
+        const payDate = new Date();
+        const payDateStr = `${payDate.getFullYear()}-${String(payDate.getMonth() + 1).padStart(2, '0')}-${String(payDate.getDate()).padStart(2, '0')}`;
+        const updatedFup = {
+          ...fup,
+          trialStartDate: null,
+          trialWarningSent: false,
+          _asaasLastPaymentDate: payDateStr,
+        };
         await supabase.from('tenant_settings').update({
           follow_up: updatedFup,
           ai_active: true,
         }).eq('tenant_id', tenantId);
 
-        console.log(`[asaas-webhook] ✅ Tenant ${tenantId} ACTIVATED — plan=${planId}`);
+        console.log(`[asaas-webhook] ✅ Tenant ${tenantId} ACTIVATED — plan=${planId}, paymentDate=${payDateStr}`);
         break;
       }
 

@@ -299,6 +299,8 @@ export interface TenantSettings {
   galleryPhotos?: string[];             // marketplace gallery photo URLs (up to 3)
   asaasCustomerId?: string;            // Asaas customer ID for billing
   asaasSubscriptionId?: string;        // Asaas subscription ID for recurring billing
+  asaasPlanId?: string;                // Current Asaas plan (START, PROFISSIONAL, ELITE)
+  asaasLastPaymentDate?: string;       // ISO date of last confirmed payment (for pro-rata upgrade discount)
   socialMediaProfile?: SocialMediaProfile | null;  // social media onboarding data
   contentCalendar?: ContentCalendar | null;        // AI-generated content calendar
   trendingContent?: TrendingItem[] | null;         // cached weekly trending content
