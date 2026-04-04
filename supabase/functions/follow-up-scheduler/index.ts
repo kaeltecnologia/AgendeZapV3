@@ -595,6 +595,62 @@ Deno.serve(async (_req) => {
         console.error(`[FollowUp] Error tenant ${tenant.nome}:`, e.message);
       }
     }
+    // ── 6. PAYMENT PENDING REMINDER (central WA → tenants sem pagamento após 6h) ──
+    try {
+      // Get central instance from global_settings
+      let centralInstance = 'central_AgendeZap';
+      try {
+        const { data: gRows } = await supabase.from('global_settings').select('key, value');
+        const ciRow = (gRows || []).find((r: any) => r.key === 'central_instance');
+        if (ciRow?.value) centralInstance = ciRow.value;
+      } catch {}
+
+      // Find tenants with trial or pending payment status, created > 6h ago
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const { data: pendingTenants } = await supabase
+        .from('tenants')
+        .select('id, nome, name, phone, email, status, created_at')
+        .or('status.eq.trial,status.eq.TRIAL,status.eq.PAGAMENTO PENDENTE')
+        .lt('created_at', sixHoursAgo);
+
+      if (pendingTenants?.length) {
+        // Check which ones DON'T have a subscription (never paid)
+        for (const pt of pendingTenants) {
+          if (!pt.phone) continue;
+          try {
+            const { data: stRow } = await supabase.from('tenant_settings')
+              .select('follow_up').eq('tenant_id', pt.id).maybeSingle();
+            const fu = stRow?.follow_up || {};
+
+            // Skip if already has a subscription (already paid at some point)
+            if (fu._asaasSubscriptionId) continue;
+            // Skip if reminder already sent
+            if (fu._paymentReminderSent) continue;
+
+            const displayName = pt.nome || pt.name || 'parceiro(a)';
+            const msg = `Olá ${displayName}! 😊\n\n` +
+              `Vi que você começou seu cadastro no *AgendeZap* mas ainda não finalizou o pagamento.\n\n` +
+              `Aconteceu algum problema? Posso te ajudar!\n\n` +
+              `Se quiser finalizar, é rapidinho — acesse o painel e clique em "Assinar Plano". ` +
+              `Qualquer dúvida estou por aqui! 🚀`;
+
+            const sent = await sendWhatsApp(centralInstance, pt.phone, msg);
+            if (sent) {
+              // Mark as sent to avoid resending
+              const updatedFu = { ...fu, _paymentReminderSent: new Date().toISOString() };
+              await supabase.from('tenant_settings').update({ follow_up: updatedFu }).eq('tenant_id', pt.id);
+              console.log(`[FollowUp] Payment reminder sent to ${displayName} (${pt.phone})`);
+            }
+          } catch (e: any) {
+            console.error(`[FollowUp] Payment reminder error for ${pt.id}:`, e.message);
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(`payment-reminder: ${e.message}`);
+      console.error('[FollowUp] Payment reminder job error:', e.message);
+    }
+
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,
