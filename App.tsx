@@ -468,6 +468,8 @@ const App: React.FC = () => {
             if (loginTenant?.status === TenantStatus.PENDING_PAYMENT) {
               setPendingPayment(true);
             }
+            // Save last login timestamp
+            supabase.from('tenants').update({ last_login_at: new Date().toISOString() }).eq('id', data.id).then(() => {});
             setCurrentView(View.DASHBOARD);
             return;
           }
@@ -499,6 +501,8 @@ const App: React.FC = () => {
         if (myTenant.status === TenantStatus.PENDING_PAYMENT) {
           setPendingPayment(true);
         }
+        // Save last login timestamp
+        supabase.from('tenants').update({ last_login_at: new Date().toISOString() }).eq('id', myTenant.id).then(() => {});
         setCurrentView(View.DASHBOARD);
       }
     } catch (err) {

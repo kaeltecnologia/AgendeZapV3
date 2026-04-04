@@ -838,16 +838,21 @@ Deno.serve(async (_req) => {
             const cust = findCust(appt.customer_id);
             if (!cust?.phone) continue;
 
+            // Skip blocklisted phones
+            const REFERRAL_BLOCKLIST = ['554488167383'];
+            if (REFERRAL_BLOCKLIST.includes(cust.phone.replace(/\D/g, ''))) continue;
+
             // Dedup: only send ONCE per customer phone (ever)
             const fp = `cust_referral::${cust.phone}`;
             if (!(await claimMessage(fp))) continue;
 
             const cleanPhone = cust.phone.replace(/\D/g, '');
-            const msg = `Oi ${cust.name || 'tudo bem'}! Você acabou de ser atendido(a) na *${tenant.nome}* 😊\n\n` +
+            const custName = cust.name || 'tudo bem';
+            const msg = `Oi ${custName}! Você é cliente da *${tenant.nome}* 😊\n\n` +
               `Sabia que eles usam o *AgendeZap* para organizar agendamentos com IA, relatórios financeiros e muito mais?\n\n` +
-              `Se você conhece algum profissional (barbeiro, cabeleireira, dentista, personal...) que poderia usar essa ferramenta, *indique e ganhe!*\n\n` +
+              `Se você conhece algum profissional (barbeiro, cabeleireira, dentista, personal...) que poderia usar essa ferramenta, indique e ganhe!\n\n` +
               `💰 Você recebe *10% do valor da assinatura via PIX todo mês* enquanto sua indicação mantiver ativa!\n\n` +
-              `🔗 *Seu link de indicação:*\nhttps://www.agendezap.com/?ref_c=${cleanPhone}\n\n` +
+              `🔗 Seu link de indicação:\nhttps://www.agendezap.com/?ref_c=${cleanPhone}\n\n` +
               `É super simples — compartilhe com quem pode se beneficiar! 🚀`;
 
             const sent = await sendWhatsApp(centralInstance, cust.phone, msg);
