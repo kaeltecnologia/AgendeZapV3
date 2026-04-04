@@ -46,7 +46,7 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
             onClick={scrollToForm}
             style={{ padding: '10px 24px', background: '#f97316', color: '#fff', fontWeight: 700, borderRadius: 999, fontSize: 14, border: 'none', cursor: 'pointer', boxShadow: '0 4px 14px rgba(249,115,22,0.3)' }}
           >
-            Testar Grátis
+            Criar Conta
           </button>
         </div>
       </nav>
@@ -60,7 +60,7 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
             ) : (
               <>Um cliente satisfeito indicou você</>
             )}
-            {' '} — crie sua conta e teste grátis por 7 dias!
+            {' '} — crie sua conta e comece a usar hoje!
           </p>
         </div>
       )}
@@ -80,10 +80,10 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
               onClick={scrollToForm}
               style={{ padding: '16px 36px', background: '#f97316', color: '#fff', fontWeight: 900, borderRadius: 999, fontSize: 16, border: 'none', cursor: 'pointer', boxShadow: '0 8px 24px rgba(249,115,22,0.35)', letterSpacing: '0.5px', textTransform: 'uppercase' as const }}
             >
-              Testar 7 Dias Grátis
+              Começar Agora
             </button>
             <div style={{ display: 'flex', gap: 24, marginTop: 20, flexWrap: 'wrap' as const }}>
-              {['Sem complicação', 'Sem contrato', 'Tudo pelo WhatsApp'].map((t, i) => (
+              {['Sem complicação', 'Sem contrato', 'Garantia de 7 dias'].map((t, i) => (
                 <span key={i} style={{ fontSize: 14, color: '#666', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ color: '#22c55e', fontWeight: 700 }}>&#10003;</span> {t}
                 </span>
@@ -208,7 +208,7 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
           <h3 style={{ fontSize: 'clamp(26px, 4vw, 36px)', fontWeight: 900, color: '#111', textAlign: 'center', margin: '0 0 8px' }}>
             Crie sua conta agora
           </h3>
-          <p style={{ fontSize: 16, color: '#777', textAlign: 'center', margin: '0 0 32px' }}>7 dias grátis para testar todas as funcionalidades</p>
+          <p style={{ fontSize: 16, color: '#777', textAlign: 'center', margin: '0 0 32px' }}>Garantia de reembolso total em até 7 dias</p>
 
           <div style={{ background: '#fff', borderRadius: 24, border: '2px solid #e5e5e5', boxShadow: '0 12px 40px rgba(0,0,0,0.08)', padding: 32 }}>
             <form onSubmit={handleSubmit}>
@@ -251,12 +251,12 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
                   marginTop: 8,
                 }}
               >
-                {loading ? 'Criando sua conta...' : 'Testar 7 Dias Grátis'}
+                {loading ? 'Criando sua conta...' : 'Criar Minha Conta'}
               </button>
             </form>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: 16, flexWrap: 'wrap' as const }}>
-              {['Sem cartão', 'Sem contrato', 'Cancele quando quiser'].map((t, i) => (
+              {['Pagamento seguro', 'Sem contrato', 'Reembolso em até 7 dias'].map((t, i) => (
                 <span key={i} style={{ fontSize: 12, color: '#999', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ color: '#22c55e', fontWeight: 700 }}>&#10003;</span> {t}
                 </span>
