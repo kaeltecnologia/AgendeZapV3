@@ -160,6 +160,21 @@ Deno.serve(async (req) => {
       console.log(`[asaas] Customer created: ${asaasCustomerId}`);
     }
 
+    // ── Calculate referral discount ───────────────────────────────────
+    let referralDiscount = 0;
+    let activeReferrals = 0;
+    try {
+      const { data: refCount } = await supabase.rpc('count_active_referrals', { p_tenant_id: tenantId });
+      activeReferrals = refCount || 0;
+      if (activeReferrals > 0) {
+        referralDiscount = Math.min(activeReferrals * 20, 100);
+        console.log(`[asaas] Referral discount: ${referralDiscount}% (${activeReferrals} active referrals)`);
+      }
+    } catch (e) {
+      console.error('[asaas] Failed to fetch referral count:', e);
+    }
+    const referralMultiplier = Math.max(0, 1 - referralDiscount / 100);
+
     // ══════════════════════════════════════════════════════════════════════
     // ADDON: Additional professional (R$19.90/month)
     // ══════════════════════════════════════════════════════════════════════
@@ -261,16 +276,18 @@ Deno.serve(async (req) => {
 
       const firstMonthValue = Math.max(0, Math.round((PLAN_PRICES[planId] - upgradeDiscount) * 100) / 100);
 
-      // 1. Create new subscription starting NEXT month (full price)
+      // 1. Create new subscription starting NEXT month (with referral discount)
+      const upgDiscountedValue = Math.round(cycleValue * referralMultiplier * 100) / 100;
+      const upgRefLabel = referralDiscount > 0 ? ` (${referralDiscount}% desc. indicação)` : '';
       const subscriptionData = await asaasFetch('/subscriptions', {
         method: 'POST',
         body: JSON.stringify({
           customer: asaasCustomerId,
           billingType,
-          value: cycleValue,
+          value: upgDiscountedValue,
           cycle: cycleCfg.asaasCycle,
           nextDueDate: nextMonthStr(),
-          description: `${PLAN_NAMES[planId]} — Assinatura ${cycleCfg.label}`,
+          description: `${PLAN_NAMES[planId]} — Assinatura ${cycleCfg.label}${upgRefLabel}`,
           externalReference: `${tenantId}::${planId}::${cycle}`,
         }),
       });
@@ -289,6 +306,8 @@ Deno.serve(async (req) => {
         _asaasLastPaymentDate: todayStr(),
         _asaasUpgradeFrom: oldPlanId,
         _asaasUpgradeDiscount: upgradeDiscount,
+        _referralDiscount: referralDiscount,
+        _referralActiveCount: activeReferrals,
       };
 
       await supabase.from('tenant_settings').upsert(
@@ -350,15 +369,19 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════════════════════════════════
     // NORMAL FLOW: New subscription (no upgrade discount)
     // ══════════════════════════════════════════════════════════════════════
+    // Apply referral discount to cycle value
+    const discountedCycleValue = Math.round(cycleValue * referralMultiplier * 100) / 100;
+    const refLabel = referralDiscount > 0 ? ` (${referralDiscount}% desc. indicação)` : '';
+
     const subscriptionData = await asaasFetch('/subscriptions', {
       method: 'POST',
       body: JSON.stringify({
         customer: asaasCustomerId,
         billingType,
-        value: cycleValue,
+        value: discountedCycleValue,
         cycle: cycleCfg.asaasCycle,
         nextDueDate: todayStr(),
-        description: `${PLAN_NAMES[planId]} — Assinatura ${cycleCfg.label}`,
+        description: `${PLAN_NAMES[planId]} — Assinatura ${cycleCfg.label}${refLabel}`,
         externalReference: `${tenantId}::${planId}::${cycle}`,
       }),
     });
@@ -409,6 +432,8 @@ Deno.serve(async (req) => {
       _asaasPlanId: planId,
       _asaasCycle: cycle,
       _asaasLastPaymentDate: todayStr(),
+      _referralDiscount: referralDiscount,
+      _referralActiveCount: activeReferrals,
       ...(extraProfessionals > 0 ? {
         _extraProfessionals: extraProfessionals,
         _addonSubscriptions: [...(fup._addonSubscriptions || []), ...addonSubs],

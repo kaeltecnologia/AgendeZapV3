@@ -2641,60 +2641,53 @@ const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, 
   );
 };
 
-// ── Leads Tab ────────────────────────────────────────────────────────────────
+// ── Leads & Indicações Tab ────────────────────────────────────────────────────
 
 const LeadsTab: React.FC = () => {
+  const [subTab, setSubTab] = useState<'leads' | 'indicacoes' | 'convites'>('leads');
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-1 w-fit">
+        {([
+          { key: 'leads' as const, label: 'Leads Marketplace' },
+          { key: 'indicacoes' as const, label: 'Indicacoes' },
+          { key: 'convites' as const, label: 'Convites Demo' },
+        ]).map(t => (
+          <button key={t.key} onClick={() => setSubTab(t.key)}
+            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+              subTab === t.key ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'
+            }`}>{t.label}</button>
+        ))}
+      </div>
+      {subTab === 'leads' && <LeadsSubTab />}
+      {subTab === 'indicacoes' && <ReferralsSubTab />}
+      {subTab === 'convites' && <InvitesSubTab />}
+    </div>
+  );
+};
+
+const LeadsSubTab: React.FC = () => {
   const [leads, setLeads] = useState<MarketplaceLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await db.getAllMarketplaceLeads();
-        setLeads(data);
-      } catch {}
-      setLoading(false);
-    })();
-  }, []);
-
-  const filtered = leads.filter(l => {
-    const q = search.toLowerCase();
-    return !q || (l.name || '').toLowerCase().includes(q) || l.phone.includes(q) || (l.city || '').toLowerCase().includes(q);
-  });
-
+  useEffect(() => { (async () => { try { setLeads(await db.getAllMarketplaceLeads()); } catch {} setLoading(false); })(); }, []);
+  const filtered = leads.filter(l => { const q = search.toLowerCase(); return !q || (l.name || '').toLowerCase().includes(q) || l.phone.includes(q) || (l.city || '').toLowerCase().includes(q); });
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-black uppercase tracking-tight">Leads do Marketplace</h2>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{leads.length} leads capturados</p>
-        </div>
-      </div>
-
-      <input
-        type="text"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Buscar por nome, telefone ou cidade..."
-        className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400"
-      />
-
-      {loading ? (
-        <p className="text-sm text-slate-400 font-bold">Carregando...</p>
-      ) : (
+    <div className="space-y-4">
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{leads.length} leads capturados</p>
+      <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome, telefone ou cidade..."
+        className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+      {loading ? <p className="text-sm text-slate-400 font-bold">Carregando...</p> : (
         <div className="bg-white rounded-3xl border-2 border-slate-100 overflow-hidden">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50">
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Telefone</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cidade</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nicho</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Origem</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data</th>
-              </tr>
-            </thead>
+            <thead><tr className="bg-slate-50">
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Telefone</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cidade</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nicho</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Origem</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data</th>
+            </tr></thead>
             <tbody>
               {filtered.slice(0, 100).map(l => (
                 <tr key={l.id} className="border-t border-slate-50 hover:bg-slate-50/50">
@@ -2702,15 +2695,105 @@ const LeadsTab: React.FC = () => {
                   <td className="p-4 font-mono text-xs">{l.phone}</td>
                   <td className="p-4">{l.city || '-'}</td>
                   <td className="p-4">{l.nichoInterest || '-'}</td>
-                  <td className="p-4">
-                    <span className="text-[8px] font-black px-2 py-1 rounded-full bg-blue-50 text-blue-600 uppercase">{l.source}</span>
-                  </td>
+                  <td className="p-4"><span className="text-[8px] font-black px-2 py-1 rounded-full bg-blue-50 text-blue-600 uppercase">{l.source}</span></td>
                   <td className="p-4 text-xs text-slate-400">{new Date(l.createdAt).toLocaleDateString('pt-BR')}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {filtered.length === 0 && <p className="p-8 text-center text-slate-400 font-bold text-sm">Nenhum lead encontrado.</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ReferralsSubTab: React.FC = () => {
+  const [referrals, setReferrals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  useEffect(() => { (async () => { try { setReferrals(await db.getAllReferrals()); } catch {} setLoading(false); })(); }, []);
+  const filtered = referrals.filter(r => { const q = search.toLowerCase(); return !q || r.referredName.toLowerCase().includes(q) || r.referrerName.toLowerCase().includes(q); });
+  const statusBadge = (s: string) => {
+    if (s === 'ATIVA') return 'bg-green-50 text-green-600';
+    if (s === 'TRIAL' || s === 'PAGAMENTO PENDENTE') return 'bg-yellow-50 text-yellow-600';
+    if (s === 'BLOQUEADA' || s === 'CANCELADA') return 'bg-red-50 text-red-600';
+    return 'bg-slate-100 text-slate-500';
+  };
+  return (
+    <div className="space-y-4">
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{referrals.length} indicacoes rastreadas</p>
+      <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por indicado ou indicador..."
+        className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+      {loading ? <p className="text-sm text-slate-400 font-bold">Carregando...</p> : (
+        <div className="bg-white rounded-3xl border-2 border-slate-100 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-slate-50">
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Indicado</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Indicador</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Plano</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Mensalidade</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data</th>
+            </tr></thead>
+            <tbody>
+              {filtered.slice(0, 100).map(r => (
+                <tr key={r.referredId} className="border-t border-slate-50 hover:bg-slate-50/50">
+                  <td className="p-4 font-bold">{r.referredName}</td>
+                  <td className="p-4 text-purple-600 font-bold">{r.referrerName}</td>
+                  <td className="p-4"><span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${statusBadge(r.referredStatus)}`}>{r.referredStatus}</span></td>
+                  <td className="p-4 text-xs">{r.referredPlan}</td>
+                  <td className="p-4 text-xs font-mono">R${Number(r.referredFee).toFixed(2)}</td>
+                  <td className="p-4 text-xs text-slate-400">{new Date(r.referredCreatedAt).toLocaleDateString('pt-BR')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <p className="p-8 text-center text-slate-400 font-bold text-sm">Nenhuma indicacao encontrada.</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const InvitesSubTab: React.FC = () => {
+  const [invites, setInvites] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const all = await db.getAllTenants();
+        setInvites(all.filter(t => t.slug?.endsWith('-demo')));
+      } catch {}
+      setLoading(false);
+    })();
+  }, []);
+  return (
+    <div className="space-y-4">
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{invites.length} convites demo</p>
+      {loading ? <p className="text-sm text-slate-400 font-bold">Carregando...</p> : (
+        <div className="bg-white rounded-3xl border-2 border-slate-100 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-slate-50">
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Slug</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data</th>
+            </tr></thead>
+            <tbody>
+              {invites.slice(0, 100).map(t => (
+                <tr key={t.id} className="border-t border-slate-50 hover:bg-slate-50/50">
+                  <td className="p-4 font-bold">{t.name}</td>
+                  <td className="p-4 font-mono text-xs">{t.slug}</td>
+                  <td className="p-4"><span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${
+                    t.status === 'ATIVA' ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-400'
+                  }`}>{t.status}</span></td>
+                  <td className="p-4 text-xs text-slate-400">{new Date(t.createdAt).toLocaleDateString('pt-BR')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {invites.length === 0 && <p className="p-8 text-center text-slate-400 font-bold text-sm">Nenhum convite demo encontrado.</p>}
         </div>
       )}
     </div>

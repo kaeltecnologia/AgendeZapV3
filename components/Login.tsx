@@ -4,10 +4,12 @@ import React, { useState } from 'react';
 interface LoginProps {
   onLogin: (role: 'SUPERADMIN' | 'TENANT', userSlug?: string, userEmail?: string, userPassword?: string) => Promise<void> | void;
   onRegister?: (storeName: string, email: string, pass: string, phone: string) => Promise<void>;
+  initialSignUp?: boolean;
+  referralName?: string;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
-  const [isSignUp, setIsSignUp] = useState(false);
+const Login: React.FC<LoginProps> = ({ onLogin, onRegister, initialSignUp, referralName }) => {
+  const [isSignUp, setIsSignUp] = useState(initialSignUp || false);
   const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,6 +81,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
             {isSignUp ? 'Crie sua conta multi-tenant' : 'Gestão de Agendamentos Inteligente'}
           </p>
         </div>
+
+        {isSignUp && referralName && (
+          <div className="p-4 rounded-2xl text-center animate-fadeIn" style={{ background: 'linear-gradient(135deg, #f3e8ff 0%, #ede9fe 100%)', border: '1px solid #d8b4fe' }}>
+            <p className="text-xs font-black text-purple-700">Indicado por <span className="text-purple-900">{referralName}</span></p>
+            <p className="text-[10px] text-purple-500 mt-1">Cadastre-se e comece a usar o AgendeZap!</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {isSignUp && (

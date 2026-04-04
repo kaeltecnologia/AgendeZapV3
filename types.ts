@@ -356,6 +356,7 @@ export interface Tenant {
   status: TenantStatus;
   monthlyFee: number;
   createdAt: string;
+  referred_by?: string;        // tenant_id of the referrer (who invited this tenant)
   // ── Central / Marketplace fields ──
   endereco?: string;
   cidade?: string;

@@ -4,7 +4,7 @@
  * Roda via pg_cron a cada 1 minuto. Processa os 5 jobs de follow-up
  * para TODOS os tenants ativos, sem depender do navegador aberto.
  *
- * Jobs: aviso, lembrete, reativação, agenda diária, rating.
+ * Jobs: aviso, lembrete, reativação, agenda diária, rating, payment reminder, relatório semanal.
  *
  * Deploy: supabase functions deploy follow-up-scheduler
  */
@@ -253,11 +253,19 @@ Deno.serve(async (_req) => {
   let processed = 0;
 
   try {
+    // Get central instance from global_settings (used by jobs 6 & 7)
+    let centralInstance = 'central_AgendeZap';
+    try {
+      const { data: gRows } = await supabase.from('global_settings').select('key, value');
+      const ciRow = (gRows || []).find((r: any) => r.key === 'central_instance');
+      if (ciRow?.value) centralInstance = ciRow.value;
+    } catch {}
+
     // Fetch all active tenants
     const { data: tenants, error: tErr } = await supabase
       .from('tenants')
-      .select('id, nome, evolution_instance, status')
-      .or('status.eq.active,status.eq.trial');
+      .select('id, nome, slug, phone, evolution_instance, status')
+      .or('status.eq.active,status.eq.ATIVA,status.eq.trial,status.eq.TRIAL');
     if (tErr) throw tErr;
     if (!tenants?.length) {
       return new Response(JSON.stringify({ processed: 0, msg: 'no active tenants' }), {
@@ -589,6 +597,266 @@ Deno.serve(async (_req) => {
           await saveFollowUpField(tenantId, settings.rawFollowUp, '_ratingSent', newRatingSent);
         }
 
+        // ── 7. RELATÓRIO SEMANAL (domingo 09:00 → admins via WA) ────
+        {
+          const isDomingo = now.getUTCDay() === 0;
+          const isReportWindow = nowHHMM >= '09:00' && nowHHMM < '09:10';
+          const weekKey = `weeklyReport::${nowDate}`;
+          const alreadySent = settings.rawFollowUp._weeklyReportSent === nowDate;
+
+          if (isDomingo && isReportWindow && !alreadySent) {
+            try {
+              // Dedup
+              if (await claimMessage(`weekly::${tenantId}::${nowDate}`)) {
+                // Calculate week range (Mon-Sun)
+                const weekEnd = new Date(now);
+                const weekStart = new Date(now);
+                weekStart.setUTCDate(weekStart.getUTCDate() - 6);
+                const weekStartStr = localDateStr(weekStart);
+                const weekEndStr = localDateStr(weekEnd);
+                const weekStartBR = `${pad(weekStart.getUTCDate())}/${pad(weekStart.getUTCMonth() + 1)}`;
+                const weekEndBR = `${pad(weekEnd.getUTCDate())}/${pad(weekEnd.getUTCMonth() + 1)}`;
+
+                // Week appointments
+                const weekAppts = allAppts.filter((a: any) => {
+                  const d = a.startTime?.slice(0, 10);
+                  return d >= weekStartStr && d <= weekEndStr;
+                });
+                const totalAppts = weekAppts.length;
+                const confirmed = weekAppts.filter((a: any) => a.status === 'CONFIRMED' || a.status === 'COMPLETED' || a.status === 'FINISHED').length;
+                const cancelled = weekAppts.filter((a: any) => a.status === 'CANCELLED').length;
+                const noShow = weekAppts.filter((a: any) => a.status === 'NO_SHOW').length;
+                const revenue = weekAppts.reduce((sum: number, a: any) => sum + (Number(a.amount_paid) || 0), 0);
+
+                // New customers this week
+                const weekCustIds = new Set(weekAppts.map((a: any) => a.customer_id));
+                const prevAppts = allAppts.filter((a: any) => a.startTime?.slice(0, 10) < weekStartStr);
+                const prevCustIds = new Set(prevAppts.map((a: any) => a.customer_id));
+                let newClients = 0;
+                weekCustIds.forEach(id => { if (!prevCustIds.has(id)) newClients++; });
+
+                // Per professional
+                const profStats: Record<string, { name: string; count: number }> = {};
+                for (const a of weekAppts) {
+                  const p = findProf(a.professional_id);
+                  if (!p) continue;
+                  if (!profStats[p.id]) profStats[p.id] = { name: p.name, count: 0 };
+                  profStats[p.id].count++;
+                }
+                const profRanking = Object.values(profStats).sort((a, b) => b.count - a.count);
+
+                // Top services
+                const svcStats: Record<string, { name: string; count: number }> = {};
+                for (const a of weekAppts) {
+                  const s = findSvc(a.service_id);
+                  if (!s) continue;
+                  if (!svcStats[s.id]) svcStats[s.id] = { name: s.name, count: 0 };
+                  svcStats[s.id].count++;
+                }
+                const topSvcs = Object.values(svcStats).sort((a, b) => b.count - a.count).slice(0, 3);
+
+                // Previous week for comparison
+                const prevWeekEnd = new Date(weekStart);
+                prevWeekEnd.setUTCDate(prevWeekEnd.getUTCDate() - 1);
+                const prevWeekStart = new Date(prevWeekEnd);
+                prevWeekStart.setUTCDate(prevWeekStart.getUTCDate() - 6);
+                const pwStartStr = localDateStr(prevWeekStart);
+                const pwEndStr = localDateStr(prevWeekEnd);
+                const prevWeekAppts = allAppts.filter((a: any) => {
+                  const d = a.startTime?.slice(0, 10);
+                  return d >= pwStartStr && d <= pwEndStr;
+                });
+                const prevTotal = prevWeekAppts.length;
+                const growthPct = prevTotal > 0 ? Math.round(((totalAppts - prevTotal) / prevTotal) * 100) : 0;
+                const growthText = prevTotal > 0
+                  ? (growthPct > 0 ? `📈 *+${growthPct}% comparado com a semana anterior — vocês estão crescendo!*` : growthPct < 0 ? `📉 ${growthPct}% comparado com a semana anterior` : '📊 Mesmo volume da semana anterior — constância é tudo!')
+                  : '';
+
+                // AI usage hint
+                const aiAppts = weekAppts.filter((a: any) => a.origem === 'AI').length;
+                const manualPct = totalAppts > 0 ? Math.round(((totalAppts - aiAppts) / totalAppts) * 100) : 0;
+                const aiHint = manualPct > 80 && totalAppts > 5
+                  ? `\n💡 *Dica:* ${manualPct}% dos agendamentos ainda são manuais — ative o agente IA no WhatsApp e libere seu tempo! 🤖`
+                  : '';
+
+                // Build message
+                const profLines = profRanking.map(p => `→ ${p.name}: ${p.count} atendimentos`).join('\n');
+                const svcLines = topSvcs.map((s, i) => `${i + 1}. ${s.name} — ${s.count}`).join('\n');
+                const ticketMedio = totalAppts > 0 && revenue > 0 ? `\n💳 *Ticket médio:* R$${(revenue / totalAppts).toFixed(2)}` : '';
+
+                const msg = totalAppts > 0
+                  ? `🔥 *Semana incrível, ${tenant.nome}!*\n\n` +
+                    `Olha só o que vocês conquistaram de ${weekStartBR} a ${weekEndBR}:\n\n` +
+                    `✅ *${totalAppts} clientes atendidos*\n` +
+                    (revenue > 0 ? `💰 *R$${revenue.toFixed(2).replace('.', ',')} em receita*\n` : '') +
+                    (newClients > 0 ? `🆕 *${newClients} novos clientes* descobriram vocês!\n` : '') +
+                    ticketMedio + '\n\n' +
+                    (growthText ? growthText + '\n\n' : '') +
+                    `🏆 *Equipe:*\n${profLines}\n\n` +
+                    `💈 *Top serviços:*\n${svcLines}\n\n` +
+                    (cancelled > 0 || noShow > 0 ? `❌ Cancelamentos: ${cancelled} | Faltas: ${noShow}\n\n` : '') +
+                    `⚡ *Com o AgendeZap organizando sua agenda, nenhum horário ficou perdido!*` +
+                    aiHint +
+                    `\n\n*Bora pra mais uma semana de sucesso!* 💪\n— Equipe AgendeZap`
+                  : null; // Don't send if no appointments this week
+
+                if (msg) {
+                  // Find admin professionals (or fallback to tenant phone)
+                  const profMeta = settings.rawFollowUp._professionalMeta || {};
+                  const adminProfs = professionals.filter((p: any) => {
+                    const meta = profMeta[p.id];
+                    return meta?.role === 'admin' && p.phone;
+                  });
+
+                  const recipients: string[] = adminProfs.length > 0
+                    ? adminProfs.map((p: any) => p.phone)
+                    : (tenant.phone ? [tenant.phone] : []);
+
+                  for (const phone of recipients) {
+                    await sendWhatsApp(centralInstance, phone, msg);
+                  }
+
+                  if (recipients.length > 0) {
+                    // Mark as sent using atomic function
+                    try {
+                      await supabase.rpc('set_follow_up_key', {
+                        p_tenant_id: tenantId,
+                        p_key: '_weeklyReportSent',
+                        p_value: JSON.stringify(nowDate),
+                      });
+                    } catch {
+                      await saveFollowUpField(tenantId, settings.rawFollowUp, '_weeklyReportSent', nowDate);
+                    }
+                    console.log(`[WeeklyReport] ${tenant.nome} → ${recipients.length} admin(s) (${totalAppts} appts, R$${revenue.toFixed(0)})`);
+                  }
+                }
+              }
+            } catch (e: any) {
+              console.error(`[WeeklyReport] Error ${tenant.nome}:`, e.message);
+            }
+          }
+        }
+
+        // ── 8. MENSAGEM DE INDICAÇÃO (domingo ~09:05 → admins via WA, após relatório) ──
+        {
+          const isDomingo = now.getUTCDay() === 0;
+          const isRefWindow = nowHHMM >= '09:05' && nowHHMM < '09:15';
+          const alreadySentRef = settings.rawFollowUp._referralMsgSent === nowDate;
+
+          if (isDomingo && isRefWindow && !alreadySentRef && tenant.slug) {
+            try {
+              if (await claimMessage(`referral::${tenantId}::${nowDate}`)) {
+                // Count active referrals for this tenant
+                let activeReferrals = 0;
+                let totalRefRevenue = 0;
+                try {
+                  const { data: refData } = await supabase.rpc('referral_summary', { p_tenant_id: tenantId });
+                  if (refData) {
+                    activeReferrals = refData[0]?.active_referrals || 0;
+                    totalRefRevenue = Number(refData[0]?.total_referral_revenue) || 0;
+                  }
+                } catch { /* function may not exist yet */ }
+
+                const refLink = `https://www.agendezap.com/?ref=${tenant.slug}`;
+
+                // Build referral status line
+                let statusLine = '';
+                if (activeReferrals > 0) {
+                  const discount = activeReferrals * 20;
+                  const cappedDiscount = Math.min(discount, 100);
+                  statusLine = `\n\n🎯 *Suas indicações ativas: ${activeReferrals}*\n` +
+                    `💸 Desconto atual: *${cappedDiscount}% na sua assinatura*`;
+                  if (activeReferrals >= 5) {
+                    const pixEarnings = totalRefRevenue * 0.10;
+                    statusLine += `\n🤑 *Bônus PIX: R$${pixEarnings.toFixed(2).replace('.', ',')}* por mês (10% das assinaturas dos indicados)`;
+                  } else {
+                    statusLine += `\n📍 Faltam *${5 - activeReferrals}* indicações para começar a ganhar *10% via PIX* das assinaturas!`;
+                  }
+                }
+
+                const msg = `💜 *Indique o AgendeZap e ganhe!*\n\n` +
+                  `Você sabia que pode *reduzir sua assinatura a ZERO* e ainda *ganhar dinheiro via PIX* indicando parceiros?\n\n` +
+                  `✅ *20% de desconto* na sua assinatura para cada indicação que *contratar um plano*\n` +
+                  `✅ Receba *enquanto sua indicação mantiver a assinatura ativa*\n` +
+                  `✅ A partir de *5 indicações ativas*, ganhe *10% do valor de cada assinatura via PIX* todo mês!\n\n` +
+                  `🔗 *Seu link exclusivo de indicação:*\n${refLink}\n\n` +
+                  `Envie para colegas, parceiros, amigos que têm negócio — salão, barbearia, clínica, consultório, estúdio...\n` +
+                  `Quanto mais indicações, mais você ganha! 🚀` +
+                  statusLine;
+
+                // Send to same admin recipients as weekly report
+                const profMeta = settings.rawFollowUp._professionalMeta || {};
+                const adminProfs = professionals.filter((p: any) => {
+                  const meta = profMeta[p.id];
+                  return meta?.role === 'admin' && p.phone;
+                });
+                const recipients: string[] = adminProfs.length > 0
+                  ? adminProfs.map((p: any) => p.phone)
+                  : (tenant.phone ? [tenant.phone] : []);
+
+                for (const phone of recipients) {
+                  // Small delay so it arrives after the report
+                  await new Promise(r => setTimeout(r, 3000));
+                  await sendWhatsApp(centralInstance, phone, msg);
+                }
+
+                if (recipients.length > 0) {
+                  try {
+                    await supabase.rpc('set_follow_up_key', {
+                      p_tenant_id: tenantId,
+                      p_key: '_referralMsgSent',
+                      p_value: JSON.stringify(nowDate),
+                    });
+                  } catch {
+                    await saveFollowUpField(tenantId, settings.rawFollowUp, '_referralMsgSent', nowDate);
+                  }
+                  console.log(`[Referral] ${tenant.nome} → ${recipients.length} admin(s) (${activeReferrals} active refs)`);
+                }
+              }
+            } catch (e: any) {
+              console.error(`[Referral] Error ${tenant.nome}:`, e.message);
+            }
+          }
+        }
+
+        // ── 11. CUSTOMER REFERRAL PITCH (após atendimento finalizado) ─────
+        {
+          // Find FINISHED appointments in the last 24h
+          const since24h = new Date(nowMs - 24 * 60 * 60 * 1000);
+          const sinceStr = localDateStr(since24h);
+
+          for (const appt of allAppts) {
+            if (appt.status !== 'FINISHED') continue;
+            const apptDate = appt.startTime?.slice(0, 10);
+            if (!apptDate || apptDate < sinceStr) continue;
+
+            // Check if at least 2h have passed since appointment time
+            const apptTime = new Date(appt.startTime).getTime();
+            const elapsed = nowMs + 3 * 60 * 60 * 1000 - apptTime; // adjust for Brasilia offset
+            if (elapsed < 2 * 60 * 60 * 1000) continue; // skip if less than 2h
+
+            const cust = findCust(appt.customer_id);
+            if (!cust?.phone) continue;
+
+            // Dedup: only send ONCE per customer phone (ever)
+            const fp = `cust_referral::${cust.phone}`;
+            if (!(await claimMessage(fp))) continue;
+
+            const cleanPhone = cust.phone.replace(/\D/g, '');
+            const msg = `Oi ${cust.name || 'tudo bem'}! Você acabou de ser atendido(a) na *${tenant.nome}* 😊\n\n` +
+              `Sabia que eles usam o *AgendeZap* para organizar agendamentos com IA, relatórios financeiros e muito mais?\n\n` +
+              `Se você conhece algum profissional (barbeiro, cabeleireira, dentista, personal...) que poderia usar essa ferramenta, *indique e ganhe!*\n\n` +
+              `💰 Você recebe *10% do valor da assinatura via PIX todo mês* enquanto sua indicação mantiver ativa!\n\n` +
+              `🔗 *Seu link de indicação:*\nhttps://www.agendezap.com/?ref_c=${cleanPhone}\n\n` +
+              `É super simples — compartilhe com quem pode se beneficiar! 🚀`;
+
+            const sent = await sendWhatsApp(centralInstance, cust.phone, msg);
+            if (sent) {
+              console.log(`[CustReferral] ${tenant.nome} → ${cust.name} (${cust.phone})`);
+            }
+          }
+        }
+
         processed++;
       } catch (e: any) {
         errors.push(`${tenant.nome || tenantId}: ${e.message}`);
@@ -597,14 +865,6 @@ Deno.serve(async (_req) => {
     }
     // ── 6. PAYMENT PENDING REMINDER (central WA → tenants sem pagamento após 6h) ──
     try {
-      // Get central instance from global_settings
-      let centralInstance = 'central_AgendeZap';
-      try {
-        const { data: gRows } = await supabase.from('global_settings').select('key, value');
-        const ciRow = (gRows || []).find((r: any) => r.key === 'central_instance');
-        if (ciRow?.value) centralInstance = ciRow.value;
-      } catch {}
-
       // Find tenants with trial or pending payment status, created > 6h ago
       const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const { data: pendingTenants } = await supabase
@@ -649,6 +909,207 @@ Deno.serve(async (_req) => {
     } catch (e: any) {
       errors.push(`payment-reminder: ${e.message}`);
       console.error('[FollowUp] Payment reminder job error:', e.message);
+    }
+
+    // ── 9a. NOTIFY REFERRER ON NEW REFERRAL SIGNUP ──────────────────────
+    try {
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: newReferrals } = await supabase
+        .from('tenants')
+        .select('id, nome, referred_by, created_at')
+        .not('referred_by', 'is', null)
+        .gt('created_at', thirtyMinAgo);
+
+      for (const nr of (newReferrals || [])) {
+        try {
+          if (!(await claimMessage(`referral_notify::${nr.id}`))) continue;
+          const { data: referrer } = await supabase
+            .from('tenants').select('id, nome, phone').eq('id', nr.referred_by).single();
+          if (!referrer?.phone) continue;
+
+          const msg = `🎉 *Boa noticia!*\n\n` +
+            `*${nr.nome || 'Novo parceiro'}* acabou de se cadastrar no AgendeZap pela sua indicação!\n\n` +
+            `Quando contratar um plano, você ganha automaticamente *20% de desconto* na sua assinatura! 💜\n\n` +
+            `Continue indicando — cada indicação ativa = mais desconto! 🚀`;
+
+          await sendWhatsApp(centralInstance, referrer.phone, msg);
+          console.log(`[Referral Notify] ${referrer.nome} notified about ${nr.nome}`);
+        } catch (e: any) {
+          console.error(`[Referral Notify] Error ${nr.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      errors.push(`referral-notify: ${e.message}`);
+      console.error('[Referral Notify] Job error:', e.message);
+    }
+
+    // ── 9b. NOTIFY REFERRER WHEN REFERRAL PAYS (becomes ATIVA) ──────────
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: paidReferrals } = await supabase
+        .from('tenants')
+        .select('id, nome, referred_by')
+        .not('referred_by', 'is', null)
+        .eq('status', 'ATIVA')
+        .gt('created_at', oneDayAgo);
+
+      for (const pr of (paidReferrals || [])) {
+        try {
+          if (!(await claimMessage(`referral_paid_notify::${pr.id}`))) continue;
+          const { data: referrer } = await supabase
+            .from('tenants').select('id, nome, phone').eq('id', pr.referred_by).single();
+          if (!referrer?.phone) continue;
+
+          const { data: refCount } = await supabase.rpc('count_active_referrals', { p_tenant_id: referrer.id });
+          const activeCount = refCount || 1;
+          const discount = Math.min(activeCount * 20, 100);
+
+          const msg = `🎊 *Parabéns!*\n\n` +
+            `*${pr.nome}* (sua indicação) contratou um plano no AgendeZap!\n\n` +
+            `🎯 Você agora tem *${activeCount} indicação(ões) ativa(s)*\n` +
+            `💸 Seu desconto: *${discount}% na sua assinatura*\n` +
+            (activeCount >= 5
+              ? `🤑 *Bônus PIX ativado!* Você recebe 10% de cada assinatura dos seus indicados!\n`
+              : `📍 Faltam *${5 - activeCount}* para ativar o bônus PIX de 10%!\n`) +
+            `\nContinue indicando! 🚀`;
+
+          await sendWhatsApp(centralInstance, referrer.phone, msg);
+          console.log(`[Referral Paid] ${referrer.nome} notified (${activeCount} active)`);
+        } catch (e: any) {
+          console.error(`[Referral Paid] Error ${pr.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      errors.push(`referral-paid-notify: ${e.message}`);
+      console.error('[Referral Paid] Job error:', e.message);
+    }
+
+    // ── 10. MONTHLY REFERRAL DISCOUNT RECALCULATION (1st of month 03:00) ──
+    try {
+      const gNow = nowBrasilia();
+      const gHHMM = localHHMM(gNow);
+      if (gNow.getUTCDate() === 1 && gHHMM >= '03:00' && gHHMM < '03:10') {
+        const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') || '';
+        const ASAAS_API_URL = Deno.env.get('ASAAS_API_URL') || 'https://api.asaas.com/v3';
+        const PLAN_PRICES: Record<string, number> = { START: 39.90, PROFISSIONAL: 89.90, ELITE: 149.90 };
+        const CYCLE_CFG: Record<string, { m: number; d: number }> = {
+          MONTHLY: { m: 1, d: 0 }, QUARTERLY: { m: 3, d: 0.10 },
+          SEMIANNUALLY: { m: 6, d: 0.15 }, YEARLY: { m: 12, d: 0.25 },
+        };
+
+        const { data: allSettings } = await supabase.from('tenant_settings').select('tenant_id, follow_up');
+
+        for (const row of (allSettings || [])) {
+          const fu = row.follow_up || {};
+          const subId = fu._asaasSubscriptionId;
+          const planId = fu._asaasPlanId;
+          if (!subId || !planId || !PLAN_PRICES[planId]) continue;
+
+          try {
+            const { data: refCount } = await supabase.rpc('count_active_referrals', { p_tenant_id: row.tenant_id });
+            const activeRefs = refCount || 0;
+            const discountPct = Math.min(activeRefs * 20, 100);
+            const cc = CYCLE_CFG[fu._asaasCycle || 'MONTHLY'] || CYCLE_CFG.MONTHLY;
+            const newValue = Math.round(PLAN_PRICES[planId] * cc.m * (1 - cc.d) * (1 - discountPct / 100) * 100) / 100;
+
+            const res = await fetch(`${ASAAS_API_URL}/subscriptions/${subId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'access_token': ASAAS_API_KEY },
+              body: JSON.stringify({ value: newValue }),
+            });
+
+            if (res.ok) {
+              await supabase.rpc('set_follow_up_key', {
+                p_tenant_id: row.tenant_id,
+                p_key: '_referralDiscount',
+                p_value: JSON.stringify(discountPct),
+              });
+              await supabase.rpc('set_follow_up_key', {
+                p_tenant_id: row.tenant_id,
+                p_key: '_referralActiveCount',
+                p_value: JSON.stringify(activeRefs),
+              });
+              console.log(`[ReferralRecalc] ${row.tenant_id}: ${activeRefs} refs, ${discountPct}%, R$${newValue}`);
+            }
+            await new Promise(r => setTimeout(r, 500)); // rate limit
+          } catch (e: any) {
+            console.error(`[ReferralRecalc] Error ${row.tenant_id}:`, e.message);
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(`referral-recalc: ${e.message}`);
+      console.error('[ReferralRecalc] Job error:', e.message);
+    }
+
+    // ── 12a. NOTIFY CUSTOMER WHEN THEIR REFERRAL SIGNS UP ─────────────
+    try {
+      const thirtyMinAgo2 = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: custNewRefs } = await supabase
+        .from('tenants')
+        .select('id, nome, referred_by_customer, created_at')
+        .not('referred_by_customer', 'is', null)
+        .gt('created_at', thirtyMinAgo2);
+
+      for (const cr of (custNewRefs || [])) {
+        try {
+          if (!(await claimMessage(`cust_referral_signup::${cr.id}`))) continue;
+          const custPhone = cr.referred_by_customer;
+          if (!custPhone) continue;
+
+          const msg = `🎉 *Boa notícia!*\n\n` +
+            `*${cr.nome || 'Um novo negócio'}* acabou de se cadastrar no AgendeZap pela sua indicação!\n\n` +
+            `Quando contratar um plano, você começa a receber *10% do valor da assinatura via PIX* todo mês! 💰\n\n` +
+            `Continue indicando — quanto mais indicações ativas, mais você ganha! 🚀`;
+
+          await sendWhatsApp(centralInstance, custPhone, msg);
+          console.log(`[CustReferral Signup] ${custPhone} notified about ${cr.nome}`);
+        } catch (e: any) {
+          console.error(`[CustReferral Signup] Error ${cr.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      errors.push(`cust-referral-signup: ${e.message}`);
+      console.error('[CustReferral Signup] Job error:', e.message);
+    }
+
+    // ── 12b. NOTIFY CUSTOMER WHEN THEIR REFERRAL PAYS ─────────────────
+    try {
+      const oneDayAgo2 = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: custPaidRefs } = await supabase
+        .from('tenants')
+        .select('id, nome, referred_by_customer, mensalidade')
+        .not('referred_by_customer', 'is', null)
+        .eq('status', 'ATIVA')
+        .gt('created_at', oneDayAgo2);
+
+      for (const cp of (custPaidRefs || [])) {
+        try {
+          if (!(await claimMessage(`cust_referral_paid::${cp.id}`))) continue;
+          const custPhone = cp.referred_by_customer;
+          if (!custPhone) continue;
+
+          const { data: custRefCount } = await supabase.rpc('count_customer_referrals', { p_phone: custPhone });
+          const activeCount = custRefCount || 1;
+          const { data: custSummary } = await supabase.rpc('customer_referral_summary', { p_phone: custPhone });
+          const totalRevenue = custSummary?.[0]?.total_referral_revenue || cp.mensalidade || 0;
+          const pixBonus = Math.round(totalRevenue * 0.10 * 100) / 100;
+
+          const msg = `🎊 *Parabéns!*\n\n` +
+            `*${cp.nome}* (sua indicação) contratou um plano no AgendeZap!\n\n` +
+            `🎯 Você tem *${activeCount} indicação(ões) ativa(s)*\n` +
+            `💰 Bônus PIX mensal: *R$${pixBonus.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*\n\n` +
+            `Você recebe 10% do valor das assinaturas das suas indicações via PIX todo mês! 🚀`;
+
+          await sendWhatsApp(centralInstance, custPhone, msg);
+          console.log(`[CustReferral Paid] ${custPhone} notified (${activeCount} active, PIX R$${pixBonus})`);
+        } catch (e: any) {
+          console.error(`[CustReferral Paid] Error ${cp.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      errors.push(`cust-referral-paid: ${e.message}`);
+      console.error('[CustReferral Paid] Job error:', e.message);
     }
 
   } catch (e: any) {

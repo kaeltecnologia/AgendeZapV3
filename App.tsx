@@ -37,6 +37,8 @@ const BookingPage = lazy(() => import('./components/BookingPage'));
 const MarketplacePage = lazy(() => import('./components/MarketplacePage'));
 const MarketplacePreview = lazy(() => import('./components/MarketplacePreview'));
 const SocialMidiaView = lazy(() => import('./components/SocialMidiaView'));
+const IndicacoesView = lazy(() => import('./components/IndicacoesView'));
+const ReferralLandingPage = lazy(() => import('./components/ReferralLandingPage'));
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
@@ -77,6 +79,7 @@ enum View {
   OTIMIZACAO = 'OTIMIZACAO',
   MARKETPLACE = 'MARKETPLACE',
   SOCIAL_MIDIA = 'SOCIAL_MIDIA',
+  INDICACOES = 'INDICACOES',
 }
 
 type Role = 'TENANT' | 'SUPERADMIN';
@@ -141,6 +144,14 @@ const App: React.FC = () => {
   const [unreadConvCount, setUnreadConvCount] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showTutorials, setShowTutorials] = useState(false);
+  // Referral: capture ?ref=<slug> or ?ref_c=<phone> from URL
+  const [referralSlug] = useState(() => new URLSearchParams(window.location.search).get('ref') || '');
+  const [referralCustomerPhone] = useState(() => new URLSearchParams(window.location.search).get('ref_c') || '');
+  const [referralName, setReferralName] = useState('');
+  useEffect(() => {
+    if (!referralSlug) return;
+    db.getTenantBySlug(referralSlug).then(t => { if (t?.name) setReferralName(t.name); });
+  }, [referralSlug]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
   }, []);
@@ -506,6 +517,14 @@ const App: React.FC = () => {
         throw new Error("Este e-mail/slug já está cadastrado.");
       }
 
+      // Resolve referral slug → tenant id
+      let referredById: string | undefined;
+      if (referralSlug) {
+        const allTenants = await db.getAllTenants();
+        const referrer = allTenants.find(t => t.slug === referralSlug);
+        if (referrer) referredById = referrer.id;
+      }
+
       const newTenant = await db.addTenant({
         name: storeName,
         slug: slug,
@@ -514,7 +533,9 @@ const App: React.FC = () => {
         phone: phone,
         plan: 'START',
         status: TenantStatus.PENDING_PAYMENT,
-        monthlyFee: 0
+        monthlyFee: 0,
+        referred_by: referredById,
+        referred_by_customer: referralCustomerPhone || undefined
       });
 
       if (newTenant) {
@@ -603,6 +624,11 @@ const App: React.FC = () => {
     );
   }
 
+  // Referral landing page (public, before auth check)
+  if (!isAuthenticated && (referralSlug || referralCustomerPhone)) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-purple-600 rounded-full animate-spin" /></div>}><ReferralLandingPage referralName={referralName} isCustomerReferral={!!referralCustomerPhone} onRegister={handleRegister} /></Suspense>;
+  }
+
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} onRegister={handleRegister} />;
   }
@@ -675,6 +701,7 @@ const App: React.FC = () => {
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
       case View.SOCIAL_MIDIA: return <PlanGate feature="socialMidia" tenantPlan={tenantPlan}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
+      case View.INDICACOES: return <IndicacoesView tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
   };
@@ -801,9 +828,9 @@ const App: React.FC = () => {
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.SOCIAL_MIDIA} onClick={navTo(() => handleGatedNav(View.SOCIAL_MIDIA, 'socialMidia'))} icon={<IconCamera />} label="Social Mídia" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.INDICACOES} onClick={navTo(() => setCurrentView(View.INDICACOES))} icon={<IconGift />} label="Indicações" />
               </div>
 
               {/* ── Financeiro & Vendas ── */}
@@ -840,6 +867,7 @@ const App: React.FC = () => {
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Base</p>}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
               </div>
@@ -878,7 +906,7 @@ const App: React.FC = () => {
             <div className="w-1 h-6 rounded-full bg-orange-500" />
             <h2 className="text-sm font-black text-slate-700 tracking-widest uppercase">
               {role === 'SUPERADMIN'
-                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'WA Atendimento', disparo: 'Disparador Admin', campanhas: 'Campanhas em Andamento', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada', config: 'Configurações do Sistema', central: 'Central WhatsApp', wa_central: 'WA Central', leads: 'Leads Marketplace', cashback: 'Cashback' } as Record<SuperAdminTab, string>)[superAdminTab]
+                ? ({ dashboard: 'Dashboard Global', clients: 'Clientes SaaS', avisos: 'Enviar Avisos', cobranca: 'Gestão de Cobrança', logs: 'Logs de Atividade', sql: 'Configurar Banco SQL', ia: 'IA / Tokens', conversas: 'WA Atendimento', disparo: 'Disparador Admin', campanhas: 'Campanhas em Andamento', prospeccao: 'Prospecção de Clientes', suporte: 'Caixa de Entrada', config: 'Configurações do Sistema', central: 'Central WhatsApp', wa_central: 'WA Central', leads: 'Leads & Indicações', cashback: 'Cashback' } as Record<SuperAdminTab, string>)[superAdminTab]
                 : tenantName}
             </h2>
           </div>
@@ -1267,7 +1295,7 @@ const InvitePartnerModal: React.FC<{
       const message =
         `Olá ${name.trim()}! 🎉\n\n` +
         `Você foi convidado(a) para testar o *AgendeZap* gratuitamente por 7 dias!\n\n` +
-        `Acesse: https://app.agendezap.com\n` +
+        `Acesse: https://www.agendezap.com\n` +
         `Login: ${result.email}\nSenha: ${result.password}\n\n` +
         `Qualquer dúvida, é só chamar! 😊`;
 

@@ -134,6 +134,11 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
   const [period, setPeriod] = useState(30);
   const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
   const [weatherCity, setWeatherCity] = useState('');
+  const [tenantSlugLocal, setTenantSlugLocal] = useState('');
+  const [referralData, setReferralData] = useState<{
+    activeReferrals: number; discountPercent: number; pixBonus: number;
+    referrals: Array<{ id: string; name: string; status: string; createdAt: string }>;
+  } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -154,6 +159,15 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         setCustomers(c);
         setExpenses(e);
         setSettings(st);
+
+        // Store slug for referral link
+        if (tenant?.slug) setTenantSlugLocal(tenant.slug);
+
+        // Fetch referral data
+        try {
+          const rd = await db.getReferralData(tenantId);
+          if (rd.referrals.length > 0 || rd.activeReferrals > 0) setReferralData(rd);
+        } catch { /* referral is optional */ }
 
         // Fetch weather if tenant has coordinates
         if (tenant?.latitude && tenant?.longitude) {
@@ -679,6 +693,65 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Referral / Indicacao card */}
+      {referralData && (
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border border-purple-100 p-4 sm:p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="font-black text-sm text-purple-700">Programa de Indicacao</h3>
+              <p className="text-[10px] font-bold text-purple-400">Indique parceiros e ganhe descontos</p>
+            </div>
+            <span className="text-2xl">💜</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-white/70 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-purple-600">{referralData.activeReferrals}</p>
+              <p className="text-[8px] font-black text-purple-400 uppercase tracking-wider">Ativas</p>
+            </div>
+            <div className="bg-white/70 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-green-600">{referralData.discountPercent}%</p>
+              <p className="text-[8px] font-black text-green-500 uppercase tracking-wider">Desconto</p>
+            </div>
+            <div className="bg-white/70 rounded-xl p-3 text-center">
+              <p className="text-lg font-black text-purple-600">
+                {referralData.pixBonus > 0 ? `R$${fmtBRL(referralData.pixBonus)}` : '--'}
+              </p>
+              <p className="text-[8px] font-black text-purple-400 uppercase tracking-wider">PIX/mes</p>
+            </div>
+          </div>
+          {tenantSlugLocal && (
+            <div className="bg-white/80 rounded-xl p-3 flex items-center gap-2 mb-3">
+              <p className="text-[10px] font-mono text-purple-600 truncate flex-1">
+                www.agendezap.com/?ref={tenantSlugLocal}
+              </p>
+              <button
+                onClick={() => { navigator.clipboard.writeText(`https://www.agendezap.com/?ref=${tenantSlugLocal}`); }}
+                className="shrink-0 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-purple-700 transition-all"
+              >
+                Copiar
+              </button>
+            </div>
+          )}
+          {referralData.referrals.length > 0 && (
+            <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
+              {referralData.referrals.slice(0, 5).map((r) => (
+                <div key={r.id} className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-purple-700 truncate">{r.name}</span>
+                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${
+                    r.status === 'ATIVA' ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-400'
+                  }`}>{r.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {referralData.activeReferrals < 5 && (
+            <p className="text-[10px] text-purple-500 mt-3 text-center">
+              Faltam <strong>{5 - referralData.activeReferrals}</strong> indicacoes ativas para ganhar <strong>10% via PIX</strong>
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Top profs + Today */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -146,6 +146,7 @@ class DatabaseService {
         longitude: t.longitude ? Number(t.longitude) : undefined,
         descricao: t.descricao,
         marketplaceVisible: t.marketplace_visible ?? false,
+        referred_by: t.referred_by ?? undefined,
       }));
     } catch (err) {
       console.error("Error fetching tenants:", err);
@@ -182,6 +183,7 @@ class DatabaseService {
         longitude: data.longitude ? Number(data.longitude) : undefined,
         descricao: data.descricao,
         marketplaceVisible: data.marketplace_visible ?? false,
+        referred_by: data.referred_by ?? undefined,
       };
       _cache.set(ck, result, TTL_LONG);
       return result;
@@ -219,6 +221,7 @@ class DatabaseService {
         longitude: data.longitude ? Number(data.longitude) : undefined,
         descricao: data.descricao,
         marketplaceVisible: data.marketplace_visible ?? false,
+        referred_by: data.referred_by ?? undefined,
       };
       _cache.set(ck, result, TTL_LONG);
       return result;
@@ -228,9 +231,9 @@ class DatabaseService {
     }
   }
 
-  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; phone?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string }) {
+  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; phone?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string; referred_by?: string; referred_by_customer?: string }) {
     try {
-      const payload = {
+      const payload: any = {
         nome: tenant.name,
         slug: tenant.slug,
         email: tenant.email,
@@ -242,6 +245,8 @@ class DatabaseService {
         nicho: tenant.nicho || 'Barbearia',
         evolution_instance: `agz_${tenant.slug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '').trim()}`
       };
+      if (tenant.referred_by) payload.referred_by = tenant.referred_by;
+      if (tenant.referred_by_customer) payload.referred_by_customer = tenant.referred_by_customer;
       const { data, error } = await supabase.from('tenants').insert(payload).select().single();
       if (error) throw error;
       return {
@@ -2378,6 +2383,75 @@ class DatabaseService {
       source: data.source as MarketplaceLead['source'],
       createdAt: data.created_at,
     };
+  }
+
+  // ── Referral data ──────────────────────────────────────────────────
+  async getReferralData(tenantId: string): Promise<{
+    activeReferrals: number; totalReferralRevenue: number;
+    discountPercent: number; pixBonus: number;
+    referrals: Array<{ id: string; name: string; status: string; plan: string; monthlyFee: number; createdAt: string }>;
+  }> {
+    const empty = { activeReferrals: 0, totalReferralRevenue: 0, discountPercent: 0, pixBonus: 0, referrals: [] };
+    const ck = `getReferralData:${tenantId}`;
+    const cached = _cache.get<typeof empty>(ck);
+    if (cached) return cached;
+    try {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, nome, status, plan, mensalidade, created_at')
+        .eq('referred_by', tenantId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const all = data || [];
+      const active = all.filter(t => t.status === 'ATIVA');
+      const totalRev = active.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
+      const discountPct = Math.min(active.length * 20, 100);
+      const result = {
+        activeReferrals: active.length,
+        totalReferralRevenue: totalRev,
+        discountPercent: discountPct,
+        pixBonus: active.length >= 5 ? totalRev * 0.10 : 0,
+        referrals: all.map(t => ({
+          id: t.id, name: t.nome || 'Sem Nome', status: t.status,
+          plan: t.plan || 'START', monthlyFee: Number(t.mensalidade || 0), createdAt: t.created_at,
+        })),
+      };
+      _cache.set(ck, result, TTL_MED);
+      return result;
+    } catch (e) {
+      console.error('Error fetching referral data:', e);
+      return empty;
+    }
+  }
+
+  async getAllReferrals(): Promise<Array<{
+    referredId: string; referredName: string; referredStatus: string;
+    referredPlan: string; referredFee: number; referredCreatedAt: string;
+    referrerId: string; referrerName: string;
+  }>> {
+    try {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, nome, status, plan, mensalidade, created_at, referred_by')
+        .not('referred_by', 'is', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const referrerIds = [...new Set((data || []).map(t => t.referred_by).filter(Boolean))];
+      let referrerMap: Record<string, string> = {};
+      if (referrerIds.length > 0) {
+        const { data: referrers } = await supabase.from('tenants').select('id, nome').in('id', referrerIds);
+        referrerMap = Object.fromEntries((referrers || []).map(r => [r.id, r.nome || 'Sem Nome']));
+      }
+      return (data || []).map(t => ({
+        referredId: t.id, referredName: t.nome || 'Sem Nome', referredStatus: t.status,
+        referredPlan: t.plan || 'START', referredFee: Number(t.mensalidade || 0),
+        referredCreatedAt: t.created_at, referrerId: t.referred_by,
+        referrerName: referrerMap[t.referred_by] || 'Desconhecido',
+      }));
+    } catch (e) {
+      console.error('Error fetching all referrals:', e);
+      return [];
+    }
   }
 
   async getAllMarketplaceLeads(): Promise<MarketplaceLead[]> {
