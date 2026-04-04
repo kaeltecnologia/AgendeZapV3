@@ -784,8 +784,20 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-white/15">
-                <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">
+              <div className="pt-4 border-t border-white/15 space-y-3">
+                <p className="text-[10px] font-bold text-white/60">
+                  Você também é profissional? Conheça o <span className="text-white/90">AgendeZap</span> — o sistema de agendamentos com IA que automatiza seu negócio!
+                </p>
+                <a
+                  href="https://www.agendezap.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95"
+                  style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', color: '#fff', boxShadow: '0 4px 15px rgba(249,115,22,0.4)' }}
+                >
+                  Conhecer o AgendeZap
+                </a>
+                <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-2">
                   Powered by AgendeZap
                 </p>
               </div>
