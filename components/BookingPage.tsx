@@ -789,7 +789,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                   Você também é profissional? Conheça o <span className="text-white/90">AgendeZap</span> — o sistema de agendamentos com IA que automatiza seu negócio!
                 </p>
                 <a
-                  href="https://www.agendezap.com"
+                  href="https://www.agendezap.com.br"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95"
