@@ -30,7 +30,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
 
   // Channels
   const [chWa, setChWa] = useState(true);
-  const chAz = false;
+  const [chPortfolio, setChPortfolio] = useState(false);
   const [chIg, setChIg] = useState(false);
   const [chGoogle, setChGoogle] = useState(false);
 
@@ -98,7 +98,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
 
   const handlePublish = async () => {
     if (!file) return;
-    if (!chWa && !chIg && !chGoogle) { alert('Selecione pelo menos um canal.'); return; }
+    if (!chWa && !chIg && !chGoogle && !chPortfolio) { alert('Selecione pelo menos um canal.'); return; }
     setPublishing(true);
     setResult(null);
     const res: { wa?: string; az?: string; ig?: string; google?: string } = {};
@@ -118,7 +118,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
       // 2. Publish to selected channels in parallel
       const promises: Promise<void>[] = [];
 
-      if (chAz) {
+      if (chPortfolio) {
         promises.push(
           db.createPost(tenantId, publicUrl, caption.trim() || undefined)
             .then(post => { setPosts(prev => [post, ...prev]); res.az = 'ok'; })
@@ -207,7 +207,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
           <svg className="w-5 h-5 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
           Publicar
         </h2>
-        <p className="text-xs text-slate-400 mt-1">Publique fotos dos seus trabalhos no Status do WhatsApp, Instagram e Marketplace AZ.</p>
+        <p className="text-xs text-slate-400 mt-1">Publique fotos dos seus trabalhos no Status do WhatsApp, Instagram e Portfólio.</p>
       </div>
 
       {/* Upload + Caption + Channels */}
@@ -311,6 +311,17 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
               <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Desconectado</span>
             </div>
           )}
+
+          {/* Portfólio Público */}
+          <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${chPortfolio ? 'border-orange-400 bg-orange-50' : 'border-slate-100'}`}>
+            <input type="checkbox" checked={chPortfolio} onChange={e => setChPortfolio(e.target.checked)} className="w-4 h-4 accent-orange-500" />
+            <span className="text-lg">🖼️</span>
+            <div className="flex-1">
+              <p className="text-xs font-black text-slate-700">Portfólio Público</p>
+              <p className="text-[10px] text-slate-400">Exibe na página de agendamento</p>
+            </div>
+            <span className="text-[9px] font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Portfólio</span>
+          </label>
         </div>
 
         {/* Result feedback */}
@@ -331,13 +342,18 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
                 {result.google === 'ok' ? '✓ Publicado no Google Maps!' : `✗ Google Maps: ${result.google}`}
               </p>
             )}
+            {result.az !== undefined && (
+              <p className={`text-xs font-bold ${result.az === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
+                {result.az === 'ok' ? '✓ Adicionado ao Portfólio!' : `✗ Portfólio: ${result.az}`}
+              </p>
+            )}
           </div>
         )}
 
         {/* Publish button */}
         <button
           onClick={handlePublish}
-          disabled={!file || publishing || (!chWa && !chIg && !chGoogle)}
+          disabled={!file || publishing || (!chWa && !chIg && !chGoogle && !chPortfolio)}
           className="w-full bg-orange-500 text-white py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-black transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {publishing ? (

@@ -16,6 +16,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
   const [whatsapp, setWhatsapp] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
+  const [heroImage, setHeroImage] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -34,6 +35,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
       ]);
       setOperatingHours(settings.operatingHours);
       setWhatsapp(settings.whatsapp || '');
+      setHeroImage((settings as any).heroImage || '');
       setStoreName(tenant?.name || '');
       setCidade(tenant?.cidade || '');
       setEstado(tenant?.estado || '');
@@ -85,7 +87,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
       }
       await Promise.all([
         db.updateTenant(tenantId, tenantUpdates),
-        db.updateSettings(tenantId, { operatingHours, whatsapp })
+        db.updateSettings(tenantId, { operatingHours, whatsapp, heroImage } as any)
       ]);
       alert('Configurações salvas com sucesso!');
     } catch (e: any) {
@@ -160,6 +162,21 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
                 placeholder="Ex: PR"
                 className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm uppercase focus:border-orange-500 transition-all"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Banner da Página (URL da imagem)</label>
+              <input
+                value={heroImage}
+                onChange={e => setHeroImage(e.target.value)}
+                placeholder="https://exemplo.com/minha-imagem.jpg"
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-bold text-xs focus:border-orange-500 transition-all"
+              />
+              {heroImage && (
+                <div className="mt-2 rounded-2xl overflow-hidden border-2 border-slate-100">
+                  <img src={heroImage} alt="Preview" className="w-full h-32 object-cover" />
+                </div>
+              )}
+              <p className="text-[9px] text-slate-400 ml-4">Imagem de fundo da landing page (link público de agendamento)</p>
             </div>
           </div>
         </div>
