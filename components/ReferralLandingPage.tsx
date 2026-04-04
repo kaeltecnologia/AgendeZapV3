@@ -36,75 +36,117 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
     }
   };
 
-  const subtitle = referralName
-    ? `*${referralName}* te indicou para conhecer o melhor sistema de agendamentos do Brasil.`
-    : isCustomerReferral
-      ? 'Um cliente satisfeito indicou você para conhecer o melhor sistema de agendamentos do Brasil.'
-      : 'Você foi indicado para conhecer o melhor sistema de agendamentos do Brasil.';
+  const inputClass = 'w-full mt-1.5 p-4 rounded-xl bg-gray-50 border-2 border-gray-200 text-gray-900 placeholder-gray-400 font-medium outline-none focus:border-orange-500 focus:bg-white transition-all';
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* ── HERO ─────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden" style={{ background: 'linear-gradient(160deg, #4c1d95 0%, #6d28d9 30%, #7c3aed 60%, #8b5cf6 100%)' }}>
-        {/* Decorative circles */}
-        <div className="absolute top-[-80px] right-[-80px] w-64 h-64 rounded-full bg-white/5 blur-2xl" />
-        <div className="absolute bottom-[-60px] left-[-60px] w-48 h-48 rounded-full bg-indigo-400/10 blur-2xl" />
-
-        <div className="relative max-w-4xl mx-auto px-6 py-16 sm:py-24 text-center">
-          <div className="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-3xl flex items-center justify-center text-4xl mx-auto mb-8 shadow-2xl border border-white/20">
-            ✂️
-          </div>
-
-          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-tight mb-4">
-            Você foi convidado para o<br />
-            <span className="italic" style={{ background: 'linear-gradient(90deg, #fbbf24, #f59e0b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              AgendeZap
-            </span>
-          </h1>
-
-          {referralName && (
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-5 py-2 mb-4 border border-white/20">
-              <span className="text-sm text-purple-200">Indicado por</span>
-              <span className="text-sm font-black text-white">{referralName}</span>
-            </div>
-          )}
-
-          <p className="text-base sm:text-lg text-purple-100 max-w-xl mx-auto mb-10 leading-relaxed">
-            {subtitle.replace(/\*/g, '')}
-          </p>
-
+    <div className="min-h-screen bg-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {/* ── NAVBAR ────────────────────────────────────────────── */}
+      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <h1 className="text-xl font-black italic tracking-tight text-gray-900">AgendeZap</h1>
           <button
             onClick={scrollToForm}
-            className="px-10 py-5 bg-white text-purple-700 font-black uppercase tracking-wider rounded-2xl text-sm shadow-2xl hover:shadow-3xl hover:scale-[1.02] transition-all active:scale-[0.98]"
+            className="px-6 py-2.5 bg-orange-500 text-white font-bold rounded-full text-sm hover:bg-orange-600 transition-all shadow-lg shadow-orange-200"
           >
-            Criar Minha Conta Grátis
+            Testar Grátis
           </button>
+        </div>
+      </nav>
 
-          <p className="text-[10px] text-purple-300 mt-4 font-bold">7 dias grátis • Sem cartão de crédito</p>
+      {/* ── REFERRAL BANNER ──────────────────────────────────── */}
+      {(referralName || isCustomerReferral) && (
+        <div className="bg-orange-50 border-b border-orange-100 py-3 px-6 text-center">
+          <p className="text-sm text-orange-800">
+            {referralName ? (
+              <>Você foi indicado por <strong className="font-black">{referralName}</strong></>
+            ) : (
+              <>Um cliente satisfeito indicou você</>
+            )}
+            {' '} — crie sua conta e teste grátis por 7 dias!
+          </p>
+        </div>
+      )}
+
+      {/* ── HERO ─────────────────────────────────────────────── */}
+      <section className="py-16 sm:py-24 px-6">
+        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+          {/* Left — Text */}
+          <div className="flex-1 text-center lg:text-left">
+            <h2 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-black text-gray-900 leading-[1.1] tracking-tight mb-6">
+              Sistema de agendamento pelo WhatsApp para seu negócio
+            </h2>
+            <p className="text-lg text-gray-500 leading-relaxed mb-8 max-w-lg mx-auto lg:mx-0">
+              AgendeZap: sistema completo para barbearias, salões de beleza, manicures, cabeleireiros e esteticistas. Agenda inteligente com IA, relatórios financeiros em tempo real e controle total do seu negócio.
+            </p>
+            <button
+              onClick={scrollToForm}
+              className="px-8 py-4 bg-orange-500 text-white font-black rounded-full text-base hover:bg-orange-600 transition-all shadow-xl shadow-orange-200 hover:shadow-orange-300 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              Testar 7 Dias Grátis
+            </button>
+            <div className="flex items-center justify-center lg:justify-start gap-6 mt-6 text-sm text-gray-500">
+              <span className="flex items-center gap-1.5"><span className="text-green-500">&#10003;</span> Sem complicação</span>
+              <span className="flex items-center gap-1.5"><span className="text-green-500">&#10003;</span> Sem contrato</span>
+              <span className="flex items-center gap-1.5"><span className="text-green-500">&#10003;</span> Tudo pelo WhatsApp</span>
+            </div>
+          </div>
+
+          {/* Right — Mockup cards */}
+          <div className="flex-1 max-w-md w-full space-y-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
+                  <span className="text-green-600 text-lg">&#9993;</span>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-green-600 uppercase tracking-wider">IA AgendeZap</p>
+                  <p className="text-sm font-bold text-gray-800">Agendamento confirmado para Maria às 14:00!</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Faturamento Hoje</p>
+                <span className="text-green-500 text-sm">&#8599;</span>
+              </div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[9px] font-black rounded-full uppercase">Popular</span>
+              </div>
+              <p className="text-3xl font-black text-gray-900">R$ 950,00</p>
+              <p className="text-xs text-gray-400 mt-1">18 Atendimentos · 15 Clientes</p>
+            </div>
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Fiscal</p>
+                <p className="text-sm font-bold text-gray-700">NFS-e emitida</p>
+              </div>
+              <span className="text-xs font-black text-green-600 bg-green-50 px-3 py-1 rounded-full">Automático</span>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* ── BENEFÍCIOS ───────────────────────────────────────── */}
-      <section className="py-16 sm:py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl sm:text-3xl font-black text-center text-slate-800 mb-3">
-            Tudo que você precisa em um só lugar
-          </h2>
-          <p className="text-sm text-slate-400 text-center mb-12 max-w-lg mx-auto">
+      {/* ── RECURSOS ─────────────────────────────────────────── */}
+      <section className="py-16 sm:py-20 px-6 bg-gray-50">
+        <div className="max-w-6xl mx-auto">
+          <h3 className="text-3xl sm:text-4xl font-black text-gray-900 text-center mb-4">
+            Tudo que seu negócio precisa
+          </h3>
+          <p className="text-base text-gray-500 text-center mb-14 max-w-lg mx-auto">
             O sistema completo para transformar seu negócio com inteligência artificial
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { icon: '🤖', title: 'Agendamento com IA', desc: 'Seus clientes agendam pelo WhatsApp com inteligência artificial. 24h por dia, sem precisar atender.' },
-              { icon: '📊', title: 'Dashboard Inteligente', desc: 'Relatórios, métricas e insights em tempo real sobre seu negócio. Tudo num painel visual.' },
+              { icon: '🤖', title: 'Agendamento com IA', desc: 'Seus clientes agendam pelo WhatsApp com IA. 24h por dia, sem precisar atender.' },
+              { icon: '📊', title: 'Dashboard Inteligente', desc: 'Visão geral do seu negócio em tempo real: faturamento, agendamentos e crescimento.' },
               { icon: '💰', title: 'Gestão Financeira', desc: 'Controle de caixa, comandas, folha de pagamento e notas fiscais integradas.' },
-              { icon: '📱', title: 'Marketplace Integrado', desc: 'Sua página de agendamento online pronta para compartilhar. Seus clientes agendam de qualquer lugar.' },
+              { icon: '📱', title: 'Agenda Operacional', desc: 'Visualize todos os agendamentos do dia, filtre por profissional e acompanhe cada atendimento.' },
             ].map((b, i) => (
-              <div key={i} className="bg-slate-50 rounded-2xl p-6 border border-slate-100 hover:border-purple-200 hover:shadow-lg transition-all">
-                <p className="text-3xl mb-3">{b.icon}</p>
-                <h3 className="font-black text-slate-800 mb-2">{b.title}</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">{b.desc}</p>
+              <div key={i} className="bg-white rounded-2xl p-6 border border-gray-100 hover:border-orange-200 hover:shadow-lg transition-all">
+                <p className="text-3xl mb-4">{b.icon}</p>
+                <h4 className="font-black text-gray-900 mb-2 text-lg">{b.title}</h4>
+                <p className="text-sm text-gray-500 leading-relaxed">{b.desc}</p>
               </div>
             ))}
           </div>
@@ -112,8 +154,8 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       </section>
 
       {/* ── SOCIAL PROOF ─────────────────────────────────────── */}
-      <section className="py-12 border-y border-slate-100" style={{ background: 'linear-gradient(180deg, #faf5ff 0%, #f5f3ff 100%)' }}>
-        <div className="max-w-4xl mx-auto px-6">
+      <section className="py-14 px-6 bg-white border-y border-gray-100">
+        <div className="max-w-4xl mx-auto">
           <div className="grid grid-cols-3 gap-4 text-center">
             {[
               { value: '500+', label: 'Estabelecimentos' },
@@ -121,8 +163,8 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
               { value: '4.9 ★', label: 'Avaliação Média' },
             ].map((s, i) => (
               <div key={i}>
-                <p className="text-2xl sm:text-4xl font-black text-purple-600">{s.value}</p>
-                <p className="text-[9px] sm:text-[10px] font-black text-purple-400 uppercase tracking-widest mt-1">{s.label}</p>
+                <p className="text-3xl sm:text-5xl font-black text-gray-900">{s.value}</p>
+                <p className="text-[9px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mt-2">{s.label}</p>
               </div>
             ))}
           </div>
@@ -130,26 +172,33 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       </section>
 
       {/* ── PLANOS ───────────────────────────────────────────── */}
-      <section className="py-16 px-6">
+      <section className="py-16 sm:py-20 px-6 bg-gray-50">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-3">Planos a partir de</h2>
+          <h3 className="text-3xl sm:text-4xl font-black text-gray-900 mb-3">Planos a partir de</h3>
           <div className="flex items-baseline justify-center gap-1 mb-2">
-            <span className="text-lg text-slate-400 font-bold">R$</span>
-            <span className="text-5xl sm:text-6xl font-black text-purple-600">39</span>
-            <span className="text-lg text-slate-400 font-bold">,90/mês</span>
+            <span className="text-xl text-gray-400 font-bold">R$</span>
+            <span className="text-6xl sm:text-7xl font-black text-orange-500">39</span>
+            <span className="text-xl text-gray-400 font-bold">,90/mês</span>
           </div>
-          <p className="text-sm text-slate-400 mb-8">Comece com o plano Start e evolua conforme cresce</p>
+          <p className="text-base text-gray-500 mb-10">Comece com o plano Start e evolua conforme cresce</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-3xl mx-auto">
             {[
-              { name: 'Start', price: '39,90', features: '1 profissional • IA agendamento' },
-              { name: 'Profissional', price: '89,90', features: '3 profissionais • Relatórios' },
-              { name: 'Elite', price: '149,90', features: 'Ilimitado • Assistente Admin' },
+              { name: 'Start', price: '39,90', features: ['1 profissional', 'IA agendamento', 'WhatsApp integrado'] },
+              { name: 'Profissional', price: '89,90', features: ['3 profissionais', 'Relatórios', 'Follow-up automático'] },
+              { name: 'Elite', price: '149,90', features: ['Ilimitado', 'Assistente Admin', 'Todas as features'] },
             ].map((p, i) => (
-              <div key={i} className={`rounded-2xl p-5 border ${i === 1 ? 'border-purple-300 bg-purple-50 shadow-lg scale-105' : 'border-slate-100 bg-white'}`}>
-                <p className={`font-black text-sm uppercase tracking-wider ${i === 1 ? 'text-purple-600' : 'text-slate-600'}`}>{p.name}</p>
-                <p className="text-2xl font-black text-slate-800 mt-1">R${p.price}</p>
-                <p className="text-[10px] text-slate-400 mt-2">{p.features}</p>
+              <div key={i} className={`rounded-2xl p-6 border-2 transition-all ${i === 1 ? 'border-orange-500 bg-white shadow-xl shadow-orange-100 scale-[1.03]' : 'border-gray-200 bg-white hover:border-orange-300'}`}>
+                {i === 1 && <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest mb-2">Mais Popular</p>}
+                <p className="font-black text-lg uppercase tracking-wider text-gray-900">{p.name}</p>
+                <p className="text-3xl font-black text-gray-900 mt-2 mb-4">R${p.price}<span className="text-sm text-gray-400 font-bold">/mês</span></p>
+                <ul className="space-y-2">
+                  {p.features.map((f, j) => (
+                    <li key={j} className="text-sm text-gray-600 flex items-center gap-2">
+                      <span className="text-green-500">&#10003;</span>{f}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
@@ -157,82 +206,88 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       </section>
 
       {/* ── FORM DE CADASTRO ─────────────────────────────────── */}
-      <section ref={formRef} className="py-16 sm:py-20 px-6" style={{ background: 'linear-gradient(160deg, #4c1d95 0%, #6d28d9 30%, #7c3aed 60%, #8b5cf6 100%)' }}>
+      <section ref={formRef} className="py-16 sm:py-20 px-6 bg-white">
         <div className="max-w-md mx-auto">
-          <h2 className="text-2xl sm:text-3xl font-black text-white text-center mb-2">
-            Crie sua conta agora
-          </h2>
-          <p className="text-sm text-purple-200 text-center mb-8">7 dias grátis para testar todas as funcionalidades</p>
+          <div className="text-center mb-8">
+            <h3 className="text-3xl sm:text-4xl font-black text-gray-900 mb-3">
+              Crie sua conta agora
+            </h3>
+            <p className="text-base text-gray-500">7 dias grátis para testar todas as funcionalidades</p>
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-purple-200 ml-1">Nome do Estabelecimento</label>
-              <input
-                type="text"
-                value={storeName}
-                onChange={e => setStoreName(e.target.value)}
-                placeholder="Ex: Barbearia do João"
-                className="w-full mt-1 p-4 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder-purple-300 font-bold outline-none focus:border-white/50 transition-all"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-purple-200 ml-1">WhatsApp do Responsável</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="(11) 99999-9999"
-                className="w-full mt-1 p-4 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder-purple-300 font-bold outline-none focus:border-white/50 transition-all"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-purple-200 ml-1">E-mail de Acesso</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="seu@email.com"
-                className="w-full mt-1 p-4 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder-purple-300 font-bold outline-none focus:border-white/50 transition-all"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-purple-200 ml-1">Senha</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full mt-1 p-4 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder-purple-300 font-bold outline-none focus:border-white/50 transition-all"
-              />
-            </div>
+          <div className="bg-white rounded-3xl border-2 border-gray-100 shadow-2xl shadow-gray-200/50 p-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="text-xs font-bold text-gray-700 ml-1">Nome do Estabelecimento</label>
+                <input
+                  type="text"
+                  value={storeName}
+                  onChange={e => setStoreName(e.target.value)}
+                  placeholder="Ex: Barbearia do João"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 ml-1">WhatsApp do Responsável</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="(11) 99999-9999"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 ml-1">E-mail de Acesso</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="seu@email.com"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 ml-1">Senha</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={inputClass}
+                />
+              </div>
 
-            {error && (
-              <p className="text-[10px] font-black text-center uppercase tracking-widest p-3 rounded-xl bg-red-500/20 text-red-200 border border-red-400/30">
-                {error}
-              </p>
-            )}
+              {error && (
+                <p className="text-xs font-bold text-center p-3 rounded-xl bg-red-50 text-red-600 border border-red-100">
+                  {error}
+                </p>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-2xl transition-all active:scale-[0.98] ${
-                loading ? 'opacity-50 cursor-not-allowed bg-white/50 text-purple-400' : 'bg-white text-purple-700 hover:bg-purple-50 hover:scale-[1.01]'
-              }`}
-            >
-              {loading ? 'Criando sua conta...' : 'Começar Grátis por 7 Dias'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full py-4 rounded-full font-black uppercase tracking-wider text-base shadow-xl transition-all active:scale-[0.98] ${
+                  loading ? 'opacity-50 cursor-not-allowed bg-orange-300 text-white' : 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-200 hover:shadow-orange-300 hover:scale-[1.01]'
+                }`}
+              >
+                {loading ? 'Criando sua conta...' : 'Testar 7 Dias Grátis'}
+              </button>
+            </form>
 
-          <p className="text-[9px] text-purple-300 text-center mt-4">
-            Ao criar sua conta, você concorda com os Termos de Uso e Política de Privacidade.
-          </p>
+            <div className="flex items-center justify-center gap-6 mt-5 text-xs text-gray-400">
+              <span className="flex items-center gap-1"><span className="text-green-500">&#10003;</span> Sem cartão</span>
+              <span className="flex items-center gap-1"><span className="text-green-500">&#10003;</span> Sem contrato</span>
+              <span className="flex items-center gap-1"><span className="text-green-500">&#10003;</span> Cancele quando quiser</span>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* ── FOOTER ───────────────────────────────────────────── */}
-      <footer className="py-8 px-6 text-center bg-slate-50 border-t border-slate-100">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-          AgendeZap © 2026 • Infraestrutura em Nuvem • SaaS Multi-Tenant
+      <footer className="py-8 px-6 text-center bg-gray-50 border-t border-gray-100">
+        <p className="text-xs font-bold text-gray-400">
+          AgendeZap © 2026 · Gestão de Agendamentos Inteligente
         </p>
       </footer>
     </div>
