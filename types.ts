@@ -357,6 +357,7 @@ export interface Tenant {
   monthlyFee: number;
   createdAt: string;
   referred_by?: string;        // tenant_id of the referrer (who invited this tenant)
+  affiliate_link_id?: string;  // affiliate link that brought this tenant
   // ── Central / Marketplace fields ──
   endereco?: string;
   cidade?: string;
@@ -631,4 +632,25 @@ export interface TrendingItem {
   hashtags: string[];           // hashtags da trend
   difficulty: 'facil' | 'medio' | 'avancado';
   contentFormat: string;        // formato (POV, Before/After, Tutorial, etc.)
+}
+
+// ── Affiliate Links ──────────────────────────────────────────────
+export interface AffiliateLink {
+  id: string;
+  name: string;
+  slug: string;
+  phone?: string;
+  email?: string;
+  password?: string;
+  commissionPercent: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface AffiliateLinkStats extends AffiliateLink {
+  totalSignups: number;
+  activeCount: number;
+  pendingCount: number;
+  cancelledCount: number;
+  totalMonthlyRevenue: number;
 }

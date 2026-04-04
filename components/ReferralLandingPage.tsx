@@ -3,10 +3,11 @@ import React, { useState, useRef } from 'react';
 interface Props {
   referralName?: string;
   isCustomerReferral?: boolean;
+  affiliateName?: string;
   onRegister: (storeName: string, email: string, pass: string, phone: string) => Promise<void>;
 }
 
-const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral, onRegister }) => {
+const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral, affiliateName, onRegister }) => {
   const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,11 +53,13 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       </nav>
 
       {/* ── REFERRAL BANNER ──────────────────────────────────── */}
-      {(referralName || isCustomerReferral) && (
+      {(referralName || isCustomerReferral || affiliateName) && (
         <div style={{ background: '#fff7ed', borderBottom: '1px solid #fed7aa', padding: '12px 24px', textAlign: 'center' }}>
           <p style={{ fontSize: 15, color: '#9a3412', margin: 0 }}>
             {referralName ? (
               <>Você foi indicado por <strong style={{ fontWeight: 900 }}>{referralName}</strong></>
+            ) : affiliateName ? (
+              <>Indicação especial de <strong style={{ fontWeight: 900 }}>{affiliateName}</strong></>
             ) : (
               <>Um cliente satisfeito indicou você</>
             )}

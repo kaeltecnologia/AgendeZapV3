@@ -25,7 +25,8 @@ import {
   NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog,
   Review, MarketplaceLead, CentralBooking, CashbackBalance, CustomerAccount, CustomerFavorite,
   MarketplacePost, MarketplacePostComment, MarketplaceStory,
-  parseServiceIds, encodeServiceIds
+  parseServiceIds, encodeServiceIds,
+  AffiliateLink, AffiliateLinkStats
 } from '../types';
 
 // ─── In-Memory TTL Cache ─────────────────────────────────────────────
@@ -231,7 +232,7 @@ class DatabaseService {
     }
   }
 
-  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; phone?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string; referred_by?: string; referred_by_customer?: string }) {
+  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; phone?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string; referred_by?: string; referred_by_customer?: string; affiliate_link_id?: string }) {
     try {
       const payload: any = {
         nome: tenant.name,
@@ -247,6 +248,7 @@ class DatabaseService {
       };
       if (tenant.referred_by) payload.referred_by = tenant.referred_by;
       if (tenant.referred_by_customer) payload.referred_by_customer = tenant.referred_by_customer;
+      if (tenant.affiliate_link_id) payload.affiliate_link_id = tenant.affiliate_link_id;
       const { data, error } = await supabase.from('tenants').insert(payload).select().single();
       if (error) throw error;
       return {
@@ -2450,6 +2452,136 @@ class DatabaseService {
       }));
     } catch (e) {
       console.error('Error fetching all referrals:', e);
+      return [];
+    }
+  }
+
+  // ── Affiliate Links ─────────────────────────────────────────────
+
+  async getAllAffiliateLinks(): Promise<AffiliateLink[]> {
+    try {
+      const { data, error } = await supabase
+        .from('affiliate_links')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map((a: any) => ({
+        id: a.id, name: a.name, slug: a.slug, phone: a.phone || undefined,
+        email: a.email || undefined, password: a.password || undefined,
+        commissionPercent: Number(a.commission_percent),
+        active: a.active, createdAt: a.created_at,
+      }));
+    } catch (e) {
+      console.error('Error fetching affiliate links:', e);
+      return [];
+    }
+  }
+
+  async getAffiliateLinkBySlug(slug: string): Promise<AffiliateLink | null> {
+    try {
+      const { data, error } = await supabase
+        .from('affiliate_links')
+        .select('*')
+        .eq('slug', slug)
+        .maybeSingle();
+      if (error || !data) return null;
+      return {
+        id: data.id, name: data.name, slug: data.slug, phone: data.phone || undefined,
+        email: data.email || undefined, password: data.password || undefined,
+        commissionPercent: Number(data.commission_percent),
+        active: data.active, createdAt: data.created_at,
+      };
+    } catch (e) {
+      console.error('Error fetching affiliate link by slug:', e);
+      return null;
+    }
+  }
+
+  async createAffiliateLink(name: string, commissionPercent: number, customSlug?: string, phone?: string, email?: string, password?: string): Promise<AffiliateLink> {
+    const slug = (customSlug || name).toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40);
+    const payload: any = { name, slug, commission_percent: commissionPercent };
+    if (phone) payload.phone = phone;
+    if (email) payload.email = email;
+    if (password) payload.password = password;
+    const { data, error } = await supabase
+      .from('affiliate_links')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id, name: data.name, slug: data.slug, phone: data.phone || undefined,
+      email: data.email || undefined, password: data.password || undefined,
+      commissionPercent: Number(data.commission_percent),
+      active: data.active, createdAt: data.created_at,
+    };
+  }
+
+  async affiliateLogin(email: string, password: string): Promise<AffiliateLink | null> {
+    try {
+      const { data, error } = await supabase
+        .from('affiliate_links')
+        .select('*')
+        .eq('email', email)
+        .eq('password', password)
+        .eq('active', true)
+        .maybeSingle();
+      if (error || !data) return null;
+      return {
+        id: data.id, name: data.name, slug: data.slug, phone: data.phone || undefined,
+        email: data.email || undefined,
+        commissionPercent: Number(data.commission_percent),
+        active: data.active, createdAt: data.created_at,
+      };
+    } catch { return null; }
+  }
+
+  async updateAffiliateLink(id: string, updates: { name?: string; commissionPercent?: number; active?: boolean; phone?: string; email?: string; password?: string }): Promise<void> {
+    const payload: any = { updated_at: new Date().toISOString() };
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.commissionPercent !== undefined) payload.commission_percent = updates.commissionPercent;
+    if (updates.phone !== undefined) payload.phone = updates.phone;
+    if (updates.email !== undefined) payload.email = updates.email;
+    if (updates.password !== undefined) payload.password = updates.password;
+    if (updates.active !== undefined) payload.active = updates.active;
+    const { error } = await supabase.from('affiliate_links').update(payload).eq('id', id);
+    if (error) throw error;
+  }
+
+  async getAffiliateLinkStats(): Promise<AffiliateLinkStats[]> {
+    try {
+      const links = await this.getAllAffiliateLinks();
+      if (links.length === 0) return [];
+      const { data: tenants, error } = await supabase
+        .from('tenants')
+        .select('affiliate_link_id, status, mensalidade')
+        .not('affiliate_link_id', 'is', null);
+      if (error) throw error;
+      const statsMap: Record<string, { total: number; active: number; pending: number; cancelled: number; revenue: number }> = {};
+      for (const t of (tenants || [])) {
+        const aId = t.affiliate_link_id;
+        if (!statsMap[aId]) statsMap[aId] = { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0 };
+        statsMap[aId].total++;
+        if (t.status === 'ATIVA') {
+          statsMap[aId].active++;
+          statsMap[aId].revenue += Number(t.mensalidade || 0);
+        } else if (t.status === 'CANCELADA' || t.status === 'BLOQUEADA') {
+          statsMap[aId].cancelled++;
+        } else {
+          statsMap[aId].pending++;
+        }
+      }
+      return links.map(link => {
+        const s = statsMap[link.id] || { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0 };
+        return { ...link, totalSignups: s.total, activeCount: s.active, pendingCount: s.pending, cancelledCount: s.cancelled, totalMonthlyRevenue: s.revenue };
+      });
+    } catch (e) {
+      console.error('Error fetching affiliate link stats:', e);
       return [];
     }
   }

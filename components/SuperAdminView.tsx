@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { TenantStatus, Tenant, SupportMessage, ConversationLog } from '../types';
+import { TenantStatus, Tenant, SupportMessage, ConversationLog, AffiliateLinkStats } from '../types';
 import { runWeeklyOptimization, OptimizationResult, runAllTenantsOptimization, AllTenantsResult, EvolutionSnapshot, loadEvolutionHistory } from '../services/optimizerService';
 import { evolutionService } from '../services/evolutionService';
 import { fetchUsageStats, UsageSummary } from '../services/usageTracker';
@@ -725,7 +725,7 @@ END $$;`.trim();
         <div>
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visão global do AgendeZap SaaS</p>
         </div>
-        {tab !== 'sql' && tab !== 'logs' && (
+        {tab === 'clients' && (
           <button
             onClick={() => { setShowNew(true); setSuccessData(null); }}
             className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:bg-black transition-all"
@@ -2641,16 +2641,259 @@ const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, 
   );
 };
 
+// ── Affiliates Sub-Tab ────────────────────────────────────────────────────────
+
+const AffiliatesSubTab: React.FC = () => {
+  const [stats, setStats] = useState<AffiliateLinkStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newSlug, setNewSlug] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newAffEmail, setNewAffEmail] = useState('');
+  const [newAffPass, setNewAffPass] = useState('');
+  const [newCommission, setNewCommission] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPass, setEditPass] = useState('');
+  const [editCommission, setEditCommission] = useState('');
+  const [copied, setCopied] = useState('');
+
+  const reload = async () => {
+    try { setStats(await db.getAffiliateLinkStats()); } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { reload(); }, []);
+
+  const handleCreate = async () => {
+    if (!newName.trim() || !newCommission.trim()) return;
+    setCreating(true);
+    try {
+      await db.createAffiliateLink(newName.trim(), parseFloat(newCommission), newSlug.trim() || undefined, newPhone.trim() || undefined, newAffEmail.trim() || undefined, newAffPass.trim() || undefined);
+      setNewName(''); setNewSlug(''); setNewPhone(''); setNewAffEmail(''); setNewAffPass(''); setNewCommission(''); setShowCreate(false);
+      await reload();
+    } catch (e: any) { alert('Erro ao criar link: ' + (e.message || '')); }
+    setCreating(false);
+  };
+
+  const handleUpdate = async (id: string) => {
+    try {
+      await db.updateAffiliateLink(id, {
+        name: editName.trim() || undefined,
+        phone: editPhone.trim(),
+        email: editEmail.trim() || undefined,
+        password: editPass.trim() || undefined,
+        commissionPercent: editCommission ? parseFloat(editCommission) : undefined,
+      });
+      setEditingId(null);
+      await reload();
+    } catch (e: any) { alert('Erro ao atualizar: ' + (e.message || '')); }
+  };
+
+  const handleToggleActive = async (id: string, currentActive: boolean) => {
+    try { await db.updateAffiliateLink(id, { active: !currentActive }); await reload(); } catch {}
+  };
+
+  const handleCopy = (slug: string) => {
+    navigator.clipboard.writeText(`https://www.agendezap.com/?aff=${slug}`);
+    setCopied(slug);
+    setTimeout(() => setCopied(''), 2000);
+  };
+
+  const filtered = stats.filter(a => {
+    const q = search.toLowerCase();
+    return !q || a.name.toLowerCase().includes(q) || a.slug.toLowerCase().includes(q);
+  });
+
+  const totalSignups = stats.reduce((s, a) => s + a.totalSignups, 0);
+  const totalActive = stats.reduce((s, a) => s + a.activeCount, 0);
+  const totalRevenue = stats.reduce((s, a) => s + a.totalMonthlyRevenue, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Links Ativos</p>
+          <p className="text-2xl font-black">{stats.filter(a => a.active).length}</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-4">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Cadastros</p>
+          <p className="text-2xl font-black">{totalSignups}</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-4">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ativos Pagando</p>
+          <p className="text-2xl font-black text-green-600">{totalActive}</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-4">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">MRR Afiliados</p>
+          <p className="text-2xl font-black text-orange-500">R${totalRevenue.toFixed(2)}</p>
+        </div>
+      </div>
+
+      {/* Create button + search */}
+      <div className="flex items-center gap-3">
+        <button onClick={() => setShowCreate(!showCreate)}
+          className="px-5 py-2.5 bg-orange-500 text-white text-[10px] font-black uppercase tracking-wider rounded-xl hover:bg-orange-600 transition-all">
+          {showCreate ? 'Cancelar' : '+ Gerar Novo Link'}
+        </button>
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar afiliado..."
+          className="flex-1 border-2 border-slate-100 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <div className="bg-orange-50 rounded-2xl border border-orange-200 p-5 space-y-3 animate-fadeIn">
+          <p className="text-xs font-black text-orange-700 uppercase tracking-wider">Novo Link de Afiliado</p>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <input type="text" placeholder="Nome do afiliado" value={newName}
+              onChange={e => setNewName(e.target.value)}
+              className="border-2 border-orange-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+            <input type="text" placeholder="Slug do link (ex: promo2026)" value={newSlug}
+              onChange={e => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+              className="border-2 border-orange-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+            <input type="tel" placeholder="WhatsApp (5511999999999)" value={newPhone}
+              onChange={e => setNewPhone(e.target.value.replace(/\D/g, ''))}
+              className="border-2 border-orange-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+            <input type="number" placeholder="Comissao %" value={newCommission}
+              onChange={e => setNewCommission(e.target.value)} step="0.5" min="0" max="100"
+              className="border-2 border-orange-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <input type="email" placeholder="Email de login do afiliado" value={newAffEmail}
+              onChange={e => setNewAffEmail(e.target.value)}
+              className="border-2 border-orange-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+            <input type="text" placeholder="Senha de acesso" value={newAffPass}
+              onChange={e => setNewAffPass(e.target.value)}
+              className="border-2 border-orange-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+            <button onClick={handleCreate} disabled={creating}
+              className="px-5 py-2.5 bg-black text-white text-[10px] font-black uppercase tracking-wider rounded-xl hover:bg-slate-800 disabled:opacity-50 transition-all">
+              {creating ? 'Criando...' : 'Criar Link'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Affiliate table */}
+      {loading ? <p className="text-sm text-slate-400 font-bold">Carregando...</p> : (
+        <div className="bg-white rounded-3xl border-2 border-slate-100 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-slate-50">
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Afiliado</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Link</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">WhatsApp</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Login</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissao</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cadastros</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Ativos</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Pendentes</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cancelados</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">MRR</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Acoes</th>
+            </tr></thead>
+            <tbody>
+              {filtered.map(a => (
+                <tr key={a.id} className="border-t border-slate-50 hover:bg-slate-50/50">
+                  <td className="p-4 font-bold">
+                    {editingId === a.id ? (
+                      <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                        className="border-2 border-slate-200 rounded-lg p-1.5 text-sm w-32 focus:outline-none focus:border-orange-400" />
+                    ) : (
+                      <span className={!a.active ? 'line-through text-slate-400' : ''}>{a.name}</span>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    <button onClick={() => handleCopy(a.slug)}
+                      className={`text-[8px] font-black px-2 py-1 rounded-full uppercase transition-all ${
+                        copied === a.slug ? 'bg-green-50 text-green-600' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                      }`}>
+                      {copied === a.slug ? 'Copiado!' : `?aff=${a.slug} (copiar)`}
+                    </button>
+                  </td>
+                  <td className="p-4">
+                    {editingId === a.id ? (
+                      <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value.replace(/\D/g, ''))}
+                        placeholder="5511999999999"
+                        className="border-2 border-slate-200 rounded-lg p-1.5 text-sm w-28 focus:outline-none focus:border-orange-400" />
+                    ) : (
+                      <span className="text-xs text-slate-500 font-mono">{a.phone || '-'}</span>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    {editingId === a.id ? (
+                      <div className="flex flex-col gap-1">
+                        <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)}
+                          placeholder="Email"
+                          className="border-2 border-slate-200 rounded-lg p-1.5 text-sm w-32 focus:outline-none focus:border-orange-400" />
+                        <input type="text" value={editPass} onChange={e => setEditPass(e.target.value)}
+                          placeholder="Nova senha"
+                          className="border-2 border-slate-200 rounded-lg p-1.5 text-sm w-32 focus:outline-none focus:border-orange-400" />
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-500">{a.email || '-'}</span>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    {editingId === a.id ? (
+                      <input type="number" value={editCommission} onChange={e => setEditCommission(e.target.value)}
+                        className="border-2 border-slate-200 rounded-lg p-1.5 text-sm w-16 focus:outline-none focus:border-orange-400" step="0.5" />
+                    ) : (
+                      <span className="font-bold text-orange-600">{a.commissionPercent}%</span>
+                    )}
+                  </td>
+                  <td className="p-4 font-mono">{a.totalSignups}</td>
+                  <td className="p-4"><span className="text-[8px] font-black px-2 py-1 rounded-full bg-green-50 text-green-600">{a.activeCount}</span></td>
+                  <td className="p-4"><span className="text-[8px] font-black px-2 py-1 rounded-full bg-yellow-50 text-yellow-600">{a.pendingCount}</span></td>
+                  <td className="p-4"><span className="text-[8px] font-black px-2 py-1 rounded-full bg-red-50 text-red-600">{a.cancelledCount}</span></td>
+                  <td className="p-4 font-mono font-bold">R${a.totalMonthlyRevenue.toFixed(2)}</td>
+                  <td className="p-4">
+                    <div className="flex gap-1">
+                      {editingId === a.id ? (
+                        <>
+                          <button onClick={() => handleUpdate(a.id)}
+                            className="text-[8px] font-black px-2 py-1 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition-all">Salvar</button>
+                          <button onClick={() => setEditingId(null)}
+                            className="text-[8px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all">Cancelar</button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => { setEditingId(a.id); setEditName(a.name); setEditPhone(a.phone || ''); setEditEmail(a.email || ''); setEditPass(''); setEditCommission(String(a.commissionPercent)); }}
+                            className="text-[8px] font-black px-2 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all">Editar</button>
+                          <button onClick={() => handleToggleActive(a.id, a.active)}
+                            className={`text-[8px] font-black px-2 py-1 rounded-full transition-all ${a.active ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
+                            {a.active ? 'Desativar' : 'Ativar'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <p className="p-8 text-center text-slate-400 font-bold text-sm">Nenhum afiliado encontrado. Clique em "+ Gerar Novo Link" para criar.</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Leads & Indicações Tab ────────────────────────────────────────────────────
 
 const LeadsTab: React.FC = () => {
-  const [subTab, setSubTab] = useState<'leads' | 'indicacoes' | 'convites'>('leads');
+  const [subTab, setSubTab] = useState<'leads' | 'indicacoes' | 'afiliados' | 'convites'>('leads');
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-1 w-fit">
+      <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-1 w-fit flex-wrap">
         {([
           { key: 'leads' as const, label: 'Leads Marketplace' },
           { key: 'indicacoes' as const, label: 'Indicacoes' },
+          { key: 'afiliados' as const, label: 'Afiliados' },
           { key: 'convites' as const, label: 'Convites Demo' },
         ]).map(t => (
           <button key={t.key} onClick={() => setSubTab(t.key)}
@@ -2661,6 +2904,7 @@ const LeadsTab: React.FC = () => {
       </div>
       {subTab === 'leads' && <LeadsSubTab />}
       {subTab === 'indicacoes' && <ReferralsSubTab />}
+      {subTab === 'afiliados' && <AffiliatesSubTab />}
       {subTab === 'convites' && <InvitesSubTab />}
     </div>
   );

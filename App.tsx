@@ -39,11 +39,12 @@ const MarketplacePreview = lazy(() => import('./components/MarketplacePreview'))
 const SocialMidiaView = lazy(() => import('./components/SocialMidiaView'));
 const IndicacoesView = lazy(() => import('./components/IndicacoesView'));
 const ReferralLandingPage = lazy(() => import('./components/ReferralLandingPage'));
+const AffiliateDashboard = lazy(() => import('./components/AffiliateDashboard'));
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
 import { evolutionService } from './services/evolutionService';
-import { TenantStatus, AppointmentStatus } from './types';
+import { TenantStatus, AppointmentStatus, AffiliateLink } from './types';
 import { sendClientArrivedNotification } from './services/notificationService';
 import PlanGate from './components/PlanGate';
 import PlanUpgradeModal from './components/PlanUpgradeModal';
@@ -82,7 +83,7 @@ enum View {
   INDICACOES = 'INDICACOES',
 }
 
-type Role = 'TENANT' | 'SUPERADMIN';
+type Role = 'TENANT' | 'SUPERADMIN' | 'AFFILIATE';
 type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'wa_central' | 'testes';
 
 const SESSION_KEY = 'agz_session';
@@ -124,6 +125,7 @@ const App: React.FC = () => {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState<Role>('TENANT');
+  const [affiliateData, setAffiliateData] = useState<AffiliateLink | null>(null);
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [tenantId, setTenantId] = useState<string>('');
   const [tenantSlug, setTenantSlug] = useState<string>('');
@@ -148,10 +150,20 @@ const App: React.FC = () => {
   const [referralSlug] = useState(() => new URLSearchParams(window.location.search).get('ref') || '');
   const [referralCustomerPhone] = useState(() => new URLSearchParams(window.location.search).get('ref_c') || '');
   const [referralName, setReferralName] = useState('');
+  // Affiliate: capture ?aff=<slug> from URL
+  const [affiliateSlug] = useState(() => new URLSearchParams(window.location.search).get('aff') || '');
+  const [affiliateName, setAffiliateName] = useState('');
+  const [affiliateLinkId, setAffiliateLinkId] = useState('');
   useEffect(() => {
     if (!referralSlug) return;
     db.getTenantBySlug(referralSlug).then(t => { if (t?.name) setReferralName(t.name); });
   }, [referralSlug]);
+  useEffect(() => {
+    if (!affiliateSlug) return;
+    db.getAffiliateLinkBySlug(affiliateSlug).then(aff => {
+      if (aff && aff.active) { setAffiliateName(aff.name); setAffiliateLinkId(aff.id); }
+    });
+  }, [affiliateSlug]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
   }, []);
@@ -451,6 +463,17 @@ const App: React.FC = () => {
         return;
       }
 
+      // Try affiliate login first
+      if (userEmail && userPassword) {
+        const aff = await db.affiliateLogin(userEmail, userPassword);
+        if (aff) {
+          setRole('AFFILIATE');
+          setAffiliateData(aff);
+          setIsAuthenticated(true);
+          return;
+        }
+      }
+
       if (userSlug) {
         // Use secure RPC for tenant login (password validated server-side)
         try {
@@ -542,7 +565,8 @@ const App: React.FC = () => {
         status: TenantStatus.PENDING_PAYMENT,
         monthlyFee: 0,
         referred_by: referredById,
-        referred_by_customer: referralCustomerPhone || undefined
+        referred_by_customer: referralCustomerPhone || undefined,
+        affiliate_link_id: affiliateLinkId || undefined
       });
 
       if (newTenant) {
@@ -631,12 +655,16 @@ const App: React.FC = () => {
   }
 
   // Referral landing page (public, before auth check)
-  if (!isAuthenticated && (referralSlug || referralCustomerPhone)) {
-    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-purple-600 rounded-full animate-spin" /></div>}><ReferralLandingPage referralName={referralName} isCustomerReferral={!!referralCustomerPhone} onRegister={handleRegister} /></Suspense>;
+  if (!isAuthenticated && (referralSlug || referralCustomerPhone || affiliateSlug)) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-purple-600 rounded-full animate-spin" /></div>}><ReferralLandingPage referralName={referralName} isCustomerReferral={!!referralCustomerPhone} affiliateName={affiliateName} onRegister={handleRegister} /></Suspense>;
   }
 
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} onRegister={handleRegister} />;
+  }
+
+  if (role === 'AFFILIATE' && affiliateData) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900"><div className="w-10 h-10 border-4 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>}><AffiliateDashboard affiliate={affiliateData} onLogout={handleLogout} /></Suspense>;
   }
 
   const renderView = () => {

@@ -328,8 +328,10 @@ Deno.serve(async (_req) => {
         let anyAgendaSent = false;
         let anyRatingSent = false;
 
-        // ── 1. AVISO (check-in diário) ────────────────────────────────
+        // ── 1. AVISO (check-in diário) — lotes de 5 a cada 5 min ─────
         if (settings.avisoModes.length > 0) {
+          // Collect all eligible aviso entries first
+          const avisoQueue: { appt: any; cust: any; mode: any }[] = [];
           for (const appt of allAppts) {
             if (appt.status !== 'PENDING' && appt.status !== 'CONFIRMED') continue;
             const apptDate = appt.startTime?.slice(0, 10);
@@ -348,6 +350,24 @@ Deno.serve(async (_req) => {
             const fixedHHMM = mode.fixedTime || '08:00';
             if (nowHHMM < fixedHHMM) continue;
 
+            avisoQueue.push({ appt, cust, mode });
+          }
+
+          // Send in batches of 5, each batch delayed by 5 minutes after fixedTime
+          const BATCH_SIZE = 5;
+          const BATCH_INTERVAL_MIN = 5;
+          for (let i = 0; i < avisoQueue.length; i++) {
+            const batchIdx = Math.floor(i / BATCH_SIZE);
+            const delayMin = batchIdx * BATCH_INTERVAL_MIN;
+            const { appt, cust, mode } = avisoQueue[i];
+
+            // Calculate if this batch's time has arrived
+            const fixedHHMM = mode.fixedTime || '08:00';
+            const [fH, fM] = fixedHHMM.split(':').map(Number);
+            const batchMinutes = fH * 60 + fM + delayMin;
+            const batchHHMM = `${String(Math.floor(batchMinutes / 60)).padStart(2, '0')}:${String(batchMinutes % 60).padStart(2, '0')}`;
+            if (nowHHMM < batchHHMM) continue;
+
             // Skip if agent has unanswered bot message
             if (await hasUnansweredBotMsg(tenantId, cust.phone)) continue;
 
@@ -363,10 +383,12 @@ Deno.serve(async (_req) => {
 
             const sent = await sendWhatsApp(instance, cust.phone, msg);
             if (sent) {
+              const sentKey = `aviso::${appt.id}`;
+              const custDayKey = `aviso::cust::${cust.id}::${nowDate}`;
               newFollowUpSent[sentKey] = nowDate;
               newFollowUpSent[custDayKey] = nowDate;
               anyFollowUpSent = true;
-              console.log(`[Aviso] ${tenant.nome} → ${cust.name}`);
+              console.log(`[Aviso] ${tenant.nome} → ${cust.name} (lote ${batchIdx + 1})`);
               await registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
                 apptId: appt.id, apptTime, serviceName: svc?.name || '',
                 clientName: cust.name, professionalId: appt.professional_id,
@@ -537,10 +559,17 @@ Deno.serve(async (_req) => {
               'Olá {nome}! 😊\n\nComo foi seu *{servico}* hoje? Dê uma nota de *0 a 10* para nos ajudar a melhorar! ⭐';
             const msgTemplate = settings.ratingMessage || defaultRatingMsg;
 
+            const RATING_DELAY_MS = 2 * 60 * 60 * 1000; // 2 hours after appointment end
+
             for (const appt of allAppts) {
               if (appt.status !== 'FINISHED') continue;
               const apptDate = appt.startTime?.slice(0, 10);
               if (!apptDate || apptDate < sinceDate) continue;
+
+              // Wait 2h after the appointment's scheduled end before sending rating
+              const apptStart = new Date(appt.startTime).getTime();
+              const apptEnd = apptStart + (appt.durationMinutes || 30) * 60 * 1000;
+              if (nowMs < apptEnd + RATING_DELAY_MS) continue;
 
               const sentKey = `rating::${appt.id}`;
               if (newRatingSent[sentKey]) continue;
@@ -1115,6 +1144,45 @@ Deno.serve(async (_req) => {
     } catch (e: any) {
       errors.push(`cust-referral-paid: ${e.message}`);
       console.error('[CustReferral Paid] Job error:', e.message);
+    }
+
+    // ── 13. NOTIFY AFFILIATE ON NEW SIGNUP ──────────────────────────────
+    try {
+      const oneDayAgo3 = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: affSignups } = await supabase
+        .from('tenants')
+        .select('id, nome, affiliate_link_id, status, plan')
+        .not('affiliate_link_id', 'is', null)
+        .gt('created_at', oneDayAgo3);
+
+      for (const as_ of (affSignups || [])) {
+        try {
+          if (!(await claimMessage(`aff_signup::${as_.id}`))) continue;
+
+          const { data: affLink } = await supabase
+            .from('affiliate_links')
+            .select('name, phone, commission_percent')
+            .eq('id', as_.affiliate_link_id)
+            .maybeSingle();
+
+          if (!affLink?.phone) continue;
+
+          const msg = `🔔 *Nova venda pelo seu link!*\n\n` +
+            `*${as_.nome}* acabou de se cadastrar no AgendeZap!\n\n` +
+            `📋 Plano: *${as_.plan || 'START'}*\n` +
+            `📊 Status: *${as_.status}*\n` +
+            `💰 Sua comissão: *${affLink.commission_percent}%*\n\n` +
+            `Obrigado pela parceria! 🤝`;
+
+          await sendWhatsApp(centralInstance, affLink.phone, msg);
+          console.log(`[Affiliate] ${affLink.name} notified → ${as_.nome}`);
+        } catch (e: any) {
+          console.error(`[Affiliate] Error ${as_.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      errors.push(`affiliate-notify: ${e.message}`);
+      console.error('[Affiliate] Job error:', e.message);
     }
 
   } catch (e: any) {
