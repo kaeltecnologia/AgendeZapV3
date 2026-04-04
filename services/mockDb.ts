@@ -1069,14 +1069,18 @@ class DatabaseService {
         _trendingContentDate: newS.trendingContentDate !== undefined ? newS.trendingContentDate : (curr.trendingContentDate ?? null),
       };
 
+      // Only include operating_hours if explicitly passed in updates (prevent accidental reset)
+      const upsertData: any = {
+        tenant_id: tenantId,
+        follow_up: followUpWithMeta,
+        ai_active: newS.aiActive,
+        theme_color: newS.themeColor,
+      };
+      if ('operatingHours' in updates) {
+        upsertData.operating_hours = newS.operatingHours;
+      }
       const { error } = await supabase.from('tenant_settings').upsert(
-        {
-          tenant_id: tenantId,
-          follow_up: followUpWithMeta,
-          operating_hours: newS.operatingHours,
-          ai_active: newS.aiActive,
-          theme_color: newS.themeColor
-        },
+        upsertData,
         { onConflict: 'tenant_id' }  // required to avoid duplicate key error
       );
       if (error) throw error;
