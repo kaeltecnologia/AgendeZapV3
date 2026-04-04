@@ -111,7 +111,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
   const [contactSearch, setContactSearch] = useState('');
 
   // AI pause per lead + waitlist alert
-  const [customerData, setCustomerData] = useState<Record<string, { aiPaused?: boolean; waitlistAlert?: boolean }>>({});
+  const [customerData, setCustomerData] = useState<Record<string, { aiPaused?: boolean; waitlistAlert?: boolean; humanTakeoverAt?: number }>>({});
   const [togglingAi, setTogglingAi] = useState(false);
 
   // Audio transcription
@@ -591,7 +591,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
       const current = settings.customerData || {};
       const custEntry = current[key] || {};
       const newPaused = !custEntry.aiPaused;
-      const updated = { ...current, [key]: { ...custEntry, aiPaused: newPaused } };
+      const updated = { ...current, [key]: { ...custEntry, aiPaused: newPaused, humanTakeoverAt: newPaused ? custEntry.humanTakeoverAt : undefined } };
       await db.updateSettings(tenantId, { customerData: updated });
       setCustomerData(updated);
     } finally {
@@ -1001,20 +1001,27 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                     {(() => {
                       const cust = findCustomerByPhone(selectedConv.phone);
                       const key = cust ? cust.id : `phone:${selectedConv.phone}`;
-                      const isPaused = !!customerData[key]?.aiPaused;
+                      const entry = customerData[key];
+                      const isPaused = !!entry?.aiPaused;
+                      const isHumanTakeover = isPaused && !!entry?.humanTakeoverAt;
+                      const takeoverHoursAgo = isHumanTakeover ? Math.floor((Date.now() - entry.humanTakeoverAt!) / 3600000) : 0;
                       return (
                         <button
                           onClick={() => toggleAiForLead(selectedConv.phone)}
                           disabled={togglingAi}
-                          title={isPaused ? 'IA pausada — clique para reativar' : 'IA ativa — clique para pausar'}
+                          title={isHumanTakeover
+                            ? `Humano assumiu há ${takeoverHoursAgo}h — clique para devolver à IA`
+                            : isPaused ? 'IA pausada — clique para reativar' : 'IA ativa — clique para pausar'}
                           className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 ${
-                            isPaused
+                            isHumanTakeover
+                              ? 'bg-yellow-50 text-yellow-600 border-2 border-yellow-300 hover:bg-yellow-100'
+                              : isPaused
                               ? 'bg-red-50 text-red-500 border-2 border-red-200 hover:bg-red-100'
                               : 'bg-green-50 text-green-600 border-2 border-green-200 hover:bg-green-100'
                           }`}
                         >
-                          <span className="text-sm">{isPaused ? '🤖❌' : '🤖✅'}</span>
-                          {isPaused ? 'IA pausada' : 'IA ativa'}
+                          <span className="text-sm">{isHumanTakeover ? '👤' : isPaused ? '🤖❌' : '🤖✅'}</span>
+                          {isHumanTakeover ? `Humano (${takeoverHoursAgo}h)` : isPaused ? 'IA pausada' : 'IA ativa'}
                         </button>
                       );
                     })()}

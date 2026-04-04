@@ -496,6 +496,14 @@ ${profSelectionSection}
 - "O que tiver", "qualquer horário", "tanto faz" = liste os horários disponíveis e pergunte qual prefere. NÃO pergunte "manhã ou tarde?", apenas liste.
 - "Quero todos" referente a horários = NÃO é "marcar todos", é "ver todos". Liste-os.
 
+## Serviço Não Encontrado
+Se o cliente pedir um serviço que NÃO existe na lista de Serviços, diga que não encontrou e LISTE todos os serviços disponíveis de forma numerada. Exemplo:
+"Não encontrei esse serviço, mas temos:
+1. Alongamento (60min, R$80)
+2. Blindagem (45min, R$50)
+3. Manicure (30min, R$35)
+Qual desses você gostaria?"
+
 ## Armadilhas -- NUNCA faça
 - "Quero cortar amanhã" -> NÃO agende sem profissional + horário confirmados.
 - "Tem horário?" sem dia E sem Data no contexto -> assuma HOJE, mostre horários + "Qual serviço?"
@@ -652,7 +660,7 @@ ${slotsContent}
 ## Contexto Atual
 ${known.length > 0 ? known.join('\n') : 'Nenhuma informação coletada ainda.'}
 ${data.pendingConfirm ? '\nRESUMO JÁ MOSTRADO -- se cliente afirmar ("sim","ok","pode","beleza","bora","fechou","isso","confirma") -> "confirmed":true OBRIGATÓRIO.' : ''}
-${shouldGreet ? `\n## Primeira Saudação do Dia\nCumprimente com "${brasiliaGreeting}!" de forma calorosa e apresente o estabelecimento: "${tenantName}".\nPergunte apenas "Como posso te ajudar?" -- nada mais.\nNÃO liste serviços, profissionais, preços nem horários na saudação.\nExemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} Como posso te ajudar?"\n` : ''}${isFirst && !shouldGreet ? `\n## Primeira Mensagem\nO cliente já enviou uma solicitação com contexto. NÃO cumprimente ("Boa noite! Seja bem-vindo..."), vá direto ao ponto. Processe tudo que o cliente informou sem perguntar de novo. Se já houver Data e Preferência de horário no CONTEXTO ATUAL, confirme-os.\n` : ''}
+${shouldGreet ? `\n## Primeira Saudação do Dia\nCumprimente com "${brasiliaGreeting}!" de forma calorosa, apresente o estabelecimento "${tenantName}" e informe que este é um atendimento automatizado para melhor atendê-lo.\nPergunte "Como posso te ajudar?".\nNÃO liste serviços, profissionais, preços nem horários na saudação.\nExemplo: "${brasiliaGreeting}! Seja bem-vindo(a) ao ${tenantName}! Este é nosso atendimento automatizado para melhor te atender. Como posso te ajudar?"\n` : ''}${isFirst && !shouldGreet ? `\n## Primeira Mensagem\nO cliente já enviou uma solicitação com contexto. NÃO cumprimente ("Boa noite! Seja bem-vindo..."), vá direto ao ponto. Processe tudo que o cliente informou sem perguntar de novo. Se já houver Data e Preferência de horário no CONTEXTO ATUAL, confirme-os.\n` : ''}
 ## Histórico (mais recente no final)
 ${histStr}`;
 
@@ -3758,6 +3766,22 @@ Deno.serve(async (req) => {
           msg.pushName || '', msg.messageType || msg.type || 'text', true,
           { key: msg.key, message: msg.message, messageType: msg.messageType }
         ));
+
+        // ── Human takeover: humano enviou msg → pausar IA neste chat por 24h ──
+        EdgeRuntime.waitUntil((async () => {
+          try {
+            const phoneSuffix = _outPhone.replace(/\D/g, '').slice(-10);
+            const { data: custRows } = await supabase.from('customers')
+              .select('id').eq('tenant_id', tenant.id).like('telefone', `%${phoneSuffix}`).limit(1);
+            const custKey = custRows?.[0]?.id || `phone:${_outPhone}`;
+            const cd = { ...settings.customerData };
+            cd[custKey] = { ...(cd[custKey] || {}), aiPaused: true, humanTakeoverAt: Date.now() };
+            const fuUp = { ...(settingsRow?.follow_up || {}), _customerData: cd };
+            await supabase.from('tenant_settings').update({ follow_up: fuUp }).eq('tenant_id', tenant.id);
+            console.log(`[Webhook] Human takeover set for ${custKey}`);
+          } catch (e) { console.error('[Webhook] human takeover error:', e); }
+        })());
+
         continue; // Don't process outgoing with AI
       }
 
@@ -3939,6 +3963,39 @@ Deno.serve(async (req) => {
         if (!settings.aiLeadActive && !existingCust) continue;
         resolvedCustomerId = existingCust?.id || null;
       }
+      // ── Human takeover auto-expire (24h) ──────────────────────────
+      const _htKey = resolvedCustomerId || `phone:${phone}`;
+      const _htEntry = settings.customerData[_htKey];
+      if (_htEntry?.aiPaused && _htEntry?.humanTakeoverAt) {
+        const _htAge = Date.now() - (_htEntry.humanTakeoverAt as number);
+        if (_htAge > 24 * 60 * 60 * 1000) {
+          // 24h expired — auto-reactivate AI
+          settings.customerData[_htKey] = { ..._htEntry, aiPaused: false, humanTakeoverAt: undefined };
+          EdgeRuntime.waitUntil((async () => {
+            try {
+              const fuUp = { ...(settingsRow?.follow_up || {}), _customerData: settings.customerData };
+              await supabase.from('tenant_settings').update({ follow_up: fuUp }).eq('tenant_id', tenant.id);
+              console.log(`[Webhook] Human takeover expired for ${_htKey} — AI reactivated`);
+            } catch (e) { console.error('[Webhook] takeover expire error:', e); }
+          })());
+        }
+      }
+      // Also check the other key format
+      const _htKey2 = _htKey === `phone:${phone}` && resolvedCustomerId ? resolvedCustomerId : `phone:${phone}`;
+      const _htEntry2 = settings.customerData[_htKey2];
+      if (_htEntry2?.aiPaused && _htEntry2?.humanTakeoverAt) {
+        const _htAge2 = Date.now() - (_htEntry2.humanTakeoverAt as number);
+        if (_htAge2 > 24 * 60 * 60 * 1000) {
+          settings.customerData[_htKey2] = { ..._htEntry2, aiPaused: false, humanTakeoverAt: undefined };
+          EdgeRuntime.waitUntil((async () => {
+            try {
+              const fuUp = { ...(settingsRow?.follow_up || {}), _customerData: settings.customerData };
+              await supabase.from('tenant_settings').update({ follow_up: fuUp }).eq('tenant_id', tenant.id);
+            } catch (e) { console.error('[Webhook] takeover expire2 error:', e); }
+          })());
+        }
+      }
+
       if (resolvedCustomerId && settings.customerData[resolvedCustomerId]?.aiPaused) continue;
       // Also check phone-based pause key (for leads not yet in customers table)
       if (settings.customerData[`phone:${phone}`]?.aiPaused) continue;
