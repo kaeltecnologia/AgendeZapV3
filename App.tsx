@@ -330,10 +330,13 @@ const App: React.FC = () => {
     }
   }, [darkMode]);
 
-  // Manicure/Pedicure: default to light mode (unless user explicitly chose dark)
+  // Force theme by nicho: Manicure/Pedicure → always light, others → always dark
   useEffect(() => {
-    if (tenantNicho === 'Manicure/Pedicure' && localStorage.getItem('agz_dark_explicit') !== '1') {
+    if (!tenantNicho) return;
+    if (tenantNicho === 'Manicure/Pedicure') {
       setDarkMode(false);
+    } else {
+      setDarkMode(true);
     }
   }, [tenantNicho]);
 
@@ -565,7 +568,6 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem('agz_dark_explicit');
     setIsAuthenticated(false);
     setRole('TENANT');
     setTenantId('');
@@ -946,7 +948,7 @@ const App: React.FC = () => {
               </button>
             )}
             <button
-              onClick={() => { localStorage.setItem('agz_dark_explicit', '1'); setDarkMode(d => !d); }}
+              onClick={() => setDarkMode(d => !d)}
               title={darkMode ? 'Modo Claro' : 'Modo Escuro'}
               className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-slate-400 hover:bg-slate-100 transition-all"
             >
