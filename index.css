@@ -65,8 +65,8 @@ input, textarea, select {
 }
 input::placeholder, textarea::placeholder { color: #9090a8 !important; }
 input:focus, textarea:focus, select:focus {
-  border-color: #f97316 !important;
-  box-shadow: 0 0 0 3px rgba(249,115,22,0.10) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-focus-shadow) !important;
 }
 
 /* Shadows — steel tones (sem inset glow) */
@@ -111,11 +111,11 @@ input:focus, textarea:focus, select:focus {
   box-shadow: none !important;
 }
 .bg-orange-500 {
-  background: linear-gradient(180deg, #fb8c3c 0%, #f97316 40%, #e86b10 100%) !important;
+  background: linear-gradient(180deg, var(--accent-light) 0%, var(--accent) 40%, var(--accent-dark) 100%) !important;
   box-shadow: none !important;
 }
 .bg-orange-600 {
-  background: linear-gradient(180deg, #f97316 0%, #ea6c0a 40%, #d85f05 100%) !important;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 40%, var(--accent-darker) 100%) !important;
 }
 
 /* Tables — metallic header */
@@ -189,6 +189,199 @@ button:active:not(:disabled) { transform: scale(0.93) !important; }
 @keyframes countUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .animate-countUp { animation: countUp 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
 
+/* ── Theme Accent Variables ───────────────────────────── */
+:root {
+  --accent: #f97316;
+  --accent-light: #fb8c3c;
+  --accent-dark: #e86b10;
+  --accent-darker: #d85f05;
+  --accent-glow: rgba(249,115,22,0.15);
+  --accent-glow-strong: rgba(249,115,22,0.30);
+  --accent-subtle: rgba(249,115,22,0.08);
+  --accent-subtle-hover: rgba(249,115,22,0.15);
+  --accent-subtle-hover2: rgba(249,115,22,0.18);
+  --accent-border: rgba(249,115,22,0.25);
+  --accent-border-strong: rgba(249,115,22,0.40);
+  --accent-focus-shadow: rgba(249,115,22,0.10);
+  --sidebar-bg: linear-gradient(180deg, #32324a 0%, #28283e 15%, #1e1e30 50%, #222238 85%, #2a2a40 100%);
+  --sidebar-border: #3a3a52;
+  --sidebar-bg-dark: linear-gradient(180deg, #22223a 0%, #18182e 15%, #101022 50%, #141430 85%, #1a1a34 100%);
+  --sidebar-border-dark: #2a2a40;
+}
+
+/* ── Tema Manicure/Pedicure (Rosa Feminino + Bege Pastel) ── */
+.theme-manicure {
+  --accent: #ec4899;
+  --accent-light: #f472b6;
+  --accent-dark: #db2777;
+  --accent-darker: #be185d;
+  --accent-glow: rgba(236,72,153,0.15);
+  --accent-glow-strong: rgba(236,72,153,0.30);
+  --accent-subtle: rgba(236,72,153,0.08);
+  --accent-subtle-hover: rgba(236,72,153,0.15);
+  --accent-subtle-hover2: rgba(236,72,153,0.18);
+  --accent-border: rgba(236,72,153,0.25);
+  --accent-border-strong: rgba(236,72,153,0.40);
+  --accent-focus-shadow: rgba(236,72,153,0.10);
+  --sidebar-bg: linear-gradient(180deg, #fdf2f8 0%, #fce7f3 15%, #fbcfe8 50%, #fce7f3 85%, #fdf2f8 100%);
+  --sidebar-border: #f9a8d4;
+  --sidebar-bg-dark: linear-gradient(180deg, #3a2234 0%, #2e182a 15%, #201020 50%, #241428 85%, #2a1a2c 100%);
+  --sidebar-border-dark: #3a2234;
+}
+
+/* Fundo pastel bege claro */
+.theme-manicure body,
+body:has(.theme-manicure) {
+  background: linear-gradient(160deg, #f5ede4 0%, #f0e8df 25%, #f7f0e8 50%, #f2ebe3 75%, #f5efe6 100%) !important;
+}
+.theme-manicure .bg-slate-50,
+.theme-manicure .bg-slate-50\/30,
+.theme-manicure .bg-slate-50\/50 {
+  background: linear-gradient(145deg, #faf6f1 0%, #f5ede4 50%, #f7f0e8 100%) !important;
+}
+.theme-manicure .bg-white {
+  background: linear-gradient(135deg, #fffcf9 0%, #faf6f1 20%, #fdfaf7 40%, #f8f3ed 55%, #fdfaf6 70%, #faf5ef 100%) !important;
+}
+.theme-manicure .bg-slate-100 {
+  background: linear-gradient(145deg, #f0e8df 0%, #ebe3da 50%, #eee6dd 100%) !important;
+}
+.theme-manicure .bg-slate-200 { background-color: #e6ddd4 !important; }
+.theme-manicure .border-slate-50  { border-color: #ede5dc !important; }
+.theme-manicure .border-slate-100 { border-color: #e2d8ce !important; }
+.theme-manicure .border-slate-200 { border-color: #d8cec4 !important; }
+.theme-manicure .border-slate-300 { border-color: #ccc0b4 !important; }
+.theme-manicure .hover\:bg-slate-50:hover {
+  background: linear-gradient(135deg, #f7f0e8 0%, #f0e8df 40%, #faf4ec 60%, #f2ebe3 100%) !important;
+}
+.theme-manicure .hover\:bg-slate-100:hover {
+  background: linear-gradient(135deg, #ece4da 0%, #e6ddd4 40%, #f0e8e0 60%, #e8e0d6 100%) !important;
+}
+.theme-manicure .bg-orange-50 {
+  background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%) !important;
+}
+.theme-manicure input, .theme-manicure textarea, .theme-manicure select {
+  background: linear-gradient(180deg, #fdfaf7 0%, #f8f3ed 100%) !important;
+  border-color: #e2d8ce !important;
+}
+.theme-manicure th {
+  background: linear-gradient(180deg, #faf6f1 0%, #f0e8df 100%) !important;
+}
+.theme-manicure [class*="rounded-2xl"]:not(.agz-sidebar *),
+.theme-manicure [class*="rounded-3xl"]:not(.agz-sidebar *),
+.theme-manicure [class*="rounded-\["]:not(.agz-sidebar *) {
+  border-color: rgba(210,195,180,0.5);
+}
+
+/* ── Manicure Light: sidebar claro, botões e textos rosa ── */
+
+/* Sidebar text → dark rose (light mode only — bg is light pink) */
+html:not(.dark) .theme-manicure .agz-sidebar h1 { color: #831843 !important; }
+html:not(.dark) .theme-manicure .agz-sidebar .text-black { color: #831843 !important; }
+html:not(.dark) .theme-manicure .agz-sidebar .text-white { color: #831843 !important; }
+html:not(.dark) .theme-manicure .agz-sidebar .text-slate-700 { color: #9d174d !important; }
+html:not(.dark) .theme-manicure .agz-sidebar .text-slate-500 { color: #be185d !important; }
+html:not(.dark) .theme-manicure .agz-sidebar .text-slate-400 { color: #d4669a !important; }
+html:not(.dark) .theme-manicure .agz-sidebar .text-slate-300 { color: #e88ab5 !important; }
+html:not(.dark) .theme-manicure .agz-sidebar p { color: #be185d !important; }
+
+/* Sidebar inputs → cream on light pink */
+html:not(.dark) .theme-manicure .agz-sidebar input,
+html:not(.dark) .theme-manicure .agz-sidebar textarea,
+html:not(.dark) .theme-manicure .agz-sidebar select {
+  background: rgba(255,255,255,0.6) !important;
+  color: #831843 !important;
+  border-color: #f9a8d4 !important;
+}
+
+/* Sidebar bg-white → rose translucent */
+html:not(.dark) .theme-manicure .agz-sidebar .bg-white {
+  background: rgba(255,255,255,0.5) !important;
+}
+
+/* Sidebar active item → pink glow on light bg */
+html:not(.dark) .theme-manicure .agz-sidebar .bg-black {
+  background-color: rgba(236,72,153,0.18) !important;
+  box-shadow: inset 0 0 0 1px rgba(236,72,153,0.30) !important;
+}
+html:not(.dark) .theme-manicure .agz-sidebar .bg-black .text-white { color: #831843 !important; }
+html:not(.dark) .theme-manicure .agz-sidebar .bg-black .text-orange-500 { color: #be185d !important; }
+
+/* Sidebar borders → pink tint */
+html:not(.dark) .theme-manicure .agz-sidebar .border-t,
+html:not(.dark) .theme-manicure .agz-sidebar .border-slate-100,
+html:not(.dark) .theme-manicure .agz-sidebar .border-slate-200 {
+  border-color: rgba(236,72,153,0.15) !important;
+}
+
+/* Sidebar footer → pink tint */
+html:not(.dark) .theme-manicure .agz-sidebar .bg-slate-50\/50 {
+  background-color: rgba(236,72,153,0.06) !important;
+}
+
+/* Sidebar hover → pink glow */
+html:not(.dark) .theme-manicure .agz-sidebar button:not(.bg-orange-500):not(.bg-orange-50):not(.bg-white):hover {
+  background-color: rgba(236,72,153,0.10) !important;
+  color: #831843 !important;
+}
+html:not(.dark) .theme-manicure .agz-sidebar button:hover span { color: #831843 !important; }
+
+/* Sidebar box-shadow → rose glow */
+html:not(.dark) .theme-manicure .agz-sidebar {
+  box-shadow: inset -1px 0 0 rgba(236,72,153,0.06),
+              inset 0 1px 0 rgba(255,255,255,0.5),
+              4px 0 20px rgba(190,24,93,0.06) !important;
+}
+
+/* Sidebar scrollbar → pink */
+html:not(.dark) .theme-manicure .agz-sidebar .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #f9a8d4 !important;
+}
+
+/* .bg-black buttons → pink gradient (fora do sidebar) */
+.theme-manicure .bg-black:not(.agz-sidebar .bg-black) {
+  background: linear-gradient(180deg, #f472b6 0%, #ec4899 40%, #db2777 100%) !important;
+}
+
+/* Textos → tons de rosa (legível) */
+.theme-manicure .text-black { color: #831843 !important; }
+.theme-manicure .text-slate-900 { color: #881337 !important; }
+.theme-manicure .text-slate-800 { color: #9d174d !important; }
+.theme-manicure .text-slate-700 { color: #a8356a !important; }
+.theme-manicure .text-slate-600 { color: #be4d80 !important; }
+.theme-manicure .text-slate-500 { color: #d4669a !important; }
+.theme-manicure .text-slate-400 { color: #e88ab5 !important; }
+.theme-manicure .text-slate-300 { color: #f0aac8 !important; }
+
+/* text-orange → accent pink */
+.theme-manicure .text-orange-500 { color: var(--accent) !important; }
+.theme-manicure .text-orange-600 { color: var(--accent-dark) !important; }
+.theme-manicure .text-orange-400 { color: var(--accent-light) !important; }
+.theme-manicure .hover\:text-orange-600:hover { color: var(--accent-dark) !important; }
+
+/* hover bg-orange → accent pink */
+.theme-manicure .hover\:bg-orange-50:hover { background-color: var(--accent-subtle) !important; }
+.theme-manicure .hover\:bg-orange-100:hover { background-color: var(--accent-subtle-hover) !important; }
+.theme-manicure .hover\:bg-orange-600:hover {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 40%, var(--accent-darker) 100%) !important;
+}
+
+/* border-orange → accent pink */
+.theme-manicure .border-orange-200 { border-color: var(--accent-border) !important; }
+.theme-manicure .border-orange-400 { border-color: var(--accent-border-strong) !important; }
+.theme-manicure .border-orange-500 { border-color: var(--accent) !important; }
+
+/* ring focus → accent pink */
+.theme-manicure .ring-orange-500,
+.theme-manicure .focus\:ring-orange-500:focus { --tw-ring-color: var(--accent) !important; }
+
+/* Sombras → rose-tinted */
+.theme-manicure .shadow-xl { box-shadow: 0 8px 30px rgba(190,24,93,0.08) !important; }
+.theme-manicure .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(190,24,93,0.12) !important; }
+.theme-manicure .shadow-lg { box-shadow: 0 4px 20px rgba(190,24,93,0.06) !important; }
+.theme-manicure .shadow-md { box-shadow: 0 2px 12px rgba(190,24,93,0.05) !important; }
+.theme-manicure .shadow-sm { box-shadow: 0 1px 4px rgba(190,24,93,0.04) !important; }
+.theme-manicure .shadow-slate-100\/50 { box-shadow: 0 4px 24px 0 rgba(190,24,93,0.06) !important; }
+
 /* ── Chat Wallpaper ───────────────────────────────────── */
 :root {
   --bubble-in-bg: #ffffff;
@@ -238,17 +431,15 @@ button:active:not(:disabled) { transform: scale(0.93) !important; }
 }
 
 .agz-sidebar {
-  background: linear-gradient(180deg,
-    #32324a 0%, #28283e 15%, #1e1e30 50%, #222238 85%, #2a2a40 100%) !important;
-  border-color: #3a3a52 !important;
+  background: var(--sidebar-bg) !important;
+  border-color: var(--sidebar-border) !important;
   box-shadow: inset -1px 0 0 rgba(255,255,255,0.04),
               inset 0 1px 0 rgba(255,255,255,0.08),
               4px 0 20px rgba(20,20,40,0.15) !important;
 }
 .dark .agz-sidebar {
-  background: linear-gradient(180deg,
-    #22223a 0%, #18182e 15%, #101022 50%, #141430 85%, #1a1a34 100%) !important;
-  border-color: #2a2a40 !important;
+  background: var(--sidebar-bg-dark) !important;
+  border-color: var(--sidebar-border-dark) !important;
   box-shadow: inset -1px 0 0 rgba(255,255,255,0.03),
               inset 0 1px 0 rgba(255,255,255,0.05),
               4px 0 20px rgba(0,0,0,0.3) !important;
@@ -269,14 +460,14 @@ button:active:not(:disabled) { transform: scale(0.93) !important; }
 }
 .agz-sidebar button:hover span           { color: #ffffff !important; }
 
-/* Item ativo (bg-black → laranja glow) */
+/* Item ativo (bg-black → accent glow) */
 .agz-sidebar .bg-black {
-  background-color: rgba(249,115,22,0.15) !important;
-  box-shadow: inset 0 0 0 1px rgba(249,115,22,0.30) !important;
+  background-color: var(--accent-glow) !important;
+  box-shadow: inset 0 0 0 1px var(--accent-glow-strong) !important;
   transform: none !important;
 }
 .agz-sidebar .bg-black .text-white       { color: #ffffff !important; }
-.agz-sidebar .bg-black .text-orange-500  { color: #f97316 !important; }
+.agz-sidebar .bg-black .text-orange-500  { color: var(--accent) !important; }
 
 /* Borders dentro do sidebar */
 .agz-sidebar .border-t,
@@ -287,15 +478,15 @@ button:active:not(:disabled) { transform: scale(0.93) !important; }
 .agz-sidebar .bg-slate-50\/50            { background-color: rgba(0,0,0,0.20) !important; }
 
 /* Convidar Parceiro / Download App */
-.agz-sidebar .bg-orange-50              { background-color: rgba(249,115,22,0.08) !important; }
-.agz-sidebar .hover\:bg-orange-50:hover { background-color: rgba(249,115,22,0.15) !important; }
-.agz-sidebar .hover\:bg-orange-100:hover { background-color: rgba(249,115,22,0.18) !important; }
-.agz-sidebar .border-orange-200         { border-color: rgba(249,115,22,0.25) !important; }
-.agz-sidebar .border-orange-400         { border-color: rgba(249,115,22,0.40) !important; }
+.agz-sidebar .bg-orange-50              { background-color: var(--accent-subtle) !important; }
+.agz-sidebar .hover\:bg-orange-50:hover { background-color: var(--accent-subtle-hover) !important; }
+.agz-sidebar .hover\:bg-orange-100:hover { background-color: var(--accent-subtle-hover2) !important; }
+.agz-sidebar .border-orange-200         { border-color: var(--accent-border) !important; }
+.agz-sidebar .border-orange-400         { border-color: var(--accent-border-strong) !important; }
 
-/* AGZ logo laranja mantido */
-.agz-sidebar .text-orange-500           { color: #f97316 !important; }
-.agz-sidebar .bg-orange-500             { background: #f97316 !important; }
+/* AGZ logo accent */
+.agz-sidebar .text-orange-500           { color: var(--accent) !important; }
+.agz-sidebar .bg-orange-500             { background: var(--accent) !important; }
 
 /* Scrollbar sidebar */
 .agz-sidebar .custom-scrollbar::-webkit-scrollbar-thumb { background: #3a3a50 !important; }
@@ -378,10 +569,10 @@ button:active:not(:disabled) { transform: scale(0.93) !important; }
 .dark input::placeholder, .dark textarea::placeholder { color: #484860 !important; }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #2a2a3c; }
 
-/* Laranja mantido em dark */
-.dark .bg-orange-500 { background: linear-gradient(180deg, #fb8c3c 0%, #f97316 40%, #e86b10 100%) !important; }
-.dark .bg-orange-600 { background: linear-gradient(180deg, #f97316 0%, #ea6c0a 40%, #d85f05 100%) !important; }
-.dark .text-orange-500 { color: #f97316 !important; }
+/* Accent mantido em dark */
+.dark .bg-orange-500 { background: linear-gradient(180deg, var(--accent-light) 0%, var(--accent) 40%, var(--accent-dark) 100%) !important; }
+.dark .bg-orange-600 { background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 40%, var(--accent-darker) 100%) !important; }
+.dark .text-orange-500 { color: var(--accent) !important; }
 
 /* ── Mobile Responsiveness ────────────────────────────── */
 @media (max-width: 640px) {

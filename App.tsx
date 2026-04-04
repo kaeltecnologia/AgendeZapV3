@@ -129,7 +129,12 @@ const App: React.FC = () => {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('dashboard');
   const [tenantPlan, setTenantPlan] = useState<string>('START');
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('agz_dark') !== '0');
+  const [tenantNicho, setTenantNicho] = useState<string>('');
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('agz_dark');
+    if (saved !== null) return saved === '1';
+    return true; // default dark
+  });
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
   const UPDATE_KEY = 'agz_update_seen_v3';
   const [showUpdateNotice, setShowUpdateNotice] = useState(() => !localStorage.getItem('agz_update_seen_v3'));
@@ -288,11 +293,11 @@ const App: React.FC = () => {
     if (isAuthenticated) {
       const payload = {
         isAuthenticated, role, tenantId, tenantSlug, tenantName,
-        tenantPlan, isImpersonating, currentView, superAdminTab,
+        tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab,
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
     }
-  }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, isImpersonating, currentView, superAdminTab]);
+  }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab]);
 
   // Close sidebar on mobile after any nav action
   const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
@@ -313,6 +318,13 @@ const App: React.FC = () => {
       localStorage.setItem('agz_dark', '0');
     }
   }, [darkMode]);
+
+  // Manicure/Pedicure: default to light mode (unless user explicitly chose dark)
+  useEffect(() => {
+    if (tenantNicho === 'Manicure/Pedicure' && localStorage.getItem('agz_dark_explicit') !== '1') {
+      setDarkMode(false);
+    }
+  }, [tenantNicho]);
 
   // ── Trial check — runs every minute; auto-disables AI when expired ───
   useEffect(() => {
@@ -347,6 +359,7 @@ const App: React.FC = () => {
       try {
         const tenant = await db.getTenant(tenantId);
         setPendingPayment(tenant?.status === TenantStatus.PENDING_PAYMENT);
+        if (tenant?.nicho) setTenantNicho(tenant.nicho);
       } catch { /* ignore */ }
     };
     checkPayment();
@@ -370,6 +383,7 @@ const App: React.FC = () => {
             setTenantSlug(s.tenantSlug || '');
             setTenantName(s.tenantName || '');
             setTenantPlan(s.tenantPlan || 'START');
+            if (s.tenantNicho) setTenantNicho(s.tenantNicho);
             setIsImpersonating(s.isImpersonating || false);
             setCurrentView(s.currentView || View.DASHBOARD);
             setSuperAdminTab(s.superAdminTab || 'dashboard');
@@ -437,8 +451,9 @@ const App: React.FC = () => {
             setTenantPlan(data.plan || 'START');
             setRole('TENANT');
             setIsAuthenticated(true);
-            // Check if tenant still needs to pay
+            // Check if tenant still needs to pay + load nicho
             const loginTenant = await db.getTenant(data.id);
+            if (loginTenant?.nicho) setTenantNicho(loginTenant.nicho);
             if (loginTenant?.status === TenantStatus.PENDING_PAYMENT) {
               setPendingPayment(true);
             }
@@ -467,6 +482,7 @@ const App: React.FC = () => {
         setTenantSlug(myTenant.slug);
         setTenantName(myTenant.name);
         setTenantPlan(myTenant.plan || 'START');
+        if (myTenant.nicho) setTenantNicho(myTenant.nicho);
         setRole('TENANT');
         setIsAuthenticated(true);
         if (myTenant.status === TenantStatus.PENDING_PAYMENT) {
@@ -511,6 +527,7 @@ const App: React.FC = () => {
         setTenantSlug(newTenant.slug);
         setTenantName(newTenant.name);
         setTenantPlan(newTenant.plan || 'START');
+        if (newTenant.nicho) setTenantNicho(newTenant.nicho);
         setRole('TENANT');
         setIsAuthenticated(true);
         setPendingPayment(true);
@@ -523,16 +540,18 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem('agz_dark_explicit');
     setIsAuthenticated(false);
     setRole('TENANT');
     setTenantId('');
     setTenantSlug('');
+    setTenantNicho('');
     setIsImpersonating(false);
     setPendingPayment(false);
     setCurrentView(View.DASHBOARD);
   };
 
-  const handleImpersonate = (id: string, name: string, slug: string, plan?: string) => {
+  const handleImpersonate = async (id: string, name: string, slug: string, plan?: string) => {
     setTenantId(id);
     setTenantSlug(slug);
     setTenantName(name);
@@ -540,6 +559,7 @@ const App: React.FC = () => {
     setRole('TENANT');
     setIsImpersonating(true);
     setCurrentView(View.DASHBOARD);
+    try { const t = await db.getTenant(id); if (t?.nicho) setTenantNicho(t.nicho); else setTenantNicho(''); } catch { setTenantNicho(''); }
   };
 
   const handleGatedNav = (view: View, feature: FeatureKey) => {
@@ -555,6 +575,7 @@ const App: React.FC = () => {
     setIsImpersonating(false);
     setTenantId('');
     setTenantSlug('');
+    setTenantNicho('');
     setCurrentView(View.SUPERADMIN_DASHBOARD);
   };
 
@@ -660,10 +681,16 @@ const App: React.FC = () => {
 
   const dbOnline = db.isOnline();
 
+  // Nicho → CSS theme class
+  const nichoThemeMap: Record<string, string> = {
+    'Manicure/Pedicure': 'theme-manicure',
+  };
+  const themeClass = nichoThemeMap[tenantNicho] || '';
+
   return (
     // ✅ CORREÇÃO: sem overflow nem transform aqui — deixa fixed dos modais escapar para a viewport
     <ToastContext.Provider value={showToast}>
-    <div className="flex h-screen bg-slate-50/30">
+    <div className={`flex h-screen bg-slate-50/30 ${themeClass}`}>
       <Toast toasts={toasts} onRemove={removeToast} />
       {role === 'TENANT' && !pendingPayment && <WhatsNew />}
       {tenantId && hasFeature(tenantPlan, 'agenteIA') && (
@@ -887,7 +914,7 @@ const App: React.FC = () => {
               </button>
             )}
             <button
-              onClick={() => setDarkMode(d => !d)}
+              onClick={() => { localStorage.setItem('agz_dark_explicit', '1'); setDarkMode(d => !d); }}
               title={darkMode ? 'Modo Claro' : 'Modo Escuro'}
               className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-slate-400 hover:bg-slate-100 transition-all"
             >

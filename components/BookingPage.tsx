@@ -55,7 +55,8 @@ const MiniCalendar: React.FC<{
   value: string;
   onChange: (d: string) => void;
   activeDays: Set<number>; // 0–6 days that have operating hours
-}> = ({ value, onChange, activeDays }) => {
+  accent?: { sel: string; today: string; hov: string };
+}> = ({ value, onChange, activeDays, accent }) => {
   const today = todayISO();
   const maxDate = isoOffset(60);
   const [view, setView] = useState(() => {
@@ -114,12 +115,12 @@ const MiniCalendar: React.FC<{
               disabled={isDisabled}
               className={`h-9 w-full rounded-xl text-xs font-black transition-all ${
                 isSelected
-                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
+                  ? (accent?.sel || 'bg-orange-500 text-white shadow-lg shadow-orange-200')
                   : isToday && !isDisabled
-                  ? 'bg-orange-50 text-orange-500 border border-orange-200'
+                  ? (accent?.today || 'bg-orange-50 text-orange-500 border border-orange-200')
                   : isDisabled
                   ? 'text-slate-200 cursor-not-allowed'
-                  : 'text-black hover:bg-orange-50 hover:text-orange-500'
+                  : (accent?.hov || 'text-black hover:bg-orange-50 hover:text-orange-500')
               }`}
             >
               {parseInt(iso.split('-')[2])}
@@ -367,33 +368,103 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
   const stepOrder: Step[] = ['SERVICE', 'DATE', 'BARBER', 'PERIOD', 'TIME', 'INFO'];
   const stepIdx = stepOrder.indexOf(step);
 
-  // Metallic dark brown styles
-  const copperText: React.CSSProperties = {
-    background: 'linear-gradient(180deg, #8B5E3C 0%, #D4A574 20%, #6B3A2A 40%, #C4956A 60%, #8B5E3C 80%, #D4A574 100%)',
+  // ── Theme by niche ───────────────────────────────────────────────
+  const isManicure = (tenant?.nicho || '') === 'Manicure/Pedicure';
+  const $ = isManicure ? {
+    pageBg: 'from-pink-600 via-pink-500 to-pink-400',
+    deco: 'bg-pink-500/10',
+    headBg: 'bg-pink-500', headBarBg: 'bg-pink-600', headBarFill: 'bg-pink-500',
+    headLabel: 'text-pink-400',
+    t9: 'text-pink-900', t7: 'text-pink-700', t6: 'text-pink-600',
+    t5: 'text-pink-500', t4: 'text-pink-400', t3: 'text-pink-300',
+    ght6: 'group-hover:text-pink-600',
+    b1: 'border-pink-100', b2: 'border-pink-200', b3: 'border-pink-300', b5: 'border-pink-500',
+    hb4: 'hover:border-pink-400', hb5: 'hover:border-pink-500',
+    bg5: 'bg-pink-500', bg6: 'bg-pink-600', bg50: 'bg-pink-50', bg1: 'bg-pink-100', bg2: 'bg-pink-200',
+    hbg2: 'hover:bg-pink-200', hbg5: 'hover:bg-pink-500', hbg6: 'hover:bg-pink-600', hbg50: 'hover:bg-pink-50',
+    hFooter: 'hover:bg-pink-700',
+    s2: 'shadow-pink-200/30', s3: 'shadow-pink-300', s9: 'shadow-pink-900/30',
+    hs2: 'hover:shadow-pink-200/50', hs3: 'hover:shadow-pink-300/30',
+    fb5: 'focus:border-pink-500', ph: 'placeholder-pink-300',
+    avGrad: 'from-pink-400 to-pink-600',
+    spinB: 'border-pink-200', spinT: 'border-t-pink-500',
+    rkMed: 'bg-pink-500/20 text-pink-700', rkDef: 'bg-pink-500/10 text-pink-600',
+    starLit: 'text-pink-400', starDim: 'text-pink-900',
+    calSel: 'bg-pink-500 text-white shadow-lg shadow-pink-200',
+    calToday: 'bg-pink-50 text-pink-500 border border-pink-200',
+    calHov: 'hover:bg-pink-50 hover:text-pink-500',
+    svcHov: 'hover:border-pink-400 hover:shadow-lg hover:shadow-pink-300/30',
+    wizCard: 'border-pink-200 shadow-lg shadow-pink-200/30',
+  } : {
+    pageBg: 'from-blue-900 via-blue-700 to-blue-600',
+    deco: 'bg-blue-500/10',
+    headBg: 'bg-blue-800', headBarBg: 'bg-blue-900', headBarFill: 'bg-orange-500',
+    headLabel: 'text-blue-300',
+    t9: 'text-gray-900', t7: 'text-gray-700', t6: 'text-orange-600',
+    t5: 'text-orange-500', t4: 'text-gray-500', t3: 'text-gray-400',
+    ght6: 'group-hover:text-orange-600',
+    b1: 'border-slate-100', b2: 'border-slate-200', b3: 'border-slate-300', b5: 'border-orange-500',
+    hb4: 'hover:border-orange-400', hb5: 'hover:border-orange-500',
+    bg5: 'bg-orange-500', bg6: 'bg-orange-600', bg50: 'bg-orange-50', bg1: 'bg-orange-100', bg2: 'bg-slate-200',
+    hbg2: 'hover:bg-orange-200', hbg5: 'hover:bg-orange-500', hbg6: 'hover:bg-orange-600', hbg50: 'hover:bg-orange-50',
+    hFooter: 'hover:bg-blue-800',
+    s2: 'shadow-slate-200/30', s3: 'shadow-orange-300', s9: 'shadow-slate-900/30',
+    hs2: 'hover:shadow-orange-200/50', hs3: 'hover:shadow-orange-300/30',
+    fb5: 'focus:border-orange-500', ph: 'placeholder-slate-400',
+    avGrad: 'from-orange-400 to-orange-600',
+    spinB: 'border-slate-200', spinT: 'border-t-orange-500',
+    rkMed: 'bg-orange-500/20 text-orange-700', rkDef: 'bg-orange-500/10 text-orange-600',
+    starLit: 'text-orange-400', starDim: 'text-slate-300',
+    calSel: 'bg-orange-500 text-white shadow-lg shadow-orange-200',
+    calToday: 'bg-orange-50 text-orange-500 border border-orange-200',
+    calHov: 'hover:bg-orange-50 hover:text-orange-500',
+    svcHov: 'hover:border-orange-400 hover:shadow-lg hover:shadow-orange-300/30',
+    wizCard: 'border-slate-200 shadow-lg shadow-slate-200/30',
+  };
+
+  // Metallic text styles (themed)
+  const copperText: React.CSSProperties = isManicure ? {
+    background: 'linear-gradient(180deg, #ec4899 0%, #f9a8d4 20%, #db2777 40%, #f472b6 60%, #ec4899 80%, #f9a8d4 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+    filter: 'drop-shadow(0 2px 1px rgba(190,24,93,0.3))',
+  } : {
+    background: 'linear-gradient(180deg, #f97316 0%, #fdba74 20%, #ea580c 40%, #fb923c 60%, #f97316 80%, #fdba74 100%)',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     backgroundClip: 'text',
     filter: 'drop-shadow(0 2px 1px rgba(0,0,0,0.3))',
   };
-  const text3d: React.CSSProperties = {
-    textShadow: '0 1px 0 #6B3A2A, 0 2px 0 #5C3324, 0 3px 0 #4D2B1E, 0 4px 6px rgba(0,0,0,0.3)',
+  const text3d: React.CSSProperties = isManicure ? {
+    textShadow: '0 1px 0 #be185d, 0 2px 0 #9d174d, 0 3px 0 #831843, 0 4px 6px rgba(131,24,67,0.3)',
+  } : {
+    textShadow: '0 1px 0 #c2410c, 0 2px 0 #9a3412, 0 3px 0 #7c2d12, 0 4px 6px rgba(0,0,0,0.3)',
   };
-  const btn3d: React.CSSProperties = {
+  const btn3d: React.CSSProperties = isManicure ? {
     background: 'linear-gradient(180deg, #d63384 0%, #c2185b 40%, #ad1457 60%, #880e4f 100%)',
     boxShadow: '0 4px 0 #6a0032, 0 6px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
-    transform: 'translateY(-2px)',
-    transition: 'all 0.15s',
+    transform: 'translateY(-2px)', transition: 'all 0.15s',
+  } : {
+    background: 'linear-gradient(180deg, #fb923c 0%, #f97316 40%, #ea580c 60%, #c2410c 100%)',
+    boxShadow: '0 4px 0 #9a3412, 0 6px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+    transform: 'translateY(-2px)', transition: 'all 0.15s',
   };
-  const bronzeRing: React.CSSProperties = {
-    background: 'linear-gradient(135deg, #5C3324, #8B5E3C, #D4A574, #8B5E3C, #5C3324, #D4A574, #5C3324)',
+  const bronzeRing: React.CSSProperties = isManicure ? {
+    background: 'linear-gradient(135deg, #be185d, #ec4899, #f9a8d4, #ec4899, #be185d, #f9a8d4, #be185d)',
+    padding: '5px',
+    borderRadius: '9999px',
+    boxShadow: '0 4px 12px rgba(190,24,93,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+  } : {
+    background: 'linear-gradient(135deg, #c2410c, #f97316, #fdba74, #f97316, #c2410c, #fdba74, #c2410c)',
     padding: '5px',
     borderRadius: '9999px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
   };
-  const dividerColor = '#8B5E3C';
+  const dividerColor = isManicure ? '#ec4899' : '#f97316';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-pink-600 via-pink-500 to-pink-400 relative" ref={topRef}>
+    <div className={`min-h-screen bg-gradient-to-b ${$.pageBg} relative`} ref={topRef}>
       {/* Leather texture overlay */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
@@ -401,15 +472,15 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
 
       {/* ── STICKY HEADER (wizard steps only) ───────────────────── */}
       {step !== 'SERVICE' && (
-        <div className="bg-pink-500 text-white sticky top-0 z-50">
+        <div className={`${$.headBg} text-white sticky top-0 z-50`}>
           <div className="max-w-lg mx-auto px-6 py-4 flex items-center justify-between">
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-pink-400">{tenant?.name}</p>
+              <p className={`text-[9px] font-black uppercase tracking-[0.3em] ${$.headLabel}`}>{tenant?.name}</p>
             </div>
           </div>
           {step !== 'SUCCESS' && (
-            <div className="h-1 bg-pink-600">
-              <div className="h-full bg-pink-500 transition-all duration-500" style={{ width: `${((stepIdx + 1) / stepOrder.length) * 100}%` }} />
+            <div className={`h-1 ${$.headBarBg}`}>
+              <div className={`h-full ${$.headBarFill} transition-all duration-500`} style={{ width: `${((stepIdx + 1) / stepOrder.length) * 100}%` }} />
             </div>
           )}
         </div>
@@ -425,15 +496,15 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
           <div className="relative min-h-[70vh] flex items-center justify-center overflow-hidden">
             {/* Decorative elements */}
             <div className="absolute top-[-20%] right-[-10%] w-[60vw] h-[60vw] bg-white/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-[-30%] left-[-15%] w-[50vw] h-[50vw] bg-pink-500/10 rounded-full blur-3xl" />
+            <div className={`absolute bottom-[-30%] left-[-15%] w-[50vw] h-[50vw] ${$.deco} rounded-full blur-3xl`} />
             <div className="absolute top-10 left-10 w-2 h-2 bg-white/30 rounded-full" />
             <div className="absolute top-20 right-16 w-1.5 h-1.5 bg-white/20 rounded-full" />
             <div className="absolute bottom-32 left-20 w-1 h-1 bg-white/20 rounded-full" />
 
             <div className="relative z-10 text-center px-6 max-w-lg mx-auto">
               {/* Avatar with bronze frame */}
-              <div className="w-40 h-40 mx-auto mb-6 shadow-2xl shadow-pink-900/30" style={bronzeRing}>
-                <div className="w-full h-full rounded-full bg-gradient-to-br from-pink-400 to-pink-600 flex items-center justify-center text-white text-5xl font-black overflow-hidden">
+              <div className={`w-40 h-40 mx-auto mb-6 shadow-2xl ${$.s9}`} style={bronzeRing}>
+                <div className={`w-full h-full rounded-full bg-gradient-to-br ${$.avGrad} flex items-center justify-center text-white text-5xl font-black overflow-hidden`}>
                   {((settings as any)?.logoImage || (settings as any)?.heroImage)
                     ? <img src={(settings as any).logoImage || (settings as any).heroImage} alt="" className="w-full h-full object-cover" />
                     : (tenant?.name || 'E').charAt(0).toUpperCase()
@@ -458,23 +529,36 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 }
                 return (
                   <div className="relative">
-                    <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tight leading-none" style={{
-                      background: 'linear-gradient(180deg, #F5DEB3 0%, #E8C48A 20%, #D4A574 40%, #E8C48A 55%, #F5DEB3 70%, rgba(255,255,255,0.8) 80%, #F5DEB3 85%, #E8C48A 100%)',
+                    <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tight leading-none" style={isManicure ? {
+                      background: 'linear-gradient(180deg, #fce7f3 0%, #f9a8d4 20%, #f472b6 40%, #f9a8d4 55%, #fce7f3 70%, rgba(255,255,255,0.8) 80%, #fce7f3 85%, #f9a8d4 100%)',
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                       backgroundClip: 'text',
                       textShadow: 'none',
-                      filter: 'drop-shadow(0 2px 2px rgba(80,40,20,0.5))',
+                      filter: 'drop-shadow(0 2px 2px rgba(190,24,93,0.5))',
+                    } : {
+                      background: 'linear-gradient(180deg, #ffffff 0%, #e0e7ff 20%, #bfdbfe 40%, #e0e7ff 55%, #ffffff 70%, rgba(255,255,255,0.8) 80%, #ffffff 85%, #e0e7ff 100%)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      backgroundClip: 'text',
+                      textShadow: 'none',
+                      filter: 'drop-shadow(0 2px 2px rgba(30,58,138,0.5))',
                     }}>
                       {line1}
                     </h1>
                     {line2 && (
-                      <p className="text-xl sm:text-2xl font-black uppercase tracking-[0.15em] mt-2" style={{
-                        background: 'linear-gradient(180deg, #F5DEB3 0%, #E8C48A 20%, #D4A574 40%, #E8C48A 55%, #F5DEB3 70%, rgba(255,255,255,0.7) 80%, #F5DEB3 85%, #E8C48A 100%)',
+                      <p className="text-xl sm:text-2xl font-black uppercase tracking-[0.15em] mt-2" style={isManicure ? {
+                        background: 'linear-gradient(180deg, #fce7f3 0%, #f9a8d4 20%, #f472b6 40%, #f9a8d4 55%, #fce7f3 70%, rgba(255,255,255,0.7) 80%, #fce7f3 85%, #f9a8d4 100%)',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         backgroundClip: 'text',
-                        filter: 'drop-shadow(0 2px 1px rgba(80,40,20,0.4))',
+                        filter: 'drop-shadow(0 2px 1px rgba(190,24,93,0.4))',
+                      } : {
+                        background: 'linear-gradient(180deg, #ffffff 0%, #e0e7ff 20%, #bfdbfe 40%, #e0e7ff 55%, #ffffff 70%, rgba(255,255,255,0.7) 80%, #ffffff 85%, #e0e7ff 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                        filter: 'drop-shadow(0 2px 1px rgba(30,58,138,0.4))',
                       }}>
                         {line2}
                       </p>
@@ -491,25 +575,13 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 <div className="flex items-center justify-center gap-2 mt-4">
                   <div className="flex gap-0.5">
                     {[1,2,3,4,5].map(i => (
-                      <span key={i} className={`text-lg ${i <= Math.round(tenantRating.average / 2) ? 'text-pink-400' : 'text-pink-900'}`}>★</span>
+                      <span key={i} className={`text-lg ${i <= Math.round(tenantRating.average / 2) ? $.starLit : $.starDim}`}>★</span>
                     ))}
                   </div>
-                  <span className="text-xs font-bold text-pink-700">{tenantRating.average}/10 · {tenantRating.count} avaliações</span>
+                  <span className={`text-xs font-bold ${$.t7}`}>{tenantRating.average}/10 · {tenantRating.count} avaliações</span>
                 </div>
               )}
 
-              {rankPosition && (
-                <div className="mt-3">
-                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black ${
-                    rankPosition === 1 ? 'bg-yellow-500/20 text-yellow-700' :
-                    rankPosition <= 3 ? 'bg-pink-500/20 text-pink-700' :
-                    'bg-pink-500/10 text-pink-600'
-                  }`}>
-                    {rankPosition === 1 ? '🏆' : rankPosition === 2 ? '🥈' : rankPosition === 3 ? '🥉' : '⭐'}
-                    #{rankPosition} da região
-                  </span>
-                </div>
-              )}
 
               {/* Buttons - stacked, same size, 3D */}
               <div className="mt-8 flex flex-col items-center gap-4 w-full max-w-[280px] mx-auto" style={{ perspective: '600px' }}>
@@ -545,9 +617,13 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                   <button
                     onClick={() => { setPortfolioIdx(0); setPortfolioOpen(true); }}
                     className="w-full py-4 text-white rounded-full font-black text-sm uppercase tracking-widest transition-all hover:brightness-110 flex items-center justify-center gap-2"
-                    style={{
-                      background: 'linear-gradient(180deg, #8B5E3C 0%, #6B3A2A 40%, #5C3324 70%, #4D2B1E 100%)',
-                      boxShadow: '0 4px 0 #3a1f14, 0 6px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15)',
+                    style={isManicure ? {
+                      background: 'linear-gradient(180deg, #ec4899 0%, #db2777 40%, #be185d 70%, #9d174d 100%)',
+                      boxShadow: '0 4px 0 #831843, 0 6px 12px rgba(131,24,67,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+                      transform: 'translateY(-2px) rotateX(2deg)',
+                    } : {
+                      background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 40%, #1d4ed8 70%, #1e40af 100%)',
+                      boxShadow: '0 4px 0 #1e3a8a, 0 6px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15)',
                       transform: 'translateY(-2px) rotateX(2deg)',
                     }}
                   >
@@ -593,7 +669,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                   <button
                     key={post.id}
                     onClick={() => { setPortfolioIdx(i); setPortfolioOpen(true); }}
-                    className="aspect-square overflow-hidden relative group bg-pink-200 focus:outline-none"
+                    className={`aspect-square overflow-hidden relative group ${$.bg2} focus:outline-none`}
                   >
                     <img
                       src={post.imageUrl}
@@ -630,7 +706,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
               </div>
 
               {services.length === 0 && (
-                <p className="text-center py-10 text-pink-400 text-sm font-bold">Nenhum serviço disponível.</p>
+                <p className={`text-center py-10 ${$.t4} text-sm font-bold`}>Nenhum serviço disponível.</p>
               )}
 
               <div className="space-y-3">
@@ -638,12 +714,12 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                   <button
                     key={svc.id}
                     onClick={() => { setSelectedService(svc); goTo('DATE'); }}
-                    className="w-full bg-white/80 backdrop-blur-sm rounded-2xl p-5 border-2 border-white/40 hover:border-pink-400 hover:shadow-lg hover:shadow-pink-300/30 transition-all text-left group"
+                    className={`w-full bg-white/80 backdrop-blur-sm rounded-2xl p-5 border-2 border-white/40 ${$.svcHov} transition-all text-left group`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        <p className="font-black text-pink-900 text-sm group-hover:text-pink-600 transition-all truncate">{svc.name}</p>
-                        <p className="text-[11px] font-bold text-pink-400 mt-1">⏱ {svc.durationMinutes} min</p>
+                        <p className={`font-black ${$.t9} text-sm ${$.ght6} transition-all truncate`}>{svc.name}</p>
+                        <p className={`text-[11px] font-bold ${$.t4} mt-1`}>⏱ {svc.durationMinutes} min</p>
                       </div>
                       <div className="text-right flex-shrink-0 ml-4">
                         <p className="text-lg font-black" style={copperText}>R$ {svc.price.toFixed(2)}</p>
@@ -667,11 +743,11 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 <div className="flex flex-wrap justify-center gap-6">
                   {professionals.map(prof => (
                     <div key={prof.id} className="text-center">
-                      <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-pink-400 to-pink-600 flex items-center justify-center text-2xl font-black text-white shadow-lg shadow-pink-300">
+                      <div className={`w-16 h-16 mx-auto rounded-full bg-gradient-to-br ${$.avGrad} flex items-center justify-center text-2xl font-black text-white shadow-lg ${$.s3}`}>
                         {prof.name.charAt(0).toUpperCase()}
                       </div>
-                      <p className="text-xs font-black text-pink-900 mt-2">{prof.name}</p>
-                      {prof.specialty && <p className="text-[10px] text-pink-500 font-bold">{prof.specialty}</p>}
+                      <p className={`text-xs font-black ${$.t9} mt-2`}>{prof.name}</p>
+                      {prof.specialty && <p className={`text-[10px] ${$.t5} font-bold`}>{prof.specialty}</p>}
                     </div>
                   ))}
                 </div>
@@ -701,7 +777,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                     href={`https://www.instagram.com/${(settings as any).instagramUsername}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-9 h-9 rounded-full bg-white/20 hover:bg-pink-700 flex items-center justify-center transition-all"
+                    className={`w-9 h-9 rounded-full bg-white/20 ${$.hFooter} flex items-center justify-center transition-all`}
                   >
                     <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
                   </a>
@@ -728,14 +804,14 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
           <div className="text-center space-y-8 py-8 animate-fadeIn">
             <div className="text-7xl">✅</div>
             <div>
-              <h2 className="text-2xl font-black text-pink-900 uppercase tracking-tight">Agendado!</h2>
-              <p className="text-sm font-bold text-pink-500 mt-2">Enviamos a confirmação para o seu WhatsApp.</p>
+              <h2 className={`text-2xl font-black ${$.t9} uppercase tracking-tight`}>Agendado!</h2>
+              <p className={`text-sm font-bold ${$.t5} mt-2`}>Enviamos a confirmação para o seu WhatsApp.</p>
             </div>
-            <div className="bg-white rounded-[28px] p-8 border-2 border-pink-200 text-left space-y-4 shadow-lg shadow-pink-200/30">
-              <SummaryRow icon="✂️" label="Serviço" value={selectedService?.name} />
-              <SummaryRow icon="📅" label="Dia" value={formatDatePT(selectedDate)} />
-              <SummaryRow icon="⏰" label="Horário" value={selectedTime} />
-              <SummaryRow icon="💈" label="Profissional" value={selectedBarber?.name} />
+            <div className={`bg-white rounded-[28px] p-8 border-2 ${$.b2} text-left space-y-4 ${$.wizCard}`}>
+              <SummaryRow icon="✂️" label="Serviço" value={selectedService?.name} t4={$.t4} t9={$.t9} />
+              <SummaryRow icon="📅" label="Dia" value={formatDatePT(selectedDate)} t4={$.t4} t9={$.t9} />
+              <SummaryRow icon="⏰" label="Horário" value={selectedTime} t4={$.t4} t9={$.t9} />
+              <SummaryRow icon="💈" label="Profissional" value={selectedBarber?.name} t4={$.t4} t9={$.t9} />
             </div>
             <button
               onClick={() => {
@@ -743,7 +819,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 setSelectedService(null); setSelectedDate(''); setSelectedBarber(null);
                 setSelectedPeriod(''); setSelectedTime(''); setCustomerName(''); setRawPhone('');
               }}
-              className="w-full py-4 border-2 border-pink-500 text-pink-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-pink-500 hover:text-white transition-all"
+              className={`w-full py-4 border-2 ${$.b5} ${$.t6} rounded-2xl font-black text-xs uppercase tracking-widest ${$.hbg5} hover:text-white transition-all`}
             >
               Novo Agendamento
             </button>
@@ -753,12 +829,12 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {/* ── DATE ────────────────────────────────────────────────── */}
         {step === 'DATE' && (
           <div className="space-y-6 animate-fadeIn">
-            <StepHeader step={2} total={6} title="Escolha o Dia" onBack={() => goTo('SERVICE')} />
-            <div className="bg-white rounded-[28px] p-8 border-2 border-pink-200 shadow-lg shadow-pink-200/30">
-              <MiniCalendar value={selectedDate} onChange={d => { setSelectedDate(d); goTo('BARBER'); }} activeDays={activeDays} />
+            <StepHeader step={2} total={6} title="Escolha o Dia" onBack={() => goTo('SERVICE')} th={$} />
+            <div className={`bg-white rounded-[28px] p-8 border-2 ${$.wizCard}`}>
+              <MiniCalendar value={selectedDate} onChange={d => { setSelectedDate(d); goTo('BARBER'); }} activeDays={activeDays} accent={{ sel: $.calSel, today: $.calToday, hov: $.calHov }} />
             </div>
             {activeDays.size === 0 && (
-              <p className="text-center text-xs font-bold text-pink-400">Horários de funcionamento não configurados.</p>
+              <p className={`text-center text-xs font-bold ${$.t4}`}>Horários de funcionamento não configurados.</p>
             )}
           </div>
         )}
@@ -766,21 +842,21 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {/* ── BARBER ──────────────────────────────────────────────── */}
         {step === 'BARBER' && (
           <div className="space-y-6 animate-fadeIn">
-            <StepHeader step={3} total={6} title="Escolha o Profissional" onBack={() => goTo('DATE')} />
-            <p className="text-xs font-bold text-pink-500 text-center">{formatDatePT(selectedDate)}</p>
+            <StepHeader step={3} total={6} title="Escolha o Profissional" onBack={() => goTo('DATE')} th={$} />
+            <p className={`text-xs font-bold ${$.t5} text-center`}>{formatDatePT(selectedDate)}</p>
             <div className="space-y-3">
               {professionals.map(prof => (
                 <button
                   key={prof.id}
                   onClick={() => { setSelectedBarber(prof); goTo('PERIOD'); }}
-                  className="w-full bg-white rounded-[24px] p-6 border-2 border-pink-200 hover:border-pink-400 hover:shadow-lg hover:shadow-pink-200/50 transition-all flex items-center gap-5 group"
+                  className={`w-full bg-white rounded-[24px] p-6 border-2 ${$.b2} ${$.hb4} hover:shadow-lg ${$.hs2} transition-all flex items-center gap-5 group`}
                 >
-                  <div className="w-14 h-14 bg-pink-100 rounded-2xl flex items-center justify-center text-3xl group-hover:bg-pink-200 transition-all flex-shrink-0">💈</div>
+                  <div className={`w-14 h-14 ${$.bg1} rounded-2xl flex items-center justify-center text-3xl ${$.hbg2} transition-all flex-shrink-0`}>💈</div>
                   <div className="text-left">
-                    <p className="font-black text-pink-900 text-lg group-hover:text-pink-600 transition-all">{prof.name}</p>
-                    {prof.specialty && <p className="text-xs font-bold text-pink-400">{prof.specialty}</p>}
+                    <p className={`font-black ${$.t9} text-lg ${$.ght6} transition-all`}>{prof.name}</p>
+                    {prof.specialty && <p className={`text-xs font-bold ${$.t4}`}>{prof.specialty}</p>}
                   </div>
-                  <div className="ml-auto text-pink-500 font-black text-xl">›</div>
+                  <div className={`ml-auto ${$.t5} font-black text-xl`}>›</div>
                 </button>
               ))}
             </div>
@@ -790,24 +866,24 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {/* ── PERIOD ──────────────────────────────────────────────── */}
         {step === 'PERIOD' && (
           <div className="space-y-6 animate-fadeIn">
-            <StepHeader step={4} total={6} title="Escolha o Período" onBack={() => goTo('BARBER')} />
-            <p className="text-xs font-bold text-pink-500 text-center">
+            <StepHeader step={4} total={6} title="Escolha o Período" onBack={() => goTo('BARBER')} th={$} />
+            <p className={`text-xs font-bold ${$.t5} text-center`}>
               {formatDatePT(selectedDate)} · {selectedBarber?.name}
             </p>
 
             {loadingSlots && (
               <div className="text-center py-8">
-                <div className="w-8 h-8 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin mx-auto"></div>
-                <p className="text-xs font-bold text-pink-400 mt-3 uppercase">Verificando horários...</p>
+                <div className={`w-8 h-8 border-4 ${$.spinB} ${$.spinT} rounded-full animate-spin mx-auto`}></div>
+                <p className={`text-xs font-bold ${$.t4} mt-3 uppercase`}>Verificando horários...</p>
               </div>
             )}
 
             {!loadingSlots && slots.length === 0 && (
-              <div className="bg-white rounded-[28px] p-8 text-center border-2 border-pink-200">
+              <div className={`bg-white rounded-[28px] p-8 text-center border-2 ${$.b2}`}>
                 <p className="text-3xl mb-3">😕</p>
-                <p className="font-black text-pink-900">Sem horários disponíveis</p>
-                <p className="text-xs font-bold text-pink-400 mt-1">Escolha outro dia ou profissional.</p>
-                <button onClick={() => goTo('DATE')} className="mt-5 px-6 py-3 bg-pink-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-pink-600 transition-all">
+                <p className={`font-black ${$.t9}`}>Sem horários disponíveis</p>
+                <p className={`text-xs font-bold ${$.t4} mt-1`}>Escolha outro dia ou profissional.</p>
+                <button onClick={() => goTo('DATE')} className={`mt-5 px-6 py-3 ${$.bg5} text-white rounded-2xl font-black text-xs uppercase tracking-widest ${$.hbg6} transition-all`}>
                   Trocar Dia
                 </button>
               </div>
@@ -824,19 +900,19 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                       disabled={count === 0}
                       className={`w-full bg-white rounded-[24px] p-6 border-2 transition-all text-left ${
                         count > 0
-                          ? 'border-pink-200 hover:border-pink-400 hover:shadow-lg hover:shadow-pink-200/50'
-                          : 'border-pink-100 opacity-40 cursor-not-allowed'
+                          ? `${$.b2} ${$.hb4} hover:shadow-lg ${$.hs2}`
+                          : `${$.b1} opacity-40 cursor-not-allowed`
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <span className="text-3xl">{p.emoji}</span>
                           <div>
-                            <p className="font-black text-pink-900 text-lg">{p.label}</p>
-                            <p className="text-xs font-bold text-pink-400">{count > 0 ? `${count} horário${count !== 1 ? 's' : ''} disponível` : 'Sem horários'}</p>
+                            <p className={`font-black ${$.t9} text-lg`}>{p.label}</p>
+                            <p className={`text-xs font-bold ${$.t4}`}>{count > 0 ? `${count} horário${count !== 1 ? 's' : ''} disponível` : 'Sem horários'}</p>
                           </div>
                         </div>
-                        {count > 0 && <div className="text-pink-500 font-black text-xl">›</div>}
+                        {count > 0 && <div className={`${$.t5} font-black text-xl`}>›</div>}
                       </div>
                     </button>
                   );
@@ -849,8 +925,8 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {/* ── TIME ────────────────────────────────────────────────── */}
         {step === 'TIME' && (
           <div className="space-y-6 animate-fadeIn">
-            <StepHeader step={5} total={6} title="Escolha o Horário" onBack={() => goTo('PERIOD')} />
-            <p className="text-xs font-bold text-pink-500 text-center">
+            <StepHeader step={5} total={6} title="Escolha o Horário" onBack={() => goTo('PERIOD')} th={$} />
+            <p className={`text-xs font-bold ${$.t5} text-center`}>
               {formatDatePT(selectedDate)} · {selectedBarber?.name} · {PERIODS.find(p => p.id === selectedPeriod)?.label}
             </p>
 
@@ -859,7 +935,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 <button
                   key={time}
                   onClick={() => { setSelectedTime(time); goTo('INFO'); }}
-                  className="bg-white border-2 border-pink-200 rounded-2xl py-4 font-black text-sm text-pink-900 hover:border-pink-400 hover:bg-pink-50 hover:text-pink-600 hover:shadow-lg hover:shadow-pink-200/50 transition-all"
+                  className={`bg-white border-2 ${$.b2} rounded-2xl py-4 font-black text-sm ${$.t9} ${$.hb4} ${$.hbg50} ${$.ht6} hover:shadow-lg ${$.hs2} transition-all`}
                 >
                   {time}
                 </button>
@@ -871,30 +947,30 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {/* ── INFO ────────────────────────────────────────────────── */}
         {step === 'INFO' && (
           <div className="space-y-6 animate-fadeIn">
-            <StepHeader step={6} total={6} title="Seus Dados" onBack={() => goTo('TIME')} />
+            <StepHeader step={6} total={6} title="Seus Dados" onBack={() => goTo('TIME')} th={$} />
 
             {/* Summary card */}
-            <div className="bg-pink-50 rounded-[24px] p-6 border-2 border-pink-200 space-y-2">
-              <SummaryRow icon="✂️" label="Serviço" value={selectedService?.name} small />
-              <SummaryRow icon="📅" label="Dia" value={formatDatePT(selectedDate)} small />
-              <SummaryRow icon="⏰" label="Horário" value={selectedTime} small />
-              <SummaryRow icon="💈" label="Profissional" value={selectedBarber?.name} small />
+            <div className={`${$.bg50} rounded-[24px] p-6 border-2 ${$.b2} space-y-2`}>
+              <SummaryRow icon="✂️" label="Serviço" value={selectedService?.name} small t4={$.t4} t9={$.t9} />
+              <SummaryRow icon="📅" label="Dia" value={formatDatePT(selectedDate)} small t4={$.t4} t9={$.t9} />
+              <SummaryRow icon="⏰" label="Horário" value={selectedTime} small t4={$.t4} t9={$.t9} />
+              <SummaryRow icon="💈" label="Profissional" value={selectedBarber?.name} small t4={$.t4} t9={$.t9} />
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-pink-500 uppercase tracking-widest ml-2">Seu Nome</label>
+                <label className={`text-[10px] font-black ${$.t5} uppercase tracking-widest ml-2`}>Seu Nome</label>
                 <input
                   type="text"
                   placeholder="Nome completo"
                   value={customerName}
                   onChange={e => setCustomerName(e.target.value)}
-                  className="w-full px-5 py-4 bg-white border-2 border-pink-200 rounded-2xl font-bold text-pink-900 placeholder-pink-300 outline-none focus:border-pink-500 transition-all"
+                  className={`w-full px-5 py-4 bg-white border-2 ${$.b2} rounded-2xl font-bold ${$.t9} ${$.ph} outline-none ${$.fb5} transition-all`}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-pink-500 uppercase tracking-widest ml-2">WhatsApp</label>
+                <label className={`text-[10px] font-black ${$.t5} uppercase tracking-widest ml-2`}>WhatsApp</label>
                 <input
                   type="tel"
                   placeholder="(DDD) 99999-9999"
@@ -903,16 +979,16 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                     const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
                     setRawPhone(digits);
                   }}
-                  className="w-full px-5 py-4 bg-white border-2 border-pink-200 rounded-2xl font-bold text-pink-900 placeholder-pink-300 outline-none focus:border-pink-500 transition-all"
+                  className={`w-full px-5 py-4 bg-white border-2 ${$.b2} rounded-2xl font-bold ${$.t9} ${$.ph} outline-none ${$.fb5} transition-all`}
                 />
-                <p className="text-[9px] font-bold text-pink-400 ml-2">A confirmação será enviada neste número.</p>
+                <p className={`text-[9px] font-bold ${$.t4} ml-2`}>A confirmação será enviada neste número.</p>
               </div>
             </div>
 
             <button
               onClick={handleSubmit}
               disabled={submitting || !customerName.trim() || rawPhone.replace(/\D/g,'').length < 10}
-              className="w-full py-5 bg-pink-500 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-pink-300 hover:bg-pink-600 hover:scale-[1.02] transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none"
+              className={`w-full py-5 ${$.bg5} text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl ${$.s3} ${$.hbg6} hover:scale-[1.02] transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none`}
             >
               {submitting ? 'Confirmando...' : '✅ Confirmar Agendamento'}
             </button>
@@ -982,26 +1058,26 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
 };
 
 // ── Helper sub-components ─────────────────────────────────────────────
-const StepHeader: React.FC<{ step: number; total: number; title: string; onBack?: () => void }> = ({ step, total, title, onBack }) => (
+const StepHeader: React.FC<{ step: number; total: number; title: string; onBack?: () => void; th?: { t4: string; t5: string; t9: string; b3: string; hb5: string; ht6?: string } }> = ({ step, total, title, onBack, th }) => (
   <div className="flex items-center gap-4">
     {onBack && (
-      <button onClick={onBack} className="w-10 h-10 rounded-2xl border-2 border-pink-300 flex items-center justify-center text-pink-500 hover:border-pink-500 hover:text-pink-600 transition-all font-black text-lg flex-shrink-0">
+      <button onClick={onBack} className={`w-10 h-10 rounded-2xl border-2 ${th?.b3 || 'border-pink-300'} flex items-center justify-center ${th?.t5 || 'text-pink-500'} ${th?.hb5 || 'hover:border-pink-500'} hover:text-pink-600 transition-all font-black text-lg flex-shrink-0`}>
         ‹
       </button>
     )}
     <div className="flex-1">
-      <p className="text-[9px] font-black text-pink-400 uppercase tracking-widest">Passo {step} de {total}</p>
-      <h2 className="text-2xl font-black text-pink-900 uppercase tracking-tight leading-tight">{title}</h2>
+      <p className={`text-[9px] font-black ${th?.t4 || 'text-pink-400'} uppercase tracking-widest`}>Passo {step} de {total}</p>
+      <h2 className={`text-2xl font-black ${th?.t9 || 'text-pink-900'} uppercase tracking-tight leading-tight`}>{title}</h2>
     </div>
   </div>
 );
 
-const SummaryRow: React.FC<{ icon: string; label: string; value: string; small?: boolean }> = ({ icon, label, value, small }) => (
+const SummaryRow: React.FC<{ icon: string; label: string; value: string; small?: boolean; t4?: string; t9?: string }> = ({ icon, label, value, small, t4, t9 }) => (
   <div className="flex items-center gap-3">
     <span className={small ? 'text-base' : 'text-xl'}>{icon}</span>
     <div className="flex-1 min-w-0">
-      <span className={`font-black text-pink-400 uppercase tracking-widest ${small ? 'text-[9px]' : 'text-[10px]'}`}>{label}: </span>
-      <span className={`font-black text-pink-900 ${small ? 'text-xs' : 'text-sm'}`}>{value}</span>
+      <span className={`font-black ${t4 || 'text-pink-400'} uppercase tracking-widest ${small ? 'text-[9px]' : 'text-[10px]'}`}>{label}: </span>
+      <span className={`font-black ${t9 || 'text-pink-900'} ${small ? 'text-xs' : 'text-sm'}`}>{value}</span>
     </div>
   </div>
 );

@@ -10,7 +10,17 @@ import {
 const fmtBRL = (n: number) =>
   n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const DONUT_COLORS = ['#f97316', '#fb923c', '#fdba74', '#fed7aa', '#ffedd5'];
+// Read accent color from CSS variable (supports per-niche themes)
+function useAccent() {
+  const [accent, setAccent] = React.useState('#f97316');
+  React.useEffect(() => {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    if (v) setAccent(v);
+  }, []);
+  return accent;
+}
+const DONUT_COLORS_ORANGE = ['#f97316', '#fb923c', '#fdba74', '#fed7aa', '#ffedd5'];
+const DONUT_COLORS_PINK = ['#ec4899', '#f472b6', '#f9a8d4', '#fbcfe8', '#fce7f3'];
 const DAY_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 // Animated counter
@@ -110,6 +120,9 @@ const weatherLabel = (code: number): string => {
 };
 
 const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: (view: string) => void }> = ({ tenantId, tenantName, onNavigate }) => {
+  const accent = useAccent();
+  const isPink = accent.includes('ec4899') || accent.includes('pink');
+  const DONUT_COLORS = isPink ? DONUT_COLORS_PINK : DONUT_COLORS_ORANGE;
   const [loading, setLoading] = useState(true);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -539,7 +552,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
                 contentStyle={{ borderRadius: 10, border: '1px solid #f1f5f9', fontSize: 11, background: '#fff', color: '#0f172a', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
                 cursor={{ fill: '#f8fafc' }}
               />
-              <Bar dataKey="value" fill="#f97316" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="value" fill={accent} radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -651,8 +664,8 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
           <AreaChart data={weeklyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gradReceita" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f97316" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#f97316" stopOpacity={0.02} />
+                <stop offset="0%" stopColor={accent} stopOpacity={0.3} />
+                <stop offset="100%" stopColor={accent} stopOpacity={0.02} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -662,7 +675,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
               formatter={(v: any) => [`R$ ${fmtBRL(v)}`, 'Receita']}
               contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 11, background: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
             />
-            <Area type="monotone" dataKey="receita" name="Receita" stroke="#f97316" strokeWidth={2.5} fill="url(#gradReceita)" dot={{ r: 4, fill: '#f97316', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: '#f97316', stroke: '#fff', strokeWidth: 2 }} />
+            <Area type="monotone" dataKey="receita" name="Receita" stroke={accent} strokeWidth={2.5} fill="url(#gradReceita)" dot={{ r: 4, fill: accent, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: accent, stroke: '#fff', strokeWidth: 2 }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>

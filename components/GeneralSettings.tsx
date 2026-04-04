@@ -17,6 +17,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
   const [heroImage, setHeroImage] = useState('');
+  const [instagram, setInstagram] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -36,6 +37,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
       setOperatingHours(settings.operatingHours);
       setWhatsapp(settings.whatsapp || '');
       setHeroImage((settings as any).heroImage || '');
+      setInstagram((settings as any).instagramUsername || '');
       setStoreName(tenant?.name || '');
       setCidade(tenant?.cidade || '');
       setEstado(tenant?.estado || '');
@@ -87,7 +89,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
       }
       await Promise.all([
         db.updateTenant(tenantId, tenantUpdates),
-        db.updateSettings(tenantId, { operatingHours, whatsapp, heroImage } as any)
+        db.updateSettings(tenantId, { operatingHours, whatsapp, heroImage, instagramUsername: instagram.replace(/^@/, '') } as any)
       ]);
       alert('Configurações salvas com sucesso!');
     } catch (e: any) {
@@ -162,6 +164,19 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
                 placeholder="Ex: PR"
                 className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm uppercase focus:border-orange-500 transition-all"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Instagram</label>
+              <div className="relative">
+                <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 font-black text-sm">@</span>
+                <input
+                  value={instagram}
+                  onChange={e => setInstagram(e.target.value.replace(/^@/, ''))}
+                  placeholder="seunegocio"
+                  className="w-full p-5 pl-10 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm focus:border-orange-500 transition-all"
+                />
+              </div>
+              <p className="text-[9px] text-slate-400 ml-4">Aparece como botão no link de agendamento</p>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Banner da Página (URL da imagem)</label>
