@@ -26,7 +26,7 @@ export const NICHOS = [
   'Maquiagem',
   'Massoterapia',
   'Micropigmentação',
-  'Nutrição',
+  'Nutrição/Personal',
   'Podologia',
   'Salão de Beleza',
   'Spa',
@@ -220,17 +220,85 @@ export const nichoConfigs: Record<NichoKey, NichoConfig> = {
     ],
   },
 
-  // ─── NUTRIÇÃO ────────────────────────────────────────────────────────
-  'Nutrição': {
-    nome: 'Nutrição',
-    introLinha: 'Imite exatamente o estilo de um(a) nutricionista brasileiro(a) — profissional, acolhedor(a) e que transmite saúde e bem-estar.',
-    tomFormatado: '• Tom: profissional e acolhedor — "paciente", "cliente", linguagem de saúde acessível e motivadora',
-    emojisHint: '(🥗 😊 💪 🌿)',
+  // ─── NUTRIÇÃO / PERSONAL TRAINER ─────────────────────────────────────
+  // Config base — será refinado por detectNutriPersonalType() com base nos serviços
+  'Nutrição/Personal': {
+    nome: 'Nutrição/Personal',
+    introLinha: 'Imite exatamente o estilo de um(a) profissional brasileiro(a) de saúde e bem-estar (nutricionista ou personal trainer) — motivador(a), profissional e acolhedor(a).',
+    tomFormatado: '• Tom: motivador e profissional — "aluno(a)", "paciente", "cliente", linguagem de saúde e fitness acessível e encorajadora',
+    emojisHint: '(💪 😊 🥗 🏋️ 🌿 🔥)',
     regrasEspecificas: [
-      'Nutrição é área da saúde — tom profissional e empático, sem ser excessivamente informal',
-      'Se houver mais de um serviço (presencial e online), perguntar qual modalidade o cliente prefere',
-      'Não dar orientações nutricionais nem diagnósticos — apenas agendar a consulta',
-      'Se cliente perguntar sobre dieta ou plano alimentar, dizer que o nutricionista irá orientar na consulta',
+      'Tom profissional, motivador e empático — transmitir energia positiva sem ser excessivamente informal',
+      'Se houver mais de um serviço (consulta nutricional, treino presencial, treino online, avaliação física), perguntar qual modalidade o cliente prefere',
+      'Não dar orientações nutricionais, prescrever dietas, montar treinos ou fazer diagnósticos — apenas agendar a consulta/aula/avaliação',
+      'Se cliente perguntar sobre dieta, plano alimentar ou treino, dizer que o profissional irá orientar na consulta/aula presencial',
     ],
   },
 };
+
+// ── Detecção automática: nutricionista / personal / ambos ──────────────
+export type NutriPersonalType = 'nutri' | 'personal' | 'both';
+
+const NUTRI_KEYWORDS = ['nutri', 'nutrição', 'nutricional', 'dieta', 'alimentar'];
+const PERSONAL_KEYWORDS = ['treino', 'personal', 'consultoria de treino', 'avaliação física', 'fitness', 'musculação'];
+
+export function detectNutriPersonalType(serviceNames: string[]): NutriPersonalType {
+  const joined = serviceNames.map(n => n.toLowerCase()).join(' | ');
+  const hasNutri = NUTRI_KEYWORDS.some(k => joined.includes(k));
+  const hasPersonal = PERSONAL_KEYWORDS.some(k => joined.includes(k));
+  if (hasNutri && hasPersonal) return 'both';
+  if (hasPersonal) return 'personal';
+  return 'nutri'; // default para nutricionista
+}
+
+/** Retorna NichoConfig refinado para Nutrição/Personal com base nos serviços do tenant */
+export function getNutriPersonalConfig(serviceNames: string[]): NichoConfig {
+  const base = nichoConfigs['Nutrição/Personal'];
+  const type = detectNutriPersonalType(serviceNames);
+
+  if (type === 'nutri') {
+    return {
+      ...base,
+      nome: 'Nutrição',
+      introLinha: 'Imite exatamente o estilo de um(a) nutricionista brasileiro(a) — profissional, acolhedor(a) e que transmite saúde e bem-estar.',
+      tomFormatado: '• Tom: profissional e acolhedor — "paciente", "cliente", linguagem de saúde acessível e motivadora',
+      emojisHint: '(🥗 😊 💪 🌿)',
+      regrasEspecificas: [
+        'Tom profissional, empático e acolhedor — área da saúde',
+        'Se houver consulta presencial e online, perguntar qual modalidade o cliente prefere',
+        'Não dar orientações nutricionais nem diagnósticos — apenas agendar a consulta',
+        'Se cliente perguntar sobre dieta ou plano alimentar, dizer que o nutricionista irá orientar na consulta',
+      ],
+    };
+  }
+
+  if (type === 'personal') {
+    return {
+      ...base,
+      nome: 'Personal Trainer',
+      introLinha: 'Imite exatamente o estilo de um personal trainer brasileiro — motivador, enérgico e profissional.',
+      tomFormatado: '• Tom: motivador e enérgico — "aluno(a)", "atleta", "campeão(a)", linguagem de fitness acessível e encorajadora',
+      emojisHint: '(💪 🏋️ 🔥 😊)',
+      regrasEspecificas: [
+        'Tom motivador, enérgico e profissional — transmitir energia positiva',
+        'Se houver treino presencial e online, perguntar qual modalidade o cliente prefere',
+        'Não montar treinos nem prescrever exercícios — apenas agendar a aula/avaliação',
+        'Se cliente perguntar sobre treino ou exercício específico, dizer que o personal irá orientar na aula/avaliação',
+      ],
+    };
+  }
+
+  // type === 'both'
+  return {
+    ...base,
+    nome: 'Nutrição e Personal Trainer',
+    introLinha: 'Imite exatamente o estilo de um(a) profissional brasileiro(a) de saúde e fitness — motivador(a), profissional e acolhedor(a). Este profissional atende tanto nutrição quanto treinos.',
+    regrasEspecificas: [
+      'Tom profissional, motivador e empático — transmitir energia positiva',
+      'Perguntar se o cliente busca consulta nutricional, treino ou ambos',
+      'Não dar orientações nutricionais, prescrever dietas, montar treinos ou fazer diagnósticos — apenas agendar',
+      'Se cliente perguntar sobre dieta ou treino, dizer que o profissional irá orientar na consulta/aula',
+      'Usar "consulta" para nutrição e "aula/treino/avaliação" para personal trainer',
+    ],
+  };
+}

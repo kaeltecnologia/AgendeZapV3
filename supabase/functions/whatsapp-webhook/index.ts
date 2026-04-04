@@ -356,8 +356,27 @@ const NICHO_CFG: Record<string, { intro: string; tom: string; emojis: string; re
   'Bronzeamento': { intro: 'Imite o estilo de uma bronzeadora brasileira — animada, leve e direta.', tom: '• Tom: animado e leve — "querida", "linda"', emojis: '(☀️ 😊 ✨ 🌴)', regras: ['Sugerir pacote de sessões para resultado gradual'] },
   'Podologia': { intro: 'Imite o estilo de um(a) podólogo(a) — profissional, cuidadoso(a), técnico(a) (área de saúde).', tom: '• Tom: profissional e técnico — "paciente", linguagem de saúde acessível', emojis: '(👣 😊 ✅ 🩺)', regras: ['Tom mais formal — podologia é área da saúde', 'Perguntar sobre o problema: unha encravada, calosidade, micose, dor'] },
   'Massoterapia': { intro: 'Imite o estilo de um(a) massoterapeuta — profissional, acolhedor(a), transmite cuidado.', tom: '• Tom: profissional e acolhedor — "cliente", foco em bem-estar', emojis: '(💆 😊 🌿 ✨)', regras: ['Perguntar objetivo: relaxamento, dor muscular, tensão, pós-treino'] },
-  'Nutrição': { intro: 'Imite o estilo de um(a) nutricionista brasileiro(a) — profissional, acolhedor(a), transmite saúde e bem-estar.', tom: '• Tom: profissional e acolhedor — "paciente", "cliente", linguagem de saúde acessível e motivadora', emojis: '(🥗 😊 💪 🌿)', regras: ['Nutrição é área da saúde — tom profissional e empático, sem ser excessivamente informal', 'Se houver mais de um serviço (presencial e online), perguntar qual modalidade o cliente prefere', 'Não dar orientações nutricionais nem diagnósticos — apenas agendar a consulta', 'Se cliente perguntar sobre dieta ou plano alimentar, dizer que o nutricionista irá orientar na consulta'] },
+  'Nutrição/Personal': { intro: 'Imite o estilo de um(a) profissional brasileiro(a) de saúde e bem-estar (nutricionista ou personal trainer) — motivador(a), profissional e acolhedor(a).', tom: '• Tom: motivador e profissional — "aluno(a)", "paciente", "cliente", linguagem de saúde e fitness acessível e encorajadora', emojis: '(💪 😊 🥗 🏋️ 🌿 🔥)', regras: ['Tom profissional, motivador e empático', 'Perguntar qual modalidade o cliente prefere', 'Não dar orientações nutricionais, prescrever dietas, montar treinos ou fazer diagnósticos — apenas agendar'] },
 };
+
+// ── Nutrição/Personal: detecção automática por serviços ──────────────
+const _NUTRI_KW = ['nutri', 'nutrição', 'nutricional', 'dieta', 'alimentar'];
+const _PERSONAL_KW = ['treino', 'personal', 'consultoria de treino', 'avaliação física', 'fitness', 'musculação'];
+
+function _resolveNutriPersonalCfg(serviceNames: string[]): typeof NICHO_CFG[string] {
+  const joined = serviceNames.map(n => n.toLowerCase()).join(' | ');
+  const hasNutri = _NUTRI_KW.some(k => joined.includes(k));
+  const hasPersonal = _PERSONAL_KW.some(k => joined.includes(k));
+
+  if (hasNutri && !hasPersonal) {
+    return { intro: 'Imite o estilo de um(a) nutricionista brasileiro(a) — profissional, acolhedor(a) e que transmite saúde e bem-estar.', tom: '• Tom: profissional e acolhedor — "paciente", "cliente", linguagem de saúde acessível e motivadora', emojis: '(🥗 😊 💪 🌿)', regras: ['Tom profissional, empático e acolhedor — área da saúde', 'Se houver consulta presencial e online, perguntar qual modalidade', 'Não dar orientações nutricionais nem diagnósticos — apenas agendar a consulta', 'Se cliente perguntar sobre dieta ou plano alimentar, dizer que o nutricionista irá orientar na consulta'] };
+  }
+  if (hasPersonal && !hasNutri) {
+    return { intro: 'Imite o estilo de um personal trainer brasileiro — motivador, enérgico e profissional.', tom: '• Tom: motivador e enérgico — "aluno(a)", "atleta", "campeão(a)", linguagem de fitness encorajadora', emojis: '(💪 🏋️ 🔥 😊)', regras: ['Tom motivador, enérgico e profissional', 'Se houver treino presencial e online, perguntar qual modalidade', 'Não montar treinos nem prescrever exercícios — apenas agendar a aula/avaliação', 'Se cliente perguntar sobre treino, dizer que o personal irá orientar na aula/avaliação'] };
+  }
+  // both
+  return { intro: 'Imite o estilo de um(a) profissional brasileiro(a) de saúde e fitness — motivador(a), profissional e acolhedor(a). Atende tanto nutrição quanto treinos.', tom: '• Tom: motivador e profissional — "aluno(a)", "paciente", "cliente", linguagem de saúde e fitness encorajadora', emojis: '(💪 😊 🥗 🏋️ 🌿 🔥)', regras: ['Tom profissional, motivador e empático', 'Perguntar se o cliente busca consulta nutricional, treino ou ambos', 'Não dar orientações nutricionais, prescrever dietas, montar treinos ou fazer diagnósticos — apenas agendar', 'Usar "consulta" para nutrição e "aula/treino/avaliação" para personal trainer'] };
+}
 
 // ── AI Brain ─────────────────────────────────────────────────────────
 async function callBrain(
@@ -454,9 +473,15 @@ Profissional ainda não definido. Disponíveis: ${professionals.map((p: any) => 
 
   // ── Nicho-specific prompt elements ──────────────────────────────────
   const _nicho = nichoName || 'Barbearia';
-  const _nichoCfg = NICHO_CFG[_nicho] || NICHO_CFG['Barbearia'];
+  // Para Nutrição/Personal: refinar config automaticamente com base nos serviços
+  const _nichoCfg = _nicho === 'Nutrição/Personal'
+    ? _resolveNutriPersonalCfg(services.map((s: any) => s.name || ''))
+    : (NICHO_CFG[_nicho] || NICHO_CFG['Barbearia']);
+  const _nichoLabel = _nicho === 'Nutrição/Personal'
+    ? (_nichoCfg.intro.includes('nutricionista') && !_nichoCfg.intro.includes('personal') ? 'Nutrição' : _nichoCfg.intro.includes('personal') && !_nichoCfg.intro.includes('nutricionista') ? 'Personal Trainer' : 'Nutrição e Personal')
+    : _nicho;
   const _nichoRules = _nichoCfg.regras.length > 0 && _nicho !== 'Barbearia'
-    ? `\n## Regras do Nicho (${_nicho})\n${_nichoCfg.regras.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n`
+    ? `\n## Regras do Nicho (${_nichoLabel})\n${_nichoCfg.regras.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n`
     : '';
 
   // ── System Prompt (static rules — # markdown headers for GPT-4.1-mini) ──
@@ -871,7 +896,6 @@ async function notifyWaitlistLeadsInline(tenantId: string, date?: string) {
     if (!customers || customers.length === 0) return;
 
     const dateCtx = date ? ` no dia *${date.split('-').reverse().join('/')}*` : '';
-    const updatedCData = { ...customerData };
 
     for (const cust of customers) {
       if (!cust.telefone) continue;
@@ -881,10 +905,13 @@ async function notifyWaitlistLeadsInline(tenantId: string, date?: string) {
         method: 'POST', headers: EVO_HEADERS,
         body: JSON.stringify({ number: cust.telefone, text: msg, linkPreview: false }),
       }).catch(e => console.error('[waitlist] sendMsg error:', e));
-      updatedCData[cust.id] = { ...(updatedCData[cust.id] || {}), waitlistAlert: false };
+      // Atomic update — only touches this customer's key
+      await supabase.rpc('set_customer_data_key', {
+        p_tenant_id: tenantId,
+        p_customer_key: cust.id,
+        p_value: { waitlistAlert: false },
+      });
     }
-
-    await supabase.from('tenant_settings').upsert({ tenant_id: tenantId, follow_up: { ...fu, _customerData: updatedCData } });
   } catch (e) {
     console.error('[waitlist] notifyWaitlistLeadsInline error:', e);
   }
@@ -3250,11 +3277,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       const { data: custWl } = await supabase.from('customers').select('id')
         .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
       if (custWl) {
-        const { data: sWl } = await supabase.from('tenant_settings').select('follow_up').eq('tenant_id', tenantId).maybeSingle();
-        const fuWl = sWl?.follow_up || {};
-        const allCDataWl = { ...(fuWl._customerData || {}) };
-        allCDataWl[custWl.id] = { ...(allCDataWl[custWl.id] || {}), waitlistAlert: true };
-        await supabase.from('tenant_settings').upsert({ tenant_id: tenantId, follow_up: { ...fuWl, _customerData: allCDataWl } });
+        // Atomic update — only touches _customerData[custId], doesn't overwrite other follow_up keys
+        await supabase.rpc('set_customer_data_key', {
+          p_tenant_id: tenantId,
+          p_customer_key: custWl.id,
+          p_value: { waitlistAlert: true },
+        });
       }
     } catch (e) { console.error('[Agent] waitlist save error:', e); }
   }
@@ -3350,15 +3378,13 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
               const used = (settings.planUsage || {})[usageKey] || 0;
               if (used < quota.quantity) {
                 isPlanAppt = true;
-                // Increment usage in JSONB
+                // Atomic update — only touches _planUsage key, doesn't overwrite other follow_up keys
                 const newUsage = { ...(settings.planUsage || {}), [usageKey]: used + 1 };
-                const { data: curSettings } = await supabase.from('tenant_settings')
-                  .select('follow_up').eq('tenant_id', tenantId).maybeSingle();
-                const curFu = curSettings?.follow_up || {};
-                await supabase.from('tenant_settings').upsert({
-                  tenant_id: tenantId,
-                  follow_up: { ...curFu, _planUsage: newUsage }
-                }, { onConflict: 'tenant_id' });
+                await supabase.rpc('set_follow_up_key', {
+                  p_tenant_id: tenantId,
+                  p_key: '_planUsage',
+                  p_value: newUsage,
+                });
                 if (!settings.planUsage) (settings as any).planUsage = {};
                 settings.planUsage[usageKey] = used + 1; // update local copy too
 
@@ -3774,10 +3800,12 @@ Deno.serve(async (req) => {
             const { data: custRows } = await supabase.from('customers')
               .select('id').eq('tenant_id', tenant.id).like('telefone', `%${phoneSuffix}`).limit(1);
             const custKey = custRows?.[0]?.id || `phone:${_outPhone}`;
-            const cd = { ...settings.customerData };
-            cd[custKey] = { ...(cd[custKey] || {}), aiPaused: true, humanTakeoverAt: Date.now() };
-            const fuUp = { ...(settingsRow?.follow_up || {}), _customerData: cd };
-            await supabase.from('tenant_settings').update({ follow_up: fuUp }).eq('tenant_id', tenant.id);
+            // Atomic update — only touches _customerData[custKey], doesn't overwrite other follow_up keys
+            await supabase.rpc('set_customer_data_key', {
+              p_tenant_id: tenant.id,
+              p_customer_key: custKey,
+              p_value: { aiPaused: true, humanTakeoverAt: Date.now() },
+            });
             console.log(`[Webhook] Human takeover set for ${custKey}`);
           } catch (e) { console.error('[Webhook] human takeover error:', e); }
         })());
@@ -3973,8 +4001,11 @@ Deno.serve(async (req) => {
           settings.customerData[_htKey] = { ..._htEntry, aiPaused: false, humanTakeoverAt: undefined };
           EdgeRuntime.waitUntil((async () => {
             try {
-              const fuUp = { ...(settingsRow?.follow_up || {}), _customerData: settings.customerData };
-              await supabase.from('tenant_settings').update({ follow_up: fuUp }).eq('tenant_id', tenant.id);
+              await supabase.rpc('set_customer_data_key', {
+                p_tenant_id: tenant.id,
+                p_customer_key: _htKey,
+                p_value: { aiPaused: false, humanTakeoverAt: null },
+              });
               console.log(`[Webhook] Human takeover expired for ${_htKey} — AI reactivated`);
             } catch (e) { console.error('[Webhook] takeover expire error:', e); }
           })());
@@ -3989,8 +4020,11 @@ Deno.serve(async (req) => {
           settings.customerData[_htKey2] = { ..._htEntry2, aiPaused: false, humanTakeoverAt: undefined };
           EdgeRuntime.waitUntil((async () => {
             try {
-              const fuUp = { ...(settingsRow?.follow_up || {}), _customerData: settings.customerData };
-              await supabase.from('tenant_settings').update({ follow_up: fuUp }).eq('tenant_id', tenant.id);
+              await supabase.rpc('set_customer_data_key', {
+                p_tenant_id: tenant.id,
+                p_customer_key: _htKey2,
+                p_value: { aiPaused: false, humanTakeoverAt: null },
+              });
             } catch (e) { console.error('[Webhook] takeover expire2 error:', e); }
           })());
         }
