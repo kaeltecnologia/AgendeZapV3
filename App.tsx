@@ -138,7 +138,7 @@ const App: React.FC = () => {
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('agz_dark');
     if (saved !== null) return saved === '1';
-    return true; // default dark
+    return false; // default light — dark is set after login by nicho
   });
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
   const UPDATE_KEY = 'agz_update_seen_v3';
