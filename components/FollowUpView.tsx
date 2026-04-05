@@ -309,7 +309,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
       )}
 
       {/* Tab content (named modes) */}
-      {activeTab !== 'avaliacao' && <PlanGate feature="reativacao" tenantPlan={activeTab === 'reativacao' ? (tenantPlan ?? null) : 'ELITE'}>
+      {activeTab !== 'avaliacao' && <PlanGate feature="reativacao" tenantPlan={activeTab === 'reativacao' ? (tenantPlan ?? null) : 'ELITE'} onClose={() => setActiveTab('aviso')}>
       <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
 
         {/* Header */}
