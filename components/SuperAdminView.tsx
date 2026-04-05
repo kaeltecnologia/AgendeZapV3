@@ -855,16 +855,19 @@ END $$;`.trim();
               <table className="w-full">
                 <thead className="bg-slate-50 sticky top-0">
                   <tr>
-                    {['Empresa', 'Nicho', 'Plano', 'Acesso', 'Telefone', 'Status', 'Mensalidade', 'Venc.', 'Ações'].map(h => (
+                    {['#', 'Empresa', 'Nicho', 'Plano', 'Acesso', 'Telefone', 'Status', 'Mensalidade', 'Venc.', 'Ações'].map(h => (
                       <th key={h} className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filteredTenants.length === 0 ? (
-                    <tr><td colSpan={9} className="text-center py-12 text-slate-300 font-black uppercase text-xs">Nenhum cliente encontrado</td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-slate-300 font-black uppercase text-xs">Nenhum cliente encontrado</td></tr>
                   ) : filteredTenants.map(t => (
                     <tr key={t.id} className="hover:bg-orange-50/40 transition-colors">
+                      <td className="px-5 py-4">
+                        <span className="font-mono font-black text-xs text-slate-400">#{String(t.codigo || 0).padStart(3, '0')}</span>
+                      </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 bg-black text-white rounded-xl flex items-center justify-center font-black text-sm shrink-0">{t.name[0]}</div>

@@ -127,6 +127,7 @@ class DatabaseService {
       if (error) throw error;
       return (data || []).map(t => ({
         id: t.id,
+        codigo: t.codigo ? Number(t.codigo) : undefined,
         name: t.nome || 'Sem Nome',
         slug: t.slug,
         email: t.email,
@@ -164,6 +165,7 @@ class DatabaseService {
       if (!data) { console.warn('[getTenant] No data found for id:', id); return null; }
       const result: Tenant = {
         id: data.id,
+        codigo: data.codigo ? Number(data.codigo) : undefined,
         name: data.nome || 'Sem Nome',
         slug: data.slug,
         email: data.email,
@@ -202,6 +204,7 @@ class DatabaseService {
       if (error || !data) return null;
       const result: Tenant = {
         id: data.id,
+        codigo: data.codigo ? Number(data.codigo) : undefined,
         name: data.nome || 'Sem Nome',
         slug: data.slug,
         email: data.email,
@@ -2808,6 +2811,7 @@ class DatabaseService {
     }
     return raw.map((t: any) => ({
       id: t.id,
+      codigo: t.codigo ? Number(t.codigo) : undefined,
       name: t.nome,
       slug: t.slug || '',
       email: t.email,

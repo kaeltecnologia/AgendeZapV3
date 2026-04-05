@@ -344,6 +344,7 @@ export enum SessionStatus {
 
 export interface Tenant {
   id: string;
+  codigo?: number;
   name: string;
   slug: string;
   email?: string;
