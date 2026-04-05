@@ -2651,8 +2651,8 @@ const AffiliatePreviewModal: React.FC<{ affiliate: AffiliateLinkStats; onClose: 
   const AffiliateDashboard = React.lazy(() => import('./AffiliateDashboard'));
   const affLink = { id: affiliate.id, name: affiliate.name, slug: affiliate.slug, phone: affiliate.phone, email: affiliate.email, password: affiliate.password, commissionPercent: affiliate.commissionPercent, active: affiliate.active, createdAt: affiliate.createdAt };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative w-full max-w-6xl h-[90vh] rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="absolute inset-4 rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 z-10 w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white font-black text-lg transition-all">X</button>
         <div className="h-full overflow-y-auto">
           <React.Suspense fallback={<div className="flex items-center justify-center h-full bg-slate-900 text-white">Carregando...</div>}>
