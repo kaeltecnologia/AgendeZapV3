@@ -2679,6 +2679,7 @@ const AffiliatesSubTab: React.FC = () => {
   const [newAffEmail, setNewAffEmail] = useState('');
   const [newAffPass, setNewAffPass] = useState('');
   const [newCommission, setNewCommission] = useState('');
+  const [newIndirectCommission, setNewIndirectCommission] = useState('5');
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -2686,6 +2687,7 @@ const AffiliatesSubTab: React.FC = () => {
   const [editEmail, setEditEmail] = useState('');
   const [editPass, setEditPass] = useState('');
   const [editCommission, setEditCommission] = useState('');
+  const [editIndirectCommission, setEditIndirectCommission] = useState('');
   const [copied, setCopied] = useState('');
 
   const reload = async () => {
@@ -2698,8 +2700,8 @@ const AffiliatesSubTab: React.FC = () => {
     if (!newName.trim() || !newCommission.trim()) return;
     setCreating(true);
     try {
-      await db.createAffiliateLink(newName.trim(), parseFloat(newCommission), newSlug.trim() || undefined, newPhone.trim() || undefined, newAffEmail.trim() || undefined, newAffPass.trim() || undefined);
-      setNewName(''); setNewSlug(''); setNewPhone(''); setNewAffEmail(''); setNewAffPass(''); setNewCommission(''); setShowCreate(false);
+      await db.createAffiliateLink(newName.trim(), parseFloat(newCommission), newSlug.trim() || undefined, newPhone.trim() || undefined, newAffEmail.trim() || undefined, newAffPass.trim() || undefined, parseFloat(newIndirectCommission) || 5);
+      setNewName(''); setNewSlug(''); setNewPhone(''); setNewAffEmail(''); setNewAffPass(''); setNewCommission(''); setNewIndirectCommission('5'); setShowCreate(false);
       await reload();
     } catch (e: any) { alert('Erro ao criar link: ' + (e.message || '')); }
     setCreating(false);
@@ -2713,6 +2715,7 @@ const AffiliatesSubTab: React.FC = () => {
         email: editEmail.trim() || undefined,
         password: editPass.trim() || undefined,
         commissionPercent: editCommission ? parseFloat(editCommission) : undefined,
+        indirectCommissionPercent: editIndirectCommission ? parseFloat(editIndirectCommission) : undefined,
       });
       setEditingId(null);
       await reload();
@@ -2788,6 +2791,9 @@ const AffiliatesSubTab: React.FC = () => {
             <input type="number" placeholder="Comissao %" value={newCommission}
               onChange={e => setNewCommission(e.target.value)} step="0.5" min="0" max="100"
               className="border-2 border-orange-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-orange-400" />
+            <input type="number" placeholder="2o nivel %" value={newIndirectCommission}
+              onChange={e => setNewIndirectCommission(e.target.value)} step="0.5" min="0" max="100"
+              className="border-2 border-purple-200 rounded-xl p-3 text-sm font-bold focus:outline-none focus:border-purple-400" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <input type="email" placeholder="Email de login do afiliado" value={newAffEmail}
@@ -2868,10 +2874,17 @@ const AffiliatesSubTab: React.FC = () => {
                   </td>
                   <td className="p-4">
                     {editingId === a.id ? (
-                      <input type="number" value={editCommission} onChange={e => setEditCommission(e.target.value)}
-                        className="border-2 border-slate-200 rounded-lg p-1.5 text-sm w-16 focus:outline-none focus:border-orange-400" step="0.5" />
+                      <div className="flex flex-col gap-1">
+                        <input type="number" value={editCommission} onChange={e => setEditCommission(e.target.value)}
+                          placeholder="Direta %" className="border-2 border-slate-200 rounded-lg p-1.5 text-sm w-20 focus:outline-none focus:border-orange-400" step="0.5" />
+                        <input type="number" value={editIndirectCommission} onChange={e => setEditIndirectCommission(e.target.value)}
+                          placeholder="2o nivel %" className="border-2 border-purple-200 rounded-lg p-1.5 text-sm w-20 focus:outline-none focus:border-purple-400" step="0.5" />
+                      </div>
                     ) : (
-                      <span className="font-bold text-orange-600">{a.commissionPercent}%</span>
+                      <div>
+                        <span className="font-bold text-orange-600">{a.commissionPercent}%</span>
+                        <span className="text-[9px] text-purple-500 ml-1">({a.indirectCommissionPercent}%)</span>
+                      </div>
                     )}
                   </td>
                   <td className="p-4 font-mono">{a.totalSignups}</td>
@@ -2887,7 +2900,7 @@ const AffiliatesSubTab: React.FC = () => {
                   </td>
                   <td className="p-4">
                     <span className="text-[8px] font-black px-2 py-1 rounded-full bg-purple-50 text-purple-600">{a.indirectActiveCount || 0}</span>
-                    {(a.indirectMRR || 0) > 0 && <span className="ml-1 text-[9px] text-purple-500 font-mono">R${(a.indirectMRR * AFF_INDIRECT_PERCENT / 100).toFixed(2)}</span>}
+                    {(a.indirectMRR || 0) > 0 && <span className="ml-1 text-[9px] text-purple-500 font-mono">R${((a.indirectMRR || 0) * (a.indirectCommissionPercent || 5) / 100).toFixed(2)}</span>}
                   </td>
                   <td className="p-4 font-mono font-bold text-orange-600">
                     {(() => {
@@ -2897,7 +2910,7 @@ const AffiliatesSubTab: React.FC = () => {
                       const directComm = bonusOn
                         ? (a.mrrNewThisMonth * AFF_BONUS_PERCENT / 100) + (mrrOld * baseRate / 100)
                         : a.totalMonthlyRevenue * baseRate / 100;
-                      const indirectComm = (a.indirectMRR || 0) * AFF_INDIRECT_PERCENT / 100;
+                      const indirectComm = (a.indirectMRR || 0) * (a.indirectCommissionPercent || 5) / 100;
                       return `R$${(directComm + indirectComm).toFixed(2)}`;
                     })()}
                   </td>
@@ -2914,7 +2927,7 @@ const AffiliatesSubTab: React.FC = () => {
                         <>
                           <button onClick={() => setPreviewAffiliate(a)}
                             className="text-[8px] font-black px-2 py-1 rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100 transition-all">Ver Painel</button>
-                          <button onClick={() => { setEditingId(a.id); setEditName(a.name); setEditPhone(a.phone || ''); setEditEmail(a.email || ''); setEditPass(''); setEditCommission(String(a.commissionPercent)); }}
+                          <button onClick={() => { setEditingId(a.id); setEditName(a.name); setEditPhone(a.phone || ''); setEditEmail(a.email || ''); setEditPass(''); setEditCommission(String(a.commissionPercent)); setEditIndirectCommission(String(a.indirectCommissionPercent)); }}
                             className="text-[8px] font-black px-2 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all">Editar</button>
                           <button onClick={() => handleToggleActive(a.id, a.active)}
                             className={`text-[8px] font-black px-2 py-1 rounded-full transition-all ${a.active ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>

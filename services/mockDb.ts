@@ -2469,6 +2469,7 @@ class DatabaseService {
         id: a.id, name: a.name, slug: a.slug, phone: a.phone || undefined,
         email: a.email || undefined, password: a.password || undefined,
         commissionPercent: Number(a.commission_percent),
+        indirectCommissionPercent: Number(a.indirect_commission_percent ?? 5),
         active: a.active, createdAt: a.created_at,
       }));
     } catch (e) {
@@ -2489,6 +2490,7 @@ class DatabaseService {
         id: data.id, name: data.name, slug: data.slug, phone: data.phone || undefined,
         email: data.email || undefined, password: data.password || undefined,
         commissionPercent: Number(data.commission_percent),
+        indirectCommissionPercent: Number(data.indirect_commission_percent ?? 5),
         active: data.active, createdAt: data.created_at,
       };
     } catch (e) {
@@ -2497,14 +2499,14 @@ class DatabaseService {
     }
   }
 
-  async createAffiliateLink(name: string, commissionPercent: number, customSlug?: string, phone?: string, email?: string, password?: string): Promise<AffiliateLink> {
+  async createAffiliateLink(name: string, commissionPercent: number, customSlug?: string, phone?: string, email?: string, password?: string, indirectCommissionPercent?: number): Promise<AffiliateLink> {
     const slug = (customSlug || name).toLowerCase().normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 40);
-    const payload: any = { name, slug, commission_percent: commissionPercent };
+    const payload: any = { name, slug, commission_percent: commissionPercent, indirect_commission_percent: indirectCommissionPercent ?? 5 };
     if (phone) payload.phone = phone;
     if (email) payload.email = email;
     if (password) payload.password = password;
@@ -2536,15 +2538,17 @@ class DatabaseService {
         id: data.id, name: data.name, slug: data.slug, phone: data.phone || undefined,
         email: data.email || undefined,
         commissionPercent: Number(data.commission_percent),
+        indirectCommissionPercent: Number(data.indirect_commission_percent ?? 5),
         active: data.active, createdAt: data.created_at,
       };
     } catch { return null; }
   }
 
-  async updateAffiliateLink(id: string, updates: { name?: string; commissionPercent?: number; active?: boolean; phone?: string; email?: string; password?: string }): Promise<void> {
+  async updateAffiliateLink(id: string, updates: { name?: string; commissionPercent?: number; indirectCommissionPercent?: number; active?: boolean; phone?: string; email?: string; password?: string }): Promise<void> {
     const payload: any = { updated_at: new Date().toISOString() };
     if (updates.name !== undefined) payload.name = updates.name;
     if (updates.commissionPercent !== undefined) payload.commission_percent = updates.commissionPercent;
+    if (updates.indirectCommissionPercent !== undefined) payload.indirect_commission_percent = updates.indirectCommissionPercent;
     if (updates.phone !== undefined) payload.phone = updates.phone;
     if (updates.email !== undefined) payload.email = updates.email;
     if (updates.password !== undefined) payload.password = updates.password;

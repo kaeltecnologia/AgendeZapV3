@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS affiliate_links (
   slug TEXT NOT NULL UNIQUE,
   phone TEXT,
   commission_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
+  indirect_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 5,
   email TEXT,
   password TEXT,
   active BOOLEAN DEFAULT TRUE,

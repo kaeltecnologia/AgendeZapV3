@@ -643,6 +643,7 @@ export interface AffiliateLink {
   email?: string;
   password?: string;
   commissionPercent: number;
+  indirectCommissionPercent: number;
   active: boolean;
   createdAt: string;
 }
