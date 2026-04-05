@@ -1185,6 +1185,60 @@ Deno.serve(async (_req) => {
       console.error('[Affiliate] Job error:', e.message);
     }
 
+    // ── 14. AFFILIATE MILESTONE MESSAGES (1st & 3rd sale) ───────────────
+    try {
+      const bNow = nowBrasilia();
+      const monthKey = `${bNow.getUTCFullYear()}-${pad(bNow.getUTCMonth() + 1)}`;
+      const mStart = new Date(Date.UTC(bNow.getUTCFullYear(), bNow.getUTCMonth(), 1)).toISOString();
+
+      // Get all active tenants created this month with affiliate
+      const { data: affTenants } = await supabase
+        .from('tenants')
+        .select('id, affiliate_link_id, status')
+        .not('affiliate_link_id', 'is', null)
+        .eq('status', 'ATIVA')
+        .gte('created_at', mStart);
+
+      // Group by affiliate
+      const affCounts: Record<string, number> = {};
+      for (const t of (affTenants || [])) {
+        affCounts[t.affiliate_link_id] = (affCounts[t.affiliate_link_id] || 0) + 1;
+      }
+
+      for (const [affId, count] of Object.entries(affCounts)) {
+        const milestones = [
+          { n: 1, key: `aff_milestone::1::${affId}::${monthKey}`,
+            msg: `🎉 *Parabéns pela sua primeira venda!*\n\nVocê acabou de fechar sua primeira venda como afiliado AgendeZap! Esse é só o começo.\n\n🎯 Meta do mês: *10 vendas* para desbloquear *30% de comissão* sobre os novos clientes!\n\nContinue compartilhando seu link e vamos juntos! 💪🚀` },
+          { n: 3, key: `aff_milestone::3::${affId}::${monthKey}`,
+            msg: `🔥 *3 vendas fechadas! Você está voando!*\n\nJá são 3 clientes ativos pelo seu link este mês — incrível!\n\n🎯 Faltam apenas *7 vendas* para atingir a meta de *10* e ganhar *30% de comissão* sobre todos os novos!\n\nVocê está no caminho certo. Não pare agora! 💰🚀` },
+        ];
+
+        for (const m of milestones) {
+          if (count >= m.n) {
+            try {
+              if (!(await claimMessage(m.key))) continue;
+
+              const { data: aff } = await supabase
+                .from('affiliate_links')
+                .select('name, phone')
+                .eq('id', affId)
+                .maybeSingle();
+
+              if (!aff?.phone) continue;
+
+              await sendWhatsApp(centralInstance, aff.phone, m.msg);
+              console.log(`[Affiliate Milestone] ${aff.name} → ${m.n} sales msg sent`);
+            } catch (e: any) {
+              console.error(`[Affiliate Milestone] ${affId} (${m.n}):`, e.message);
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(`affiliate-milestone: ${e.message}`);
+      console.error('[Affiliate Milestone] Job error:', e.message);
+    }
+
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,
