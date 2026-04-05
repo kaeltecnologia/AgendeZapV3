@@ -69,7 +69,7 @@ const InstagramConfig: React.FC<Props> = ({ tenantId }) => {
 
   const handleConnect = () => {
     const redirectUri = `${window.location.origin}${window.location.pathname}`;
-    const scopes = 'instagram_business_basic,instagram_business_content_publish';
+    const scopes = 'instagram_business_basic,instagram_business_manage_messages';
     const url = `https://api.instagram.com/oauth/authorize?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}&state=instagram`;
 
     // Open popup

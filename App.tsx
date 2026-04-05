@@ -678,7 +678,7 @@ const App: React.FC = () => {
       case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
       case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
       case View.FINANCEIRO: return (
-        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
           <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />
         </PlanGate>
       );
@@ -686,55 +686,55 @@ const App: React.FC = () => {
       case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.PLANOS: return <PlansView tenantId={tenantId} />;
       case View.TEST_WA: return (
-        <PlanGate feature="assistenteAdmin" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="assistenteAdmin" tenantPlan={tenantPlan}>
           <AIChatSimulator tenantId={tenantId} />
         </PlanGate>
       );
       case View.CONVERSAS: return <ConversationsView tenantId={tenantId} onUnreadCount={setUnreadConvCount} />;
       case View.DISPARADOR: return (
-        <PlanGate feature="disparo" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="disparo" tenantPlan={tenantPlan}>
           <BroadcastView tenantId={tenantId} />
         </PlanGate>
       );
       case View.ESTOQUE: return (
-        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
           <EstoqueView tenantId={tenantId} />
         </PlanGate>
       );
       case View.PRODUTOS: return <ProductsView tenantId={tenantId} />;
       case View.ESTOQUE_PRODUTOS: return (
-        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
           <EstoqueProdutosView tenantId={tenantId} />
         </PlanGate>
       );
       case View.COMANDAS: return (
-        <PlanGate feature="caixaAvancado" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="caixaAvancado" tenantPlan={tenantPlan}>
           <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} />
         </PlanGate>
       );
       case View.PERFORMANCE: return (
-        <PlanGate feature="performance" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="performance" tenantPlan={tenantPlan}>
           <PerformanceView tenantId={tenantId} />
         </PlanGate>
       );
       case View.MARKETING: return (
-        <PlanGate feature="relatorios" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="relatorios" tenantPlan={tenantPlan}>
           <MarketingView tenantId={tenantId} />
         </PlanGate>
       );
       case View.NOTAS_FISCAIS: return (
-        <PlanGate feature="caixaAvancado" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="caixaAvancado" tenantPlan={tenantPlan}>
           <NotasFiscaisView tenantId={tenantId} />
         </PlanGate>
       );
       case View.FOLHA_PAGAMENTO: return (
-        <PlanGate feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
           <FolhaPagamentoView tenantId={tenantId} />
         </PlanGate>
       );
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
-      case View.SOCIAL_MIDIA: return <PlanGate feature="socialMidia" tenantPlan={tenantPlan}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
+      case View.SOCIAL_MIDIA: return <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="socialMidia" tenantPlan={tenantPlan}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
       case View.INDICACOES: return <IndicacoesView tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }

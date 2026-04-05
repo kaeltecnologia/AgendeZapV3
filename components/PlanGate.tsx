@@ -5,6 +5,7 @@ interface PlanGateProps {
   feature: FeatureKey;
   tenantPlan: string | null | undefined;
   children: React.ReactNode;
+  onClose?: () => void;
 }
 
 /**
@@ -14,7 +15,7 @@ interface PlanGateProps {
  * The underlying content is always rendered (blurred) so the user can see
  * what they're missing. Only interaction is blocked via the overlay.
  */
-const PlanGate: React.FC<PlanGateProps> = ({ feature, tenantPlan, children }) => {
+const PlanGate: React.FC<PlanGateProps> = ({ feature, tenantPlan, children, onClose }) => {
   const config = getPlanConfig(tenantPlan);
   const hasAccess = config.permissions[feature];
 
@@ -120,6 +121,15 @@ const PlanGate: React.FC<PlanGateProps> = ({ feature, tenantPlan, children }) =>
               </div>
             ))}
           </div>
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="w-full py-3 rounded-2xl border-2 border-slate-100 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:border-slate-300 hover:text-slate-600 transition-all"
+            >
+              Voltar
+            </button>
+          )}
 
         </div>
       </div>
