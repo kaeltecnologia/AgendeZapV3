@@ -2646,7 +2646,7 @@ const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, 
 
 const AFF_BONUS_THRESHOLD = 10;
 const AFF_BONUS_PERCENT = 30;
-const AFF_BASE_PERCENT = 10;
+// AFF_BASE_PERCENT is now per-affiliate (a.commissionPercent)
 
 const AffiliatePreviewModal: React.FC<{ affiliate: AffiliateLinkStats; onClose: () => void }> = ({ affiliate, onClose }) => {
   const AffiliateDashboard = React.lazy(() => import('./AffiliateDashboard'));
@@ -2886,10 +2886,11 @@ const AffiliatesSubTab: React.FC = () => {
                   <td className="p-4 font-mono font-bold text-orange-600">
                     {(() => {
                       const bonusOn = a.newActiveThisMonth >= AFF_BONUS_THRESHOLD;
+                      const baseRate = a.commissionPercent || 10;
                       const mrrOld = a.totalMonthlyRevenue - a.mrrNewThisMonth;
                       const comm = bonusOn
-                        ? (a.mrrNewThisMonth * AFF_BONUS_PERCENT / 100) + (mrrOld * AFF_BASE_PERCENT / 100)
-                        : a.totalMonthlyRevenue * AFF_BASE_PERCENT / 100;
+                        ? (a.mrrNewThisMonth * AFF_BONUS_PERCENT / 100) + (mrrOld * baseRate / 100)
+                        : a.totalMonthlyRevenue * baseRate / 100;
                       return `R$${comm.toFixed(2)}`;
                     })()}
                   </td>

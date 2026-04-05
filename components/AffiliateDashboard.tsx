@@ -11,9 +11,9 @@ interface Props {
 // Bonus rules (fixed for all affiliates)
 const BONUS_THRESHOLD = 10; // new active clients needed in current month
 const BONUS_PERCENT = 30;   // bonus commission rate
-const BASE_PERCENT = 10;    // base commission rate
 
 const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
+  const BASE_PERCENT = affiliate.commissionPercent || 10; // base from affiliate's negotiated rate
   const [tenants, setTenants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
