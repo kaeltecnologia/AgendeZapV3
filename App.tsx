@@ -322,7 +322,16 @@ const App: React.FC = () => {
   }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab]);
 
   // Close sidebar on mobile after any nav action
-  const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); setUpgradeModal(null); };
+  const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
+
+  // Close upgrade modal when navigating away (skip the nav that opened it)
+  const gatedNavRef = React.useRef(false);
+  useEffect(() => {
+    if (upgradeModal && !gatedNavRef.current) {
+      setUpgradeModal(null);
+    }
+    gatedNavRef.current = false;
+  }, [currentView]);
 
   // Auto-expand Relatórios submenu when on Marketing or Performance
   useEffect(() => {
@@ -615,6 +624,7 @@ const App: React.FC = () => {
   const handleGatedNav = (view: View, feature: FeatureKey) => {
     setCurrentView(view);
     if (!hasFeature(tenantPlan, feature)) {
+      gatedNavRef.current = true;
       setUpgradeModal({ feature });
     }
   };
