@@ -46,7 +46,6 @@ import { supabase } from './services/supabase';
 import { evolutionService } from './services/evolutionService';
 import { TenantStatus, AppointmentStatus, AffiliateLink } from './types';
 import { sendClientArrivedNotification } from './services/notificationService';
-import PlanGate from './components/PlanGate';
 import PlanUpgradeModal from './components/PlanUpgradeModal';
 import { hasFeature, FeatureKey } from './config/planConfig';
 import Toast, { ToastMessage } from './components/Toast';
@@ -614,19 +613,11 @@ const App: React.FC = () => {
   };
 
   const handleGatedNav = (view: View, feature: FeatureKey) => {
+    setCurrentView(view);
     if (!hasFeature(tenantPlan, feature)) {
       setUpgradeModal({ feature });
-    } else {
-      setCurrentView(view);
     }
   };
-
-  const gateProps = (feature: FeatureKey) => ({
-    feature,
-    tenantPlan,
-    onClose: () => setCurrentView(View.DASHBOARD),
-    onUpgrade: () => setUpgradeModal({ feature }),
-  });
 
   const handleExitImpersonation = () => {
     setRole('SUPERADMIN');
@@ -684,64 +675,24 @@ const App: React.FC = () => {
       case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={tenantPlan} onNavigate={(v) => setCurrentView(v as View)} />;
       case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
       case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
-      case View.FINANCEIRO: return (
-        <PlanGate {...gateProps('financeiro')}>
-          <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />
-        </PlanGate>
-      );
+      case View.FINANCEIRO: return <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} tenantPlan={tenantPlan} />;
       case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.PLANOS: return <PlansView tenantId={tenantId} />;
-      case View.TEST_WA: return (
-        <PlanGate {...gateProps('assistenteAdmin')}>
-          <AIChatSimulator tenantId={tenantId} />
-        </PlanGate>
-      );
+      case View.TEST_WA: return <AIChatSimulator tenantId={tenantId} />;
       case View.CONVERSAS: return <ConversationsView tenantId={tenantId} onUnreadCount={setUnreadConvCount} />;
-      case View.DISPARADOR: return (
-        <PlanGate {...gateProps('disparo')}>
-          <BroadcastView tenantId={tenantId} />
-        </PlanGate>
-      );
-      case View.ESTOQUE: return (
-        <PlanGate {...gateProps('financeiro')}>
-          <EstoqueView tenantId={tenantId} />
-        </PlanGate>
-      );
+      case View.DISPARADOR: return <BroadcastView tenantId={tenantId} />;
+      case View.ESTOQUE: return <EstoqueView tenantId={tenantId} />;
       case View.PRODUTOS: return <ProductsView tenantId={tenantId} />;
-      case View.ESTOQUE_PRODUTOS: return (
-        <PlanGate {...gateProps('financeiro')}>
-          <EstoqueProdutosView tenantId={tenantId} />
-        </PlanGate>
-      );
-      case View.COMANDAS: return (
-        <PlanGate {...gateProps('caixaAvancado')}>
-          <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} />
-        </PlanGate>
-      );
-      case View.PERFORMANCE: return (
-        <PlanGate {...gateProps('performance')}>
-          <PerformanceView tenantId={tenantId} />
-        </PlanGate>
-      );
-      case View.MARKETING: return (
-        <PlanGate {...gateProps('relatorios')}>
-          <MarketingView tenantId={tenantId} />
-        </PlanGate>
-      );
-      case View.NOTAS_FISCAIS: return (
-        <PlanGate {...gateProps('caixaAvancado')}>
-          <NotasFiscaisView tenantId={tenantId} />
-        </PlanGate>
-      );
-      case View.FOLHA_PAGAMENTO: return (
-        <PlanGate {...gateProps('financeiro')}>
-          <FolhaPagamentoView tenantId={tenantId} />
-        </PlanGate>
-      );
+      case View.ESTOQUE_PRODUTOS: return <EstoqueProdutosView tenantId={tenantId} />;
+      case View.COMANDAS: return <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} />;
+      case View.PERFORMANCE: return <PerformanceView tenantId={tenantId} />;
+      case View.MARKETING: return <MarketingView tenantId={tenantId} />;
+      case View.NOTAS_FISCAIS: return <NotasFiscaisView tenantId={tenantId} />;
+      case View.FOLHA_PAGAMENTO: return <FolhaPagamentoView tenantId={tenantId} />;
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
-      case View.SOCIAL_MIDIA: return <PlanGate {...gateProps('socialMidia')}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
+      case View.SOCIAL_MIDIA: return <SocialMidiaView tenantId={tenantId} />;
       case View.INDICACOES: return <IndicacoesView tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
