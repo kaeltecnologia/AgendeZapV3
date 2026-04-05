@@ -336,6 +336,9 @@ Deno.serve(async (_req) => {
             if (appt.status !== 'PENDING' && appt.status !== 'CONFIRMED') continue;
             const apptDate = appt.startTime?.slice(0, 10);
             if (apptDate !== nowDate) continue;
+            // Skip if appointment time already passed (avoid post-service reminders)
+            const apptStartMs = new Date(appt.startTime).getTime();
+            if (apptStartMs <= nowMs) continue;
 
             const cust = findCust(appt.customer_id);
             if (!cust?.phone) continue;
@@ -375,10 +378,12 @@ Deno.serve(async (_req) => {
             if (!(await claimMessage(`fu::aviso::${cust.id}::${nowDate}`))) continue;
 
             const svc = findSvc(appt.service_id);
+            const prof = findProf(appt.professional_id);
             const apptTime = formatTimeBR(appt.startTime);
 
             const msg = interpolate(mode.message, {
               nome: cust.name, dia: 'hoje', hora: apptTime, servico: svc?.name || '',
+              profissional: prof?.name || '',
             });
 
             const sent = await sendWhatsApp(instance, cust.phone, msg);
@@ -421,10 +426,12 @@ Deno.serve(async (_req) => {
             if (!(await claimMessage(`fu::lembrete::${appt.id}`))) continue;
 
             const svc = findSvc(appt.service_id);
+            const prof = findProf(appt.professional_id);
             const apptTime = formatTimeBR(appt.startTime);
 
             const msg = interpolate(mode.message, {
               nome: cust.name, dia: 'hoje', hora: apptTime, servico: svc?.name || '',
+              profissional: prof?.name || '',
             });
 
             const sent = await sendWhatsApp(instance, cust.phone, msg);
