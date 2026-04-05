@@ -2647,11 +2647,29 @@ const AFF_BONUS_THRESHOLD = 10;
 const AFF_BONUS_PERCENT = 30;
 const AFF_BASE_PERCENT = 10;
 
+const AffiliatePreviewModal: React.FC<{ affiliate: AffiliateLinkStats; onClose: () => void }> = ({ affiliate, onClose }) => {
+  const AffiliateDashboard = React.lazy(() => import('./AffiliateDashboard'));
+  const affLink = { id: affiliate.id, name: affiliate.name, slug: affiliate.slug, phone: affiliate.phone, email: affiliate.email, password: affiliate.password, commissionPercent: affiliate.commissionPercent, active: affiliate.active, createdAt: affiliate.createdAt };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative w-full max-w-6xl h-[90vh] rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 z-10 w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white font-black text-lg transition-all">X</button>
+        <div className="h-full overflow-y-auto">
+          <React.Suspense fallback={<div className="flex items-center justify-center h-full bg-slate-900 text-white">Carregando...</div>}>
+            <AffiliateDashboard affiliate={affLink} onLogout={onClose} />
+          </React.Suspense>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AffiliatesSubTab: React.FC = () => {
   const [stats, setStats] = useState<AffiliateLinkStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [previewAffiliate, setPreviewAffiliate] = useState<AffiliateLinkStats | null>(null);
   const [newName, setNewName] = useState('');
   const [newSlug, setNewSlug] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -2884,6 +2902,8 @@ const AffiliatesSubTab: React.FC = () => {
                         </>
                       ) : (
                         <>
+                          <button onClick={() => setPreviewAffiliate(a)}
+                            className="text-[8px] font-black px-2 py-1 rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100 transition-all">Ver Painel</button>
                           <button onClick={() => { setEditingId(a.id); setEditName(a.name); setEditPhone(a.phone || ''); setEditEmail(a.email || ''); setEditPass(''); setEditCommission(String(a.commissionPercent)); }}
                             className="text-[8px] font-black px-2 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all">Editar</button>
                           <button onClick={() => handleToggleActive(a.id, a.active)}
@@ -2901,6 +2921,8 @@ const AffiliatesSubTab: React.FC = () => {
           {filtered.length === 0 && <p className="p-8 text-center text-slate-400 font-bold text-sm">Nenhum afiliado encontrado. Clique em "+ Gerar Novo Link" para criar.</p>}
         </div>
       )}
+
+      {previewAffiliate && <AffiliatePreviewModal affiliate={previewAffiliate} onClose={() => setPreviewAffiliate(null)} />}
     </div>
   );
 };
