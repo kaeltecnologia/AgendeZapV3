@@ -54,7 +54,6 @@ export const nichoConfigs: Record<NichoKey, NichoConfig> = {
       'Sempre perguntar o NOME do pet, a RAÇA e o PORTE (pequeno, médio, grande) logo no início — o preço geralmente depende disso',
       'Perguntar qual serviço: banho, tosa, tosa higiênica, hidratação, combo banho+tosa',
       'Perguntar se o pet tem algum comportamento especial (medo, agressividade, ansiedade) para preparar a equipe',
-      'Mencionar que vacinas precisam estar em dia quando relevante',
       'Usar o nome do pet na conversa depois que souber — ex: "a Luna vai ficar linda!"',
       'Se tutor mencionar pulgas, carrapatos ou pele irritada, sugerir banho medicamentoso e recomendar avaliação veterinária',
     ],
