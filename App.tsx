@@ -323,7 +323,7 @@ const App: React.FC = () => {
   }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab]);
 
   // Close sidebar on mobile after any nav action
-  const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
+  const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); setUpgradeModal(null); };
 
   // Auto-expand Relatórios submenu when on Marketing or Performance
   useEffect(() => {
@@ -621,6 +621,13 @@ const App: React.FC = () => {
     }
   };
 
+  const gateProps = (feature: FeatureKey) => ({
+    feature,
+    tenantPlan,
+    onClose: () => setCurrentView(View.DASHBOARD),
+    onUpgrade: () => setUpgradeModal({ feature }),
+  });
+
   const handleExitImpersonation = () => {
     setRole('SUPERADMIN');
     setIsImpersonating(false);
@@ -678,7 +685,7 @@ const App: React.FC = () => {
       case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
       case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
       case View.FINANCEIRO: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('financeiro')}>
           <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />
         </PlanGate>
       );
@@ -686,55 +693,55 @@ const App: React.FC = () => {
       case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.PLANOS: return <PlansView tenantId={tenantId} />;
       case View.TEST_WA: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="assistenteAdmin" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('assistenteAdmin')}>
           <AIChatSimulator tenantId={tenantId} />
         </PlanGate>
       );
       case View.CONVERSAS: return <ConversationsView tenantId={tenantId} onUnreadCount={setUnreadConvCount} />;
       case View.DISPARADOR: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="disparo" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('disparo')}>
           <BroadcastView tenantId={tenantId} />
         </PlanGate>
       );
       case View.ESTOQUE: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('financeiro')}>
           <EstoqueView tenantId={tenantId} />
         </PlanGate>
       );
       case View.PRODUTOS: return <ProductsView tenantId={tenantId} />;
       case View.ESTOQUE_PRODUTOS: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('financeiro')}>
           <EstoqueProdutosView tenantId={tenantId} />
         </PlanGate>
       );
       case View.COMANDAS: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="caixaAvancado" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('caixaAvancado')}>
           <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} />
         </PlanGate>
       );
       case View.PERFORMANCE: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="performance" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('performance')}>
           <PerformanceView tenantId={tenantId} />
         </PlanGate>
       );
       case View.MARKETING: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="relatorios" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('relatorios')}>
           <MarketingView tenantId={tenantId} />
         </PlanGate>
       );
       case View.NOTAS_FISCAIS: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="caixaAvancado" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('caixaAvancado')}>
           <NotasFiscaisView tenantId={tenantId} />
         </PlanGate>
       );
       case View.FOLHA_PAGAMENTO: return (
-        <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="financeiro" tenantPlan={tenantPlan}>
+        <PlanGate {...gateProps('financeiro')}>
           <FolhaPagamentoView tenantId={tenantId} />
         </PlanGate>
       );
       case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
-      case View.SOCIAL_MIDIA: return <PlanGate onClose={() => setCurrentView(View.DASHBOARD)} feature="socialMidia" tenantPlan={tenantPlan}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
+      case View.SOCIAL_MIDIA: return <PlanGate {...gateProps('socialMidia')}><SocialMidiaView tenantId={tenantId} /></PlanGate>;
       case View.INDICACOES: return <IndicacoesView tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
@@ -1038,7 +1045,7 @@ const App: React.FC = () => {
           feature={upgradeModal.feature}
           tenantPlan={tenantPlan}
           tenantId={tenantId}
-          onClose={() => setUpgradeModal(null)}
+          onClose={() => { setUpgradeModal(null); setCurrentView(View.DASHBOARD); }}
           onActivated={() => window.location.reload()}
         />
       )}
