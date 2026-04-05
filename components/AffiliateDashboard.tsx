@@ -8,6 +8,11 @@ interface Props {
   onLogout: () => void;
 }
 
+// Bonus rules (fixed for all affiliates)
+const BONUS_THRESHOLD = 10; // new active clients needed in current month
+const BONUS_PERCENT = 30;   // bonus commission rate
+const BASE_PERCENT = 10;    // base commission rate
+
 const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
   const [tenants, setTenants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,8 +34,21 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
   const active = tenants.filter(t => t.status === 'ATIVA');
   const pending = tenants.filter(t => t.status !== 'ATIVA' && t.status !== 'CANCELADA' && t.status !== 'BLOQUEADA');
   const cancelled = tenants.filter(t => t.status === 'CANCELADA' || t.status === 'BLOQUEADA');
-  const totalMRR = active.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
-  const myCommission = totalMRR * (affiliate.commissionPercent / 100);
+
+  // Bonus calculation: new active clients this month
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const newActiveThisMonth = active.filter(t => new Date(t.created_at) >= monthStart);
+  const oldActive = active.filter(t => new Date(t.created_at) < monthStart);
+  const bonusActive = newActiveThisMonth.length >= BONUS_THRESHOLD;
+
+  const mrrNew = newActiveThisMonth.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
+  const mrrOld = oldActive.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
+  const totalMRR = mrrNew + mrrOld;
+
+  const commissionNew = bonusActive ? mrrNew * (BONUS_PERCENT / 100) : mrrNew * (BASE_PERCENT / 100);
+  const commissionOld = mrrOld * (BASE_PERCENT / 100);
+  const myCommission = commissionNew + commissionOld;
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' }}>
@@ -60,7 +78,38 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
               Copiar
             </button>
           </div>
-          <p className="text-slate-500 text-xs mt-2">Comissão: <span className="text-orange-400 font-black">{affiliate.commissionPercent}%</span> por assinatura ativa</p>
+          <p className="text-slate-500 text-xs mt-2">Comissao base: <span className="text-orange-400 font-black">{BASE_PERCENT}%</span> • Meta bonus: <span className="text-green-400 font-black">{BONUS_PERCENT}%</span> (ao trazer {BONUS_THRESHOLD} novos clientes ativos no mes)</p>
+        </div>
+
+        {/* Bonus progress */}
+        <div className={`rounded-2xl border p-5 ${bonusActive ? 'bg-green-500/10 border-green-500/30' : 'bg-white/5 border-white/10'}`}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: bonusActive ? '#4ade80' : '#94a3b8' }}>
+                {bonusActive ? 'Bonus Ativo!' : 'Meta do Mes'}
+              </p>
+              <p className="text-white font-bold text-sm mt-1">
+                {bonusActive
+                  ? `Parabens! Voce trouxe ${newActiveThisMonth.length} novos clientes ativos — ${BONUS_PERCENT}% sobre os novos!`
+                  : `Traga ${BONUS_THRESHOLD} novos clientes ativos este mes para ganhar ${BONUS_PERCENT}% de comissao sobre eles`}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-black" style={{ color: bonusActive ? '#4ade80' : '#f97316' }}>{newActiveThisMonth.length}/{BONUS_THRESHOLD}</p>
+              <p className="text-[9px] text-slate-500 font-bold">novos ativos</p>
+            </div>
+          </div>
+          <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-500" style={{
+              width: `${Math.min(100, (newActiveThisMonth.length / BONUS_THRESHOLD) * 100)}%`,
+              background: bonusActive ? 'linear-gradient(90deg, #22c55e, #4ade80)' : 'linear-gradient(90deg, #f97316, #fb923c)',
+            }} />
+          </div>
+          {bonusActive && (
+            <p className="text-green-400/70 text-[10px] font-bold mt-2">
+              {BONUS_PERCENT}% sobre R${mrrNew.toFixed(2)} (novos) + {BASE_PERCENT}% sobre R${mrrOld.toFixed(2)} (antigos) = R${myCommission.toFixed(2)}
+            </p>
+          )}
         </div>
 
         {/* Stats cards */}
@@ -84,7 +133,7 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
           <div className="bg-white/5 rounded-2xl border border-orange-500/30 p-4">
             <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Sua Comissao</p>
             <p className="text-3xl font-black text-orange-400 mt-1">R${myCommission.toFixed(2)}</p>
-            <p className="text-[10px] text-slate-500 mt-1">de R${totalMRR.toFixed(2)} MRR</p>
+            <p className="text-[10px] text-slate-500 mt-1">{bonusActive ? `${BONUS_PERCENT}% novos + ${BASE_PERCENT}% antigos` : `${BASE_PERCENT}% de R$${totalMRR.toFixed(2)}`}</p>
           </div>
         </div>
 
@@ -107,7 +156,9 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
               <tbody>
                 {tenants.map(t => {
                   const fee = Number(t.mensalidade || 0);
-                  const comm = t.status === 'ATIVA' ? fee * (affiliate.commissionPercent / 100) : 0;
+                  const isNewThisMonth = new Date(t.created_at) >= monthStart;
+                  const rate = t.status === 'ATIVA' ? (bonusActive && isNewThisMonth ? BONUS_PERCENT : BASE_PERCENT) : 0;
+                  const comm = fee * (rate / 100);
                   const statusColor = t.status === 'ATIVA' ? 'bg-green-500/20 text-green-400'
                     : (t.status === 'CANCELADA' || t.status === 'BLOQUEADA') ? 'bg-red-500/20 text-red-400'
                     : 'bg-yellow-500/20 text-yellow-400';
@@ -119,7 +170,12 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
                       </td>
                       <td className="p-4 text-slate-400">{t.plan || 'START'}</td>
                       <td className="p-4 text-slate-300 font-mono">R${fee.toFixed(2)}</td>
-                      <td className="p-4 text-orange-400 font-mono font-bold">R${comm.toFixed(2)}</td>
+                      <td className="p-4 font-mono font-bold">
+                        <span className={bonusActive && isNewThisMonth && t.status === 'ATIVA' ? 'text-green-400' : 'text-orange-400'}>R${comm.toFixed(2)}</span>
+                        {bonusActive && isNewThisMonth && t.status === 'ATIVA' && (
+                          <span className="ml-1 text-[7px] font-black px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 uppercase">bonus</span>
+                        )}
+                      </td>
                       <td className="p-4 text-slate-500 text-xs">{new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
                     </tr>
                   );

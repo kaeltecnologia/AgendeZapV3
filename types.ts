@@ -653,4 +653,6 @@ export interface AffiliateLinkStats extends AffiliateLink {
   pendingCount: number;
   cancelledCount: number;
   totalMonthlyRevenue: number;
+  newActiveThisMonth: number;
+  mrrNewThisMonth: number;
 }

@@ -2559,17 +2559,24 @@ class DatabaseService {
       if (links.length === 0) return [];
       const { data: tenants, error } = await supabase
         .from('tenants')
-        .select('affiliate_link_id, status, mensalidade')
+        .select('affiliate_link_id, status, mensalidade, created_at')
         .not('affiliate_link_id', 'is', null);
       if (error) throw error;
-      const statsMap: Record<string, { total: number; active: number; pending: number; cancelled: number; revenue: number }> = {};
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const statsMap: Record<string, { total: number; active: number; pending: number; cancelled: number; revenue: number; newActive: number; mrrNew: number }> = {};
       for (const t of (tenants || [])) {
         const aId = t.affiliate_link_id;
-        if (!statsMap[aId]) statsMap[aId] = { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0 };
+        if (!statsMap[aId]) statsMap[aId] = { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0, newActive: 0, mrrNew: 0 };
         statsMap[aId].total++;
+        const isNewThisMonth = new Date(t.created_at) >= monthStart;
         if (t.status === 'ATIVA') {
           statsMap[aId].active++;
           statsMap[aId].revenue += Number(t.mensalidade || 0);
+          if (isNewThisMonth) {
+            statsMap[aId].newActive++;
+            statsMap[aId].mrrNew += Number(t.mensalidade || 0);
+          }
         } else if (t.status === 'CANCELADA' || t.status === 'BLOQUEADA') {
           statsMap[aId].cancelled++;
         } else {
@@ -2577,8 +2584,8 @@ class DatabaseService {
         }
       }
       return links.map(link => {
-        const s = statsMap[link.id] || { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0 };
-        return { ...link, totalSignups: s.total, activeCount: s.active, pendingCount: s.pending, cancelledCount: s.cancelled, totalMonthlyRevenue: s.revenue };
+        const s = statsMap[link.id] || { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0, newActive: 0, mrrNew: 0 };
+        return { ...link, totalSignups: s.total, activeCount: s.active, pendingCount: s.pending, cancelledCount: s.cancelled, totalMonthlyRevenue: s.revenue, newActiveThisMonth: s.newActive, mrrNewThisMonth: s.mrrNew };
       });
     } catch (e) {
       console.error('Error fetching affiliate link stats:', e);

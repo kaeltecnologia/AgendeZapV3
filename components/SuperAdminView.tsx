@@ -2643,6 +2643,10 @@ const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, 
 
 // ── Affiliates Sub-Tab ────────────────────────────────────────────────────────
 
+const AFF_BONUS_THRESHOLD = 10;
+const AFF_BONUS_PERCENT = 30;
+const AFF_BASE_PERCENT = 10;
+
 const AffiliatesSubTab: React.FC = () => {
   const [stats, setStats] = useState<AffiliateLinkStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2794,6 +2798,8 @@ const AffiliatesSubTab: React.FC = () => {
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Pendentes</th>
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cancelados</th>
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">MRR</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Novos/Mes</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissao</th>
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Acoes</th>
             </tr></thead>
             <tbody>
@@ -2851,6 +2857,22 @@ const AffiliatesSubTab: React.FC = () => {
                   <td className="p-4"><span className="text-[8px] font-black px-2 py-1 rounded-full bg-yellow-50 text-yellow-600">{a.pendingCount}</span></td>
                   <td className="p-4"><span className="text-[8px] font-black px-2 py-1 rounded-full bg-red-50 text-red-600">{a.cancelledCount}</span></td>
                   <td className="p-4 font-mono font-bold">R${a.totalMonthlyRevenue.toFixed(2)}</td>
+                  <td className="p-4">
+                    <span className={`text-[8px] font-black px-2 py-1 rounded-full ${a.newActiveThisMonth >= AFF_BONUS_THRESHOLD ? 'bg-green-50 text-green-600' : 'bg-slate-50 text-slate-500'}`}>
+                      {a.newActiveThisMonth}/{AFF_BONUS_THRESHOLD}
+                    </span>
+                    {a.newActiveThisMonth >= AFF_BONUS_THRESHOLD && <span className="ml-1 text-[7px] font-black text-green-600">BONUS</span>}
+                  </td>
+                  <td className="p-4 font-mono font-bold text-orange-600">
+                    {(() => {
+                      const bonusOn = a.newActiveThisMonth >= AFF_BONUS_THRESHOLD;
+                      const mrrOld = a.totalMonthlyRevenue - a.mrrNewThisMonth;
+                      const comm = bonusOn
+                        ? (a.mrrNewThisMonth * AFF_BONUS_PERCENT / 100) + (mrrOld * AFF_BASE_PERCENT / 100)
+                        : a.totalMonthlyRevenue * AFF_BASE_PERCENT / 100;
+                      return `R$${comm.toFixed(2)}`;
+                    })()}
+                  </td>
                   <td className="p-4">
                     <div className="flex gap-1">
                       {editingId === a.id ? (
