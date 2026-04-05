@@ -2646,6 +2646,7 @@ const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, 
 
 const AFF_BONUS_THRESHOLD = 10;
 const AFF_BONUS_PERCENT = 30;
+const AFF_INDIRECT_PERCENT = 5;
 // AFF_BASE_PERCENT is now per-affiliate (a.commissionPercent)
 
 const AffiliatePreviewModal: React.FC<{ affiliate: AffiliateLinkStats; onClose: () => void }> = ({ affiliate, onClose }) => {
@@ -2819,7 +2820,8 @@ const AffiliatesSubTab: React.FC = () => {
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cancelados</th>
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">MRR</th>
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Novos/Mes</th>
-              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissao</th>
+              <th className="text-left p-4 text-[9px] font-black text-purple-400 uppercase tracking-widest">2o Nivel</th>
+              <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissao Total</th>
               <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Acoes</th>
             </tr></thead>
             <tbody>
@@ -2883,15 +2885,20 @@ const AffiliatesSubTab: React.FC = () => {
                     </span>
                     {a.newActiveThisMonth >= AFF_BONUS_THRESHOLD && <span className="ml-1 text-[7px] font-black text-green-600">BONUS</span>}
                   </td>
+                  <td className="p-4">
+                    <span className="text-[8px] font-black px-2 py-1 rounded-full bg-purple-50 text-purple-600">{a.indirectActiveCount || 0}</span>
+                    {(a.indirectMRR || 0) > 0 && <span className="ml-1 text-[9px] text-purple-500 font-mono">R${(a.indirectMRR * AFF_INDIRECT_PERCENT / 100).toFixed(2)}</span>}
+                  </td>
                   <td className="p-4 font-mono font-bold text-orange-600">
                     {(() => {
                       const bonusOn = a.newActiveThisMonth >= AFF_BONUS_THRESHOLD;
                       const baseRate = a.commissionPercent || 10;
                       const mrrOld = a.totalMonthlyRevenue - a.mrrNewThisMonth;
-                      const comm = bonusOn
+                      const directComm = bonusOn
                         ? (a.mrrNewThisMonth * AFF_BONUS_PERCENT / 100) + (mrrOld * baseRate / 100)
                         : a.totalMonthlyRevenue * baseRate / 100;
-                      return `R$${comm.toFixed(2)}`;
+                      const indirectComm = (a.indirectMRR || 0) * AFF_INDIRECT_PERCENT / 100;
+                      return `R$${(directComm + indirectComm).toFixed(2)}`;
                     })()}
                   </td>
                   <td className="p-4">

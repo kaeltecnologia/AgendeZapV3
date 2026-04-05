@@ -11,21 +11,36 @@ interface Props {
 // Bonus rules (fixed for all affiliates)
 const BONUS_THRESHOLD = 10; // new active clients needed in current month
 const BONUS_PERCENT = 30;   // bonus commission rate
+const INDIRECT_PERCENT = 5; // 2o nível — indicação do cliente do afiliado
 
 const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
   const BASE_PERCENT = affiliate.commissionPercent || 10; // base from affiliate's negotiated rate
   const [tenants, setTenants] = useState<any[]>([]);
+  const [indirectTenants, setIndirectTenants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await (await import('../services/supabase')).supabase
+        const { supabase } = await import('../services/supabase');
+        // 1o nível — clientes diretos
+        const { data } = await supabase
           .from('tenants')
           .select('id, nome, status, plan, mensalidade, created_at')
           .eq('affiliate_link_id', affiliate.id)
           .order('created_at', { ascending: false });
-        setTenants(data || []);
+        const direct = data || [];
+        setTenants(direct);
+        // 2o nível — indicados pelos clientes diretos
+        const directIds = direct.map(t => t.id);
+        if (directIds.length > 0) {
+          const { data: indirect } = await supabase
+            .from('tenants')
+            .select('id, nome, status, plan, mensalidade, created_at, referred_by')
+            .in('referred_by', directIds)
+            .order('created_at', { ascending: false });
+          setIndirectTenants(indirect || []);
+        }
       } catch {}
       setLoading(false);
     })();
@@ -48,7 +63,14 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
 
   const commissionNew = bonusActive ? mrrNew * (BONUS_PERCENT / 100) : mrrNew * (BASE_PERCENT / 100);
   const commissionOld = mrrOld * (BASE_PERCENT / 100);
-  const myCommission = commissionNew + commissionOld;
+  const directCommission = commissionNew + commissionOld;
+
+  // 2o nível — comissão indireta
+  const indirectActive = indirectTenants.filter(t => t.status === 'ATIVA');
+  const indirectMRR = indirectActive.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
+  const indirectCommission = indirectMRR * (INDIRECT_PERCENT / 100);
+
+  const myCommission = directCommission + indirectCommission;
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' }}>
@@ -78,7 +100,7 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
               Copiar
             </button>
           </div>
-          <p className="text-slate-500 text-xs mt-2">Comissao base: <span className="text-orange-400 font-black">{BASE_PERCENT}%</span> • Meta bonus: <span className="text-green-400 font-black">{BONUS_PERCENT}%</span> (ao trazer {BONUS_THRESHOLD} novos clientes ativos no mes)</p>
+          <p className="text-slate-500 text-xs mt-2">Comissao base: <span className="text-orange-400 font-black">{BASE_PERCENT}%</span> • Meta bonus: <span className="text-green-400 font-black">{BONUS_PERCENT}%</span> (ao trazer {BONUS_THRESHOLD} novos ativos/mes) • 2o nivel: <span className="text-purple-400 font-black">{INDIRECT_PERCENT}%</span></p>
         </div>
 
         {/* Bonus progress */}
@@ -113,27 +135,24 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
         </div>
 
         {/* Stats cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="bg-white/5 rounded-2xl border border-white/10 p-4">
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Total Cadastros</p>
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Diretos</p>
             <p className="text-3xl font-black text-white mt-1">{tenants.length}</p>
+            <p className="text-[10px] text-slate-500 mt-1">{active.length} ativos • {pending.length} pendentes • {cancelled.length} cancelados</p>
           </div>
-          <div className="bg-white/5 rounded-2xl border border-white/10 p-4">
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Ativos</p>
-            <p className="text-3xl font-black text-green-400 mt-1">{active.length}</p>
-          </div>
-          <div className="bg-white/5 rounded-2xl border border-white/10 p-4">
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Pendentes</p>
-            <p className="text-3xl font-black text-yellow-400 mt-1">{pending.length}</p>
-          </div>
-          <div className="bg-white/5 rounded-2xl border border-white/10 p-4">
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Cancelados</p>
-            <p className="text-3xl font-black text-red-400 mt-1">{cancelled.length}</p>
+          <div className="bg-white/5 rounded-2xl border border-purple-500/30 p-4">
+            <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest">2o Nivel</p>
+            <p className="text-3xl font-black text-purple-400 mt-1">{indirectTenants.length}</p>
+            <p className="text-[10px] text-slate-500 mt-1">{indirectActive.length} ativos • {INDIRECT_PERCENT}% de R${indirectMRR.toFixed(2)}</p>
           </div>
           <div className="bg-white/5 rounded-2xl border border-orange-500/30 p-4">
-            <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Sua Comissao</p>
+            <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Comissao Total</p>
             <p className="text-3xl font-black text-orange-400 mt-1">R${myCommission.toFixed(2)}</p>
-            <p className="text-[10px] text-slate-500 mt-1">{bonusActive ? `${BONUS_PERCENT}% novos + ${BASE_PERCENT}% antigos` : `${BASE_PERCENT}% de R$${totalMRR.toFixed(2)}`}</p>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Direta: R${directCommission.toFixed(2)}
+              {indirectCommission > 0 && ` + Indireta: R$${indirectCommission.toFixed(2)}`}
+            </p>
           </div>
         </div>
 
@@ -185,6 +204,49 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
             {tenants.length === 0 && (
               <p className="p-8 text-center text-slate-500 font-bold text-sm">Nenhum cadastro ainda. Compartilhe seu link para comecar!</p>
             )}
+          </div>
+        )}
+
+        {/* 2o nível table */}
+        {indirectTenants.length > 0 && (
+          <div className="bg-white/5 rounded-2xl border border-purple-500/20 overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10">
+              <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest">2o Nivel — Indicacoes dos seus clientes ({INDIRECT_PERCENT}%)</p>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Estabelecimento</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Indicado por</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Status</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Mensalidade</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Sua Comissao</th>
+                </tr>
+              </thead>
+              <tbody>
+                {indirectTenants.map(t => {
+                  const fee = Number(t.mensalidade || 0);
+                  const comm = t.status === 'ATIVA' ? fee * (INDIRECT_PERCENT / 100) : 0;
+                  const referrer = tenants.find(d => d.id === t.referred_by);
+                  const statusColor = t.status === 'ATIVA' ? 'bg-green-500/20 text-green-400'
+                    : (t.status === 'CANCELADA' || t.status === 'BLOQUEADA') ? 'bg-red-500/20 text-red-400'
+                    : 'bg-yellow-500/20 text-yellow-400';
+                  return (
+                    <tr key={t.id} className="border-t border-white/5 hover:bg-white/5">
+                      <td className="p-4 font-bold text-white">{t.nome}</td>
+                      <td className="p-4 text-slate-400 text-xs">{referrer?.nome || '—'}</td>
+                      <td className="p-4">
+                        <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${statusColor}`}>{t.status}</span>
+                      </td>
+                      <td className="p-4 text-slate-300 font-mono">R${fee.toFixed(2)}</td>
+                      <td className="p-4 font-mono font-bold">
+                        <span className="text-purple-400">R${comm.toFixed(2)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 

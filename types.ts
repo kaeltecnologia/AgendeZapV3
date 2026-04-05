@@ -655,4 +655,8 @@ export interface AffiliateLinkStats extends AffiliateLink {
   totalMonthlyRevenue: number;
   newActiveThisMonth: number;
   mrrNewThisMonth: number;
+  // 2o nível — clientes indicados pelos clientes do afiliado
+  indirectCount: number;
+  indirectActiveCount: number;
+  indirectMRR: number;
 }

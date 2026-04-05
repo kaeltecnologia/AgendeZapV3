@@ -2557,18 +2557,20 @@ class DatabaseService {
     try {
       const links = await this.getAllAffiliateLinks();
       if (links.length === 0) return [];
+      // 1o nível — clientes diretos do afiliado
       const { data: tenants, error } = await supabase
         .from('tenants')
-        .select('affiliate_link_id, status, mensalidade, created_at')
+        .select('id, affiliate_link_id, status, mensalidade, created_at')
         .not('affiliate_link_id', 'is', null);
       if (error) throw error;
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const statsMap: Record<string, { total: number; active: number; pending: number; cancelled: number; revenue: number; newActive: number; mrrNew: number }> = {};
+      const statsMap: Record<string, { total: number; active: number; pending: number; cancelled: number; revenue: number; newActive: number; mrrNew: number; directIds: string[]; indirectCount: number; indirectActive: number; indirectMRR: number }> = {};
       for (const t of (tenants || [])) {
         const aId = t.affiliate_link_id;
-        if (!statsMap[aId]) statsMap[aId] = { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0, newActive: 0, mrrNew: 0 };
+        if (!statsMap[aId]) statsMap[aId] = { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0, newActive: 0, mrrNew: 0, directIds: [], indirectCount: 0, indirectActive: 0, indirectMRR: 0 };
         statsMap[aId].total++;
+        statsMap[aId].directIds.push(t.id);
         const isNewThisMonth = new Date(t.created_at) >= monthStart;
         if (t.status === 'ATIVA') {
           statsMap[aId].active++;
@@ -2583,9 +2585,31 @@ class DatabaseService {
           statsMap[aId].pending++;
         }
       }
+      // 2o nível — clientes indicados pelos clientes diretos do afiliado
+      const allDirectIds = Object.values(statsMap).flatMap(s => s.directIds);
+      if (allDirectIds.length > 0) {
+        const { data: indirect } = await supabase
+          .from('tenants')
+          .select('referred_by, status, mensalidade')
+          .in('referred_by', allDirectIds);
+        // Map directId → affiliateId for quick lookup
+        const directToAffiliate: Record<string, string> = {};
+        for (const [affId, s] of Object.entries(statsMap)) {
+          for (const dId of s.directIds) directToAffiliate[dId] = affId;
+        }
+        for (const t of (indirect || [])) {
+          const affId = directToAffiliate[t.referred_by];
+          if (!affId || !statsMap[affId]) continue;
+          statsMap[affId].indirectCount++;
+          if (t.status === 'ATIVA') {
+            statsMap[affId].indirectActive++;
+            statsMap[affId].indirectMRR += Number(t.mensalidade || 0);
+          }
+        }
+      }
       return links.map(link => {
-        const s = statsMap[link.id] || { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0, newActive: 0, mrrNew: 0 };
-        return { ...link, totalSignups: s.total, activeCount: s.active, pendingCount: s.pending, cancelledCount: s.cancelled, totalMonthlyRevenue: s.revenue, newActiveThisMonth: s.newActive, mrrNewThisMonth: s.mrrNew };
+        const s = statsMap[link.id] || { total: 0, active: 0, pending: 0, cancelled: 0, revenue: 0, newActive: 0, mrrNew: 0, directIds: [], indirectCount: 0, indirectActive: 0, indirectMRR: 0 };
+        return { ...link, totalSignups: s.total, activeCount: s.active, pendingCount: s.pending, cancelledCount: s.cancelled, totalMonthlyRevenue: s.revenue, newActiveThisMonth: s.newActive, mrrNewThisMonth: s.mrrNew, indirectCount: s.indirectCount, indirectActiveCount: s.indirectActive, indirectMRR: s.indirectMRR };
       });
     } catch (e) {
       console.error('Error fetching affiliate link stats:', e);
