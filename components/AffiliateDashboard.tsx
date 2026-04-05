@@ -206,48 +206,95 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
           </div>
         )}
 
-        {/* 2o nível table */}
-        {indirectTenants.length > 0 && (
-          <div className="bg-white/5 rounded-2xl border border-purple-500/20 overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/10">
-              <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest">2o Nivel — Indicacoes dos seus clientes ({INDIRECT_PERCENT}%)</p>
+        {/* Relatório de Sub-Afiliados (2o nível agrupado por cliente direto) */}
+        {(() => {
+          // Agrupar indiretos por referrer
+          const grouped: Record<string, { referrer: any; referrals: any[] }> = {};
+          for (const t of indirectTenants) {
+            const rId = t.referred_by || 'unknown';
+            if (!grouped[rId]) grouped[rId] = { referrer: tenants.find(d => d.id === rId), referrals: [] };
+            grouped[rId].referrals.push(t);
+          }
+          const subAffiliates = Object.values(grouped)
+            .map(g => {
+              const activeRefs = g.referrals.filter(r => r.status === 'ATIVA');
+              const mrr = activeRefs.reduce((s, r) => s + Number(r.mensalidade || 0), 0);
+              return { ...g, activeCount: activeRefs.length, mrr, commission: mrr * (INDIRECT_PERCENT / 100) };
+            })
+            .sort((a, b) => b.activeCount - a.activeCount);
+
+          if (subAffiliates.length === 0) return null;
+
+          return (
+            <div className="bg-white/5 rounded-2xl border border-purple-500/20 overflow-hidden">
+              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-black text-purple-400 uppercase tracking-tight">Relatorio de Sub-Afiliados</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{subAffiliates.length} clientes seus indicaram novos parceiros • Voce ganha {INDIRECT_PERCENT}% sobre cada um</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-black text-purple-400">R${indirectCommission.toFixed(2)}</p>
+                  <p className="text-[9px] text-slate-500 font-bold">comissao indireta</p>
+                </div>
+              </div>
+
+              {/* Ranking de sub-afiliados */}
+              <div className="divide-y divide-white/5">
+                {subAffiliates.map((sa, idx) => (
+                  <div key={sa.referrer?.id || idx}>
+                    {/* Sub-afiliado header */}
+                    <div className="px-5 py-3 flex items-center justify-between bg-white/[0.02]">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 font-black text-sm">
+                          #{idx + 1}
+                        </div>
+                        <div>
+                          <p className="text-white font-bold text-sm">{sa.referrer?.nome || 'Desconhecido'}</p>
+                          <p className="text-[9px] text-slate-500 font-bold">
+                            {sa.referrals.length} indicacoes • {sa.activeCount} ativos • MRR R${sa.mrr.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-purple-400">R${sa.commission.toFixed(2)}</p>
+                        <p className="text-[8px] text-slate-500 font-bold">{INDIRECT_PERCENT}%</p>
+                      </div>
+                    </div>
+                    {/* Indicados deste sub-afiliado */}
+                    {sa.referrals.map(t => {
+                      const fee = Number(t.mensalidade || 0);
+                      const comm = t.status === 'ATIVA' ? fee * (INDIRECT_PERCENT / 100) : 0;
+                      const statusColor = t.status === 'ATIVA' ? 'text-green-400' : (t.status === 'CANCELADA' || t.status === 'BLOQUEADA') ? 'text-red-400' : 'text-yellow-400';
+                      return (
+                        <div key={t.id} className="px-5 py-2 pl-16 flex items-center justify-between text-xs hover:bg-white/5">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase ${t.status === 'ATIVA' ? 'bg-green-500/20 text-green-400' : t.status === 'CANCELADA' || t.status === 'BLOQUEADA' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{t.status}</span>
+                            <span className="text-white font-bold">{t.nome}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-slate-400 font-mono">R${fee.toFixed(2)}</span>
+                            <span className="text-purple-400 font-mono font-bold w-20 text-right">R${comm.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+
+              {/* Total footer */}
+              <div className="px-5 py-3 border-t border-purple-500/20 flex items-center justify-between bg-purple-500/5">
+                <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest">Total 2o Nivel</p>
+                <div className="flex items-center gap-6 text-xs">
+                  <span className="text-slate-400">{indirectTenants.length} indicacoes</span>
+                  <span className="text-slate-400">{indirectActive.length} ativos</span>
+                  <span className="text-slate-400 font-mono">MRR R${indirectMRR.toFixed(2)}</span>
+                  <span className="text-purple-400 font-black font-mono">R${indirectCommission.toFixed(2)}</span>
+                </div>
+              </div>
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Estabelecimento</th>
-                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Indicado por</th>
-                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Status</th>
-                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Mensalidade</th>
-                  <th className="text-left p-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Sua Comissao</th>
-                </tr>
-              </thead>
-              <tbody>
-                {indirectTenants.map(t => {
-                  const fee = Number(t.mensalidade || 0);
-                  const comm = t.status === 'ATIVA' ? fee * (INDIRECT_PERCENT / 100) : 0;
-                  const referrer = tenants.find(d => d.id === t.referred_by);
-                  const statusColor = t.status === 'ATIVA' ? 'bg-green-500/20 text-green-400'
-                    : (t.status === 'CANCELADA' || t.status === 'BLOQUEADA') ? 'bg-red-500/20 text-red-400'
-                    : 'bg-yellow-500/20 text-yellow-400';
-                  return (
-                    <tr key={t.id} className="border-t border-white/5 hover:bg-white/5">
-                      <td className="p-4 font-bold text-white">{t.nome}</td>
-                      <td className="p-4 text-slate-400 text-xs">{referrer?.nome || '—'}</td>
-                      <td className="p-4">
-                        <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${statusColor}`}>{t.status}</span>
-                      </td>
-                      <td className="p-4 text-slate-300 font-mono">R${fee.toFixed(2)}</td>
-                      <td className="p-4 font-mono font-bold">
-                        <span className="text-purple-400">R${comm.toFixed(2)}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          );
+        })()}
 
         <p className="text-center text-[10px] text-slate-600 font-bold uppercase tracking-widest">
           Powered by AgendeZap • Painel de Afiliado
