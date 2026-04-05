@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { db } from '../services/mockDb';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { TenantStatus, Tenant, SupportMessage, ConversationLog, AffiliateLinkStats } from '../types';
@@ -2650,17 +2651,18 @@ const AFF_BASE_PERCENT = 10;
 const AffiliatePreviewModal: React.FC<{ affiliate: AffiliateLinkStats; onClose: () => void }> = ({ affiliate, onClose }) => {
   const AffiliateDashboard = React.lazy(() => import('./AffiliateDashboard'));
   const affLink = { id: affiliate.id, name: affiliate.name, slug: affiliate.slug, phone: affiliate.phone, email: affiliate.email, password: affiliate.password, commissionPercent: affiliate.commissionPercent, active: affiliate.active, createdAt: affiliate.createdAt };
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="absolute inset-4 rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 z-10 w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white font-black text-lg transition-all">X</button>
-        <div className="h-full overflow-y-auto">
-          <React.Suspense fallback={<div className="flex items-center justify-center h-full bg-slate-900 text-white">Carregando...</div>}>
+  return ReactDOM.createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <div style={{ position: 'absolute', top: 16, left: 16, right: 16, bottom: 16, borderRadius: 16, overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, zIndex: 10, width: 40, height: 40, background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', color: '#fff', fontWeight: 900, fontSize: 18, cursor: 'pointer' }}>X</button>
+        <div style={{ height: '100%', overflowY: 'auto' }}>
+          <React.Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#0f172a', color: '#fff' }}>Carregando...</div>}>
             <AffiliateDashboard affiliate={affLink} onLogout={onClose} />
           </React.Suspense>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
