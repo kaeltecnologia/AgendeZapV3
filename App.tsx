@@ -1006,7 +1006,7 @@ const App: React.FC = () => {
           feature={upgradeModal.feature}
           tenantPlan={tenantPlan}
           tenantId={tenantId}
-          onClose={() => { setUpgradeModal(null); setCurrentView(View.DASHBOARD); }}
+          onClose={() => setUpgradeModal(null)}
           onActivated={() => window.location.reload()}
         />
       )}
