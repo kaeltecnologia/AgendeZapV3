@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { FollowUpNamedMode, Review } from '../types';
-import PlanGate from './PlanGate';
+import { FeatureKey, hasFeature } from '../config/planConfig';
 
 type ModeTab = 'aviso' | 'lembrete' | 'reativacao';
 type MainTab = ModeTab | 'avaliacao';
@@ -19,7 +19,7 @@ const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoM
   reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId' }
 };
 
-const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
+const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?: (feature: FeatureKey) => void }> = ({ tenantId, tenantPlan, onUpgrade }) => {
   const [activeTab, setActiveTab] = useState<MainTab>('aviso');
 
   const [avisoModes, setAvisoModes] = useState<FollowUpNamedMode[]>([]);
@@ -189,9 +189,23 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
       {/* Tabs */}
       <div className="flex bg-slate-100 p-1 sm:p-2 rounded-[30px] shadow-sm overflow-x-auto">
         {(Object.entries(TAB_CONFIG) as [ModeTab, typeof TAB_CONFIG[ModeTab]][]).map(([key, c]) => (
-          <Tab key={key} active={activeTab === key} onClick={() => setActiveTab(key)} label={c.label} icon={c.icon} />
+          <Tab key={key} active={activeTab === key} onClick={() => {
+            if (key === 'reativacao' && !hasFeature(tenantPlan, 'reativacao')) {
+              setActiveTab(key);
+              onUpgrade?.('reativacao');
+              return;
+            }
+            setActiveTab(key);
+          }} label={c.label} icon={c.icon} />
         ))}
-        <Tab key="avaliacao" active={activeTab === 'avaliacao'} onClick={() => setActiveTab('avaliacao')} label="Avaliação" icon="⭐" />
+        <Tab key="avaliacao" active={activeTab === 'avaliacao'} onClick={() => {
+          if (!hasFeature(tenantPlan, 'reativacao')) {
+            setActiveTab('avaliacao');
+            onUpgrade?.('reativacao');
+            return;
+          }
+          setActiveTab('avaliacao');
+        }} label="Avaliação" icon="⭐" />
       </div>
 
       {/* ── Rating tab content ─────────────────────────────────────── */}
@@ -309,8 +323,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
       )}
 
       {/* Tab content (named modes) */}
-      {activeTab !== 'avaliacao' && <PlanGate feature="reativacao" tenantPlan={activeTab === 'reativacao' ? (tenantPlan ?? null) : 'ELITE'} onClose={() => setActiveTab('aviso')}>
-      <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
+      {activeTab !== 'avaliacao' && <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -536,8 +549,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ ten
             </div>
           ))}
         </div>
-      </div>
-      </PlanGate>}
+      </div>}
     </div>
   );
 };

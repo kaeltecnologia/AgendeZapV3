@@ -687,7 +687,7 @@ const App: React.FC = () => {
       case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
       case View.FINANCEIRO: return <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />;
       case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} tenantPlan={tenantPlan} />;
-      case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} />;
+      case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} onUpgrade={(f) => setUpgradeModal({ feature: f })} />;
       case View.PLANOS: return <PlansView tenantId={tenantId} />;
       case View.TEST_WA: return <AIChatSimulator tenantId={tenantId} />;
       case View.CONVERSAS: return <ConversationsView tenantId={tenantId} onUnreadCount={setUnreadConvCount} />;
