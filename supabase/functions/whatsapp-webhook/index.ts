@@ -34,9 +34,11 @@ function maybeCleanup() {
       // Purge sessions older than 24h (safety net beyond per-load TTL)
       await supabase.from('agent_sessions').delete()
         .lt('updated_at', new Date(now - 86_400_000).toISOString());
-      // Purge old msg_dedup entries
+      // Purge old msg_dedup entries — preserve permanent keys (referral invites)
       await supabase.from('msg_dedup').delete()
-        .lt('ts', new Date(now - 86_400_000).toISOString());
+        .lt('ts', new Date(now - 86_400_000).toISOString())
+        .not('fp', 'like', 'cust_referral::%')
+        .not('fp', 'like', 'referral::%');
       // Purge stale _wSentDedup entries from memory
       for (const [k, t] of _wSentDedup) { if (now - t > _W_DEDUP_TTL) _wSentDedup.delete(k); }
       console.log('[Cleanup] Purged old sessions, msg_dedup, and in-memory cache');
@@ -132,8 +134,8 @@ async function claimMsg(key: string): Promise<boolean> {
     const { error } = await supabase.from('msg_dedup').insert({ fp: key });
     if (error?.code === '23505') return false; // already processed
     if (error) return true;  // table missing → fail open
-    // prune old entries older than 24h (fire-and-forget)
-    (async () => { try { await supabase.from('msg_dedup').delete().lt('ts', new Date(Date.now() - 86_400_000).toISOString()); } catch {} })();
+    // prune old entries older than 24h (fire-and-forget) — preserve permanent keys (referral invites)
+    (async () => { try { await supabase.from('msg_dedup').delete().lt('ts', new Date(Date.now() - 86_400_000).toISOString()).not('fp', 'like', 'cust_referral::%').not('fp', 'like', 'referral::%'); } catch {} })();
     return true;
   } catch { return true; }
 }
@@ -396,7 +398,7 @@ async function callBrain(
 
   const known: string[] = [];
   if (data.clientName) known.push(`Nome: ${data.clientName}`);
-  if (data.serviceName) known.push(`Serviço: ${data.serviceName}${(data as any)._comboTotalDuration ? ` (${(data as any)._comboTotalDuration}min total, R$${((data as any)._comboTotalPrice || 0).toFixed(2)})` : ''}`);
+  if (data.serviceName) known.push(`Serviço: ${data.serviceName}${(data as any)._comboTotalDuration ? ` (${(data as any)._comboTotalDuration}min total, R$${((data as any)._comboTotalPrice || 0).toFixed(2)})` : ''} ⛔ SERVIÇO JÁ DEFINIDO — NÃO liste, sugira ou pergunte sobre outros serviços. Continue o fluxo.`);
   if ((data as any)._comboRequest) known.push(`⚠️ MULTI-SERVIÇO: Cliente pediu ${(data as any)._comboRequest}. Mencione TODOS os serviços na resposta. Duração total e preço já estão calculados acima.`);
   if (data.professionalName) known.push(`Profissional: ${data.professionalName}`);
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
@@ -437,13 +439,19 @@ async function callBrain(
 
   // Slots
   const _slotsDateLabel = data.date ? ` para ${formatDate(data.date)}` : '';
+  // Build a specific message about what's still missing for slot lookup
+  const _missingForSlots: string[] = [];
+  if (!data.serviceId) _missingForSlots.push('serviço');
+  if (!data.professionalId) _missingForSlots.push('profissional');
+  if (!data.date) _missingForSlots.push('dia');
+
   const slotsContent = availableSlots?.length
     ? `Horários disponíveis${_slotsDateLabel} (use APENAS estes, NUNCA invente outros):\n${availableSlots.map(s => `- ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
         ? `NENHUM HORÁRIO DISPONÍVEL${_slotsDateLabel} -- a agenda está CHEIA. Diga "agenda cheia" e ofereça outro dia. NUNCA diga "não abre", "fechado", "não atende".`
         : `SERVIÇO NÃO DEFINIDO -- PROIBIDO mencionar horários específicos (ex: 07:00, 15:00, etc). Pergunte: "Qual procedimento você gostaria?"`)
-      : `HORÁRIOS NÃO VERIFICADOS -- PROIBIDO mencionar QUALQUER horário específico (ex: 07:00, 09:00, 15:00). Colete serviço, profissional e dia primeiro. Só depois o sistema mostrará os horários reais.`);
+      : `HORÁRIOS NÃO VERIFICADOS -- PROIBIDO mencionar QUALQUER horário específico (ex: 07:00, 09:00, 15:00). Falta coletar: ${_missingForSlots.join(', ')}. Pergunte APENAS o que falta.`);
 
   const histStr = history.slice(-10).map((h: any) => `${h.role === 'user' ? 'Cliente' : 'Agente'}: ${h.text}`).join('\n');
   const isFirst = history.filter((h: any) => h.role === 'bot').length === 0;
@@ -3172,6 +3180,32 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       brain.reply = `Qual procedimento você gostaria? Temos: ${svcNames}`;
       brain.extracted.time = null;
       brain.extracted.confirmed = null;
+    }
+  }
+
+  // ── TypeScript guard: block LLM from listing services when service IS set ──────
+  // If serviceId is already defined but the AI listed multiple service names in its
+  // reply, strip the listing and produce a clean response advancing the flow.
+  if (session.data.serviceId && session.data.serviceName) {
+    const _replyLower = brain.reply.toLowerCase();
+    // Count how many OTHER service names appear in the reply (besides the selected one)
+    const _selectedNorm = session.data.serviceName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const _otherSvcCount = services.filter((s: any) => {
+      const sn = (s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return sn !== _selectedNorm && sn.length > 5 && _replyLower.includes(sn);
+    }).length;
+    if (_otherSvcCount >= 2) {
+      console.log(`[Agent] Guard: AI listed ${_otherSvcCount} other services while serviceId is set. Stripping.`);
+      // Build clean reply based on what's missing
+      const _sn = session.data.serviceName;
+      if (!session.data.professionalId && professionals.length > 1) {
+        brain.reply = `${_sn}, beleza! Com qual profissional prefere? Temos: ${professionals.map((p: any) => p.name).join(', ')}`;
+      } else if (!session.data.date) {
+        const _profCtx = session.data.professionalName ? ` com o ${session.data.professionalName}` : '';
+        brain.reply = `${_sn}${_profCtx}, beleza! Para qual dia você quer marcar?`;
+      } else {
+        brain.reply = `${_sn}, certo! Para qual horário prefere?`;
+      }
     }
   }
 

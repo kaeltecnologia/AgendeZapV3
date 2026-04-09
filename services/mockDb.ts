@@ -1017,6 +1017,9 @@ class DatabaseService {
 
   async updateSettings(tenantId: string, updates: any) {
     try {
+      // Invalidate cache BEFORE reading to ensure fresh data (prevents stale reads
+      // when multiple updateSettings calls happen in quick succession)
+      _cache.invalidate(`getSettings:${tenantId}`);
       const curr = await this.getSettings(tenantId);
       const newS = { ...curr, ...updates };
 
@@ -1079,16 +1082,14 @@ class DatabaseService {
         _trendingContentDate: newS.trendingContentDate !== undefined ? newS.trendingContentDate : (curr.trendingContentDate ?? null),
       };
 
-      // Only include operating_hours if explicitly passed in updates (prevent accidental reset)
+      // Always include operating_hours to prevent data loss on upsert (uses current value as fallback)
       const upsertData: any = {
         tenant_id: tenantId,
         follow_up: followUpWithMeta,
         ai_active: newS.aiActive,
         theme_color: newS.themeColor,
+        operating_hours: 'operatingHours' in updates ? newS.operatingHours : curr.operatingHours,
       };
-      if ('operatingHours' in updates) {
-        upsertData.operating_hours = newS.operatingHours;
-      }
       const { error } = await supabase.from('tenant_settings').upsert(
         upsertData,
         { onConflict: 'tenant_id' }  // required to avoid duplicate key error
@@ -1970,10 +1971,11 @@ class DatabaseService {
   async claimMessage(fp: string): Promise<boolean> {
     try {
       // Prune: follow-up keys (fu::*) need 25h TTL, webhook keys need 30s TTL.
+      // Referral keys (cust_referral::*, referral::*) are PERMANENT — never pruned.
       // The pg_cron job handles cleanup every 30min — here we only prune short-lived webhook keys.
-      if (!fp.startsWith('fu::') && !fp.startsWith('rating::')) {
+      if (!fp.startsWith('fu::') && !fp.startsWith('rating::') && !fp.startsWith('cust_referral::') && !fp.startsWith('referral::')) {
         const cutoff = new Date(Date.now() - 30_000).toISOString();
-        await supabase.from('msg_dedup').delete().lt('ts', cutoff).not('fp', 'like', 'fu::%').not('fp', 'like', 'rating::%');
+        await supabase.from('msg_dedup').delete().lt('ts', cutoff).not('fp', 'like', 'fu::%').not('fp', 'like', 'rating::%').not('fp', 'like', 'cust_referral::%').not('fp', 'like', 'referral::%');
       }
 
       // The INSERT is the actual atomic dedup gate — PRIMARY KEY rejects duplicates

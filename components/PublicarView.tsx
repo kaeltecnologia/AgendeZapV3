@@ -49,8 +49,17 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
         if (tenant?.slug) {
           const inst = evolutionService.getInstanceName(tenant.slug);
           setInstanceName(inst);
-          const status = await evolutionService.checkStatus(inst);
-          setWaConnected(status === 'open');
+          try {
+            const status = await evolutionService.checkStatus(inst);
+            setWaConnected(status === 'open');
+          } catch {
+            // Retry once after 2s if first check fails
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+              const status2 = await evolutionService.checkStatus(inst);
+              setWaConnected(status2 === 'open');
+            } catch { setWaConnected(false); }
+          }
         }
         // Instagram
         const igToken = (settings as any).instagramAccessToken || '';
@@ -80,7 +89,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (!f.type.startsWith('image/')) { alert('Selecione uma imagem.'); return; }
-    if (f.size > 2 * 1024 * 1024) { alert('Máximo 2MB.'); return; }
+    if (f.size > 8 * 1024 * 1024) { alert('Máximo 8MB.'); return; }
     setFile(f);
     setPreview(URL.createObjectURL(f));
     setResult(null);
@@ -90,7 +99,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
     if (!f || !f.type.startsWith('image/')) return;
-    if (f.size > 2 * 1024 * 1024) { alert('Máximo 2MB.'); return; }
+    if (f.size > 8 * 1024 * 1024) { alert('Máximo 8MB.'); return; }
     setFile(f);
     setPreview(URL.createObjectURL(f));
     setResult(null);
@@ -126,19 +135,31 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
         );
       }
 
-      if (chWa && waConnected && instanceName) {
-        promises.push(
-          evolutionService.sendStatusImage(instanceName, publicUrl, caption.trim() || undefined)
-            .then(r => { res.wa = r.success ? 'ok' : (r.error || 'Erro'); })
-            .catch(e => { res.wa = e.message || 'Erro'; })
-        );
-      } else if (chWa && !waConnected) {
-        res.wa = 'WhatsApp desconectado';
+      if (chWa && instanceName) {
+        // Re-check connection at publish time if initial check failed
+        let connected = waConnected;
+        if (!connected) {
+          try { connected = (await evolutionService.checkStatus(instanceName)) === 'open'; } catch {}
+        }
+        if (connected) {
+          promises.push(
+            evolutionService.sendStatusImage(instanceName, publicUrl, caption.trim() || undefined)
+              .then(r => {
+                res.wa = r.success ? 'ok' : (r.error || 'Erro');
+                if (r.success) setWaConnected(true);
+              })
+              .catch(e => { res.wa = e.message || 'Erro'; })
+          );
+        } else {
+          res.wa = 'WhatsApp desconectado. Reconecte em Conexões > WhatsApp.';
+        }
+      } else if (chWa && !instanceName) {
+        res.wa = 'Instância não configurada. Configure em Conexões > WhatsApp.';
       }
 
       if (chIg && igConnected && igUserId && igAccessToken) {
         promises.push(
-          instagramService.publishStory(igUserId, igAccessToken, publicUrl)
+          instagramService.publishStory(igUserId, igAccessToken, publicUrl, tenantId)
             .then(r => { res.ig = r.success ? 'ok' : (r.error || 'Erro'); })
             .catch(e => { res.ig = e.message || 'Erro'; })
         );
@@ -215,7 +236,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
         {/* Image upload */}
         {!preview ? (
           <div
-            className="w-full aspect-video rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 hover:border-orange-400 transition-all cursor-pointer"
+            className="w-full min-h-[200px] rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 hover:border-orange-400 transition-all cursor-pointer"
             onClick={() => fileRef.current?.click()}
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
@@ -226,7 +247,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
           </div>
         ) : (
           <div className="relative">
-            <img src={preview} alt="Preview" className="w-full aspect-video object-cover rounded-2xl" />
+            <img src={preview} alt="Preview" className="w-full max-h-[500px] object-contain rounded-2xl bg-black/5" />
             <button
               onClick={removeFile}
               className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm hover:bg-red-500 transition-all"

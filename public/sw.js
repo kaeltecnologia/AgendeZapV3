@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agendezap-v5';
+const CACHE_NAME = 'agendezap-v7';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

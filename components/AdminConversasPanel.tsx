@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { evolutionService } from '../services/evolutionService';
 import { saveAdminInstance } from '../services/serperService';
+import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
+import { db } from '../services/mockDb';
 
 interface ConvMessage {
   id: string;
@@ -10,6 +12,9 @@ interface ConvMessage {
   timestamp: number;
   fromMe: boolean;
   isAudio?: boolean;
+  isImage?: boolean;
+  isVideo?: boolean;
+  rawMsg?: any; // raw Evolution API message (for media fetch)
 }
 
 interface Conversation {
@@ -25,9 +30,10 @@ interface Props {
   setInstanceName: (v: string) => void;
   connected: boolean;
   setConnected: (v: boolean) => void;
+  openaiKey?: string;
 }
 
-const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, connected, setConnected }) => {
+const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, connected, setConnected, openaiKey }) => {
   const [qr, setQr] = useState<string | null>(null);
   const [connectingQr, setConnectingQr] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
@@ -43,6 +49,86 @@ const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, c
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Audio transcription state ──
+  const [transcriptions, setTranscriptions] = useState<Record<string, string>>({});
+  const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
+  const transcribedIdsRef = useRef<Set<string>>(new Set());
+  const transcriptionKeyRef = useRef<string>('');
+
+  // ── Media (image/video) state ──
+  const [mediaCache, setMediaCache] = useState<Record<string, string>>({});
+  const [mediaLoading, setMediaLoading] = useState<Set<string>>(new Set());
+  const [mediaFailed, setMediaFailed] = useState<Set<string>>(new Set());
+
+  // Reset transcription state when switching conversation
+  useEffect(() => {
+    transcribedIdsRef.current.clear();
+    setTranscriptions({});
+    setTranscribing(new Set());
+  }, [selectedPhone]);
+
+  // Auto-transcribe audio messages when a conversation is selected
+  useEffect(() => {
+    const conv = conversations.find(c => c.phone === selectedPhone);
+    if (!conv || !instanceName) return;
+    const audioMsgs = conv.messages.filter(m => m.isAudio && !transcribedIdsRef.current.has(m.id));
+    if (audioMsgs.length === 0) return;
+
+    // Mark immediately so re-runs don't duplicate
+    audioMsgs.forEach(m => transcribedIdsRef.current.add(m.id));
+
+    (async () => {
+      // Get API key: prefer prop, then cached ref, then fetch
+      let apiKey = openaiKey || transcriptionKeyRef.current;
+      if (!apiKey) {
+        try {
+          const cfg = await db.getGlobalConfig();
+          apiKey = (cfg['shared_openai_key'] || '').trim();
+          transcriptionKeyRef.current = apiKey;
+        } catch {}
+      }
+      if (!apiKey) { console.warn('[AdminConversas] No API key for transcription'); return; }
+
+      for (const msg of audioMsgs) {
+        setTranscribing(prev => new Set(prev).add(msg.id));
+        try {
+          const rawForFetch = msg.rawMsg || { key: { id: msg.id } };
+          const audio = await fetchAudioBase64(instanceName, rawForFetch);
+          if (audio?.base64) {
+            const text = await transcribeAudio(apiKey, audio.base64, audio.mimeType);
+            if (text) {
+              setTranscriptions(prev => ({ ...prev, [msg.id]: text }));
+            }
+          }
+        } catch (e) {
+          console.error('[AdminConversas] Transcription error:', e);
+        } finally {
+          setTranscribing(prev => { const n = new Set(prev); n.delete(msg.id); return n; });
+        }
+      }
+    })();
+  }, [selectedPhone, conversations, instanceName, openaiKey]);
+
+  // Fetch media (image/video) base64
+  const fetchMedia = useCallback(async (msgId: string, rawMsg: any) => {
+    if (!rawMsg || !instanceName || mediaCache[msgId] || mediaLoading.has(msgId)) return;
+    setMediaLoading(prev => new Set(prev).add(msgId));
+    setMediaFailed(prev => { const s = new Set(prev); s.delete(msgId); return s; });
+    try {
+      const result = await fetchAudioBase64(instanceName, rawMsg);
+      if (result?.base64) {
+        const mime = result.mimeType || 'image/jpeg';
+        setMediaCache(prev => ({ ...prev, [msgId]: `data:${mime};base64,${result.base64}` }));
+      } else {
+        setMediaFailed(prev => new Set(prev).add(msgId));
+      }
+    } catch {
+      setMediaFailed(prev => new Set(prev).add(msgId));
+    } finally {
+      setMediaLoading(prev => { const s = new Set(prev); s.delete(msgId); return s; });
+    }
+  }, [instanceName, mediaCache, mediaLoading]);
 
   // Initial check + 30-second heartbeat to keep connection status accurate
   useEffect(() => {
@@ -131,17 +217,30 @@ const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, c
           ['audioMessage', 'pttMessage'].includes(msgType) ||
           !!msg.message?.audioMessage ||
           !!msg.message?.pttMessage;
-        if (!text.trim() && !isAudio) continue;
+        const isImage =
+          msgType === 'imageMessage' ||
+          !!msg.message?.imageMessage;
+        const isVideo =
+          msgType === 'videoMessage' ||
+          !!msg.message?.videoMessage;
+        const hasMedia = isAudio || isImage || isVideo;
+        if (!text.trim() && !hasMedia) continue;
 
         const ts = msg.messageTimestamp || 0;
         const fromMe = !!msg.key?.fromMe;
         const pushName = msg.pushName || phone;
-        const displayText = text.trim() || (isAudio ? '🎵 Áudio' : '');
+        const caption = isImage ? (msg.message?.imageMessage?.caption || '')
+                      : isVideo ? (msg.message?.videoMessage?.caption || '')
+                      : '';
+        const displayText = text.trim() || (isAudio ? '🎵 Áudio' : isImage ? (caption || '📷 Imagem') : isVideo ? (caption || '🎥 Vídeo') : '');
 
         const newMsg: ConvMessage = {
           id: msg.key?.id || `${phone}-${ts}`,
           phone, pushName, text: displayText, timestamp: ts, fromMe,
           isAudio: isAudio && !text.trim(),
+          isImage: isImage,
+          isVideo: isVideo,
+          rawMsg: hasMedia ? msg : undefined,
         };
 
         const existing = convMap.get(phone);
@@ -243,6 +342,63 @@ const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, c
     }
     setShowNewConv(false);
     setNewPhone('');
+  };
+
+  // ── MediaBubble: lazy-loaded image/video ──────────────────────────────
+  const MediaBubble = ({ msg }: { msg: ConvMessage }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const triggered = useRef(false);
+    const cached = mediaCache[msg.id];
+    const isLoading = mediaLoading.has(msg.id);
+    const failed = mediaFailed.has(msg.id);
+
+    useEffect(() => {
+      if (cached || isLoading || !msg.rawMsg || triggered.current) return;
+      const el = ref.current;
+      if (!el) return;
+      const obs = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting && !triggered.current) {
+          triggered.current = true;
+          fetchMedia(msg.id, msg.rawMsg);
+          obs.disconnect();
+        }
+      }, { threshold: 0.1 });
+      obs.observe(el);
+      return () => obs.disconnect();
+    }, [cached, isLoading, msg.rawMsg, msg.id]);
+
+    useEffect(() => { if (failed) triggered.current = false; }, [failed]);
+
+    const icon = msg.isVideo ? '🎥' : '📷';
+    const label = msg.isVideo ? 'Vídeo' : 'Imagem';
+    const caption = msg.text && msg.text !== `📷 Imagem` && msg.text !== `🎥 Vídeo` ? msg.text : '';
+
+    return (
+      <div ref={ref} className="space-y-1">
+        {cached ? (
+          msg.isVideo ? (
+            <video src={cached} controls className="max-w-full max-h-64 rounded-xl" style={{ minWidth: 200, minHeight: 120 }} />
+          ) : (
+            <img src={cached} alt="imagem" className="max-w-full max-h-64 rounded-xl cursor-pointer" onClick={() => window.open(cached, '_blank')} style={{ minWidth: 120, minHeight: 80 }} />
+          )
+        ) : isLoading ? (
+          <div className="flex items-center justify-center bg-slate-100 rounded-xl" style={{ width: 200, height: 120 }}>
+            <div className="w-6 h-6 border-2 border-slate-300 border-t-orange-500 rounded-full animate-spin" />
+          </div>
+        ) : failed ? (
+          <button onClick={() => fetchMedia(msg.id, msg.rawMsg)} className="flex flex-col items-center justify-center gap-1 bg-slate-100 rounded-xl cursor-pointer hover:bg-slate-200 transition-all" style={{ width: 200, height: 120 }}>
+            <span className="text-2xl">{icon}</span>
+            <span className={`text-[9px] font-bold ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`}>{label} indisponível</span>
+            <span className={`text-[8px] underline ${msg.fromMe ? 'text-orange-100' : 'text-slate-400'}`}>Tentar novamente</span>
+          </button>
+        ) : (
+          <div className="flex items-center justify-center bg-slate-50 rounded-xl" style={{ width: 200, height: 120 }}>
+            <span className="text-2xl">{icon}</span>
+          </div>
+        )}
+        {caption && <p className={`text-[11px] leading-relaxed break-words ${msg.fromMe ? 'text-white' : 'text-black'}`}>{caption}</p>}
+      </div>
+    );
   };
 
   return (
@@ -424,10 +580,21 @@ const AdminConversasPanel: React.FC<Props> = ({ instanceName, setInstanceName, c
                                 ? 'bg-orange-500 text-white rounded-br-sm'
                                 : 'bg-white text-black border border-slate-100 rounded-bl-sm'
                             }`}>
-                              {msg.isAudio ? (
-                                <div className="flex items-center gap-2 py-0.5">
-                                  <span className="text-base">🎵</span>
-                                  <span className={`text-[10px] font-black uppercase tracking-widest ${msg.fromMe ? 'text-orange-100' : 'text-slate-400'}`}>Áudio</span>
+                              {(msg.isImage || msg.isVideo) ? (
+                                <MediaBubble msg={msg} />
+                              ) : msg.isAudio ? (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 py-0.5">
+                                    <span className="text-base">🎵</span>
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${msg.fromMe ? 'text-orange-100' : 'text-slate-400'}`}>Áudio</span>
+                                  </div>
+                                  {transcriptions[msg.id] ? (
+                                    <p className={`text-[11px] italic leading-relaxed ${msg.fromMe ? 'text-orange-100' : 'text-slate-500'}`}>
+                                      "{transcriptions[msg.id]}"
+                                    </p>
+                                  ) : transcribing.has(msg.id) ? (
+                                    <p className={`text-[10px] italic animate-pulse ${msg.fromMe ? 'text-orange-200' : 'text-slate-300'}`}>transcrevendo...</p>
+                                  ) : null}
                                 </div>
                               ) : (
                                 <p className="whitespace-pre-wrap leading-relaxed break-words">{msg.text}</p>

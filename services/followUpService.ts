@@ -32,7 +32,8 @@ function interpolate(template: string, vars: Record<string, string>): string {
     .replace(/\{nome\}/gi, vars.nome || '')
     .replace(/\{dia\}/gi, vars.dia || '')
     .replace(/\{hora\}/gi, vars.hora || '')
-    .replace(/\{servico\}/gi, vars.servico || '');
+    .replace(/\{servico\}/gi, vars.servico || '')
+    .replace(/\{profissional\}/gi, vars.profissional || '');
 }
 
 function pad(n: number) {
@@ -56,11 +57,12 @@ export async function runFollowUp(tenant: any): Promise<void> {
   runningTenants.add(tenantId);
 
   try {
-    const [settings, allAppts, customers, services] = await Promise.all([
+    const [settings, allAppts, customers, services, professionals] = await Promise.all([
       db.getSettings(tenantId),
       db.getAppointments(tenantId),
       db.getCustomers(tenantId),
       db.getServices(tenantId),
+      db.getProfessionals(tenantId),
     ]);
 
     const avisoModes     = settings.avisoModes     || [];
@@ -80,6 +82,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
 
     const findCust = (id: string) => customers.find(c => c.id === id);
     const findSvc  = (id: string) => services.find(s => s.id === id);
+    const findProf = (id: string) => professionals.find(p => p.id === id);
 
     // ─────────────────────────────────────────────────────────────────────
     // 1. CHECK-IN / AVISO COM ANTECEDÊNCIA
@@ -120,6 +123,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
       if (nowHHMM < fixedHHMM) continue; // not the right time yet
 
       const svc = findSvc(appt.service_id);
+      const prof = findProf(appt.professional_id);
       const apptTime = new Date(appt.startTime);
       const apptDateFormatted = new Date(apptDate + 'T12:00:00').toLocaleDateString('pt-BR');
       const diaLabel = daysBefore === 0 ? 'hoje' : daysBefore === 1 ? 'amanhã' : apptDateFormatted;
@@ -129,6 +133,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
         dia:     diaLabel,
         hora:    apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         servico: svc?.name || '',
+        profissional: prof?.name || '',
       });
 
       // Skip if agent already sent an unanswered message to this lead (conversation in progress)
@@ -193,6 +198,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
       if (minutesUntil > mode.timing) continue;
 
       const svc = findSvc(appt.service_id);
+      const prof = findProf(appt.professional_id);
       const apptTime = new Date(appt.startTime);
 
       const msg = interpolate(mode.message, {
@@ -200,6 +206,7 @@ export async function runFollowUp(tenant: any): Promise<void> {
         dia:     'hoje',
         hora:    apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         servico: svc?.name || '',
+        profissional: prof?.name || '',
       });
 
       // Skip if agent already sent an unanswered message to this lead (conversation in progress)
@@ -278,12 +285,14 @@ export async function runFollowUp(tenant: any): Promise<void> {
       if (hasNewBooking) continue;
 
       const svc = findSvc(lastAppt.service_id);
+      const prof = findProf(lastAppt.professional_id);
 
       const msg = interpolate(mode.message, {
         nome:    cust.name,
         dia:     lastDate.toLocaleDateString('pt-BR'),
         hora:    lastDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         servico: svc?.name || '',
+        profissional: prof?.name || '',
       });
 
       // Atomic cross-tab claim

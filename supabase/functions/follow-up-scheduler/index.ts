@@ -59,7 +59,11 @@ function interpolate(template: string, vars: Record<string, string>): string {
 // ── Evolution API ─────────────────────────────────────────────────────
 
 async function sendWhatsApp(instance: string, phone: string, text: string): Promise<boolean> {
-  const cleanNumber = phone.replace(/\D/g, '');
+  let cleanNumber = phone.replace(/\D/g, '');
+  // Garantir prefixo 55 (Brasil)
+  if (cleanNumber.length >= 10 && !cleanNumber.startsWith('55')) {
+    cleanNumber = '55' + cleanNumber;
+  }
   try {
     const res = await fetch(`${EVO_URL}/message/sendText/${instance}`, {
       method: 'POST',
@@ -229,12 +233,25 @@ function parseSettings(row: any): FollowUpSettings {
   };
 }
 
-/** Merge a single _key back into follow_up JSONB and save */
-async function saveFollowUpField(tenantId: string, rawFollowUp: Record<string, any>, key: string, value: any) {
-  const updated = { ...rawFollowUp, [key]: value };
-  await supabase.from('tenant_settings')
-    .update({ follow_up: updated })
-    .eq('tenant_id', tenantId);
+/** Merge a single _key back into follow_up JSONB atomically (no full overwrite) */
+async function saveFollowUpField(tenantId: string, _rawFollowUp: Record<string, any>, key: string, value: any) {
+  // Use atomic RPC to prevent race conditions — only sets the specific key
+  // without overwriting other keys that may have been updated concurrently
+  const { error } = await supabase.rpc('set_follow_up_key', {
+    p_tenant_id: tenantId,
+    p_key: key,
+    p_value: value,
+  });
+  if (error) {
+    console.error(`[saveFollowUpField] RPC error for ${key}:`, error.message);
+    // Fallback: direct update (less safe but better than silent failure)
+    const { data: freshRow } = await supabase.from('tenant_settings')
+      .select('follow_up').eq('tenant_id', tenantId).maybeSingle();
+    const freshFu = freshRow?.follow_up || {};
+    await supabase.from('tenant_settings')
+      .update({ follow_up: { ...freshFu, [key]: value } })
+      .eq('tenant_id', tenantId);
+  }
 }
 
 // ── Customer mode helpers ─────────────────────────────────────────────
@@ -248,6 +265,14 @@ function getCustModeId(customerData: Record<string, any>, custId: string, type: 
 // ── Main handler ──────────────────────────────────────────────────────
 
 Deno.serve(async (_req) => {
+  // Parse body for force flags (manual trigger)
+  let forceWeekly = false;
+  try {
+    if (_req.method === 'POST') {
+      const body = await _req.json().catch(() => ({}));
+      if (body.force_weekly) forceWeekly = true;
+    }
+  } catch {}
   const startMs = Date.now();
   const errors: string[] = [];
   let processed = 0;
@@ -640,7 +665,7 @@ Deno.serve(async (_req) => {
           const weekKey = `weeklyReport::${nowDate}`;
           const alreadySent = settings.rawFollowUp._weeklyReportSent === nowDate;
 
-          if (isDomingo && isReportWindow && !alreadySent) {
+          if ((forceWeekly || (isDomingo && isReportWindow)) && !alreadySent) {
             try {
               // Dedup
               if (await claimMessage(`weekly::${tenantId}::${nowDate}`)) {
@@ -874,15 +899,25 @@ Deno.serve(async (_req) => {
             const cust = findCust(appt.customer_id);
             if (!cust?.phone) continue;
 
-            // Skip blocklisted phones
-            const REFERRAL_BLOCKLIST = ['554488167383'];
-            if (REFERRAL_BLOCKLIST.includes(cust.phone.replace(/\D/g, ''))) continue;
-
-            // Dedup: only send ONCE per customer phone (ever)
-            const fp = `cust_referral::${cust.phone}`;
-            if (!(await claimMessage(fp))) continue;
-
             const cleanPhone = cust.phone.replace(/\D/g, '');
+            // Normalize: always with 55 prefix for consistent dedup
+            const normPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+            const shortPhone = normPhone.slice(2); // without 55
+
+            // Skip blocklisted phones
+            const REFERRAL_BLOCKLIST = ['554488167383', '4488167383'];
+            if (REFERRAL_BLOCKLIST.includes(cleanPhone) || REFERRAL_BLOCKLIST.includes(normPhone)) continue;
+
+            // Dedup: only send ONCE per customer phone (permanent)
+            // Double-check: query existing entries for this phone (any format)
+            try {
+              const { data: existing } = await supabase.from('msg_dedup').select('fp')
+                .or(`fp.eq.cust_referral::${normPhone},fp.eq.cust_referral::${shortPhone},fp.eq.cust_referral::${cleanPhone}`)
+                .limit(1);
+              if (existing && existing.length > 0) continue;
+            } catch {}
+            const fp = `cust_referral::${normPhone}`;
+            if (!(await claimMessage(fp))) continue;
             const custName = cust.name || 'tudo bem';
             const msg = `Oi ${custName}! Você é cliente da *${tenant.nome}* 😊\n\n` +
               `Sabia que eles usam o *AgendeZap* para organizar agendamentos com IA, relatórios financeiros e muito mais?\n\n` +
@@ -937,9 +972,8 @@ Deno.serve(async (_req) => {
 
             const sent = await sendWhatsApp(centralInstance, pt.phone, msg);
             if (sent) {
-              // Mark as sent to avoid resending
-              const updatedFu = { ...fu, _paymentReminderSent: new Date().toISOString() };
-              await supabase.from('tenant_settings').update({ follow_up: updatedFu }).eq('tenant_id', pt.id);
+              // Mark as sent atomically to avoid resending (no full overwrite)
+              await saveFollowUpField(pt.id, fu, '_paymentReminderSent', new Date().toISOString());
               console.log(`[FollowUp] Payment reminder sent to ${displayName} (${pt.phone})`);
             }
           } catch (e: any) {

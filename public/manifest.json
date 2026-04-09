@@ -1,7 +1,7 @@
 {
-  "name": "AgendeZap - Gestão de Barbearia",
+  "name": "AgendeZap - Gestão de Agendamentos",
   "short_name": "AgendeZap",
-  "description": "Gestão de Barbearia Inteligente com IA e WhatsApp",
+  "description": "Gestão de Agendamentos Inteligente com IA e WhatsApp",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

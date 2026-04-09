@@ -15,7 +15,8 @@ interface ConvMessage {
   fromMe: boolean;
   isAudio?: boolean;
   isImage?: boolean;
-  rawMsg?: any; // raw Evolution API message (kept for audio/image media)
+  isVideo?: boolean;
+  rawMsg?: any; // raw Evolution API message (kept for audio/image/video media)
 }
 
 interface Conversation {
@@ -266,9 +267,13 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
           body === '[imagem]' ||
           msg_type === 'imageMessage' ||
           !!(raw?.message?.imageMessage);
+        const isVideo =
+          body === '[vídeo]' ||
+          msg_type === 'videoMessage' ||
+          !!(raw?.message?.videoMessage);
 
-        // Skip empty messages, but allow audio and image placeholders
-        if (!body.trim() && !isAudio && !isImage) continue;
+        // Skip empty messages, but allow audio, image, and video placeholders
+        if (!body.trim() && !isAudio && !isImage && !isVideo) continue;
 
         const matchedProf = professionals.find((p: any) => phonesMatch(p.phone || '', phone));
         const matchedCust = custs.find((c: any) => phonesMatch(c.phone, phone));
@@ -281,12 +286,14 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                        ? body
                        : isAudio ? '🎵 Áudio'
                        : isImage ? (body !== '[imagem]' ? body : '')
+                       : isVideo ? (body !== '[vídeo]' ? body : '')
                        : body,
           timestamp: ts,
           fromMe:    from_me,
           isAudio,
           isImage,
-          rawMsg:    (isAudio || isImage) ? (raw || undefined) : undefined,
+          isVideo,
+          rawMsg:    (isAudio || isImage || isVideo) ? (raw || undefined) : undefined,
         };
 
         const existing = convMap.get(phone);
@@ -841,6 +848,64 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
     );
   };
 
+  // ── VideoBubble: lazy-loaded video with IntersectionObserver ─────────
+  const VideoBubble = ({ msg }: { msg: ConvMessage }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const triggered = useRef(false);
+    const cached = imageCache[msg.id];
+    const loading = imageLoading.has(msg.id);
+    const failed = imageFailed.has(msg.id);
+
+    useEffect(() => {
+      if (cached || loading || !msg.rawMsg || triggered.current) return;
+      const el = ref.current;
+      if (!el) return;
+      const obs = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting && !triggered.current) {
+          triggered.current = true;
+          fetchImageMedia(msg.id, msg.rawMsg);
+          obs.disconnect();
+        }
+      }, { threshold: 0.1 });
+      obs.observe(el);
+      return () => obs.disconnect();
+    }, [cached, loading, msg.rawMsg, msg.id]);
+
+    useEffect(() => { if (failed) triggered.current = false; }, [failed]);
+
+    return (
+      <div ref={ref} className="space-y-1">
+        {cached ? (
+          <video
+            src={cached}
+            controls
+            className="max-w-full max-h-64 rounded-xl"
+            style={{ minWidth: 200, minHeight: 120 }}
+          />
+        ) : loading ? (
+          <div className="flex items-center justify-center bg-slate-100 rounded-xl" style={{ width: 200, height: 120 }}>
+            <div className="w-6 h-6 border-2 border-slate-300 border-t-orange-500 rounded-full animate-spin" />
+          </div>
+        ) : failed ? (
+          <button
+            onClick={() => fetchImageMedia(msg.id, msg.rawMsg)}
+            className="flex flex-col items-center justify-center gap-1 bg-slate-100 rounded-xl cursor-pointer hover:bg-slate-200 transition-all"
+            style={{ width: 200, height: 120 }}
+          >
+            <span className="text-2xl">🎥</span>
+            <span className={`text-[9px] font-bold ${msg.fromMe ? 'text-orange-200' : 'text-slate-400'}`}>Vídeo indisponível</span>
+            <span className={`text-[8px] underline ${msg.fromMe ? 'text-orange-100' : 'text-slate-400'}`}>Tentar novamente</span>
+          </button>
+        ) : (
+          <div className="flex items-center justify-center bg-slate-50 rounded-xl" style={{ width: 200, height: 120 }}>
+            <span className="text-2xl">🎥</span>
+          </div>
+        )}
+        {msg.text && <p className="whitespace-pre-wrap leading-relaxed break-words text-xs">{msg.text}</p>}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <Confetti active={showConfetti} onDone={() => setShowConfetti(false)} />
@@ -1098,7 +1163,9 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                                   ? 'bg-orange-500 text-white rounded-br-none'
                                   : 'msg-bubble-in rounded-bl-none'
                               }`}>
-                                {msg.isImage ? (
+                                {msg.isVideo ? (
+                                  <VideoBubble msg={msg} />
+                                ) : msg.isImage ? (
                                   <ImageBubble msg={msg} />
                                 ) : msg.isAudio ? (
                                   <div className="space-y-1">

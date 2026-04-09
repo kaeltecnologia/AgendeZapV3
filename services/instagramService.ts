@@ -1,100 +1,62 @@
 /**
- * instagramService — Client-side Instagram Graph API helper
+ * instagramService — Publishes to Instagram via server-side Edge Function.
  *
- * Publishes Stories and feed posts via the Instagram Content Publishing API.
- * Uses the long-lived access token stored in tenant_settings.
+ * The Instagram Content Publishing API is designed for server-side use.
+ * Browser-based calls fail with CORS/500 errors. This service routes
+ * all publish calls through the `instagram-publish` Supabase Edge Function.
  */
 
-const GRAPH = 'https://graph.facebook.com/v21.0';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
 
 export interface IgPublishResult {
   success: boolean;
   error?: string;
 }
 
-export const instagramService = {
-  /**
-   * Publish an image as an Instagram Story.
-   */
-  async publishStory(igUserId: string, accessToken: string, imageUrl: string): Promise<IgPublishResult> {
-    try {
-      // Step 1: Create media container (STORIES type)
-      const createRes = await fetch(`${GRAPH}/${igUserId}/media`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          media_type: 'STORIES',
-          access_token: accessToken,
-        }),
-      });
-      const createData = await createRes.json();
-      if (createData.error) {
-        console.error('[Instagram] Create media error:', createData.error);
-        return { success: false, error: createData.error.message || 'Erro ao criar mídia' };
-      }
-      const creationId = createData.id;
-      if (!creationId) {
-        return { success: false, error: 'Nenhum ID de mídia retornado' };
-      }
+async function callEdge(body: Record<string, string | undefined>): Promise<IgPublishResult> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/instagram-publish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    console.log('[Instagram] Edge response:', res.status, JSON.stringify(data).substring(0, 400));
 
-      // Step 2: Publish the container
-      const pubRes = await fetch(`${GRAPH}/${igUserId}/media_publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creation_id: creationId,
-          access_token: accessToken,
-        }),
-      });
-      const pubData = await pubRes.json();
-      if (pubData.error) {
-        console.error('[Instagram] Publish error:', pubData.error);
-        return { success: false, error: pubData.error.message || 'Erro ao publicar' };
-      }
-
-      return { success: true };
-    } catch (e: any) {
-      console.error('[Instagram] Unexpected error:', e);
-      return { success: false, error: e.message || 'Erro inesperado' };
+    if (data.error) {
+      return { success: false, error: data.error };
     }
+    return { success: true };
+  } catch (e: any) {
+    console.error('[Instagram] Edge call failed:', e);
+    return { success: false, error: e.message || 'Erro de conexão' };
+  }
+}
+
+export const instagramService = {
+  async publishStory(igUserId: string, _accessToken: string, imageUrl: string, tenantId?: string): Promise<IgPublishResult> {
+    // tenantId is passed from PublicarView; igUserId kept for backward compat
+    const tid = tenantId || '';
+    if (!tid) {
+      // Fallback: try to extract from imageUrl path (posts/{tenantId}_timestamp.ext)
+      const m = imageUrl.match(/posts\/([^_]+)_/);
+      if (m) return callEdge({ tenantId: m[1], imageUrl, mediaType: 'STORIES' });
+      return { success: false, error: 'tenantId não disponível' };
+    }
+    return callEdge({ tenantId: tid, imageUrl, mediaType: 'STORIES' });
   },
 
-  /**
-   * Publish an image as an Instagram feed post (with caption).
-   */
-  async publishPost(igUserId: string, accessToken: string, imageUrl: string, caption?: string): Promise<IgPublishResult> {
-    try {
-      const createRes = await fetch(`${GRAPH}/${igUserId}/media`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          caption: caption || '',
-          access_token: accessToken,
-        }),
-      });
-      const createData = await createRes.json();
-      if (createData.error) {
-        return { success: false, error: createData.error.message || 'Erro ao criar mídia' };
-      }
-
-      const pubRes = await fetch(`${GRAPH}/${igUserId}/media_publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creation_id: createData.id,
-          access_token: accessToken,
-        }),
-      });
-      const pubData = await pubRes.json();
-      if (pubData.error) {
-        return { success: false, error: pubData.error.message || 'Erro ao publicar' };
-      }
-
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Erro inesperado' };
+  async publishPost(igUserId: string, _accessToken: string, imageUrl: string, caption?: string, tenantId?: string): Promise<IgPublishResult> {
+    const tid = tenantId || '';
+    if (!tid) {
+      const m = imageUrl.match(/posts\/([^_]+)_/);
+      if (m) return callEdge({ tenantId: m[1], imageUrl, caption, mediaType: 'FEED' });
+      return { success: false, error: 'tenantId não disponível' };
     }
+    return callEdge({ tenantId: tid, imageUrl, caption, mediaType: 'FEED' });
   },
 };

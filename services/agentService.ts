@@ -506,7 +506,7 @@ async function callBrain(
 
   const known: string[] = [];
   if (data.clientName) known.push(`Nome: ${data.clientName}`);
-  if (data.serviceName) known.push(`Serviço: ${data.serviceName}`);
+  if (data.serviceName) known.push(`Serviço: ${data.serviceName} ⛔ SERVIÇO JÁ DEFINIDO — NÃO liste, sugira ou pergunte sobre outros serviços. Continue o fluxo.`);
   if (data.professionalName) known.push(`Profissional: ${data.professionalName}`);
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
   if (data.time) known.push(`Horário: ${data.time}`);
@@ -541,14 +541,20 @@ async function callBrain(
     ? `\n⬇️ ATENÇÃO: cliente pediu "mais tarde possível" — a lista abaixo já está em ordem DECRESCENTE (maior → menor). Sugira o PRIMEIRO horário da lista (o mais tardio disponível).`
     : '';
 
+  // Build what's still missing for slot lookup
+  const _missingForSlots: string[] = [];
+  if (!data.serviceId) _missingForSlots.push('serviço');
+  if (!data.professionalId) _missingForSlots.push('profissional');
+  if (!data.date) _missingForSlots.push('dia');
+
   const slotsSection = availableSlots && availableSlots.length > 0
     ? `\nHORÁRIOS DISPONÍVEIS (use APENAS estes — NUNCA invente horários fora desta lista):${_minTimeNote}${_latestNote}\n${availableSlots.slice(0, 12).map(s => `• ${s}`).join('\n')}`
     : (data.professionalId && data.date
       ? (data.serviceId
         ? '\n⚠️ NENHUM HORÁRIO DISPONÍVEL — NÃO sugira horários. Informe que a agenda está cheia e ofereça outro dia.'
         : '\n🚫 SERVIÇO NÃO DEFINIDO — ⛔ PROIBIDO mencionar ou sugerir QUALQUER horário específico (ex: "16:00", "17:00"). Pergunte APENAS: "Qual procedimento/serviço você gostaria?" — a disponibilidade depende da duração do serviço.')
-      : (data.professionalId && !data.date
-        ? `\n⛔ DIA NÃO DEFINIDO — NÃO sugira horários. Pergunte o dia de preferência primeiro.`
+      : (_missingForSlots.length > 0
+        ? `\n⛔ HORÁRIOS NÃO VERIFICADOS — NÃO sugira horários. Falta coletar: ${_missingForSlots.join(', ')}. Pergunte APENAS o que falta.`
         : ''));
 
   const histStr = history.slice(-10).map(h =>
@@ -2971,6 +2977,28 @@ async function _handleMessage(
     const _commaCount = (brain.reply.match(/,/g) || []).length;
     if (_temos || _commaCount >= 3) {
       brain.reply = `Qual procedimento você gostaria? 😊`;
+    }
+  }
+
+  // ── TypeScript guard: block LLM from listing services when service IS set ──────
+  if (session.data.serviceId && session.data.serviceName) {
+    const _replyLower = brain.reply.toLowerCase();
+    const _selectedNorm = session.data.serviceName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const _otherSvcCount = services.filter(s => {
+      const sn = s.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return sn !== _selectedNorm && sn.length > 5 && _replyLower.includes(sn);
+    }).length;
+    if (_otherSvcCount >= 2) {
+      console.log(`[Agent] Guard: AI listed ${_otherSvcCount} other services while serviceId is set. Stripping.`);
+      const _sn = session.data.serviceName;
+      if (!session.data.professionalId && professionals.length > 1) {
+        brain.reply = `${_greetPrefix}${_sn}, beleza! Com qual profissional prefere? Temos: ${professionals.map(p => p.name).join(', ')}`;
+      } else if (!session.data.date) {
+        const _profCtx = session.data.professionalName ? ` com o ${session.data.professionalName}` : '';
+        brain.reply = `${_greetPrefix}${_sn}${_profCtx}, beleza! Para qual dia você quer marcar?`;
+      } else {
+        brain.reply = `${_greetPrefix}${_sn}, certo! Para qual horário prefere?`;
+      }
     }
   }
   // Post-brain override: if prof+date now known but service still missing, ask with hardcoded message

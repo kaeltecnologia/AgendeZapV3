@@ -37,6 +37,34 @@ export const NICHOS = [
 
 export type NichoKey = typeof NICHOS[number];
 
+/**
+ * Ícone do sidebar para "Comandas" e "Serviços" — varia por nicho.
+ * O componente SVG real fica em App.tsx.
+ */
+export type NichoIconKey = 'scissors' | 'sparkle' | 'paw' | 'tooth' | 'pen-nib' | 'hand' | 'heartbeat';
+
+export const nichoIconMap: Record<NichoKey, NichoIconKey> = {
+  'Banho e Tosa': 'paw',
+  'Barbearia': 'scissors',
+  'Bronzeamento': 'sparkle',
+  'Cílios e Extensões': 'scissors',
+  'Clínica de Estética': 'sparkle',
+  'Depilação': 'sparkle',
+  'Design de Sobrancelhas': 'scissors',
+  'Estética Corporal': 'sparkle',
+  'Estética Facial': 'sparkle',
+  'Manicure/Pedicure': 'hand',
+  'Maquiagem': 'scissors',
+  'Massoterapia': 'sparkle',
+  'Micropigmentação': 'scissors',
+  'Nutrição/Personal': 'heartbeat',
+  'Odontologia': 'tooth',
+  'Podologia': 'heartbeat',
+  'Salão de Beleza': 'scissors',
+  'Spa': 'sparkle',
+  'Tatuagem e Piercing': 'pen-nib',
+};
+
 /** Retorna true quando o nicho é Barbearia (usa prompt integral original). */
 export function isBarbearia(nicho?: string): boolean {
   return !nicho || nicho === 'Barbearia';

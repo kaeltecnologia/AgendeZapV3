@@ -13,12 +13,13 @@ exception when others then null;
 end $$;
 
 -- 2. Recriar cleanup de msg_dedup com TTL de 25 horas
---    Follow-up keys (fu::aviso::, fu::lembrete::, etc.) precisam durar 24h+
+--    Follow-up keys (fu::*) precisam durar 24h+
+--    Referral keys (cust_referral::*, referral::*) são PERMANENTES — nunca limpas
 do $$ begin
   perform cron.schedule(
     'cleanup-msg-dedup',
     '*/30 * * * *',
-    'delete from msg_dedup where ts < now() - interval ''25 hours'''
+    'delete from msg_dedup where ts < now() - interval ''25 hours'' and fp not like ''cust_referral::%'' and fp not like ''referral::%'''
   );
 exception when others then null;
 end $$;

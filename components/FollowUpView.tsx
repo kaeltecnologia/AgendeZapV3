@@ -361,12 +361,12 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
               rows={4}
               value={newMsg}
               onChange={e => setNewMsg(e.target.value)}
-              placeholder="Mensagem que será enviada via WhatsApp... Use {nome}, {dia}, {hora}, {servico}"
+              placeholder="Mensagem que será enviada via WhatsApp... Use {nome}, {dia}, {hora}, {servico}, {profissional}"
               className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl outline-none font-bold resize-none focus:border-orange-500 transition-all text-sm leading-relaxed"
             />
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">inserir:</span>
-              {['{nome}', '{dia}', '{hora}', '{servico}'].map(v => (
+              {['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'].map(v => (
                 <Tag key={v} label={v} onClick={() => insertVar(v, addMsgRef, newMsg, setNewMsg)} />
               ))}
             </div>
@@ -446,7 +446,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
                   />
                   <div className="flex flex-wrap gap-2 items-center">
                     <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">inserir:</span>
-                    {['{nome}', '{dia}', '{hora}', '{servico}'].map(v => (
+                    {['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'].map(v => (
                       <Tag key={v} label={v} onClick={() => insertVar(v, editMsgRef, editFields.message || '', (val) => setEditFields(f => ({ ...f, message: val })))} />
                     ))}
                   </div>

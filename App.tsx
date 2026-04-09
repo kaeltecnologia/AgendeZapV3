@@ -48,6 +48,7 @@ import { TenantStatus, AppointmentStatus, AffiliateLink } from './types';
 import { sendClientArrivedNotification } from './services/notificationService';
 import PlanUpgradeModal from './components/PlanUpgradeModal';
 import { hasFeature, FeatureKey } from './config/planConfig';
+import { nichoIconMap, NichoKey } from './config/nichoConfigs';
 import Toast, { ToastMessage } from './components/Toast';
 import WhatsNew from './components/WhatsNew';
 export const ToastContext = React.createContext<(msg: Omit<ToastMessage, 'id'>) => void>(() => {});
@@ -716,6 +717,19 @@ const App: React.FC = () => {
   };
   const themeClass = nichoThemeMap[tenantNicho] || '';
 
+  // Nicho → ícone dinâmico para Comandas e Serviços
+  const nichoIconComponents: Record<string, () => React.JSX.Element> = {
+    'scissors': IconScissors,
+    'sparkle': IconSparkle,
+    'paw': IconPaw,
+    'tooth': IconTooth,
+    'pen-nib': IconPenNib,
+    'hand': IconHand,
+    'heartbeat': IconHeartbeat,
+  };
+  const nichoIconKey = nichoIconMap[tenantNicho as NichoKey] || 'scissors';
+  const NichoIcon = nichoIconComponents[nichoIconKey] || IconScissors;
+
   return (
     // ✅ CORREÇÃO: sem overflow nem transform aqui — deixa fixed dos modais escapar para a viewport
     <ToastContext.Provider value={showToast}>
@@ -820,8 +834,9 @@ const App: React.FC = () => {
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operacional</p>}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<IconScissors />} label="Comandas" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<NichoIcon />} label="Comandas" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
               </div>
 
               {/* ── Operação ── */}
@@ -867,9 +882,8 @@ const App: React.FC = () => {
               {/* ── Base ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Base</p>}
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<IconScissors />} label="Serviços" />
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<NichoIcon />} label="Serviços" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
               </div>
@@ -1453,5 +1467,13 @@ const IconCamera = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 
 const IconGlobe = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
 const IconDoc = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>;
 const IconWallet = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>;
+
+// ── Ícones por nicho ──────────────────────────────────────────────────────────
+const IconPaw = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="8" cy="6" rx="2" ry="2.5"/><ellipse cx="16" cy="6" rx="2" ry="2.5"/><ellipse cx="5" cy="11" rx="2" ry="2.5"/><ellipse cx="19" cy="11" rx="2" ry="2.5"/><path d="M12 17c-2.5 0-4.5-1.5-5-3.5-.3-1.2.5-2.5 1.8-2.5h6.4c1.3 0 2.1 1.3 1.8 2.5-.5 2-2.5 3.5-5 3.5z"/></svg>;
+const IconTooth = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C9.5 2 7 3.5 7 6c0 2 .5 4-1 8-.5 1.5 0 3 1 4s2.5 1 3.5 0c.7-.7 1-1.5 1.5-1.5s.8.8 1.5 1.5c1 1 2.5 1 3.5 0s1.5-2.5 1-4c-1.5-4-1-6-1-8 0-2.5-2.5-4-5-4z"/></svg>;
+const IconPenNib = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>;
+const IconSparkle = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z"/></svg>;
+const IconHand = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v1"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>;
+const IconHeartbeat = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0L12 5.36l-.77-.78a5.4 5.4 0 0 0-7.65 0 5.4 5.4 0 0 0 0 7.65L12 20.65l8.42-8.42a5.4 5.4 0 0 0 0-7.65z" opacity="0.3"/></svg>;
 
 export default App;

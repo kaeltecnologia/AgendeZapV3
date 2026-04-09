@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 import { evolutionService } from '../services/evolutionService';
@@ -173,6 +173,16 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
   const touchStartX = useRef<number>(0);
 
   const topRef = useRef<HTMLDivElement>(null);
+
+  // Force light mode on public booking page — useLayoutEffect runs BEFORE browser paint
+  useLayoutEffect(() => {
+    const html = document.documentElement;
+    const wasDark = html.classList.contains('dark');
+    html.classList.remove('dark');
+    // Also force-remove from body just in case
+    document.body.classList.remove('dark');
+    return () => { if (wasDark) html.classList.add('dark'); };
+  }, []);
   const servicosRef = useRef<HTMLDivElement>(null);
 
   // Load tenant data
@@ -377,7 +387,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
     headLabel: 'text-pink-400',
     t9: 'text-pink-900', t7: 'text-pink-700', t6: 'text-pink-600',
     t5: 'text-pink-500', t4: 'text-pink-400', t3: 'text-pink-300',
-    ght6: 'group-hover:text-pink-600',
+    ght6: 'group-hover:text-pink-600', ht6: 'hover:text-pink-600',
     b1: 'border-pink-100', b2: 'border-pink-200', b3: 'border-pink-300', b5: 'border-pink-500',
     hb4: 'hover:border-pink-400', hb5: 'hover:border-pink-500',
     bg5: 'bg-pink-500', bg6: 'bg-pink-600', bg50: 'bg-pink-50', bg1: 'bg-pink-100', bg2: 'bg-pink-200',
@@ -402,7 +412,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
     headLabel: 'text-blue-300',
     t9: 'text-gray-900', t7: 'text-gray-700', t6: 'text-orange-600',
     t5: 'text-orange-500', t4: 'text-gray-500', t3: 'text-gray-400',
-    ght6: 'group-hover:text-orange-600',
+    ght6: 'group-hover:text-orange-600', ht6: 'hover:text-orange-600',
     b1: 'border-slate-100', b2: 'border-slate-200', b3: 'border-slate-300', b5: 'border-orange-500',
     hb4: 'hover:border-orange-400', hb5: 'hover:border-orange-500',
     bg5: 'bg-orange-500', bg6: 'bg-orange-600', bg50: 'bg-orange-50', bg1: 'bg-orange-100', bg2: 'bg-slate-200',
@@ -421,6 +431,10 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
     svcHov: 'hover:border-orange-400 hover:shadow-lg hover:shadow-orange-300/30',
     wizCard: 'border-slate-200 shadow-lg shadow-slate-200/30',
   };
+
+  // Force white bg inline (bulletproof against dark mode CSS overrides)
+  const W: React.CSSProperties = { backgroundColor: '#ffffff', boxShadow: '0 4px 15px rgba(0,0,0,0.08)' };
+  const W80: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.8)', boxShadow: '0 4px 15px rgba(0,0,0,0.06)' };
 
   // Metallic text styles (themed)
   const copperText: React.CSSProperties = isManicure ? {
@@ -464,7 +478,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
   const dividerColor = isManicure ? '#ec4899' : '#f97316';
 
   return (
-    <div className={`min-h-screen bg-gradient-to-b ${$.pageBg} relative`} ref={topRef}>
+    <div className={`booking-page min-h-screen bg-gradient-to-b ${$.pageBg} relative`} ref={topRef}>
       {/* Leather texture overlay */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
@@ -578,7 +592,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                       <span key={i} className={`text-lg ${i <= Math.round(tenantRating.average / 2) ? $.starLit : $.starDim}`}>★</span>
                     ))}
                   </div>
-                  <span className={`text-xs font-bold ${$.t7}`}>{tenantRating.average}/10 · {tenantRating.count} avaliações</span>
+                  <span className="text-xs font-bold text-white/70">{tenantRating.average}/10 · {tenantRating.count} avaliações</span>
                 </div>
               )}
 
@@ -706,7 +720,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
               </div>
 
               {services.length === 0 && (
-                <p className={`text-center py-10 ${$.t4} text-sm font-bold`}>Nenhum serviço disponível.</p>
+                <p className="text-center py-10 text-white/60 text-sm font-bold">Nenhum serviço disponível.</p>
               )}
 
               <div className="space-y-3">
@@ -714,7 +728,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                   <button
                     key={svc.id}
                     onClick={() => { setSelectedService(svc); goTo('DATE'); }}
-                    className={`w-full bg-white/80 backdrop-blur-sm rounded-2xl p-5 border-2 border-white/40 ${$.svcHov} transition-all text-left group`}
+                    style={W80} className={`w-full bp-white80 backdrop-blur-sm rounded-2xl p-5 border-2 border-white/40 ${$.svcHov} transition-all text-left group`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
@@ -746,8 +760,8 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                       <div className={`w-16 h-16 mx-auto rounded-full bg-gradient-to-br ${$.avGrad} flex items-center justify-center text-2xl font-black text-white shadow-lg ${$.s3}`}>
                         {prof.name.charAt(0).toUpperCase()}
                       </div>
-                      <p className={`text-xs font-black ${$.t9} mt-2`}>{prof.name}</p>
-                      {prof.specialty && <p className={`text-[10px] ${$.t5} font-bold`}>{prof.specialty}</p>}
+                      <p className="text-xs font-black text-white mt-2">{prof.name}</p>
+                      {prof.specialty && <p className="text-[10px] text-white/60 font-bold">{prof.specialty}</p>}
                     </div>
                   ))}
                 </div>
@@ -816,10 +830,10 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
           <div className="text-center space-y-8 py-8 animate-fadeIn">
             <div className="text-7xl">✅</div>
             <div>
-              <h2 className={`text-2xl font-black ${$.t9} uppercase tracking-tight`}>Agendado!</h2>
-              <p className={`text-sm font-bold ${$.t5} mt-2`}>Enviamos a confirmação para o seu WhatsApp.</p>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tight">Agendado!</h2>
+              <p className="text-sm font-bold text-white/70 mt-2">Enviamos a confirmação para o seu WhatsApp.</p>
             </div>
-            <div className={`bg-white rounded-[28px] p-8 border-2 ${$.b2} text-left space-y-4 ${$.wizCard}`}>
+            <div style={W} className={`bp-white rounded-[28px] p-8 border-2 ${$.b2} text-left space-y-4 ${$.wizCard}`}>
               <SummaryRow icon="✂️" label="Serviço" value={selectedService?.name} t4={$.t4} t9={$.t9} />
               <SummaryRow icon="📅" label="Dia" value={formatDatePT(selectedDate)} t4={$.t4} t9={$.t9} />
               <SummaryRow icon="⏰" label="Horário" value={selectedTime} t4={$.t4} t9={$.t9} />
@@ -831,7 +845,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 setSelectedService(null); setSelectedDate(''); setSelectedBarber(null);
                 setSelectedPeriod(''); setSelectedTime(''); setCustomerName(''); setRawPhone('');
               }}
-              className={`w-full py-4 border-2 ${$.b5} ${$.t6} rounded-2xl font-black text-xs uppercase tracking-widest ${$.hbg5} hover:text-white transition-all`}
+              className={`w-full py-4 border-2 border-white/40 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/20 transition-all`}
             >
               Novo Agendamento
             </button>
@@ -842,11 +856,11 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {step === 'DATE' && (
           <div className="space-y-6 animate-fadeIn">
             <StepHeader step={2} total={6} title="Escolha o Dia" onBack={() => goTo('SERVICE')} th={$} />
-            <div className={`bg-white rounded-[28px] p-8 border-2 ${$.wizCard}`}>
+            <div style={W} className={`bp-white rounded-[28px] p-8 border-2 ${$.wizCard}`}>
               <MiniCalendar value={selectedDate} onChange={d => { setSelectedDate(d); goTo('BARBER'); }} activeDays={activeDays} accent={{ sel: $.calSel, today: $.calToday, hov: $.calHov }} />
             </div>
             {activeDays.size === 0 && (
-              <p className={`text-center text-xs font-bold ${$.t4}`}>Horários de funcionamento não configurados.</p>
+              <p className="text-center text-xs font-bold text-white/60">Horários de funcionamento não configurados.</p>
             )}
           </div>
         )}
@@ -855,13 +869,13 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {step === 'BARBER' && (
           <div className="space-y-6 animate-fadeIn">
             <StepHeader step={3} total={6} title="Escolha o Profissional" onBack={() => goTo('DATE')} th={$} />
-            <p className={`text-xs font-bold ${$.t5} text-center`}>{formatDatePT(selectedDate)}</p>
+            <p className="text-xs font-bold text-white/70 text-center">{formatDatePT(selectedDate)}</p>
             <div className="space-y-3">
               {professionals.map(prof => (
                 <button
                   key={prof.id}
                   onClick={() => { setSelectedBarber(prof); goTo('PERIOD'); }}
-                  className={`w-full bg-white rounded-[24px] p-6 border-2 ${$.b2} ${$.hb4} hover:shadow-lg ${$.hs2} transition-all flex items-center gap-5 group`}
+                  style={W} className={`w-full bp-white rounded-[24px] p-6 border-2 ${$.b2} ${$.hb4} hover:shadow-lg ${$.hs2} transition-all flex items-center gap-5 group`}
                 >
                   <div className={`w-14 h-14 ${$.bg1} rounded-2xl flex items-center justify-center text-3xl ${$.hbg2} transition-all flex-shrink-0`}>💈</div>
                   <div className="text-left">
@@ -879,7 +893,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {step === 'PERIOD' && (
           <div className="space-y-6 animate-fadeIn">
             <StepHeader step={4} total={6} title="Escolha o Período" onBack={() => goTo('BARBER')} th={$} />
-            <p className={`text-xs font-bold ${$.t5} text-center`}>
+            <p className="text-xs font-bold text-white/70 text-center">
               {formatDatePT(selectedDate)} · {selectedBarber?.name}
             </p>
 
@@ -891,7 +905,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
             )}
 
             {!loadingSlots && slots.length === 0 && (
-              <div className={`bg-white rounded-[28px] p-8 text-center border-2 ${$.b2}`}>
+              <div style={W} className={`bp-white rounded-[28px] p-8 text-center border-2 ${$.b2}`}>
                 <p className="text-3xl mb-3">😕</p>
                 <p className={`font-black ${$.t9}`}>Sem horários disponíveis</p>
                 <p className={`text-xs font-bold ${$.t4} mt-1`}>Escolha outro dia ou profissional.</p>
@@ -910,7 +924,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                       key={p.id}
                       onClick={() => { setSelectedPeriod(p.id); goTo('TIME'); }}
                       disabled={count === 0}
-                      className={`w-full bg-white rounded-[24px] p-6 border-2 transition-all text-left ${
+                      style={W} className={`w-full bp-white rounded-[24px] p-6 border-2 transition-all text-left ${
                         count > 0
                           ? `${$.b2} ${$.hb4} hover:shadow-lg ${$.hs2}`
                           : `${$.b1} opacity-40 cursor-not-allowed`
@@ -938,7 +952,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         {step === 'TIME' && (
           <div className="space-y-6 animate-fadeIn">
             <StepHeader step={5} total={6} title="Escolha o Horário" onBack={() => goTo('PERIOD')} th={$} />
-            <p className={`text-xs font-bold ${$.t5} text-center`}>
+            <p className="text-xs font-bold text-white/70 text-center">
               {formatDatePT(selectedDate)} · {selectedBarber?.name} · {PERIODS.find(p => p.id === selectedPeriod)?.label}
             </p>
 
@@ -947,7 +961,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 <button
                   key={time}
                   onClick={() => { setSelectedTime(time); goTo('INFO'); }}
-                  className={`bg-white border-2 ${$.b2} rounded-2xl py-4 font-black text-sm ${$.t9} ${$.hb4} ${$.hbg50} ${$.ht6} hover:shadow-lg ${$.hs2} transition-all`}
+                  style={W} className={`bp-white border-2 ${$.b2} rounded-2xl py-4 font-black text-sm ${$.t9} ${$.hb4} ${$.hbg50} ${$.ht6} hover:shadow-lg ${$.hs2} transition-all`}
                 >
                   {time}
                 </button>
@@ -977,7 +991,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                   placeholder="Nome completo"
                   value={customerName}
                   onChange={e => setCustomerName(e.target.value)}
-                  className={`w-full px-5 py-4 bg-white border-2 ${$.b2} rounded-2xl font-bold ${$.t9} ${$.ph} outline-none ${$.fb5} transition-all`}
+                  style={W} className={`w-full px-5 py-4 bp-white border-2 ${$.b2} rounded-2xl font-bold ${$.t9} ${$.ph} outline-none ${$.fb5} transition-all`}
                 />
               </div>
 
@@ -991,7 +1005,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                     const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
                     setRawPhone(digits);
                   }}
-                  className={`w-full px-5 py-4 bg-white border-2 ${$.b2} rounded-2xl font-bold ${$.t9} ${$.ph} outline-none ${$.fb5} transition-all`}
+                  style={W} className={`w-full px-5 py-4 bp-white border-2 ${$.b2} rounded-2xl font-bold ${$.t9} ${$.ph} outline-none ${$.fb5} transition-all`}
                 />
                 <p className={`text-[9px] font-bold ${$.t4} ml-2`}>A confirmação será enviada neste número.</p>
               </div>
@@ -1073,13 +1087,13 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
 const StepHeader: React.FC<{ step: number; total: number; title: string; onBack?: () => void; th?: { t4: string; t5: string; t9: string; b3: string; hb5: string; ht6?: string } }> = ({ step, total, title, onBack, th }) => (
   <div className="flex items-center gap-4">
     {onBack && (
-      <button onClick={onBack} className={`w-10 h-10 rounded-2xl border-2 ${th?.b3 || 'border-pink-300'} flex items-center justify-center ${th?.t5 || 'text-pink-500'} ${th?.hb5 || 'hover:border-pink-500'} hover:text-pink-600 transition-all font-black text-lg flex-shrink-0`}>
+      <button onClick={onBack} className={`w-10 h-10 rounded-2xl border-2 border-white/30 flex items-center justify-center text-white/70 hover:border-white/60 hover:text-white transition-all font-black text-lg flex-shrink-0`}>
         ‹
       </button>
     )}
     <div className="flex-1">
-      <p className={`text-[9px] font-black ${th?.t4 || 'text-pink-400'} uppercase tracking-widest`}>Passo {step} de {total}</p>
-      <h2 className={`text-2xl font-black ${th?.t9 || 'text-pink-900'} uppercase tracking-tight leading-tight`}>{title}</h2>
+      <p className="text-[9px] font-black text-white/60 uppercase tracking-widest">Passo {step} de {total}</p>
+      <h2 className="text-2xl font-black text-white uppercase tracking-tight leading-tight">{title}</h2>
     </div>
   </div>
 );

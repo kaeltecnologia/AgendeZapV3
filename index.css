@@ -574,6 +574,26 @@ html:not(.dark) .theme-manicure .agz-sidebar .custom-scrollbar::-webkit-scrollba
 .dark .bg-orange-600 { background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 40%, var(--accent-darker) 100%) !important; }
 .dark .text-orange-500 { color: var(--accent) !important; }
 
+/* ── BookingPage: always light (public page) ─────────── */
+/* Uses custom class names (bp-white, bp-white80) to avoid dark mode overrides */
+.bp-white  { background: #ffffff !important; box-shadow: 0 4px 15px rgba(0,0,0,0.08) !important; }
+.bp-white80 { background: rgba(255,255,255,0.8) !important; box-shadow: 0 4px 15px rgba(0,0,0,0.06) !important; }
+.booking-page input,
+.booking-page textarea,
+.booking-page select {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+.booking-page input::placeholder,
+.booking-page textarea::placeholder {
+  color: #9ca3af !important;
+}
+.booking-page button:active:not(:disabled) {
+  transform: scale(0.97) !important;
+}
+
 /* ── Mobile Responsiveness ────────────────────────────── */
 @media (max-width: 640px) {
     /* Reduce extreme border-radius on mobile */

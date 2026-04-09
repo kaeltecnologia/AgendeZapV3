@@ -1694,6 +1694,7 @@ END $$;`.trim();
           setInstanceName={setAdminInstanceName}
           connected={adminConnected}
           setConnected={setAdminConnected}
+          openaiKey={sharedOpenAiKey}
         />
       )}
 
@@ -2052,6 +2053,7 @@ END $$;`.trim();
           setInstanceName={(v: string) => setCentralInstanceName(v)}
           connected={centralConnected}
           setConnected={setCentralConnected}
+          openaiKey={sharedOpenAiKey}
         />
       )}
 

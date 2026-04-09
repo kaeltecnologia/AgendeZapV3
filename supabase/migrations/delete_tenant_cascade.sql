@@ -30,8 +30,8 @@ BEGIN
   DELETE FROM customer_favorites WHERE tenant_id = p_tenant_id;
   DELETE FROM comandas           WHERE tenant_id = p_tenant_id;
 
-  -- Finalmente, o tenant
-  DELETE FROM tenants WHERE id = p_tenant_id;
+  -- Finalmente, o tenant (id é UUID, parâmetro é TEXT → cast)
+  DELETE FROM tenants WHERE id = p_tenant_id::UUID;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Tenant % não encontrado', p_tenant_id;
