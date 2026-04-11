@@ -355,75 +355,96 @@ Deno.serve(async (_req) => {
 
         // ── 1. AVISO (check-in diário) — lotes de 5 a cada 5 min ─────
         if (settings.avisoModes.length > 0) {
-          // Collect all eligible aviso entries first
-          const avisoQueue: { appt: any; cust: any; mode: any }[] = [];
-          for (const appt of allAppts) {
-            if (appt.status !== 'PENDING' && appt.status !== 'CONFIRMED') continue;
-            const apptDate = appt.startTime?.slice(0, 10);
-            if (apptDate !== nowDate) continue;
-            // Skip if appointment time already passed (avoid post-service reminders)
-            const apptStartMs = new Date(appt.startTime).getTime();
-            if (apptStartMs <= nowMs) continue;
+          // FIX: Verificar status do WhatsApp ANTES de fazer claims.
+          // Se WA offline, não claim → pode retentar quando reconectar.
+          const waStatus = await checkWhatsAppStatus(instance);
+          if (waStatus !== 'open') {
+            console.log(`[Aviso] ${tenant.nome} — WA offline (${waStatus}), pulando avisos sem claim`);
+          } else {
+            // Collect all eligible aviso entries first
+            const avisoQueue: { appt: any; cust: any; mode: any; daysBefore: number }[] = [];
+            for (const appt of allAppts) {
+              if (appt.status !== 'PENDING' && appt.status !== 'CONFIRMED') continue;
+              const apptDate = appt.startTime?.slice(0, 10);
+              if (!apptDate) continue;
 
-            const cust = findCust(appt.customer_id);
-            if (!cust?.phone) continue;
+              const cust = findCust(appt.customer_id);
+              if (!cust?.phone) continue;
 
-            const mode = settings.avisoModes.find((m: any) => m.id === cust.avisoModeId && m.active);
-            if (!mode) continue;
+              const mode = settings.avisoModes.find((m: any) => m.id === cust.avisoModeId && m.active);
+              if (!mode) continue;
 
-            const sentKey = `aviso::${appt.id}`;
-            const custDayKey = `aviso::cust::${cust.id}::${nowDate}`;
-            if (newFollowUpSent[sentKey] || newFollowUpSent[custDayKey]) continue;
+              // FIX: Implementar daysBefore — calcular a data de envio correta
+              const daysBefore = mode.daysBefore || 0;
+              const sendDate = (() => {
+                const d = new Date(apptDate + 'T12:00:00Z');
+                d.setUTCDate(d.getUTCDate() - daysBefore);
+                return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+              })();
+              if (sendDate !== nowDate) continue;
 
-            const fixedHHMM = mode.fixedTime || '08:00';
-            if (nowHHMM < fixedHHMM) continue;
+              // FIX: Usar Date.now() (UTC real) para checar se agendamento já passou,
+              // não nowMs (que é Date.now()-3h e causa falsos positivos).
+              const apptStartMs = new Date(appt.startTime).getTime();
+              if (apptStartMs <= Date.now()) continue;
 
-            avisoQueue.push({ appt, cust, mode });
-          }
+              // FIX: Incluir daysBefore e apptDate na chave de dedup (alinha com followUpService.ts)
+              const sentKey = `aviso::${appt.id}::${daysBefore}`;
+              const custDayKey = `aviso::cust::${cust.id}::${apptDate}::${daysBefore}`;
+              if (newFollowUpSent[sentKey] || newFollowUpSent[custDayKey]) continue;
 
-          // Send in batches of 5, each batch delayed by 5 minutes after fixedTime
-          const BATCH_SIZE = 5;
-          const BATCH_INTERVAL_MIN = 5;
-          for (let i = 0; i < avisoQueue.length; i++) {
-            const batchIdx = Math.floor(i / BATCH_SIZE);
-            const delayMin = batchIdx * BATCH_INTERVAL_MIN;
-            const { appt, cust, mode } = avisoQueue[i];
+              const fixedHHMM = mode.fixedTime || '08:00';
+              if (nowHHMM < fixedHHMM) continue;
 
-            // Calculate if this batch's time has arrived
-            const fixedHHMM = mode.fixedTime || '08:00';
-            const [fH, fM] = fixedHHMM.split(':').map(Number);
-            const batchMinutes = fH * 60 + fM + delayMin;
-            const batchHHMM = `${String(Math.floor(batchMinutes / 60)).padStart(2, '0')}:${String(batchMinutes % 60).padStart(2, '0')}`;
-            if (nowHHMM < batchHHMM) continue;
+              avisoQueue.push({ appt, cust, mode, daysBefore });
+            }
 
-            // Skip if agent has unanswered bot message
-            if (await hasUnansweredBotMsg(tenantId, cust.phone)) continue;
+            // Send in batches of 5, each batch delayed by 5 minutes after fixedTime
+            const BATCH_SIZE = 5;
+            const BATCH_INTERVAL_MIN = 5;
+            for (let i = 0; i < avisoQueue.length; i++) {
+              const batchIdx = Math.floor(i / BATCH_SIZE);
+              const delayMin = batchIdx * BATCH_INTERVAL_MIN;
+              const { appt, cust, mode, daysBefore } = avisoQueue[i];
+              const apptDate = appt.startTime?.slice(0, 10);
 
-            // Atomic claim
-            if (!(await claimMessage(`fu::aviso::${cust.id}::${nowDate}`))) continue;
+              // Calculate if this batch's time has arrived
+              const fixedHHMM = mode.fixedTime || '08:00';
+              const [fH, fM] = fixedHHMM.split(':').map(Number);
+              const batchMinutes = fH * 60 + fM + delayMin;
+              const batchHHMM = `${String(Math.floor(batchMinutes / 60)).padStart(2, '0')}:${String(batchMinutes % 60).padStart(2, '0')}`;
+              if (nowHHMM < batchHHMM) continue;
 
-            const svc = findSvc(appt.service_id);
-            const prof = findProf(appt.professional_id);
-            const apptTime = formatTimeBR(appt.startTime);
+              // Skip if agent has unanswered bot message
+              if (await hasUnansweredBotMsg(tenantId, cust.phone)) continue;
 
-            const msg = interpolate(mode.message, {
-              nome: cust.name, dia: 'hoje', hora: apptTime, servico: svc?.name || '',
-              profissional: prof?.name || '',
-            });
+              // FIX: Claim key inclui apptDate e daysBefore (alinha com followUpService.ts)
+              if (!(await claimMessage(`fu::aviso::${cust.id}::${apptDate}::${daysBefore}`))) continue;
 
-            const sent = await sendWhatsApp(instance, cust.phone, msg);
-            if (sent) {
-              const sentKey = `aviso::${appt.id}`;
-              const custDayKey = `aviso::cust::${cust.id}::${nowDate}`;
-              newFollowUpSent[sentKey] = nowDate;
-              newFollowUpSent[custDayKey] = nowDate;
-              anyFollowUpSent = true;
-              console.log(`[Aviso] ${tenant.nome} → ${cust.name} (lote ${batchIdx + 1})`);
-              await registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
-                apptId: appt.id, apptTime, serviceName: svc?.name || '',
-                clientName: cust.name, professionalId: appt.professional_id,
-                serviceId: appt.service_id,
+              const svc = findSvc(appt.service_id);
+              const prof = findProf(appt.professional_id);
+              const apptTime = formatTimeBR(appt.startTime);
+              const diaLabel = daysBefore === 0 ? 'hoje' : daysBefore === 1 ? 'amanhã' : apptDate;
+
+              const msg = interpolate(mode.message, {
+                nome: cust.name, dia: diaLabel, hora: apptTime, servico: svc?.name || '',
+                profissional: prof?.name || '',
               });
+
+              const sent = await sendWhatsApp(instance, cust.phone, msg);
+              if (sent) {
+                const sentKey = `aviso::${appt.id}::${daysBefore}`;
+                const custDayKey = `aviso::cust::${cust.id}::${apptDate}::${daysBefore}`;
+                newFollowUpSent[sentKey] = nowDate;
+                newFollowUpSent[custDayKey] = nowDate;
+                anyFollowUpSent = true;
+                console.log(`[Aviso] ${tenant.nome} → ${cust.name} (lote ${batchIdx + 1}, ${daysBefore}d antes)`);
+                await registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
+                  apptId: appt.id, apptTime, serviceName: svc?.name || '',
+                  clientName: cust.name, professionalId: appt.professional_id,
+                  serviceId: appt.service_id,
+                });
+              }
             }
           }
         }
