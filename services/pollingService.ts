@@ -235,8 +235,8 @@ function extrairNumero(msg: any): string | null {
 }
 
 // ─── Main message processor ───────────────────────────────────────────
-export async function processarMensagem(tenant: any, msg: any) {
-  let text = (
+export async function processarMensagem(tenant: any, msg: any, overrideText?: string) {
+  let text = overrideText !== undefined ? overrideText : (
     msg.message?.conversation ||
     msg.message?.extendedTextMessage?.text ||
     msg.body || msg.text || ''
@@ -548,6 +548,9 @@ async function pollingLoop() {
         // Sort oldest→newest so we reply in order
         messages.sort((a, b) => (a.messageTimestamp || 0) - (b.messageTimestamp || 0));
 
+        // Group new messages by phone — process each phone as a single batch
+        const byPhone = new Map<string, any[]>();
+
         for (const msg of messages) {
           const msgId = msg.id || msg.key?.id;
           if (!msgId || processedIds.has(msgId)) continue;
@@ -575,7 +578,49 @@ async function pollingLoop() {
 
           // Mark BEFORE processing to prevent any concurrent re-entry
           processedIds.add(msgId);
-          await processarMensagem(tenant, msg);
+
+          const numero = extrairNumero(msg);
+          if (!numero) continue;
+          if (!byPhone.has(numero)) byPhone.set(numero, []);
+          byPhone.get(numero)!.push(msg);
+        }
+
+        // Process each phone's messages as a single AI call
+        for (const [, msgs] of byPhone) {
+          if (msgs.length === 1) {
+            await processarMensagem(tenant, msgs[0]);
+          } else {
+            // Extract text from each message (with audio transcription)
+            const texts: string[] = [];
+            for (const m of msgs) {
+              let t = (
+                m.message?.conversation ||
+                m.message?.extendedTextMessage?.text ||
+                m.body || m.text || ''
+              ).trim();
+              if (!t) {
+                const mType = m.messageType || m.type || '';
+                const isAudio = ['audioMessage', 'pttMessage'].includes(mType) ||
+                  !!m.message?.audioMessage || !!m.message?.pttMessage;
+                if (isAudio && tenant.gemini_api_key) {
+                  const audio = await fetchAudioBase64(tenant.evolution_instance, m);
+                  if (audio) {
+                    t = await transcribeAudio(tenant.gemini_api_key, audio.base64, audio.mimeType) || '[áudio]';
+                  } else { t = '[áudio]'; }
+                } else if (mType === 'imageMessage' || !!m.message?.imageMessage) {
+                  t = m.message?.imageMessage?.caption || '[imagem]';
+                } else if (mType === 'videoMessage' || !!m.message?.videoMessage) {
+                  t = m.message?.videoMessage?.caption || '[vídeo]';
+                } else if (mType === 'documentMessage') {
+                  t = '[documento]';
+                }
+              }
+              if (t) texts.push(t);
+            }
+            // Pass combined text to a single AI call using the first msg for context
+            const combined = texts.join('\n');
+            if (combined) await processarMensagem(tenant, msgs[0], combined);
+          }
         }
       } catch (e: any) {
         log('ERROR', `Tenant ${tenant.nome}: ${e.message}`);
