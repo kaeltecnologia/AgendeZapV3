@@ -346,7 +346,7 @@ const App: React.FC = () => {
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
-    if (isAuthenticated && role !== 'PROFESSIONAL') {
+    if (isAuthenticated && role !== 'PROFESSIONAL' && role !== 'AFFILIATE') {
       const payload = {
         isAuthenticated, role, tenantId, tenantSlug, tenantName,
         tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab,
@@ -468,7 +468,7 @@ const App: React.FC = () => {
           const { _fp, ...payload } = s;
           if (_fp && _fp !== sessionFingerprint(payload)) {
             localStorage.removeItem(SESSION_KEY);
-          } else if (s.isAuthenticated) {
+          } else if (s.isAuthenticated && s.role !== 'AFFILIATE') {
             setIsAuthenticated(true);
             setRole(s.role || 'TENANT');
             setTenantId(s.tenantId || '');
@@ -688,6 +688,8 @@ const App: React.FC = () => {
     setPendingPayment(false);
     setProfessionalId('');
     setProfessionalName('');
+    setAffiliateData(null);
+    setResellerProfile(null);
     setCurrentView(View.DASHBOARD);
   };
 
@@ -768,16 +770,18 @@ const App: React.FC = () => {
   if (role === 'AFFILIATE' && affiliateData) {
     return (
       <ToastContext.Provider value={showToast}>
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900"><div className="w-10 h-10 border-4 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>}>
-          <ResellerView
-            affiliate={affiliateData}
-            resellerProfile={resellerProfile}
-            onResellerProfileChange={setResellerProfile}
-            onImpersonate={handleImpersonate}
-            onLogout={handleLogout}
-          />
-        </Suspense>
-        <Toast messages={toasts} onRemove={removeToast} />
+        <ErrorBoundary>
+          <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900"><div className="w-10 h-10 border-4 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>}>
+            <ResellerView
+              affiliate={affiliateData}
+              resellerProfile={resellerProfile}
+              onResellerProfileChange={setResellerProfile}
+              onImpersonate={handleImpersonate}
+              onLogout={handleLogout}
+            />
+          </Suspense>
+        </ErrorBoundary>
+        <Toast toasts={toasts} onRemove={removeToast} />
       </ToastContext.Provider>
     );
   }
@@ -794,7 +798,7 @@ const App: React.FC = () => {
             onLogout={handleLogout}
           />
         </Suspense>
-        <Toast messages={toasts} onRemove={removeToast} />
+        <Toast toasts={toasts} onRemove={removeToast} />
       </ToastContext.Provider>
     );
   }

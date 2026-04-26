@@ -80,7 +80,7 @@ const ResellerView: React.FC<Props> = ({
     try {
       const { data } = await supabase
         .from('tenants')
-        .select('id, nome, status, plan, mensalidade, created_at, last_login_at, email, phone')
+        .select('id, nome, slug, status, plan, mensalidade, created_at, last_login_at, email, phone')
         .eq('reseller_id', resellerProfile.id)
         .order('created_at', { ascending: false });
       setTenants(data || []);
