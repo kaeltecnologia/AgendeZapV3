@@ -679,6 +679,8 @@ class DatabaseService {
       tenant_id: c.tenant_id,
       name: c.nome || 'Sem Nome',
       phone: c.telefone || '',
+      email: c.email || undefined,
+      birthDate: c.birth_date || undefined,
       active: true,
       followUpPreferences: { aviso: true, lembrete: true, reativacao: true },
       avisoModeId: cData.avisoModeId || 'standard',
@@ -793,10 +795,12 @@ class DatabaseService {
   /** tenantId is required so we can write plan/mode data to settings JSONB. */
   async updateCustomer(tenantId: string, id: string, updates: Partial<Customer>) {
     try {
-      // Update only name/phone in the customers table
+      // Update DB columns: name, phone, email, birth_date
       const payload: any = {};
       if (updates.name !== undefined) payload.nome = updates.name;
       if (updates.phone !== undefined) payload.telefone = updates.phone;
+      if (updates.email !== undefined) payload.email = updates.email || null;
+      if (updates.birthDate !== undefined) payload.birth_date = updates.birthDate || null;
       if (Object.keys(payload).length > 0) {
         const { error } = await supabase.from('customers').update(payload).eq('id', id);
         if (error) throw error;

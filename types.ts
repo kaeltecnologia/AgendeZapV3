@@ -397,6 +397,7 @@ export interface Customer {
   tenant_id: string;
   name: string;
   phone: string;
+  email?: string;
   birthDate?: string;
   active: boolean;
   followUpPreferences: {

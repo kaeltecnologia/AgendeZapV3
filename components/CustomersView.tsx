@@ -47,6 +47,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [importResult, setImportResult] = useState<{ ok: number; fail: number } | null>(null);
   const [planBalance, setPlanBalance] = useState<Record<string, { total: number; used: number; remaining: number }>>({});
   const [renewingPlan, setRenewingPlan] = useState(false);
+  const [profileTab, setProfileTab] = useState<'perfil' | 'config'>('perfil');
 
   const load = useCallback(async () => {
     try {
@@ -85,9 +86,9 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     }
   }, [editingCustomer?.id, editingCustomer?.planId, tenantId]);
 
-  // Compute consumption stats from loaded appointments when editing a customer
+  // Compute consumption stats + history when viewing a customer profile
   const customerStats = React.useMemo(() => {
-    if (!editingCustomer || !appointments.length) return null;
+    if (!editingCustomer) return null;
     const custAppts = appointments.filter(a =>
       a.customer_id === editingCustomer.id &&
       !['CANCELLED', 'cancelado', 'NO_SHOW'].includes(a.status)
@@ -97,6 +98,19 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const last = custAppts.slice().sort((a, b) => b.startTime.localeCompare(a.startTime))[0];
     return { count: custAppts.length, totalSpent, lastDate: last?.startTime?.slice(0, 10) || '' };
   }, [editingCustomer?.id, appointments]);
+
+  const customerHistory = React.useMemo(() => {
+    if (!editingCustomer) return [];
+    return appointments
+      .filter(a => a.customer_id === editingCustomer.id)
+      .sort((a, b) => b.startTime?.localeCompare(a.startTime || '') || 0)
+      .slice(0, 50)
+      .map(a => ({
+        ...a,
+        serviceName: services.find(s => s.id === a.service_id)?.name || '—',
+        professionalName: professionals.find(p => p.id === a.professional_id)?.name || '—',
+      }));
+  }, [editingCustomer?.id, appointments, services, professionals]);
 
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -125,6 +139,8 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       await db.updateCustomer(tenantId, editingCustomer.id, {
         name: editingCustomer.name,
         phone: editingCustomer.phone,
+        email: editingCustomer.email,
+        birthDate: editingCustomer.birthDate,
         avisoModeId: editingCustomer.avisoModeId,
         lembreteModeId: editingCustomer.lembreteModeId,
         reativacaoModeId: editingCustomer.reativacaoModeId,
@@ -335,7 +351,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               return (
                 <div key={c.id} className="bg-white p-5 sm:p-6 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
                   <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
-                    <button onClick={() => setEditingCustomer({ ...c })} className="text-slate-300 hover:text-orange-500 transition-all font-black text-xs uppercase tracking-widest">EDITAR</button>
+                    <button onClick={() => { setProfileTab('perfil'); setEditingCustomer({ ...c }); }} className="text-slate-300 hover:text-orange-500 transition-all font-black text-xs uppercase tracking-widest">VER PERFIL</button>
                   </div>
                   <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:bg-orange-50 transition-all">👤</div>
                   <h3 className="text-base sm:text-xl font-black text-black mb-1 pr-16 leading-tight uppercase tracking-tight">{c.name}</h3>
@@ -495,23 +511,136 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </div>
       )}
 
-      {/* ─── Edit Modal ──────────────────────────── */}
-      {editingCustomer && (
+      {/* ─── Profile Modal ──────────────────────────── */}
+      {editingCustomer && (() => {
+        const DAY_NAMES = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+        const DAY_FULL  = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+        const FREQ_LABELS: Record<RecurringFrequency, string> = {
+          weekly:'Toda semana', biweekly:'A cada 2 semanas', triweekly:'A cada 3 semanas', alternating:'Alternada',
+        };
+        const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+          FINISHED:  { label: 'Realizado', cls: 'bg-green-100 text-green-700' },
+          CONFIRMED: { label: 'Confirmado', cls: 'bg-blue-100 text-blue-700' },
+          PENDING:   { label: 'Pendente', cls: 'bg-yellow-100 text-yellow-700' },
+          CANCELLED: { label: 'Cancelado', cls: 'bg-red-100 text-red-700' },
+          cancelado: { label: 'Cancelado', cls: 'bg-red-100 text-red-700' },
+          NO_SHOW:   { label: 'Faltou', cls: 'bg-slate-100 text-slate-500' },
+        };
+        const initials = editingCustomer.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+        const birthDisplay = editingCustomer.birthDate
+          ? editingCustomer.birthDate.slice(5).split('-').reverse().join('/') : null;
+
+        return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
-          <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
-            <div className="bg-white rounded-[40px] w-full max-w-md p-12 space-y-8 animate-scaleUp">
-            <h2 className="text-3xl font-black text-black uppercase tracking-tight">Editar Cliente</h2>
+          <div className="flex justify-center items-start min-h-full p-4 sm:p-6 pt-6 pb-10">
+            <div className="bg-white rounded-[40px] w-full max-w-2xl animate-scaleUp overflow-hidden">
 
-            <div className="space-y-5">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome</label>
-                <input value={editingCustomer.name} onChange={e => setEditingCustomer({ ...editingCustomer, name: e.target.value })} placeholder="Nome Completo" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500" />
+              {/* ── Header ── */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center text-2xl font-black text-white shadow-lg shadow-orange-900/30">{initials}</div>
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">{editingCustomer.name}</h2>
+                      <p className="text-orange-400 font-bold text-sm mt-0.5">{editingCustomer.phone}</p>
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                        {editingCustomer.email && <span className="text-slate-400 text-[11px] font-bold">{editingCustomer.email}</span>}
+                        {birthDisplay && <span className="text-slate-400 text-[11px] font-bold">🎂 {birthDisplay}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingCustomer(null)} className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-black transition-all text-lg">✕</button>
+                </div>
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Atendimentos', value: customerStats?.count ?? 0 },
+                    { label: 'Total gasto', value: customerStats ? `R$ ${customerStats.totalSpent.toFixed(0)}` : 'R$ 0' },
+                    { label: 'Última visita', value: customerStats?.lastDate ? customerStats.lastDate.split('-').reverse().join('/') : '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-white/10 rounded-2xl px-4 py-3 text-center">
+                      <p className="text-white font-black text-lg leading-none">{value}</p>
+                      <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-1">{label}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">WhatsApp</label>
-                <input value={editingCustomer.phone} onChange={e => setEditingCustomer({ ...editingCustomer, phone: e.target.value })} placeholder="55..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500" />
+              {/* ── Tab bar ── */}
+              <div className="flex border-b-2 border-slate-100 bg-slate-50">
+                {(['perfil', 'config'] as const).map(t => (
+                  <button key={t} onClick={() => setProfileTab(t)}
+                    className={`flex-1 py-4 font-black text-xs uppercase tracking-widest transition-all ${profileTab === t ? 'border-b-2 border-orange-500 text-orange-500 bg-white' : 'text-slate-400 hover:text-slate-600'}`}>
+                    {t === 'perfil' ? '👤 Perfil' : '⚙️ Configurações'}
+                  </button>
+                ))}
               </div>
+
+              <div className="p-6 sm:p-8 space-y-6 max-h-[60vh] overflow-y-auto">
+
+              {/* ══ PERFIL TAB ══════════════════════════════════════ */}
+              {profileTab === 'perfil' && (
+                <div className="space-y-6">
+                  {/* Personal data fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                      <input value={editingCustomer.name} onChange={e => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
+                        placeholder="Nome Completo" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">WhatsApp</label>
+                      <input value={editingCustomer.phone} onChange={e => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
+                        placeholder="5511..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail</label>
+                      <input type="email" value={editingCustomer.email || ''} onChange={e => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
+                        placeholder="cliente@email.com" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data de Aniversário</label>
+                      <input type="date" value={editingCustomer.birthDate || ''} onChange={e => setEditingCustomer({ ...editingCustomer, birthDate: e.target.value })}
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all" />
+                    </div>
+                  </div>
+
+                  {/* Service history */}
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">📋 Histórico de Serviços</p>
+                    {customerHistory.length === 0 ? (
+                      <div className="text-center py-10 bg-slate-50 rounded-2xl">
+                        <p className="text-slate-400 text-sm font-bold">Nenhum atendimento registrado</p>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border-2 border-slate-100 overflow-hidden">
+                        <div className="grid grid-cols-[1fr_1.2fr_1fr_auto_auto] gap-0 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-4 py-3">
+                          <span>Data</span><span>Serviço</span><span>Profissional</span><span className="text-right">Valor</span><span className="text-right">Status</span>
+                        </div>
+                        <div className="divide-y divide-slate-50">
+                          {customerHistory.map(a => {
+                            const st = STATUS_LABELS[a.status] || { label: a.status, cls: 'bg-slate-100 text-slate-500' };
+                            const dateStr = a.startTime ? new Date(a.startTime).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
+                            return (
+                              <div key={a.id} className="grid grid-cols-[1fr_1.2fr_1fr_auto_auto] gap-2 items-center px-4 py-3 hover:bg-slate-50 transition-all">
+                                <span className="text-xs font-bold text-slate-700">{dateStr}</span>
+                                <span className="text-xs font-bold text-black truncate">{a.serviceName}</span>
+                                <span className="text-xs text-slate-500 truncate">{a.professionalName}</span>
+                                <span className="text-xs font-black text-right text-black">{a.amountPaid ? `R$\u00a0${a.amountPaid.toFixed(0)}` : '—'}</span>
+                                <span className={`text-[9px] font-black px-2 py-1 rounded-full whitespace-nowrap ${st.cls}`}>{st.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ══ CONFIG TAB ══════════════════════════════════════ */}
+              {profileTab === 'config' && (
+              <div className="space-y-5">
 
               {/* ─── Histórico de Consumo ─── */}
               {customerStats && (
@@ -640,14 +769,6 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
                   {/* ─── Recorrências ─── */}
                   {editingCustomer.planId && (() => {
-                    const DAY_NAMES = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-                    const DAY_FULL  = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
-                    const FREQ_LABELS: Record<RecurringFrequency, string> = {
-                      weekly:      'Toda semana',
-                      biweekly:    'A cada 2 semanas',
-                      triweekly:   'A cada 3 semanas',
-                      alternating: 'Alternada',
-                    };
                     const maxOffset = addEntry.frequency === 'triweekly' ? 3 : 2;
                     const offsetLabels = ['A','B','C'];
                     const entries: RecurringEntry[] = editingCustomer.recurringEntries || [];
@@ -891,18 +1012,24 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   )}
                 </div>
               )}
-            </div>
+              </div>
+              )}
 
-            <div className="flex gap-4 pt-4">
-              <button onClick={() => setEditingCustomer(null)} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs" disabled={saving}>Voltar</button>
-              <button onClick={handleSaveEdit} disabled={saving} className="flex-1 py-4 bg-black text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-500 transition-all disabled:opacity-50">
-                {saving ? 'Gravando...' : 'Salvar'}
-              </button>
-            </div>
+              </div>
+
+              {/* ── Footer ── */}
+              <div className="flex gap-4 px-6 sm:px-8 pb-8 pt-2">
+                <button onClick={() => setEditingCustomer(null)} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs rounded-2xl hover:bg-slate-50 transition-all" disabled={saving}>Fechar</button>
+                <button onClick={handleSaveEdit} disabled={saving} className="flex-1 py-4 bg-black text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-500 transition-all disabled:opacity-50 shadow-xl shadow-slate-200">
+                  {saving ? 'Gravando...' : 'Salvar'}
+                </button>
+              </div>
+
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
