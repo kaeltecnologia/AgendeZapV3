@@ -417,101 +417,125 @@ Situação: cliente mudou de ideia ("na verdade quero com o felipe")
 - USE o histórico da conversa — nunca repita perguntas já respondidas`;
 
 
-  // ── Gemini multi-turn chat ───────────────────────────────────────────
-  const apiKey: string = tenant.gemini_api_key || '';
+  // ── Key hierarchy: tenant openai → global openai → gemini ──────────
+  const settings = await db.getSettings(tenantId);
+  let apiKey = (settings.openaiApiKey || '').trim();
   if (!apiKey) {
-    log('ERROR', 'Chave Gemini não configurada para este tenant');
+    const globalCfg = await db.getGlobalConfig();
+    const sharedKey = (globalCfg['shared_openai_key'] || '').trim();
+    apiKey = sharedKey || (tenant.gemini_api_key || '').trim();
+  }
+  if (!apiKey) {
+    log('ERROR', 'Chave de IA não configurada para este tenant');
     return;
   }
 
+  const useOpenAI = apiKey.startsWith('sk-');
+  log('POLLING', `Processando com ${useOpenAI ? 'OpenAI gpt-4.1-mini' : 'Gemini 2.5 Flash'}...`);
+
+  evolutionService.sendTyping(tenant.evolution_instance, numero, 15000).catch(() => {});
+
+  let result: { replyText: string; intent: string; extracted?: { professional?: string | null; day?: string | null; period?: string | null; service?: string | null; time?: string | null } } = { replyText: '', intent: 'CHAT' };
+
   try {
-    log('POLLING', 'Gemini processando com histórico...');
-
-    const ai = new GoogleGenAI({ apiKey });
-
-    // Show "typing..." indicator while AI processes
-    evolutionService.sendTyping(tenant.evolution_instance, numero, 15000).catch(() => {});
-
-    // Build contents array: previous turns + current user message
-    const contents = [
-      ...hist,
-      { role: 'user', parts: [{ text }] },
-    ];
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            replyText: {
-              type: Type.STRING,
-              description: 'Texto enviado ao cliente. Vazio se deve ignorar.'
-            },
-            intent: {
-              type: Type.STRING,
-              enum: ['BOOKING', 'INFO', 'CHAT', 'IGNORE'],
-              description: 'Intenção detectada na mensagem do cliente'
-            },
-            extracted: {
-              type: Type.OBJECT,
-              description: 'Entidades extraídas da conversa (null se não encontrado)',
-              properties: {
-                professional: { type: Type.STRING, description: 'Nome do profissional mencionado ou null' },
-                day:          { type: Type.STRING, description: 'Dia mencionado (ex: amanhã, sábado) ou null' },
-                period:       { type: Type.STRING, description: 'Período mencionado (manhã/tarde/noite/horário) ou null' },
-                service:      { type: Type.STRING, description: 'Serviço mencionado ou null' },
-                time:         { type: Type.STRING, description: 'Horário específico (ex: 09:00) ou null' },
+    if (useOpenAI) {
+      // ── OpenAI path ────────────────────────────────────────────────
+      const openAIMessages = [
+        {
+          role: 'system',
+          content: systemPrompt + '\n\nResponda APENAS com JSON válido com os campos: replyText (string), intent ("BOOKING"|"INFO"|"CHAT"|"IGNORE"), extracted (objeto com professional, day, period, service, time — null se não encontrado).',
+        },
+        // Convert Gemini-format history to OpenAI format
+        ...hist.map((h: any) => ({
+          role: h.role === 'model' ? 'assistant' : 'user',
+          content: h.parts?.[0]?.text || '',
+        })),
+        { role: 'user', content: text },
+      ];
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4.1-mini',
+          messages: openAIMessages,
+          response_format: { type: 'json_object' },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.text().catch(() => '');
+        log('ERROR', `OpenAI erro ${res.status}: ${err.substring(0, 200)}`);
+        return;
+      }
+      const d = await res.json();
+      result = JSON.parse(d.choices?.[0]?.message?.content || '{}');
+    } else {
+      // ── Gemini path ────────────────────────────────────────────────
+      const ai = new GoogleGenAI({ apiKey });
+      const contents = [
+        ...hist,
+        { role: 'user', parts: [{ text }] },
+      ];
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              replyText: { type: Type.STRING, description: 'Texto enviado ao cliente. Vazio se deve ignorar.' },
+              intent:    { type: Type.STRING, enum: ['BOOKING', 'INFO', 'CHAT', 'IGNORE'], description: 'Intenção detectada' },
+              extracted: {
+                type: Type.OBJECT,
+                description: 'Entidades extraídas (null se não encontrado)',
+                properties: {
+                  professional: { type: Type.STRING, description: 'Nome do profissional ou null' },
+                  day:          { type: Type.STRING, description: 'Dia mencionado ou null' },
+                  period:       { type: Type.STRING, description: 'Período (manhã/tarde/noite/horário) ou null' },
+                  service:      { type: Type.STRING, description: 'Serviço mencionado ou null' },
+                  time:         { type: Type.STRING, description: 'Horário específico ou null' },
+                },
               },
             },
+            required: ['replyText', 'intent'],
           },
-          required: ['replyText', 'intent'],
         },
-      },
-    });
-
-    let result: { replyText: string; intent: string; extracted?: { professional?: string | null; day?: string | null; period?: string | null; service?: string | null; time?: string | null } } = { replyText: '', intent: 'CHAT' };
-    try {
+      });
       result = JSON.parse(response.text || '{}');
-    } catch {
-      log('ERROR', 'Falha ao parsear JSON do Gemini');
-    }
-
-    const ext = result.extracted;
-    const extStr = ext
-      ? `prof=${ext.professional ?? '-'} dia=${ext.day ?? '-'} período=${ext.period ?? '-'} svc=${ext.service ?? '-'}`
-      : 'sem extração';
-    log('GEMINI', `Intent: ${result.intent} | ${extStr}`);
-    log('GEMINI', `Reply: "${(result.replyText || '').substring(0, 80)}"`);
-
-    if (result.replyText && result.replyText.trim()) {
-      // Save both turns to history ONLY after a successful reply
-      addToHistory(tenantId, numero, 'user', text);
-      addToHistory(tenantId, numero, 'model', result.replyText);
-      log('CONTEXT', `Histórico atualizado → ${getHistory(tenantId, numero).length} entradas para ${maskPhone(numero)}`);
-
-      await evolutionService.sendMessage(tenant.evolution_instance, numero, result.replyText);
-      log('ENVIADO', `Resposta para ${pushName} (${maskPhone(numero)})`);
-      // Persist outgoing bot reply
-      db.saveWaMessages(tenantId, [{
-        msg_id:    `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        phone:     numero,
-        direction: 'out',
-        body:      result.replyText,
-        msg_type:  'text',
-        push_name: 'Bot',
-        from_me:   true,
-        ts:        Math.floor(Date.now() / 1000),
-        raw:       {},
-      }]).catch(() => {});
-    } else {
-      log('INFO', `Mensagem ignorada (intent: ${result.intent})`);
     }
   } catch (e: any) {
-    log('ERROR', `Erro no Gemini: ${e.message}`);
+    log('ERROR', `Erro na IA (${useOpenAI ? 'OpenAI' : 'Gemini'}): ${e.message}`);
+    return;
+  }
+
+  const ext = result.extracted;
+  const extStr = ext
+    ? `prof=${ext.professional ?? '-'} dia=${ext.day ?? '-'} período=${ext.period ?? '-'} svc=${ext.service ?? '-'}`
+    : 'sem extração';
+  log('INFO', `Intent: ${result.intent} | ${extStr}`);
+  log('INFO', `Reply: "${(result.replyText || '').substring(0, 80)}"`);
+
+  if (result.replyText && result.replyText.trim()) {
+    addToHistory(tenantId, numero, 'user', text);
+    addToHistory(tenantId, numero, 'model', result.replyText);
+    log('CONTEXT', `Histórico atualizado → ${getHistory(tenantId, numero).length} entradas para ${maskPhone(numero)}`);
+
+    await evolutionService.sendMessage(tenant.evolution_instance, numero, result.replyText);
+    log('ENVIADO', `Resposta para ${pushName} (${maskPhone(numero)})`);
+    db.saveWaMessages(tenantId, [{
+      msg_id:    `out_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      phone:     numero,
+      direction: 'out',
+      body:      result.replyText,
+      msg_type:  'text',
+      push_name: 'Bot',
+      from_me:   true,
+      ts:        Math.floor(Date.now() / 1000),
+      raw:       {},
+    }]).catch(() => {});
+  } else {
+    log('INFO', `Mensagem ignorada (intent: ${result.intent})`);
   }
 }
 

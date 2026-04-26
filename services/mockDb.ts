@@ -26,7 +26,7 @@ import {
   Review, MarketplaceLead, CentralBooking, CashbackBalance, CustomerAccount, CustomerFavorite,
   MarketplacePost, MarketplacePostComment, MarketplaceStory,
   parseServiceIds, encodeServiceIds,
-  AffiliateLink, AffiliateLinkStats
+  AffiliateLink, AffiliateLinkStats, ResellerProfile
 } from '../types';
 
 // ─── In-Memory TTL Cache ─────────────────────────────────────────────
@@ -235,7 +235,7 @@ class DatabaseService {
     }
   }
 
-  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; phone?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string; referred_by?: string; referred_by_customer?: string; affiliate_link_id?: string }) {
+  async addTenant(tenant: { name: string; slug: string; email?: string; password?: string; phone?: string; plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string; subscriptionPlan?: string; referred_by?: string; referred_by_customer?: string; affiliate_link_id?: string; reseller_id?: string }) {
     try {
       const payload: any = {
         nome: tenant.name,
@@ -252,6 +252,7 @@ class DatabaseService {
       if (tenant.referred_by) payload.referred_by = tenant.referred_by;
       if (tenant.referred_by_customer) payload.referred_by_customer = tenant.referred_by_customer;
       if (tenant.affiliate_link_id) payload.affiliate_link_id = tenant.affiliate_link_id;
+      if (tenant.reseller_id) payload.reseller_id = tenant.reseller_id;
       const { data, error } = await supabase.from('tenants').insert(payload).select().single();
       if (error) throw error;
       return {
@@ -3196,6 +3197,72 @@ class DatabaseService {
 
   clearTenantCache(tenantId: string): void {
     _cache.invalidateTenant(tenantId);
+  }
+
+  // ── Reseller / White-label ──────────────────────────────────────
+
+  async getResellerProfile(affiliateLinkId: string): Promise<ResellerProfile | null> {
+    try {
+      const { data, error } = await supabase
+        .from('reseller_profiles')
+        .select('*')
+        .eq('affiliate_link_id', affiliateLinkId)
+        .maybeSingle();
+      if (error || !data) return null;
+      return data as ResellerProfile;
+    } catch { return null; }
+  }
+
+  async getResellerProfileByDomain(domain: string): Promise<ResellerProfile | null> {
+    try {
+      const { data, error } = await supabase
+        .from('reseller_profiles')
+        .select('*')
+        .eq('custom_domain', domain)
+        .eq('active', true)
+        .maybeSingle();
+      if (error || !data) return null;
+      return data as ResellerProfile;
+    } catch { return null; }
+  }
+
+  async saveResellerProfile(affiliateLinkId: string, updates: Partial<ResellerProfile>): Promise<ResellerProfile | null> {
+    try {
+      const { data, error } = await supabase
+        .from('reseller_profiles')
+        .upsert({ ...updates, affiliate_link_id: affiliateLinkId }, { onConflict: 'affiliate_link_id' })
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data as ResellerProfile;
+    } catch (e) { console.error('[saveResellerProfile] error:', e); return null; }
+  }
+
+  async getResellerTenants(resellerId: string): Promise<Tenant[]> {
+    try {
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, nome, slug, email, phone, plan, status, mensalidade, nicho, created_at, evolution_instance')
+        .eq('reseller_id', resellerId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map((d: any) => ({
+        id: d.id, name: d.nome, slug: d.slug, email: d.email,
+        phone: d.phone, plan: d.plan, status: d.status as TenantStatus,
+        monthlyFee: Number(d.mensalidade || 0), nicho: d.nicho,
+        createdAt: d.created_at, reseller_id: resellerId,
+        evolution_instance: d.evolution_instance,
+      }));
+    } catch { return []; }
+  }
+
+  async updateResellerTenant(resellerId: string, tenantId: string, updates: { plan?: string; status?: TenantStatus; monthlyFee?: number; nicho?: string }): Promise<void> {
+    const payload: any = {};
+    if (updates.plan) payload.plan = updates.plan;
+    if (updates.status) payload.status = updates.status;
+    if (updates.monthlyFee !== undefined) payload.mensalidade = updates.monthlyFee;
+    if (updates.nicho) payload.nicho = updates.nicho;
+    await supabase.from('tenants').update(payload).eq('id', tenantId).eq('reseller_id', resellerId);
   }
 }
 

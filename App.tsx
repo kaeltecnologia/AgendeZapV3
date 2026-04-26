@@ -42,10 +42,11 @@ const ReferralLandingPage = lazy(() => import('./components/ReferralLandingPage'
 const AffiliateDashboard = lazy(() => import('./components/AffiliateDashboard'));
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
 const ProfessionalPortal = lazy(() => import('./components/ProfessionalPortal'));
+const ResellerView = lazy(() => import('./components/ResellerView'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
 import { evolutionService } from './services/evolutionService';
-import { TenantStatus, AppointmentStatus, AffiliateLink } from './types';
+import { TenantStatus, AppointmentStatus, AffiliateLink, ResellerProfile } from './types';
 import { sendClientArrivedNotification } from './services/notificationService';
 import PlanUpgradeModal from './components/PlanUpgradeModal';
 import { hasFeature, FeatureKey } from './config/planConfig';
@@ -130,6 +131,8 @@ const App: React.FC = () => {
   const [professionalId, setProfessionalId] = useState<string>('');
   const [professionalName, setProfessionalName] = useState<string>('');
   const [affiliateData, setAffiliateData] = useState<AffiliateLink | null>(null);
+  const [resellerProfile, setResellerProfile] = useState<ResellerProfile | null>(null);
+  const impersonatedFromRole = React.useRef<Role>('SUPERADMIN');
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [tenantId, setTenantId] = useState<string>('');
   const [tenantSlug, setTenantSlug] = useState<string>('');
@@ -168,6 +171,32 @@ const App: React.FC = () => {
       if (aff && aff.active) { setAffiliateName(aff.name); setAffiliateLinkId(aff.id); }
     });
   }, [affiliateSlug]);
+
+  // Domain-based reseller branding — runs once on mount
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname.includes('agendezap') || hostname.includes('vercel')) return;
+    db.getResellerProfileByDomain(hostname).then(rp => {
+      if (rp) setResellerProfile(rp);
+    }).catch(() => {});
+  }, []);
+
+  // Apply reseller brand colors via CSS vars whenever profile changes
+  useEffect(() => {
+    const root = document.documentElement;
+    if (resellerProfile?.primary_color) {
+      root.style.setProperty('--color-primary', resellerProfile.primary_color);
+      // Derive dark/light from primary (simple heuristic: just use same color darker/lighter)
+      root.style.setProperty('--color-primary-dark', resellerProfile.primary_color);
+      root.style.setProperty('--color-primary-light', resellerProfile.primary_color + '99');
+      root.style.setProperty('--color-primary-bg', resellerProfile.primary_color + '15');
+    } else {
+      root.style.removeProperty('--color-primary');
+      root.style.removeProperty('--color-primary-dark');
+      root.style.removeProperty('--color-primary-light');
+      root.style.removeProperty('--color-primary-bg');
+    }
+  }, [resellerProfile]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
   }, []);
@@ -522,6 +551,11 @@ const App: React.FC = () => {
           setRole('AFFILIATE');
           setAffiliateData(aff);
           setIsAuthenticated(true);
+          // Load reseller profile if affiliate is a reseller
+          try {
+            const rp = await db.getResellerProfile(aff.id);
+            if (rp) setResellerProfile(rp);
+          } catch { /* no reseller profile yet */ }
           return;
         }
       }
@@ -658,6 +692,7 @@ const App: React.FC = () => {
   };
 
   const handleImpersonate = async (id: string, name: string, slug: string, plan?: string) => {
+    impersonatedFromRole.current = role; // save who initiated impersonation
     setTenantId(id);
     setTenantSlug(slug);
     setTenantName(name);
@@ -666,6 +701,13 @@ const App: React.FC = () => {
     setIsImpersonating(true);
     setCurrentView(View.DASHBOARD);
     try { const t = await db.getTenant(id); if (t?.nicho) setTenantNicho(t.nicho); else setTenantNicho(''); } catch { setTenantNicho(''); }
+  };
+
+  // Returns true if the reseller allows this feature key for their clients
+  // null visible_features = all allowed; array = only listed keys allowed
+  const resellerAllows = (key: string) => {
+    if (!resellerProfile?.visible_features) return true;
+    return resellerProfile.visible_features.includes(key);
   };
 
   const handleGatedNav = (view: View, feature: FeatureKey) => {
@@ -677,12 +719,17 @@ const App: React.FC = () => {
   };
 
   const handleExitImpersonation = () => {
-    setRole('SUPERADMIN');
+    const fromRole = impersonatedFromRole.current;
+    setRole(fromRole);
     setIsImpersonating(false);
     setTenantId('');
     setTenantSlug('');
     setTenantNicho('');
-    setCurrentView(View.SUPERADMIN_DASHBOARD);
+    if (fromRole === 'AFFILIATE') {
+      // back to reseller portal — no view needed (ResellerView handles routing)
+    } else {
+      setCurrentView(View.SUPERADMIN_DASHBOARD);
+    }
   };
 
   const bookingSlug = (() => {
@@ -719,7 +766,20 @@ const App: React.FC = () => {
   }
 
   if (role === 'AFFILIATE' && affiliateData) {
-    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900"><div className="w-10 h-10 border-4 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>}><AffiliateDashboard affiliate={affiliateData} onLogout={handleLogout} /></Suspense>;
+    return (
+      <ToastContext.Provider value={showToast}>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900"><div className="w-10 h-10 border-4 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>}>
+          <ResellerView
+            affiliate={affiliateData}
+            resellerProfile={resellerProfile}
+            onResellerProfileChange={setResellerProfile}
+            onImpersonate={handleImpersonate}
+            onLogout={handleLogout}
+          />
+        </Suspense>
+        <Toast messages={toasts} onRemove={removeToast} />
+      </ToastContext.Provider>
+    );
   }
 
   if (role === 'PROFESSIONAL') {
@@ -824,7 +884,10 @@ const App: React.FC = () => {
         <div className={`flex ${sidebarCollapsed ? 'flex-col items-center py-4 px-2 gap-3' : 'flex-row items-center justify-between px-5 py-5'} transition-all duration-300`}>
           {sidebarCollapsed ? (
             <>
-              <span className="text-lg font-black text-orange-500 uppercase italic leading-none tracking-tighter">AGZ</span>
+              {resellerProfile?.logo_url
+                ? <img src={resellerProfile.logo_url} alt="logo" className="w-8 h-8 rounded-lg object-contain" />
+                : <span className="text-lg font-black text-orange-500 uppercase italic leading-none tracking-tighter">AGZ</span>
+              }
               <button onClick={toggleSidebar} title="Expandir menu" className="text-slate-300 hover:text-orange-500 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
               </button>
@@ -832,7 +895,10 @@ const App: React.FC = () => {
           ) : (
             <>
               <div>
-                <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">AgendeZap</h1>
+                {resellerProfile?.logo_url
+                  ? <img src={resellerProfile.logo_url} alt={resellerProfile.brand_name || 'Logo'} className="h-8 max-w-[140px] object-contain" />
+                  : <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">{resellerProfile?.brand_name || 'AgendeZap'}</h1>
+                }
                 {role === 'SUPERADMIN' && <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full w-fit tracking-widest uppercase mt-1 block">SUPER ADMIN</span>}
               </div>
               <button onClick={toggleSidebar} title="Minimizar menu" className="text-slate-300 hover:text-slate-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100 shrink-0">
@@ -896,31 +962,31 @@ const App: React.FC = () => {
               <div className="space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operacional</p>}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<NichoIcon />} label="Comandas" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />
+                {resellerAllows('agendamentos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />}
+                {resellerAllows('comandas') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<NichoIcon />} label="Comandas" />}
+                {resellerAllows('conversas') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />}
+                {resellerAllows('clientes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />}
               </div>
 
               {/* ── Operação ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operação</p>}
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.SOCIAL_MIDIA} onClick={navTo(() => handleGatedNav(View.SOCIAL_MIDIA, 'socialMidia'))} icon={<IconCamera />} label="Social Mídia" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.INDICACOES} onClick={navTo(() => setCurrentView(View.INDICACOES))} icon={<IconGift />} label="Indicações" />
+                {resellerAllows('social_midia') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.SOCIAL_MIDIA} onClick={navTo(() => handleGatedNav(View.SOCIAL_MIDIA, 'socialMidia'))} icon={<IconCamera />} label="Social Mídia" />}
+                {resellerAllows('disparos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />}
+                {resellerAllows('follow_up') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />}
+                {resellerAllows('estoque') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />}
+                {resellerAllows('planos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />}
+                {resellerAllows('indicacoes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.INDICACOES} onClick={navTo(() => setCurrentView(View.INDICACOES))} icon={<IconGift />} label="Indicações" />}
               </div>
 
               {/* ── Financeiro & Vendas ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>}
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />
+                {resellerAllows('financeiro') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />}
+                {resellerAllows('financeiro') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />}
+                {resellerAllows('financeiro') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />}
                 {/* Relatórios */}
-                {sidebarCollapsed ? (
+                {resellerAllows('relatorios') && (sidebarCollapsed ? (
                   <NavItem collapsed={true} active={currentView === View.MARKETING || currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.MARKETING, 'relatorios'))} icon={<IconMarketing />} label="Relatórios" />
                 ) : (
                   <>
@@ -939,16 +1005,16 @@ const App: React.FC = () => {
                       </div>
                     )}
                   </>
-                )}
+                ))}
               </div>
 
               {/* ── Base ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Base</p>}
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<NichoIcon />} label="Serviços" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />
-                <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />
+                {resellerAllows('servicos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<NichoIcon />} label="Serviços" />}
+                {resellerAllows('equipe') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />}
+                {resellerAllows('conexoes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />}
+                {resellerAllows('configuracoes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />}
               </div>
             </>
           )}

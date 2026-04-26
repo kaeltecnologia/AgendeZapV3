@@ -1363,8 +1363,20 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const tenantName = tenant.nome || tenant.name || 'Barbearia';
   const instanceName = tenant.evolution_instance || `agz_${(tenant.slug || '').replace(/[^a-z0-9]/g, '')}`;
 
-  // Key hierarchy: tenant key → global shared key → Gemini
+  // Fetch reseller profile once (if tenant has a reseller)
+  let resellerProfile: any = null;
+  if (tenant.reseller_id) {
+    try {
+      const { data: rp } = await supabase.from('reseller_profiles').select('*').eq('id', tenant.reseller_id).maybeSingle();
+      resellerProfile = rp;
+    } catch (e) { console.error('[runAgent] reseller_profiles fetch error:', e); }
+  }
+
+  // Key hierarchy: tenant key → reseller key → global shared key → Gemini
   let apiKey = (settings.openaiApiKey || '').trim();
+  if (!apiKey && resellerProfile?.openai_api_key) {
+    apiKey = resellerProfile.openai_api_key.trim();
+  }
   if (!apiKey) {
     let globalRows: any[] = [];
     try {
@@ -1556,6 +1568,11 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       .replace(/\$\{tenant\.nicho\}/g, tenant.nicho || 'estabelecimento')
       .replace(/\$\{profStr\}/g, professionals.map(p => p.name || 'Profissional').join(', '))
       .replace(/\$\{svcStr\}/g, services.map(s => `${s.name || 'Serviço'} (R$${(Number(s.price) || 0).toFixed(2)})`).join(', '));
+  }
+  // Prepend reseller system prompt template (if any) before tenant's custom prompt
+  const resellerTemplate = (resellerProfile?.system_prompt_template || '').trim();
+  if (resellerTemplate) {
+    customPrompt = resellerTemplate + (customPrompt ? '\n\n' + customPrompt : '');
   }
 
   // Get/create session

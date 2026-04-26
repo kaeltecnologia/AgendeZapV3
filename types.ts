@@ -359,6 +359,7 @@ export interface Tenant {
   createdAt: string;
   referred_by?: string;        // tenant_id of the referrer (who invited this tenant)
   affiliate_link_id?: string;  // affiliate link that brought this tenant
+  reseller_id?: string;        // reseller (white-label affiliate) that owns this tenant
   // ── Central / Marketplace fields ──
   endereco?: string;
   cidade?: string;
@@ -637,6 +638,24 @@ export interface TrendingItem {
   hashtags: string[];           // hashtags da trend
   difficulty: 'facil' | 'medio' | 'avancado';
   contentFormat: string;        // formato (POV, Before/After, Tutorial, etc.)
+}
+
+// ── Reseller (White-Label) Profile ───────────────────────────────
+export interface ResellerProfile {
+  id: string;
+  affiliate_link_id: string;
+  brand_name?: string;
+  logo_url?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  custom_domain?: string;
+  openai_api_key?: string;
+  plan_pricing?: { START?: number; PROFISSIONAL?: number; ELITE?: number };
+  system_prompt_template?: string;
+  default_agent_name?: string;
+  visible_features?: string[] | null;
+  active: boolean;
+  created_at?: string;
 }
 
 // ── Affiliate Links ──────────────────────────────────────────────

@@ -11,6 +11,15 @@ export default {
       fontFamily: {
         display: ['Poppins', 'sans-serif'],
       },
+      colors: {
+        // Primary brand color — dynamically overridden via CSS var for white-label
+        primary: {
+          DEFAULT: 'var(--color-primary)',
+          dark:    'var(--color-primary-dark)',
+          light:   'var(--color-primary-light)',
+          bg:      'var(--color-primary-bg)',
+        },
+      },
     },
   },
   plugins: [],

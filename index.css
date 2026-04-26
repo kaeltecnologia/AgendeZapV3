@@ -2,6 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── White-label brand color CSS variables ───────────────────────────
+   Override these via JS: document.documentElement.style.setProperty('--color-primary', '#hex')
+   All orange-* utility classes below are mapped to these vars so
+   changing --color-primary propagates to the entire UI automatically. */
+:root {
+  --color-primary:      #f97316;  /* orange-500 */
+  --color-primary-dark: #ea580c;  /* orange-600 */
+  --color-primary-light:#fdba74;  /* orange-300 */
+  --color-primary-bg:   #fff7ed;  /* orange-50  */
+}
+
+/* Map Tailwind orange-* to CSS vars so reseller branding propagates everywhere */
+.bg-orange-500                        { background-color: var(--color-primary) !important; }
+.bg-orange-600                        { background-color: var(--color-primary-dark) !important; }
+.bg-orange-400                        { background-color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.bg-orange-50                         { background-color: var(--color-primary-bg) !important; }
+.text-orange-500                      { color: var(--color-primary) !important; }
+.text-orange-600                      { color: var(--color-primary-dark) !important; }
+.text-orange-400                      { color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.border-orange-500                    { border-color: var(--color-primary) !important; }
+.border-orange-400                    { border-color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.border-orange-300                    { border-color: var(--color-primary-light) !important; }
+.ring-orange-500                      { --tw-ring-color: var(--color-primary) !important; }
+.from-orange-400                      { --tw-gradient-from: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.from-orange-500                      { --tw-gradient-from: var(--color-primary) !important; }
+.to-orange-500                        { --tw-gradient-to: var(--color-primary) !important; }
+.hover\:bg-orange-500:hover           { background-color: var(--color-primary) !important; }
+.hover\:bg-orange-50:hover            { background-color: var(--color-primary-bg) !important; }
+.hover\:text-orange-500:hover         { color: var(--color-primary) !important; }
+.hover\:border-orange-500:hover       { border-color: var(--color-primary) !important; }
+.focus\:border-orange-500:focus       { border-color: var(--color-primary) !important; }
+.focus\:ring-orange-500:focus         { --tw-ring-color: var(--color-primary) !important; }
+.shadow-orange-200                    { --tw-shadow-color: color-mix(in srgb, var(--color-primary) 40%, white) !important; }
+.bg-orange-50\/30                     { background-color: color-mix(in srgb, var(--color-primary-bg) 30%, transparent) !important; }
+.bg-orange-50\/50                     { background-color: color-mix(in srgb, var(--color-primary-bg) 50%, transparent) !important; }
+.border-orange-200                    { border-color: color-mix(in srgb, var(--color-primary) 40%, white) !important; }
+.border-orange-200\/50                { border-color: color-mix(in srgb, var(--color-primary) 20%, transparent) !important; }
+.border-t-orange-500                  { border-top-color: var(--color-primary) !important; }
+
 /* Escala base 14px para o layout caber em 90% de zoom sem cortes */
 html { font-size: 14px; }
 
