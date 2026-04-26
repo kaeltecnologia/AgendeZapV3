@@ -654,6 +654,7 @@ export interface ResellerProfile {
   system_prompt_template?: string;
   default_agent_name?: string;
   visible_features?: string[] | null;
+  max_tenants?: number | null;
   active: boolean;
   created_at?: string;
 }

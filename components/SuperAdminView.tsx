@@ -2067,6 +2067,11 @@ END $$;`.trim();
         <CashbackTab />
       )}
 
+      {/* ══════════════════════ WHITE-LABEL ══════════════════════ */}
+      {tab === 'whitelabel' && (
+        <WhiteLabelAdminTab />
+      )}
+
       {/* ══════════════════════ TESTES ══════════════════════ */}
       {tab === 'testes' && (
         <TestRunnerPanel tenants={tenants} />
@@ -3191,6 +3196,211 @@ const CashbackTab: React.FC = () => {
       {result === 'not_found' && (
         <div className="bg-slate-50 rounded-2xl p-6 text-center">
           <p className="text-sm font-bold text-slate-400">Nenhum saldo encontrado para este telefone.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── White-Label Affiliates Admin Tab ─────────────────────────────────────────
+
+const WhiteLabelAdminTab: React.FC = () => {
+  const [resellers, setResellers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Create form
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [newLimit, setNewLimit] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  // Edit form
+  const [editPass, setEditPass] = useState('');
+  const [editLimit, setEditLimit] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const reload = async () => {
+    setLoading(true);
+    const data = await db.listResellerAffiliates();
+    setResellers(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const handleCreate = async () => {
+    if (!newName.trim() || !newEmail.trim() || !newPass.trim()) return;
+    setCreating(true);
+    try {
+      const limit = newLimit ? parseInt(newLimit) : null;
+      const rp = await db.createResellerAffiliate(newName.trim(), newEmail.trim(), newPass.trim(), limit);
+      if (rp) {
+        setNewName(''); setNewEmail(''); setNewPass(''); setNewLimit('');
+        setShowCreate(false);
+        reload();
+      } else {
+        alert('Erro ao criar afiliado. Verifique se o e-mail já existe.');
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleSaveEdit = async (affiliateLinkId: string) => {
+    setSaving(true);
+    try {
+      const limit = editLimit === '' ? null : editLimit === '0' ? null : parseInt(editLimit);
+      await db.updateResellerAffiliate(affiliateLinkId, {
+        password: editPass || undefined,
+        maxTenants: limit,
+      });
+      setEditingId(null);
+      reload();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEdit = (r: any) => {
+    setEditingId(r.affiliate_links?.id || r.affiliate_link_id);
+    setEditPass('');
+    setEditLimit(r.max_tenants != null ? String(r.max_tenants) : '');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-800">Afiliados White-label</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Revendedores com portal próprio, domínio customizado e clientes independentes.</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-orange-500 transition-colors"
+        >
+          + Novo Reseller
+        </button>
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+          <p className="font-black text-sm text-slate-800 uppercase tracking-widest">Novo Afiliado White-label</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Nome *</label>
+              <input value={newName} onChange={e => setNewName(e.target.value)} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="João Silva" />
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">E-mail (login) *</label>
+              <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="joao@email.com" />
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Senha *</label>
+              <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="Senha de acesso" />
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Limite de Clientes</label>
+              <input type="number" min="1" value={newLimit} onChange={e => setNewLimit(e.target.value)} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="Vazio = ilimitado" />
+              <p className="text-[10px] text-slate-400 mt-0.5">Máximo de tenants que este reseller pode criar</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCreate}
+              disabled={creating || !newName || !newEmail || !newPass}
+              className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl hover:bg-orange-500 transition-colors disabled:opacity-50"
+            >
+              {creating ? 'Criando...' : 'Criar Reseller'}
+            </button>
+            <button onClick={() => setShowCreate(false)} className="text-slate-500 text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl hover:bg-slate-100">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* List */}
+      {loading ? (
+        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" /></div>
+      ) : resellers.length === 0 ? (
+        <div className="text-center py-12 text-slate-400 text-sm">Nenhum reseller white-label cadastrado ainda.</div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-400">Reseller</th>
+                <th className="text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-400 hidden md:table-cell">E-mail</th>
+                <th className="text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-400">Clientes</th>
+                <th className="text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-400 hidden md:table-cell">Domínio</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {resellers.map(r => {
+                const affLinkId = r.affiliate_links?.id || r.affiliate_link_id;
+                const isEditing = editingId === affLinkId;
+                return (
+                  <React.Fragment key={r.id}>
+                    <tr className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-slate-800">{r.affiliate_name || r.affiliate_links?.name}</p>
+                        {r.brand_name && <p className="text-[10px] text-orange-500 font-bold">{r.brand_name}</p>}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell text-slate-500 text-xs">{r.affiliate_email}</td>
+                      <td className="px-4 py-3">
+                        <span className={`font-black text-sm ${r.max_tenants && r.tenant_count >= r.max_tenants ? 'text-red-500' : 'text-slate-700'}`}>
+                          {r.tenant_count}
+                        </span>
+                        {r.max_tenants && (
+                          <span className="text-slate-400 text-xs"> / {r.max_tenants}</span>
+                        )}
+                        {!r.max_tenants && <span className="text-[10px] text-slate-400 ml-1">ilimitado</span>}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell text-xs text-slate-400 font-mono">
+                        {r.custom_domain || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => isEditing ? setEditingId(null) : startEdit(r)}
+                          className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-black transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100"
+                        >
+                          {isEditing ? 'Fechar' : 'Editar'}
+                        </button>
+                      </td>
+                    </tr>
+                    {isEditing && (
+                      <tr className="bg-slate-50">
+                        <td colSpan={5} className="px-4 py-4">
+                          <div className="flex flex-wrap items-end gap-3">
+                            <div>
+                              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Nova Senha</label>
+                              <input type="password" value={editPass} onChange={e => setEditPass(e.target.value)} className="mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm w-48" placeholder="Deixe vazio p/ manter" />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Limite de Clientes</label>
+                              <input type="number" min="1" value={editLimit} onChange={e => setEditLimit(e.target.value)} className="mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm w-36" placeholder="Vazio = ilimitado" />
+                            </div>
+                            <button
+                              onClick={() => handleSaveEdit(affLinkId)}
+                              disabled={saving}
+                              className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-orange-500 transition-colors disabled:opacity-50"
+                            >
+                              {saving ? 'Salvando...' : 'Salvar'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

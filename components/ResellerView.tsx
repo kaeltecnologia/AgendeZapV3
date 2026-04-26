@@ -147,6 +147,11 @@ const ResellerView: React.FC<Props> = ({
 
   const handleCreateClient = async () => {
     if (!newName || !newEmail || !newPass) return;
+    // Enforce reseller tenant limit
+    if (resellerProfile?.max_tenants != null && tenants.length >= resellerProfile.max_tenants) {
+      alert(`Limite de ${resellerProfile.max_tenants} cliente${resellerProfile.max_tenants !== 1 ? 's' : ''} atingido. Fale com o administrador para aumentar seu limite.`);
+      return;
+    }
     setCreatingClient(true);
     try {
       const slug = newName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').slice(0, 30);
@@ -261,10 +266,18 @@ const ResellerView: React.FC<Props> = ({
         {tab === 'clientes' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-black text-slate-800">Clientes</h2>
+              <div>
+                <h2 className="text-lg font-black text-slate-800">Clientes</h2>
+                {resellerProfile?.max_tenants != null && (
+                  <p className={`text-xs mt-0.5 font-bold ${tenants.length >= resellerProfile.max_tenants ? 'text-red-500' : 'text-slate-400'}`}>
+                    {tenants.length} / {resellerProfile.max_tenants} clientes utilizados
+                  </p>
+                )}
+              </div>
               <button
                 onClick={() => setShowNewClient(true)}
-                className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-orange-500 transition-colors"
+                disabled={resellerProfile?.max_tenants != null && tenants.length >= resellerProfile.max_tenants}
+                className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-orange-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 + Novo Cliente
               </button>

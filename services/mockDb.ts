@@ -3264,6 +3264,62 @@ class DatabaseService {
     if (updates.nicho) payload.nicho = updates.nicho;
     await supabase.from('tenants').update(payload).eq('id', tenantId).eq('reseller_id', resellerId);
   }
+
+  // Create an affiliate + reseller_profile in one call (used by SuperAdmin white-label section)
+  async createResellerAffiliate(name: string, email: string, password: string, maxTenants?: number | null): Promise<ResellerProfile | null> {
+    try {
+      // 1. Create affiliate_link
+      const aff = await this.createAffiliateLink(name, 0, undefined, undefined, email, password);
+      // 2. Create reseller_profile linked to affiliate
+      const { data, error } = await supabase
+        .from('reseller_profiles')
+        .insert({
+          affiliate_link_id: aff.id,
+          max_tenants: maxTenants ?? null,
+          active: true,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as ResellerProfile;
+    } catch (e) { console.error('[createResellerAffiliate] error:', e); return null; }
+  }
+
+  // Update reseller affiliate credentials or limit
+  async updateResellerAffiliate(affiliateLinkId: string, updates: { password?: string; maxTenants?: number | null }): Promise<void> {
+    if (updates.password) {
+      await supabase.from('affiliate_links').update({ password: updates.password }).eq('id', affiliateLinkId);
+    }
+    if (updates.maxTenants !== undefined) {
+      await supabase.from('reseller_profiles').update({ max_tenants: updates.maxTenants ?? null }).eq('affiliate_link_id', affiliateLinkId);
+    }
+  }
+
+  // List all reseller profiles with their affiliate info and tenant counts
+  async listResellerAffiliates(): Promise<Array<ResellerProfile & { affiliate_name: string; affiliate_email: string; affiliate_password: string; tenant_count: number }>> {
+    try {
+      const { data, error } = await supabase
+        .from('reseller_profiles')
+        .select('*, affiliate_links(id, name, email, password, slug)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      // Count tenants per reseller
+      const result = await Promise.all((data || []).map(async (rp: any) => {
+        const { count } = await supabase
+          .from('tenants')
+          .select('id', { count: 'exact', head: true })
+          .eq('reseller_id', rp.id);
+        return {
+          ...rp,
+          affiliate_name: rp.affiliate_links?.name || '',
+          affiliate_email: rp.affiliate_links?.email || '',
+          affiliate_password: rp.affiliate_links?.password || '',
+          tenant_count: count || 0,
+        };
+      }));
+      return result;
+    } catch { return []; }
+  }
 }
 
 export const db = new DatabaseService();
