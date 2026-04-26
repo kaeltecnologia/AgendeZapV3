@@ -497,6 +497,11 @@ Profissional ainda não definido. Disponíveis: ${professionals.map((p: any) => 
 Você é o atendente de WhatsApp de "${tenantName}". Hoje é ${todayFormatted} (${todayDow}).
 ${_nichoCfg.intro} Máximo 2-3 linhas por resposta.
 ${_nichoCfg.tom}
+# Formatação das Respostas
+- Sempre inicie a resposta com letra maiúscula.
+- Use quebra de linha dupla (linha em branco) para separar partes distintas da mensagem. Cada parágrafo separado será enviado como uma bolha independente no WhatsApp.
+- Exemplo: saudação em uma bolha, informação principal em outra, pergunta final em outra.
+- Mensagens curtas de uma linha não precisam ser divididas.
 ${customSystemPrompt ? `\n## Regras do Estabelecimento\n${customSystemPrompt}\n` : ''}
 # Fluxo de Agendamento
 Siga nesta ordem, pule etapas já presentes no CONTEXTO ATUAL:
@@ -780,8 +785,21 @@ async function sendTyping(instanceName: string, phone: string, delayMs = 3000) {
   } catch { /* non-fatal */ }
 }
 
+// ── Mark chat as read ─────────────────────────────────────────────────
+async function markChatRead(instanceName: string, phone: string) {
+  try {
+    const jid = phone.replace(/\D/g, '') + '@s.whatsapp.net';
+    await fetch(`${EVO_URL}/chat/markMessageAsRead/${instanceName}`, {
+      method: 'POST', headers: EVO_HEADERS,
+      body: JSON.stringify({ read_messages: [{ remoteJid: jid, fromMe: false, id: 'all' }] }),
+    });
+  } catch { /* non-fatal */ }
+}
+
 // ── Send WhatsApp message ─────────────────────────────────────────────
 async function sendMsg(instanceName: string, phone: string, text: string, tenantId?: string) {
+  // Always capitalize first letter
+  if (text && text.length > 0) text = text.charAt(0).toUpperCase() + text.slice(1);
   if (_isWDuplicate(phone, text)) {
     console.log(`[sendMsg] Dedup: blocked duplicate → ${phone.slice(0, 2)}***${phone.slice(-4)}`);
     return;
@@ -805,6 +823,34 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
   const _botEchoKey = `bot_echo::${phone.replace(/\D/g,'').slice(-10)}::${text.trim().slice(0,80)}`;
   // NOTE: never use .catch() on Supabase queries in Deno — use try/await in IIFE
   (async () => { try { await supabase.from('msg_dedup').insert({ fp: _botEchoKey }); } catch (_) {} })();
+}
+
+// ── Send AI reply split into multiple bubbles at paragraph breaks ─────
+async function sendSplit(instanceName: string, phone: string, text: string, tenantId?: string) {
+  // Split at double newlines (paragraph breaks) or numbered/bullet lists
+  const rawParts = text.split(/\n{2,}/).map((p: string) => p.trim()).filter(Boolean);
+  // Merge single-line fragments that are too short (<= 60 chars) with next chunk
+  const parts: string[] = [];
+  for (const p of rawParts) {
+    if (parts.length > 0 && parts[parts.length - 1].length <= 60 && !parts[parts.length - 1].endsWith('?')) {
+      parts[parts.length - 1] += '\n\n' + p;
+    } else {
+      parts.push(p);
+    }
+  }
+  if (parts.length <= 1) {
+    await sendMsg(instanceName, phone, text, tenantId);
+    return;
+  }
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) {
+      // Brief pause + typing indicator between bubbles
+      await new Promise((r) => setTimeout(r, 400));
+      await sendTyping(instanceName, phone, parts[i].length * 30 + 500);
+      await new Promise((r) => setTimeout(r, Math.min(parts[i].length * 25 + 300, 2500)));
+    }
+    await sendMsg(instanceName, phone, parts[i], tenantId);
+  }
 }
 
 // ── Send WhatsApp interactive buttons as formatted text ───────────────
@@ -1294,9 +1340,12 @@ async function debouncedRun(tenant: any, phone: string, text: string, settings: 
     return;
   }
 
-  // Show "typing..." indicator while AI processes the message
+  // Show "typing..." indicator + mark chat as read while AI processes the message
   const instanceName = tenant.evolution_instance || `agz_${(tenant.slug || '').replace(/[^a-z0-9]/g, '')}`;
-  await sendTyping(instanceName, phone, 15000);
+  await Promise.all([
+    sendTyping(instanceName, phone, 15000),
+    markChatRead(instanceName, phone),
+  ]);
 
   // FIX: wrap runAgent in try/catch so any unhandled exception inside still
   // delivers a fallback reply instead of leaving the user with silence.
@@ -3351,7 +3400,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     } catch (e) { console.error('[Agent] cancelled extraction error:', e); }
     await clearSession(tenantId, phone);
     session.history.push({ role: 'bot', text: brain.reply });
-    await sendMsg(instanceName, phone, brain.reply, tenantId);
+    await sendSplit(instanceName, phone, brain.reply, tenantId);
     return;
   }
 
@@ -3653,7 +3702,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   if (shouldGreet || richFirstMessage) session.data.greetedAt = brasiliaDate;
   session.history.push({ role: 'bot', text: brain.reply });
-  await sendMsg(instanceName, phone, brain.reply, tenantId);
+  await sendSplit(instanceName, phone, brain.reply, tenantId);
 
   // ── Interactive buttons (numbered mode only) ──────────────────────
   if (session.data.numberedMode) {
