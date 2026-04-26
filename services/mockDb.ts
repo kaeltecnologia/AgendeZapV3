@@ -2600,7 +2600,7 @@ class DatabaseService {
       const { data, error } = await supabase
         .from('affiliate_links')
         .select('*')
-        .eq('email', email)
+        .eq('email', email.trim().toLowerCase())
         .eq('password', password)
         .eq('active', true)
         .maybeSingle();
@@ -3266,23 +3266,34 @@ class DatabaseService {
   }
 
   // Create an affiliate + reseller_profile in one call (used by SuperAdmin white-label section)
+  // Idempotent: if email already exists, reuses the existing affiliate_link record
   async createResellerAffiliate(name: string, email: string, password: string, maxTenants?: number | null): Promise<ResellerProfile | null> {
     try {
-      // Build a unique slug from email prefix + random suffix to avoid collisions
-      const emailBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
-      const randomSuffix = Math.random().toString(36).slice(2, 6);
-      const uniqueSlug = `${emailBase}-${randomSuffix}`;
+      // 1. Check if affiliate_link already exists for this email (partial previous creation)
+      let affId: string;
+      const { data: existing } = await supabase
+        .from('affiliate_links')
+        .select('id')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle();
 
-      // 1. Create affiliate_link with unique slug
-      const aff = await this.createAffiliateLink(name, 0, uniqueSlug, undefined, email, password);
-      // 2. Create reseller_profile linked to affiliate
+      if (existing?.id) {
+        // Reuse existing affiliate_link, update password if needed
+        affId = existing.id;
+        await supabase.from('affiliate_links').update({ password, name }).eq('id', affId);
+      } else {
+        // Build a unique slug from email prefix + random suffix to avoid collisions
+        const emailBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+        const randomSuffix = Math.random().toString(36).slice(2, 6);
+        const uniqueSlug = `${emailBase}-${randomSuffix}`;
+        const aff = await this.createAffiliateLink(name, 0, uniqueSlug, undefined, email.trim().toLowerCase(), password);
+        affId = aff.id;
+      }
+
+      // 2. Upsert reseller_profile linked to this affiliate
       const { data, error } = await supabase
         .from('reseller_profiles')
-        .insert({
-          affiliate_link_id: aff.id,
-          max_tenants: maxTenants ?? null,
-          active: true,
-        })
+        .upsert({ affiliate_link_id: affId, max_tenants: maxTenants ?? null, active: true }, { onConflict: 'affiliate_link_id' })
         .select()
         .single();
       if (error) throw error;
