@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SocialMediaProfile } from '../../types';
 import { db } from '../../services/mockDb';
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 7; // step 1 (nicho) is pre-filled from tenant config
 
 const NICHOS = [
   'Barbearia', 'Salão de Beleza', 'Clínica Estética', 'Estúdio de Tatuagem',
@@ -129,12 +129,19 @@ const MultiSelectGrid: React.FC<{
 );
 
 const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(2); // start at 2 — nicho auto-loaded from tenant
   const [saving, setSaving] = useState(false);
 
   // Form state
   const [nicho, setNicho] = useState('');
   const [nichoCustom, setNichoCustom] = useState('');
+
+  // Auto-load nicho from tenant configuration
+  useEffect(() => {
+    db.getTenant(tenantId).then(t => {
+      if (t?.nicho) setNicho(t.nicho);
+    }).catch(() => {});
+  }, [tenantId]);
   const [estiloImagem, setEstiloImagem] = useState<string[]>([]);
   const [publicoAlvo, setPublicoAlvo] = useState<string[]>([]);
   const [tiposConteudo, setTiposConteudo] = useState<string[]>([]);
@@ -152,7 +159,6 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
 
   const canAdvance = () => {
     switch (step) {
-      case 1: return (nicho && nicho !== 'Outro') || nichoCustom.trim().length > 0;
       case 2: return estiloImagem.length > 0;
       case 3: return publicoAlvo.length > 0;
       case 4: return tiposConteudo.length > 0;
@@ -189,7 +195,8 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
     setSaving(false);
   };
 
-  const progress = ((step - 1) / (TOTAL_STEPS - 1)) * 100;
+  // Steps run from 2 to 8 (7 steps total, step 1 is auto-filled)
+  const progress = ((step - 2) / (TOTAL_STEPS - 1)) * 100;
 
   const STEP_TITLES: Record<number, { title: string; subtitle: string }> = {
     1: { title: 'Seu Negócio', subtitle: 'Qual o nicho do seu negócio?' },
@@ -220,7 +227,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
       {/* Progress bar */}
       <div className="space-y-2">
         <div className="flex justify-between text-xs text-slate-400">
-          <span className="font-medium">Etapa {step} de {TOTAL_STEPS}</span>
+          <span className="font-medium">Etapa {step - 1} de {TOTAL_STEPS}</span>
           <span className="font-medium">{Math.round(progress)}%</span>
         </div>
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -407,7 +414,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
 
       {/* Navigation */}
       <div className="flex gap-4">
-        {step > 1 && (
+        {step > 2 && (
           <button
             onClick={() => setStep(step - 1)}
             className="flex-1 py-4 rounded-2xl font-display font-bold text-sm border border-slate-200 text-slate-500 hover:border-slate-400 transition-all duration-300"
@@ -415,7 +422,7 @@ const ContentOnboarding: React.FC<Props> = ({ tenantId, onComplete }) => {
             ← Voltar
           </button>
         )}
-        {step < TOTAL_STEPS ? (
+        {step < TOTAL_STEPS + 1 ? (
           <button
             onClick={() => setStep(step + 1)}
             disabled={!canAdvance()}

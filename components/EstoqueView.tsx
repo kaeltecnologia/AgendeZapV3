@@ -198,10 +198,11 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               className="col-span-2 w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500" />
             <div>
               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Categoria</label>
-              <select value={newCategory} onChange={e => setNewCategory(e.target.value)}
-                className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
+              <input list="cat-add-list" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Higiene, Cabelo…"
+                className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500" />
+              <datalist id="cat-add-list">
+                {[...new Set([...CATEGORIES, ...items.map(i => i.category).filter(Boolean)])].map(c => <option key={c} value={c} />)}
+              </datalist>
             </div>
             <div>
               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Unidade</label>
@@ -247,7 +248,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
           className="p-3 bg-white border border-slate-200 rounded-2xl text-sm font-semibold outline-none focus:border-orange-500">
           <option value="">Todas categorias</option>
-          {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          {[...new Set([...CATEGORIES, ...items.map(i => i.category).filter(Boolean)])].map(c => <option key={c}>{c}</option>)}
         </select>
       </div>
 
@@ -362,10 +363,11 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <div className="space-y-4">
               <input value={editName} onChange={e => setEditName(e.target.value)}
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500" />
-              <select value={editCategory} onChange={e => setEditCategory(e.target.value)}
-                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
+              <input list="cat-edit-list" value={editCategory} onChange={e => setEditCategory(e.target.value)} placeholder="Categoria"
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500" />
+              <datalist id="cat-edit-list">
+                {[...new Set([...CATEGORIES, ...items.map(i => i.category).filter(Boolean)])].map(c => <option key={c} value={c} />)}
+              </datalist>
               <select value={editUnit} onChange={e => setEditUnit(e.target.value)}
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
                 {UNITS.map(u => <option key={u}>{u}</option>)}

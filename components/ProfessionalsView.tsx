@@ -62,7 +62,6 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [role, setRole] = useState<'admin' | 'colab'>('colab');
   const [proServiceIds, setProServiceIds] = useState<string[]>([]);
   const [loginPin, setLoginPin] = useState('');
-  const [loginPhone, setLoginPhone] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -103,7 +102,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     setSaving(true);
     try {
       const newPro = await db.addProfessional({ tenant_id: tenantId, name, phone, specialty, active: true });
-      await db.updateProfessional(tenantId, newPro.id, { role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: loginPhone || phone });
+      await db.updateProfessional(tenantId, newPro.id, { role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone });
       await load();
       setShowModal(false);
       resetForm();
@@ -145,7 +144,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     if (!editingPro || !name || !phone) return;
     setSaving(true);
     try {
-      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: loginPhone || phone });
+      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone });
       await load();
       setEditingPro(null);
       resetForm();
@@ -154,7 +153,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     } finally { setSaving(false); }
   };
 
-  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setLoginPhone(''); };
+  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); };
 
   const handleDeletePro = async () => {
     if (!deleteProId) return;
@@ -433,7 +432,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setLoginPhone(p.loginPhone || p.phone || ''); }}
+                    <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); }}
                       className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
                       📝 Editar
                     </button>
@@ -826,15 +825,10 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
               <div className="space-y-3 border-t-2 border-slate-100 pt-4">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Portal do Profissional</label>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 ml-4">WhatsApp de login</label>
-                  <input value={loginPhone} onChange={e => setLoginPhone(e.target.value)} placeholder={phone || '5544999999999'}
-                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
-                </div>
-                <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 ml-4">PIN de acesso (4 dígitos)</label>
                   <input value={loginPin} onChange={e => setLoginPin(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="ex: 1234" maxLength={6}
                     className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm font-mono tracking-[0.4em] focus:border-orange-500" />
-                  {loginPin && <p className="text-[10px] text-slate-400 ml-4">Compartilhe com o profissional: WhatsApp {loginPhone || phone} + PIN {loginPin}</p>}
+                  {loginPin && <p className="text-[10px] text-slate-400 ml-4">Compartilhe com o profissional: WhatsApp {phone} + PIN {loginPin}</p>}
                 </div>
               </div>
             </div>
