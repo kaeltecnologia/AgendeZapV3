@@ -696,13 +696,24 @@ class DatabaseService {
     const ck = `getCustomers:${tenantId}`;
     if (!opts?.fresh) { const c = _cache.get<Customer[]>(ck); if (c) return c; }
     try {
-      const [{ data, error }, settings] = await Promise.all([
-        supabase.from('customers').select('*').eq('tenant_id', tenantId).limit(10000),
-        this.getSettings(tenantId)
-      ]);
-      if (error) throw error;
+      // Paginate in chunks of 1000 (PostgREST max_rows cap)
+      const PAGE = 1000;
+      let allRows: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from('customers').select('*')
+          .eq('tenant_id', tenantId)
+          .range(from, from + PAGE - 1);
+        if (pageErr) throw pageErr;
+        if (!page || page.length === 0) break;
+        allRows = allRows.concat(page);
+        if (page.length < PAGE) break;
+        from += PAGE;
+      }
+      const settings = await this.getSettings(tenantId);
       const customerData = settings.customerData || {};
-      const result = (data || []).map(c => this.buildCustomer(c, customerData[c.id] || {}));
+      const result = allRows.map(c => this.buildCustomer(c, customerData[c.id] || {}));
       _cache.set(ck, result, TTL_SHORT);
       return result;
     } catch (err: any) {
