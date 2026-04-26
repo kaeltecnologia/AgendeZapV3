@@ -3241,9 +3241,9 @@ const WhiteLabelAdminTab: React.FC = () => {
         setNewName(''); setNewEmail(''); setNewPass(''); setNewLimit('');
         setShowCreate(false);
         reload();
-      } else {
-        alert('Erro ao criar afiliado. Verifique se o e-mail já existe.');
       }
+    } catch (e: any) {
+      alert(`Erro ao criar reseller: ${e?.message || 'erro desconhecido'}`);
     } finally {
       setCreating(false);
     }

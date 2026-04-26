@@ -3268,8 +3268,13 @@ class DatabaseService {
   // Create an affiliate + reseller_profile in one call (used by SuperAdmin white-label section)
   async createResellerAffiliate(name: string, email: string, password: string, maxTenants?: number | null): Promise<ResellerProfile | null> {
     try {
-      // 1. Create affiliate_link
-      const aff = await this.createAffiliateLink(name, 0, undefined, undefined, email, password);
+      // Build a unique slug from email prefix + random suffix to avoid collisions
+      const emailBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+      const randomSuffix = Math.random().toString(36).slice(2, 6);
+      const uniqueSlug = `${emailBase}-${randomSuffix}`;
+
+      // 1. Create affiliate_link with unique slug
+      const aff = await this.createAffiliateLink(name, 0, uniqueSlug, undefined, email, password);
       // 2. Create reseller_profile linked to affiliate
       const { data, error } = await supabase
         .from('reseller_profiles')
@@ -3282,7 +3287,10 @@ class DatabaseService {
         .single();
       if (error) throw error;
       return data as ResellerProfile;
-    } catch (e) { console.error('[createResellerAffiliate] error:', e); return null; }
+    } catch (e: any) {
+      console.error('[createResellerAffiliate] error:', e);
+      throw new Error(e?.message || 'Erro ao criar afiliado');
+    }
   }
 
   // Update reseller affiliate credentials or limit
