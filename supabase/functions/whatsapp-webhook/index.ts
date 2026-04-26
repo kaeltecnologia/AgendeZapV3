@@ -799,6 +799,12 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
       phone, text, Math.floor(Date.now() / 1000), 'Bot', 'text', true
     ).catch(() => {});
   }
+  // Mark as bot-sent in msg_dedup so human-takeover detection doesn't
+  // misidentify this echo (fromMe=true) as a human takeover when it
+  // arrives back from Evolution API in a fresh serverless invocation.
+  const _botEchoKey = `bot_echo::${phone.replace(/\D/g,'').slice(-10)}::${text.trim().slice(0,80)}`;
+  // NOTE: never use .catch() on Supabase queries in Deno — use try/await in IIFE
+  (async () => { try { await supabase.from('msg_dedup').insert({ fp: _botEchoKey }); } catch (_) {} })();
 }
 
 // ── Send WhatsApp interactive buttons as formatted text ───────────────
@@ -1249,19 +1255,24 @@ async function debouncedRun(tenant: any, phone: string, text: string, settings: 
 
   // Re-read session to check if a newer invocation superseded us
   const fresh = await getSession(tenantId, phone);
-  if (!fresh || fresh.data._processorId !== myId) {
-    // Another message arrived after us — it will process the batch
+  // FIX: only yield when we can *confirm* another processor took over.
+  // If fresh===null (transient DB error) we fall through and process with the
+  // locally-built `pending` array rather than silently dropping the message.
+  if (fresh !== null && fresh.data._processorId !== myId) {
+    // A later message arrived and registered a new processor — it will handle the batch
     return;
   }
 
   // We are the final processor — combine all buffered messages
-  const combined = ((fresh.data._pendingMsgs || []) as string[]).join('\n');
+  const combined = ((fresh?.data?._pendingMsgs || pending) as string[]).join('\n');
 
   // Clear debounce state so runAgent sees a clean session
-  const cleanData = { ...fresh.data };
-  delete cleanData._pendingMsgs;
-  delete cleanData._processorId;
-  await saveSession(tenantId, phone, cleanData, fresh.history);
+  if (fresh) {
+    const cleanData = { ...fresh.data };
+    delete cleanData._pendingMsgs;
+    delete cleanData._processorId;
+    await saveSession(tenantId, phone, cleanData, fresh.history);
+  }
 
   // ── Re-check aiActive + aiPaused after debounce (settings may have changed) ──
   const { data: _freshSettings } = await supabase.from('tenant_settings')
@@ -1287,7 +1298,14 @@ async function debouncedRun(tenant: any, phone: string, text: string, settings: 
   const instanceName = tenant.evolution_instance || `agz_${(tenant.slug || '').replace(/[^a-z0-9]/g, '')}`;
   await sendTyping(instanceName, phone, 15000);
 
-  await runAgent(tenant, phone, combined || text, settings, pushName);
+  // FIX: wrap runAgent in try/catch so any unhandled exception inside still
+  // delivers a fallback reply instead of leaving the user with silence.
+  try {
+    await runAgent(tenant, phone, combined || text, settings, pushName);
+  } catch (e) {
+    console.error('[debouncedRun] runAgent threw unexpectedly:', e);
+    await sendMsg(instanceName, phone, 'Desculpe, tive um problema técnico. Pode repetir? 😅', tenantId).catch(() => {});
+  }
 }
 
 // ── Main agent logic ──────────────────────────────────────────────────
@@ -1463,13 +1481,13 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // Load data
   const [profsRes, svcsRes] = await Promise.all([
-    supabase.from('professionals').select('id, nome, ativo, phone').eq('tenant_id', tenantId).eq('ativo', true),
+    supabase.from('professionals').select('id, nome, ativo, phone, service_ids').eq('tenant_id', tenantId).eq('ativo', true),
     supabase.from('services').select('id, nome, preco, duracao_minutos, ativo').eq('tenant_id', tenantId).eq('ativo', true),
   ]);
 
   const profsRaw = profsRes.data || [];
   // Full list: used for name matching (client can request a prof on vacation → slot-check explains why)
-  const professionals = profsRaw.map((p: any) => ({ id: p.id, name: (p.nome || '').trim(), phone: (p.phone || '').trim() }));
+  const professionals = profsRaw.map((p: any) => ({ id: p.id, name: (p.nome || '').trim(), phone: (p.phone || '').trim(), serviceIds: p.service_ids || [] }));
 
   // Use Brasília time for "today" (UTC-3)
   const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
@@ -2294,15 +2312,23 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // The full `professionals` list is still used for name matching above so the
   // slot-check can explain vacations when the client explicitly requests that prof.
   const _targetDateWh = session.data.date || todayISO;
-  const professionalsVisible = professionals.filter((p: { id: string; name: string }) =>
-    !(settings.breaks || []).some((b: any) => {
+  const professionalsVisible = professionals.filter((p: any) => {
+    // Filter out professionals on vacation for the target date
+    const onVacation = (settings.breaks || []).some((b: any) => {
       if (b.type !== 'vacation') return false;
       if (!b.professionalId || b.professionalId !== p.id) return false;
       const vs: string = b.date || '';
       const ve: string = b.vacationEndDate || b.date || '';
       return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
-    })
-  );
+    });
+    if (onVacation) return false;
+    // Filter by service_ids: if professional has serviceIds set, only show if they can do this service
+    // (empty serviceIds = can do anything — retrocompatibilidade)
+    if (session.data.serviceId && p.serviceIds && p.serviceIds.length > 0) {
+      return p.serviceIds.includes(session.data.serviceId);
+    }
+    return true;
+  });
 
   session.history.push({ role: 'user', text });
 
@@ -2976,7 +3002,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const _hasProf = !!session.data.professionalId;
   const _hasDate = !!session.data.date;
   const _hasSvc  = !!session.data.serviceId;
-  if (_hasProf && _hasDate && _hasSvc) {
+  if (_hasProf && _hasDate && _hasSvc && !session.data.time) {
     const _slotDur = session.data.serviceDuration || 30;
     prefetchedSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, _slotDur, settings);
 
@@ -3131,7 +3157,31 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const isAllDay = _holidayWh.startTime === '00:00' && (_holidayWh.endTime === '23:59' || _holidayWh.endTime === '23:00');
     _holidayCtxWh = `\n🎉 FERIADO: ${_holidayWh.label || 'Feriado'} em ${formatDate(_targetDateWh)}${isAllDay ? ' — Estabelecimento FECHADO o dia todo' : ` — Fechado a partir das ${_holidayWh.startTime}`}. Informe o cliente e sugira outro dia.`;
   }
-  const _fullCtxWh = [_vacCtxWh, _holidayCtxWh].filter(Boolean).join('\n') || undefined;
+  // ── Customer history context (saudação familiar + sugestão de reagendamento) ──
+  let _customerHistoryCtx = '';
+  // Only enrich on the first message of a session (shouldGreet) or if no serviceId yet
+  if (shouldGreet && !session.data.serviceId) {
+    try {
+      const { data: _custH } = await supabase.from('customers')
+        .select('id, nome').eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
+      if (_custH && _custH.nome) {
+        const { data: _apptH } = await supabase.from('appointments')
+          .select('inicio, service_id, valor_pago')
+          .eq('tenant_id', tenantId).eq('customer_id', _custH.id)
+          .not('status', 'in', '("CANCELLED","cancelado","NO_SHOW")')
+          .order('inicio', { ascending: false }).limit(30);
+        if (_apptH && _apptH.length > 0) {
+          const _lastA = _apptH[0];
+          const _lastSvc = services.find(s => s.id === _lastA.service_id);
+          const _lastSvcName = _lastSvc?.name || '';
+          const _totalSpent = _apptH.reduce((s: number, a: any) => s + (a.valor_pago || 0), 0);
+          const _lastDate = (_lastA.inicio || '').slice(0, 10);
+          _customerHistoryCtx = `\n👤 CLIENTE RECORRENTE: ${_custH.nome} | ${_apptH.length} atendimento(s) | Último: ${_lastSvcName}${_lastDate ? ` em ${_lastDate}` : ''} | Total gasto: R$ ${_totalSpent.toFixed(2)}\n⭐ Na PRIMEIRA mensagem desta conversa: saudá-lo pelo nome "${_custH.nome}" e perguntar se gostaria de reagendar ${_lastSvcName || 'o último procedimento'}.`;
+        }
+      }
+    } catch (_histErr) { console.warn('[Agent] customerHistory lookup error:', _histErr); }
+  }
+  const _fullCtxWh = [_vacCtxWh, _holidayCtxWh, _customerHistoryCtx].filter(Boolean).join('\n') || undefined;
 
   // First brain call
   let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any, tenant.nicho);
@@ -3211,7 +3261,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // Re-run with real slots if we just got prof+date+service
   // Re-fetch slots when all 3 are now set but weren't before the LLM call
-  const justGotProfAndDate = !prefetchedSlots && session.data.professionalId && session.data.date && session.data.serviceId;
+  const justGotProfAndDate = !prefetchedSlots && !session.data.time && session.data.professionalId && session.data.date && session.data.serviceId;
   if (justGotProfAndDate) {
     const newSlots = await getAvailableSlots(tenantId, session.data.professionalId!, session.data.date!, session.data.serviceDuration || 60, settings);
     if (newSlots.length === 0) {
@@ -3445,7 +3495,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         ? session.data._comboServiceIds
         : [session.data.serviceId];
       for (const _svcId of _allSvcIds) {
-        await supabase.from('appointments').insert({
+        const { error: _apptErr } = await supabase.from('appointments').insert({
           tenant_id: tenantId,
           customer_id: customer.id,
           professional_id: session.data.professionalId,
@@ -3454,8 +3504,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           fim: endTimeStr,
           status: 'CONFIRMED',
           origem: 'AI',
-          is_plan: isPlanAppt,
         });
+        if (_apptErr) throw new Error(`Appointment insert failed: ${_apptErr.message}`);
       }
 
       // ── Reschedule: cancel old appointment ───────────────────────────
@@ -3758,11 +3808,19 @@ Deno.serve(async (req) => {
 
     // Find tenant by instance name
     const { data: tenants } = await supabase.from('tenants').select('*');
-    const tenant = (tenants || []).find((t: any) =>
-      t.evolution_instance === instanceName ||
-      `agz_${t.slug}` === instanceName ||
-      instanceName.includes(t.slug || '')
-    );
+    const normalizeSlug = (s: string) =>
+      (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    const tenant = (tenants || []).find((t: any) => {
+      if (!instanceName) return false;
+      // 1. Exact match on evolution_instance field
+      if (t.evolution_instance && t.evolution_instance === instanceName) return true;
+      // 2. agz_<slug> pattern (normalized, same as addTenant)
+      const normSlug = normalizeSlug(t.slug);
+      if (normSlug.length >= 3 && `agz_${normSlug}` === instanceName) return true;
+      // 3. Fallback: instance name contains slug — only if slug is long enough to avoid false matches
+      if (normSlug.length >= 5 && instanceName.includes(normSlug)) return true;
+      return false;
+    });
     if (!tenant) {
       console.warn('[Webhook] tenant not found for instance:', instanceName);
       return new Response(JSON.stringify({ ok: false, error: 'tenant not found' }), {
@@ -3828,19 +3886,28 @@ Deno.serve(async (req) => {
         ));
 
         // ── Human takeover: humano enviou msg → pausar IA neste chat por 24h ──
+        // Skip if this is a bot echo (sendMsg records bot_echo:: in msg_dedup)
         EdgeRuntime.waitUntil((async () => {
           try {
             const phoneSuffix = _outPhone.replace(/\D/g, '').slice(-10);
-            const { data: custRows } = await supabase.from('customers')
-              .select('id').eq('tenant_id', tenant.id).like('telefone', `%${phoneSuffix}`).limit(1);
-            const custKey = custRows?.[0]?.id || `phone:${_outPhone}`;
-            // Atomic update — only touches _customerData[custKey], doesn't overwrite other follow_up keys
-            await supabase.rpc('set_customer_data_key', {
-              p_tenant_id: tenant.id,
-              p_customer_key: custKey,
-              p_value: { aiPaused: true, humanTakeoverAt: Date.now() },
-            });
-            console.log(`[Webhook] Human takeover set for ${custKey}`);
+            // Check persistent dedup table: if bot_echo key exists → this is a bot message, not human
+            const botEchoKey = `bot_echo::${phoneSuffix}::${_outBody.trim().slice(0,80)}`;
+            const { error: echoErr } = await supabase.from('msg_dedup').insert({ fp: botEchoKey });
+            if (!echoErr || echoErr.code !== '23505') {
+              // Key didn't exist → truly human-sent, proceed with takeover
+              const { data: custRows } = await supabase.from('customers')
+                .select('id').eq('tenant_id', tenant.id).like('telefone', `%${phoneSuffix}`).limit(1);
+              const custKey = custRows?.[0]?.id || `phone:${_outPhone}`;
+              // Atomic update — only touches _customerData[custKey], doesn't overwrite other follow_up keys
+              await supabase.rpc('set_customer_data_key', {
+                p_tenant_id: tenant.id,
+                p_customer_key: custKey,
+                p_value: { aiPaused: true, humanTakeoverAt: Date.now() },
+              });
+              console.log(`[Webhook] Human takeover set for ${custKey}`);
+            } else {
+              console.log(`[Webhook] Skipping human takeover — bot echo detected for ${phoneSuffix}`);
+            }
           } catch (e) { console.error('[Webhook] human takeover error:', e); }
         })());
 

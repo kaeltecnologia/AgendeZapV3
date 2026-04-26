@@ -132,7 +132,7 @@ function generateId(): string {
     : Math.random().toString(36).substring(2, 11);
 }
 
-const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void }> = ({ tenantId, onOpenComandas }) => {
+const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string }> = ({ tenantId, onOpenComandas, defaultProfessionalId }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
     id: string; basePrice: number; extraValue?: number; extraNote?: string;
@@ -145,7 +145,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [presetPeriod, setPresetPeriod] = useState<string>('today');
-  const [filterProfId, setFilterProfId] = useState<string>('');
+  const [filterProfId, setFilterProfId] = useState<string>(defaultProfessionalId || '');
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -697,6 +697,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         <div className="w-full lg:w-72 shrink-0 space-y-6">
 
           {/* Professional Filter */}
+          {!defaultProfessionalId && (
           <div className="bg-white p-6 rounded-[30px] border-2 border-slate-100 shadow-lg space-y-4">
             <h3 className="font-black text-black text-xs uppercase tracking-widest">Filtrar por Profissional</h3>
             <select
@@ -715,6 +716,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
               </button>
             )}
           </div>
+          )}
 
           {/* Period Filter */}
           <div className="bg-white p-4 sm:p-6 md:p-8 rounded-[35px] border-2 border-slate-100 shadow-lg">

@@ -43,6 +43,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     price: '',
   });
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [importResult, setImportResult] = useState<{ ok: number; fail: number } | null>(null);
   const [planBalance, setPlanBalance] = useState<Record<string, { total: number; used: number; remaining: number }>>({});
   const [renewingPlan, setRenewingPlan] = useState(false);
@@ -83,6 +84,19 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setPlanBalance({});
     }
   }, [editingCustomer?.id, editingCustomer?.planId, tenantId]);
+
+  // Compute consumption stats from loaded appointments when editing a customer
+  const customerStats = React.useMemo(() => {
+    if (!editingCustomer || !appointments.length) return null;
+    const custAppts = appointments.filter(a =>
+      a.customer_id === editingCustomer.id &&
+      !['CANCELLED', 'cancelado', 'NO_SHOW'].includes(a.status)
+    );
+    if (!custAppts.length) return null;
+    const totalSpent = custAppts.reduce((s, a) => s + (a.amountPaid || 0), 0);
+    const last = custAppts.slice().sort((a, b) => b.startTime.localeCompare(a.startTime))[0];
+    return { count: custAppts.length, totalSpent, lastDate: last?.startTime?.slice(0, 10) || '' };
+  }, [editingCustomer?.id, appointments]);
 
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -133,28 +147,37 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     if (!file) return;
     setImporting(true);
     setImportResult(null);
+    setImportProgress(null);
     try {
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter(l => l.trim());
       // Detect separator: semicolon (BR Excel) or comma
       const sep = lines[0]?.includes(';') ? ';' : ',';
-      let ok = 0, fail = 0;
-      for (const line of lines) {
+      // Skip header row if first col is non-numeric and looks like a label
+      const startIdx = /^(nome|name|cliente|contato)/i.test(lines[0]?.split(sep)[0] || '') ? 1 : 0;
+      const dataLines = lines.slice(startIdx);
+      let skipped = 0;
+      const rows: Array<{ name: string; phone: string; birthDate?: string }> = [];
+      for (const line of dataLines) {
         const cols = line.split(sep).map(c => c.replace(/^"|"$/g, '').trim());
         const name = cols[0] || '';
         const phone = (cols[1] || '').replace(/\D/g, '');
-        if (!name || phone.length < 10) { fail++; continue; }
-        try {
-          await db.addCustomer({ tenant_id: tenantId, name, phone, active: true });
-          ok++;
-        } catch { fail++; }
+        // Aceita telefones com >= 7 dígitos (suporte a números internacionais)
+        if (!name || phone.length < 7) { skipped++; continue; }
+        const birthDate = cols[2] ? cols[2].trim() : undefined;
+        rows.push({ name, phone, birthDate });
       }
-      setImportResult({ ok, fail });
+      setImportProgress({ done: 0, total: rows.length });
+      const { ok, fail } = await db.bulkImportCustomers(tenantId, rows, (done, total) => {
+        setImportProgress({ done, total });
+      });
+      setImportResult({ ok, fail: fail + skipped });
       await load();
     } catch (err: any) {
       alert('Erro ao importar: ' + (err.message || 'Erro desconhecido'));
     } finally {
       setImporting(false);
+      setImportProgress(null);
       e.target.value = '';
     }
   };
@@ -259,13 +282,18 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {activeTab === 'lista' && importResult && (
             <span className="text-[9px] font-black uppercase tracking-widest text-green-600 bg-green-50 px-4 py-2 rounded-xl border border-green-100">
-              ✅ {importResult.ok} importados {importResult.fail > 0 ? `/ ⚠️ ${importResult.fail} falhas` : ''}
+              ✅ {importResult.ok} importados {importResult.fail > 0 ? `/ ⚠️ ${importResult.fail} ignorados` : ''}
+            </span>
+          )}
+          {activeTab === 'lista' && importProgress && (
+            <span className="text-[9px] font-black uppercase tracking-widest text-orange-600 bg-orange-50 px-4 py-2 rounded-xl border border-orange-100">
+              ⏳ {importProgress.done}/{importProgress.total}
             </span>
           )}
           {activeTab === 'lista' && (
             <>
               <label className={`cursor-pointer bg-white border-2 border-slate-200 text-slate-600 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:border-orange-500 hover:text-orange-500 transition-all ${importing ? 'opacity-50 pointer-events-none' : ''}`}>
-                {importing ? 'Importando...' : '↑ Importar CSV'}
+                {importing ? `Importando${importProgress ? ` ${importProgress.done}/${importProgress.total}` : '...'}` : '↑ Importar CSV'}
                 <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportCSV} disabled={importing} />
               </label>
               <button onClick={() => setShowAddModal(true)} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all">
@@ -484,6 +512,27 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">WhatsApp</label>
                 <input value={editingCustomer.phone} onChange={e => setEditingCustomer({ ...editingCustomer, phone: e.target.value })} placeholder="55..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500" />
               </div>
+
+              {/* ─── Histórico de Consumo ─── */}
+              {customerStats && (
+                <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl p-5 space-y-3 border border-orange-100">
+                  <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">📊 Histórico de Consumo</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center">
+                      <p className="text-xl font-black text-black">{customerStats.count}</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Atendimentos</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xl font-black text-black">R$ {customerStats.totalSpent.toFixed(0)}</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Faturamento</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-black text-black">{customerStats.lastDate ? customerStats.lastDate.split('-').reverse().join('/') : '—'}</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Último</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* ─── Plano ─── */}
               {plans.length > 0 && (

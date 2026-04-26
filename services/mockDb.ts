@@ -518,7 +518,10 @@ class DatabaseService {
         phone: p.phone || '',
         specialty: p.especialidade || '',
         active: p.ativo ?? true,
-        role: profMeta[p.id]?.role || 'colab'
+        role: profMeta[p.id]?.role || 'colab',
+        serviceIds: p.service_ids || [],
+        loginPin: p.login_pin || '',
+        loginPhone: p.login_phone || '',
       }));
       _cache.set(ck, result, TTL_MED);
       return result;
@@ -553,6 +556,9 @@ class DatabaseService {
       if (pro.phone !== undefined) payload.phone = pro.phone;
       if (pro.specialty !== undefined) payload.especialidade = pro.specialty;
       if (pro.active !== undefined) payload.ativo = pro.active;
+      if (pro.serviceIds !== undefined) payload.service_ids = pro.serviceIds;
+      if (pro.loginPin !== undefined) payload.login_pin = pro.loginPin || null;
+      if (pro.loginPhone !== undefined) payload.login_phone = pro.loginPhone || null;
       if (Object.keys(payload).length > 0) {
         const { error } = await supabase.from('professionals').update(payload).eq('id', id);
         if (error) throw error;
@@ -691,7 +697,7 @@ class DatabaseService {
     if (!opts?.fresh) { const c = _cache.get<Customer[]>(ck); if (c) return c; }
     try {
       const [{ data, error }, settings] = await Promise.all([
-        supabase.from('customers').select('*').eq('tenant_id', tenantId),
+        supabase.from('customers').select('*').eq('tenant_id', tenantId).limit(10000),
         this.getSettings(tenantId)
       ]);
       if (error) throw error;
@@ -703,6 +709,47 @@ class DatabaseService {
       console.error("Error fetching customers:", err?.code, err?.message, err?.details);
       return [];
     }
+  }
+
+  /**
+   * Importação em lote — insere até 200 clientes por vez via bulk insert.
+   * Retorna { ok, fail } com contagens totais.
+   * onProgress(imported, total) chamado após cada lote.
+   */
+  async bulkImportCustomers(
+    tenantId: string,
+    rows: Array<{ name: string; phone: string; birthDate?: string }>,
+    onProgress?: (imported: number, total: number) => void
+  ): Promise<{ ok: number; fail: number }> {
+    const BATCH = 200;
+    let ok = 0, fail = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH).map(r => ({
+        tenant_id: tenantId,
+        nome: r.name,
+        telefone: r.phone,
+        ...(r.birthDate ? { birth_date: r.birthDate } : {}),
+      }));
+      try {
+        const { error } = await supabase.from('customers')
+          .insert(batch)
+          .select('id');
+        if (error) {
+          // Lote falhou — tentar individualmente para contar erros precisos
+          for (const row of batch) {
+            try {
+              const { error: e2 } = await supabase.from('customers').insert(row);
+              if (!e2 || e2.code === '23505') ok++; else fail++;
+            } catch { fail++; }
+          }
+        } else {
+          ok += batch.length;
+        }
+      } catch { fail += batch.length; }
+      onProgress?.(Math.min(i + BATCH, rows.length), rows.length);
+    }
+    _cache.invalidate(`getCustomers:${tenantId}`);
+    return { ok, fail };
   }
 
   async addCustomer(customer: any) {
@@ -934,7 +981,8 @@ class DatabaseService {
       professionalMeta: {},
       customerData: {},
       followUpSent: {},
-      inventory: []
+      inventory: [],
+      products: []
     };
     try {
       const { data, error } = await supabase.from('tenant_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
@@ -964,6 +1012,7 @@ class DatabaseService {
           profAgendaSent: fu._profAgendaSent || {},
           agendaDiariaHora: fu._agendaDiariaHora || '00:01',
           inventory: fu._inventory || [],
+          products: fu._products || [],
           monthlyRevenueGoal: fu._monthlyRevenueGoal ?? 0,
           cardFees: fu._cardFees ?? { debit: 0, credit: 0, installment: 0 },
           aiLeadActive: fu._aiLeadActive !== false,
@@ -1040,6 +1089,7 @@ class DatabaseService {
         _profAgendaSent: newS.profAgendaSent ?? curr.profAgendaSent ?? {},
         _agendaDiariaHora: newS.agendaDiariaHora ?? curr.agendaDiariaHora ?? '00:01',
         _inventory: newS.inventory ?? curr.inventory ?? [],
+        _products: newS.products ?? curr.products ?? [],
         _monthlyRevenueGoal: newS.monthlyRevenueGoal ?? curr.monthlyRevenueGoal ?? 0,
         _cardFees: newS.cardFees ?? curr.cardFees ?? { debit: 0, credit: 0, installment: 0 },
         _aiLeadActive: newS.aiLeadActive ?? curr.aiLeadActive ?? true,

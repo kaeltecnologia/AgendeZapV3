@@ -41,6 +41,7 @@ const IndicacoesView = lazy(() => import('./components/IndicacoesView'));
 const ReferralLandingPage = lazy(() => import('./components/ReferralLandingPage'));
 const AffiliateDashboard = lazy(() => import('./components/AffiliateDashboard'));
 const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
+const ProfessionalPortal = lazy(() => import('./components/ProfessionalPortal'));
 import { db } from './services/mockDb';
 import { supabase } from './services/supabase';
 import { evolutionService } from './services/evolutionService';
@@ -83,10 +84,11 @@ enum View {
   INDICACOES = 'INDICACOES',
 }
 
-type Role = 'TENANT' | 'SUPERADMIN' | 'AFFILIATE';
+type Role = 'TENANT' | 'SUPERADMIN' | 'AFFILIATE' | 'PROFESSIONAL';
 type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'wa_central' | 'testes';
 
 const SESSION_KEY = 'agz_session';
+const PRO_SESSION_KEY = 'agz_pro_session';
 
 // Simple session fingerprint to detect tampering (not crypto-grade, but prevents casual edits)
 function sessionFingerprint(data: Record<string, any>): string {
@@ -125,6 +127,8 @@ const App: React.FC = () => {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState<Role>('TENANT');
+  const [professionalId, setProfessionalId] = useState<string>('');
+  const [professionalName, setProfessionalName] = useState<string>('');
   const [affiliateData, setAffiliateData] = useState<AffiliateLink | null>(null);
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [tenantId, setTenantId] = useState<string>('');
@@ -313,14 +317,18 @@ const App: React.FC = () => {
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && role !== 'PROFESSIONAL') {
       const payload = {
         isAuthenticated, role, tenantId, tenantSlug, tenantName,
         tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab,
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
     }
-  }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab]);
+    if (isAuthenticated && role === 'PROFESSIONAL') {
+      const payload = { isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, professionalId, professionalName };
+      localStorage.setItem(PRO_SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
+    }
+  }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab, professionalId, professionalName]);
 
   // Close sidebar on mobile after any nav action
   const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
@@ -404,6 +412,26 @@ const App: React.FC = () => {
     const init = async () => {
       // Restore saved session before checking DB
       try {
+        // Try professional session first
+        const proSaved = localStorage.getItem(PRO_SESSION_KEY);
+        if (proSaved) {
+          const s = JSON.parse(proSaved);
+          const { _fp, ...payload } = s;
+          if (_fp && _fp === sessionFingerprint(payload) && s.isAuthenticated && s.role === 'PROFESSIONAL') {
+            setIsAuthenticated(true);
+            setRole('PROFESSIONAL');
+            setTenantId(s.tenantId || '');
+            setTenantSlug(s.tenantSlug || '');
+            setTenantName(s.tenantName || '');
+            setTenantPlan(s.tenantPlan || 'START');
+            if (s.tenantNicho) setTenantNicho(s.tenantNicho);
+            setProfessionalId(s.professionalId || '');
+            setProfessionalName(s.professionalName || '');
+            return; // skip admin session
+          } else {
+            localStorage.removeItem(PRO_SESSION_KEY);
+          }
+        }
         const saved = localStorage.getItem(SESSION_KEY);
         if (saved) {
           const s = JSON.parse(saved);
@@ -426,6 +454,7 @@ const App: React.FC = () => {
         }
       } catch {
         localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(PRO_SESSION_KEY);
       }
 
       try {
@@ -439,8 +468,22 @@ const App: React.FC = () => {
     init();
   }, []);
 
-  const handleLogin = async (selectedRole: Role, userSlug?: string, userEmail?: string, userPassword?: string) => {
+  const handleLogin = async (selectedRole: Role, userSlug?: string, userEmail?: string, userPassword?: string, professionalData?: any) => {
     try {
+      // Professional login via phone+PIN
+      if (selectedRole === 'PROFESSIONAL' && professionalData) {
+        setRole('PROFESSIONAL');
+        setTenantId(professionalData.tenant_id || '');
+        setTenantSlug(professionalData.tenant_slug || '');
+        setTenantName(professionalData.tenant_name || '');
+        setTenantPlan(professionalData.tenant_plan || 'START');
+        if (professionalData.tenant_nicho) setTenantNicho(professionalData.tenant_nicho);
+        setProfessionalId(professionalData.professional_id || '');
+        setProfessionalName(professionalData.professional_name || '');
+        setIsAuthenticated(true);
+        return;
+      }
+
       if (selectedRole === 'SUPERADMIN') {
         // Validate superadmin via secure RPC (credentials never leave the server)
         try {
@@ -601,6 +644,7 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(PRO_SESSION_KEY);
     setIsAuthenticated(false);
     setRole('TENANT');
     setTenantId('');
@@ -608,6 +652,8 @@ const App: React.FC = () => {
     setTenantNicho('');
     setIsImpersonating(false);
     setPendingPayment(false);
+    setProfessionalId('');
+    setProfessionalName('');
     setCurrentView(View.DASHBOARD);
   };
 
@@ -674,6 +720,23 @@ const App: React.FC = () => {
 
   if (role === 'AFFILIATE' && affiliateData) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900"><div className="w-10 h-10 border-4 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>}><AffiliateDashboard affiliate={affiliateData} onLogout={handleLogout} /></Suspense>;
+  }
+
+  if (role === 'PROFESSIONAL') {
+    return (
+      <ToastContext.Provider value={showToast}>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" /></div>}>
+          <ProfessionalPortal
+            tenantId={tenantId}
+            tenantName={tenantName}
+            professionalId={professionalId}
+            professionalName={professionalName}
+            onLogout={handleLogout}
+          />
+        </Suspense>
+        <Toast messages={toasts} onRemove={removeToast} />
+      </ToastContext.Provider>
+    );
   }
 
   const renderView = () => {

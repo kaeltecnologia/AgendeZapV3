@@ -378,6 +378,9 @@ export interface Professional {
   specialty: string;
   active: boolean;
   role?: 'admin' | 'colab'; // 'admin' = proprietário (acesso total), 'colab' = funcionário (próprios dados)
+  serviceIds?: string[];    // IDs dos serviços que este profissional realiza (vazio = faz tudo)
+  loginPin?: string;        // PIN de 4 dígitos para acesso ao portal profissional
+  loginPhone?: string;      // Telefone de login (padrão = phone)
 }
 
 export interface Service {
