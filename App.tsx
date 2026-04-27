@@ -223,6 +223,14 @@ const App: React.FC = () => {
     set('--reseller-text-muted', resellerProfile?.text_color
       ? resellerProfile.text_color + '99'
       : undefined);
+
+    // Apply page background directly to body — CSS descendant selector can't target
+    // body from a child div, so we must set it via JS to override .dark body rules.
+    if (resellerProfile?.page_bg_color) {
+      document.body.style.setProperty('background', resellerProfile.page_bg_color, 'important');
+    } else {
+      document.body.style.removeProperty('background');
+    }
   }, [resellerProfile]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
