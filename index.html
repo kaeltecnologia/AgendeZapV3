@@ -11,6 +11,15 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="shortcut icon" href="/favicon.ico">
+    <!-- Remove default favicons immediately on reseller domains to avoid flash -->
+    <script>
+      (function(){
+        var h=window.location.hostname.replace(/^www\./,'');
+        if(!h.includes('localhost')&&!h.includes('agendezap')&&!h.includes('vercel')){
+          document.querySelectorAll("link[rel~='icon'],link[rel='shortcut icon']").forEach(function(el){el.parentNode.removeChild(el);});
+        }
+      })();
+    </script>
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json">
