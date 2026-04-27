@@ -222,6 +222,21 @@ const App: React.FC = () => {
     } else {
       document.body.style.removeProperty('background');
     }
+
+    // Dynamic page title
+    document.title = resellerProfile?.brand_name
+      ? `${resellerProfile.brand_name} - Gestão de Agendamentos`
+      : 'AgendeZap - Gestão de Agendamentos';
+
+    // Dynamic favicon
+    const faviconUrl = resellerProfile?.logo_url;
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+    if (faviconUrl) {
+      if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+      link.href = faviconUrl;
+    } else if (link) {
+      link.href = '/favicon.ico';
+    }
   }, [resellerProfile]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
