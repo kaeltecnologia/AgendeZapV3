@@ -173,15 +173,6 @@ const App: React.FC = () => {
     });
   }, [affiliateSlug]);
 
-  // Domain-based reseller branding — runs once on mount
-  useEffect(() => {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname.includes('agendezap') || hostname.includes('vercel')) return;
-    db.getResellerProfileByDomain(hostname).then(rp => {
-      if (rp) setResellerProfile(rp);
-    }).catch(() => {});
-  }, []);
-
   // Apply reseller brand colors via CSS vars whenever profile changes
   useEffect(() => {
     const root = document.documentElement;
@@ -538,9 +529,18 @@ const App: React.FC = () => {
         await db.checkConnection();
       } catch (err) {
         console.warn("Utilizando Local Storage como fallback.");
-      } finally {
-        setIsReady(true);
       }
+
+      // Domain-based reseller detection — must resolve before Login renders
+      const hostname = window.location.hostname;
+      if (!hostname.includes('localhost') && !hostname.includes('agendezap') && !hostname.includes('vercel')) {
+        try {
+          const rp = await db.getResellerProfileByDomain(hostname);
+          if (rp) setResellerProfile(rp);
+        } catch {}
+      }
+
+      setIsReady(true);
     };
     init();
   }, []);
