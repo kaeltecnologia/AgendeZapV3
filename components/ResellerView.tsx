@@ -279,11 +279,28 @@ const ResellerView: React.FC<Props> = ({
     } catch (e: any) { alert(e?.message || 'Erro ao excluir cliente.'); }
   };
 
+  // Appointments count across all clients
+  const [totalAppointments, setTotalAppointments] = useState<number | null>(null);
+  useEffect(() => {
+    if (tenants.length === 0) { setTotalAppointments(0); return; }
+    const ids = tenants.map(t => t.id);
+    supabase.from('appointments').select('id', { count: 'exact', head: true }).in('tenant_id', ids)
+      .then(({ count }) => setTotalAppointments(count ?? 0)).catch(() => setTotalAppointments(0));
+  }, [tenants]);
+
   // KPIs
   const active = tenants.filter(t => t.status === 'ATIVA');
+  const blocked = tenants.filter(t => t.status === 'BLOQUEADA');
+  const overdue = tenants.filter(t => t.status === 'PENDENTE_PAGAMENTO' || t.status === 'PAGAMENTO PENDENTE');
   const mrr = active.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
-  const BASE_PERCENT = affiliate.commissionPercent || 10;
-  const commission = mrr * (BASE_PERCENT / 100);
+  const now = new Date();
+  const newThisMonth = tenants.filter(t => {
+    const d = new Date(t.created_at);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+  const planDist = Object.entries(
+    tenants.reduce((acc: Record<string, number>, t) => { acc[t.plan] = (acc[t.plan] || 0) + 1; return acc; }, {})
+  ).sort((a, b) => b[1] - a[1]);
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
@@ -337,24 +354,141 @@ const ResellerView: React.FC<Props> = ({
         {/* ── DASHBOARD ── */}
         {tab === 'dashboard' && (
           <div className="space-y-6">
-            <h2 className="text-lg font-black text-slate-800">Visão Geral</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { label: 'Clientes Ativos', value: active.length, color: 'text-green-600' },
-                { label: 'Total Clientes', value: tenants.length, color: 'text-slate-700' },
-                { label: 'MRR', value: `R$ ${mrr.toFixed(2).replace('.', ',')}`, color: 'text-blue-600' },
-                { label: `Comissão (${BASE_PERCENT}%)`, value: `R$ ${commission.toFixed(2).replace('.', ',')}`, color: 'text-orange-500' },
-              ].map(kpi => (
-                <div key={kpi.label} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{kpi.label}</p>
-                  <p className={`text-2xl font-black ${kpi.color}`}>{loading ? '—' : kpi.value}</p>
-                </div>
-              ))}
+
+            {/* ── KPI row 1 ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Clientes Ativos */}
+              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-5 text-white shadow-lg shadow-green-200">
+                <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Clientes Ativos</p>
+                <p className="text-3xl font-black">{loading ? '—' : active.length}</p>
+                <p className="text-[10px] opacity-70 mt-1">de {tenants.length} total</p>
+              </div>
+              {/* MRR */}
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-200">
+                <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Receita Mensal (MRR)</p>
+                <p className="text-3xl font-black">{loading ? '—' : `R$\u00a0${mrr.toFixed(0)}`}</p>
+                <p className="text-[10px] opacity-70 mt-1">Est. anual: R$ {(mrr * 12).toFixed(0)}</p>
+              </div>
+              {/* Agendamentos */}
+              <div className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg shadow-violet-200">
+                <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Total Agendamentos</p>
+                <p className="text-3xl font-black">{totalAppointments === null ? '—' : totalAppointments.toLocaleString('pt-BR')}</p>
+                <p className="text-[10px] opacity-70 mt-1">em todos os clientes</p>
+              </div>
+              {/* Faturas Vencidas */}
+              <div className={`rounded-2xl p-5 text-white shadow-lg ${overdue.length > 0 ? 'bg-gradient-to-br from-red-500 to-rose-600 shadow-red-200' : 'bg-gradient-to-br from-slate-400 to-slate-500 shadow-slate-200'}`}>
+                <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Faturas Vencidas</p>
+                <p className="text-3xl font-black">{loading ? '—' : overdue.length}</p>
+                <p className="text-[10px] opacity-70 mt-1">{overdue.length > 0 ? 'requer atenção' : 'tudo em dia'}</p>
+              </div>
             </div>
-            {!resellerProfile && (
-              <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5">
-                <p className="text-sm font-bold text-orange-700 mb-2">Configure seu portal white-label</p>
-                <p className="text-xs text-orange-600">Acesse a aba <strong>Marca</strong> para configurar seu domínio, logo e cores. Depois configure os <strong>Preços</strong> e as <strong>abas visíveis</strong> para seus clientes.</p>
+
+            {/* ── KPI row 2 ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Novos este Mês</p>
+                <p className="text-2xl font-black text-teal-600">{loading ? '—' : newThisMonth}</p>
+                <p className="text-[10px] text-slate-400 mt-1">clientes cadastrados</p>
+              </div>
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Bloqueados</p>
+                <p className={`text-2xl font-black ${blocked.length > 0 ? 'text-amber-500' : 'text-slate-300'}`}>{loading ? '—' : blocked.length}</p>
+                <p className="text-[10px] text-slate-400 mt-1">acesso suspenso</p>
+              </div>
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Ticket Médio</p>
+                <p className="text-2xl font-black text-blue-500">{loading ? '—' : active.length > 0 ? `R$\u00a0${(mrr / active.length).toFixed(0)}` : '—'}</p>
+                <p className="text-[10px] text-slate-400 mt-1">por cliente ativo</p>
+              </div>
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Taxa de Retenção</p>
+                <p className="text-2xl font-black text-green-500">{loading || tenants.length === 0 ? '—' : `${Math.round((active.length / tenants.length) * 100)}%`}</p>
+                <p className="text-[10px] text-slate-400 mt-1">ativos / total</p>
+              </div>
+            </div>
+
+            {/* ── Alerts + Distribution ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Alerts */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Alertas</p>
+                {loading ? <p className="text-sm text-slate-400">Carregando...</p> : (
+                  <>
+                    {overdue.length > 0 && (
+                      <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+                        <span className="text-lg">⚠️</span>
+                        <div>
+                          <p className="text-xs font-black text-red-700">{overdue.length} fatura{overdue.length > 1 ? 's' : ''} vencida{overdue.length > 1 ? 's' : ''}</p>
+                          <p className="text-[10px] text-red-500">{overdue.map(t => t.nome).join(', ')}</p>
+                        </div>
+                      </div>
+                    )}
+                    {blocked.length > 0 && (
+                      <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                        <span className="text-lg">🚫</span>
+                        <div>
+                          <p className="text-xs font-black text-amber-700">{blocked.length} cliente{blocked.length > 1 ? 's' : ''} bloqueado{blocked.length > 1 ? 's' : ''}</p>
+                          <p className="text-[10px] text-amber-500">{blocked.map(t => t.nome).join(', ')}</p>
+                        </div>
+                      </div>
+                    )}
+                    {overdue.length === 0 && blocked.length === 0 && (
+                      <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
+                        <span className="text-lg">✅</span>
+                        <p className="text-xs font-black text-green-700">Nenhum alerta — tudo em ordem!</p>
+                      </div>
+                    )}
+                    {!resellerProfile && (
+                      <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl border border-orange-100">
+                        <span className="text-lg">🎨</span>
+                        <div>
+                          <p className="text-xs font-black text-orange-700">Configure seu white-label</p>
+                          <p className="text-[10px] text-orange-500">Acesse a aba Marca para personalizar</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Plan distribution */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Distribuição de Planos</p>
+                {loading ? <p className="text-sm text-slate-400">Carregando...</p> : planDist.length === 0 ? (
+                  <p className="text-sm text-slate-400">Nenhum cliente ainda</p>
+                ) : planDist.map(([plan, count]) => {
+                  const pct = tenants.length > 0 ? Math.round((count / tenants.length) * 100) : 0;
+                  const colors: Record<string, string> = { START: 'bg-slate-400', PROFISSIONAL: 'bg-blue-500', ELITE: 'bg-violet-500' };
+                  return (
+                    <div key={plan} className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-slate-600">{PLAN_LABELS[plan] || plan}</span>
+                        <span className="text-xs font-bold text-slate-400">{count} ({pct}%)</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${colors[plan] || 'bg-orange-400'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── Recent clients ── */}
+            {!loading && tenants.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Clientes Recentes</p>
+                <div className="divide-y divide-slate-50">
+                  {[...tenants].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5).map(t => (
+                    <div key={t.id} className="flex items-center justify-between py-2.5">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{t.nome}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(t.created_at).toLocaleDateString('pt-BR')} · {PLAN_LABELS[t.plan] || t.plan}</p>
+                      </div>
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${statusBadge(t.status)}`}>{t.status}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

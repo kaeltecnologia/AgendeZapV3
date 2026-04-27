@@ -26,10 +26,10 @@ CREATE TABLE IF NOT EXISTS reseller_profiles (
   default_agent_name    TEXT,
 
   -- Feature flags: NULL = all tabs visible; array = only listed keys visible
-  -- Keys: agendamentos | clientes | conversas | comandas | financeiro | estoque
-  --       follow_up | disparos | social_midia | indicacoes | relatorios
-  --       equipe | servicos | conexoes | configuracoes | planos
   visible_features      TEXT[] DEFAULT NULL,
+
+  -- Tenant creation limit (NULL = unlimited)
+  max_tenants           INT DEFAULT NULL,
 
   active                BOOLEAN DEFAULT true,
   created_at            TIMESTAMPTZ DEFAULT now(),
@@ -49,9 +49,11 @@ CREATE INDEX IF NOT EXISTS idx_tenants_reseller_id ON tenants(reseller_id) WHERE
 ALTER TABLE reseller_profiles ENABLE ROW LEVEL SECURITY;
 
 -- Anon can read active profiles (needed for domain-based branding before login)
-CREATE POLICY IF NOT EXISTS "reseller_read_public" ON reseller_profiles
+DROP POLICY IF EXISTS "reseller_read_public" ON reseller_profiles;
+CREATE POLICY "reseller_read_public" ON reseller_profiles
   FOR SELECT USING (active = true);
 
 -- Only service_role can write (all writes go through edge functions)
-CREATE POLICY IF NOT EXISTS "reseller_write_service" ON reseller_profiles
+DROP POLICY IF EXISTS "reseller_write_service" ON reseller_profiles;
+CREATE POLICY "reseller_write_service" ON reseller_profiles
   FOR ALL USING (auth.role() = 'service_role');
