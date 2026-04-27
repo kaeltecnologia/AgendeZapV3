@@ -11,13 +11,15 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="shortcut icon" href="/favicon.ico">
-    <!-- On reseller domains: replace all favicons with empty placeholder to avoid AZ flash -->
+    <!-- On reseller domains: fix favicon flash + title flash using localStorage cache -->
     <script>
       (function(){
         var h=window.location.hostname.replace(/^www\./,'');
         if(!h.includes('localhost')&&!h.includes('agendezap')&&!h.includes('vercel')){
           document.querySelectorAll("link[rel~='icon'],link[rel='shortcut icon']").forEach(function(el){el.parentNode.removeChild(el);});
           var l=document.createElement('link');l.rel='icon';l.href='data:,';document.head.appendChild(l);
+          var brand=localStorage.getItem('agz_reseller_brand');
+          if(brand)document.title=brand+' - Gestão de Agendamentos';
         }
       })();
     </script>

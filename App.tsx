@@ -233,10 +233,14 @@ const App: React.FC = () => {
       document.body.style.removeProperty('background');
     }
 
-    // Dynamic page title
-    document.title = resellerProfile?.brand_name
-      ? `${resellerProfile.brand_name} - Gestão de Agendamentos`
-      : 'AgendeZap - Gestão de Agendamentos';
+    // Dynamic page title + cache brand name for next load (eliminates flash)
+    if (resellerProfile?.brand_name) {
+      document.title = `${resellerProfile.brand_name} - Gestão de Agendamentos`;
+      localStorage.setItem('agz_reseller_brand', resellerProfile.brand_name);
+    } else {
+      document.title = 'AgendeZap - Gestão de Agendamentos';
+      localStorage.removeItem('agz_reseller_brand');
+    }
 
     // Dynamic favicon — prefer favicon_url, fall back to logo_url
     const faviconUrl = resellerProfile?.favicon_url || resellerProfile?.logo_url;
@@ -398,19 +402,26 @@ const App: React.FC = () => {
 
   // Persist session whenever auth/nav state changes
   useEffect(() => {
-    if (isAuthenticated && role !== 'PROFESSIONAL' && role !== 'AFFILIATE') {
+    if (isAuthenticated && role === 'AFFILIATE') {
+      // Save minimal AFFILIATE session + full affiliateData in separate key
+      const payload = { isAuthenticated, role };
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
+      if (affiliateData) localStorage.setItem('agz_affiliate', JSON.stringify(affiliateData));
+    } else if (isAuthenticated && role !== 'PROFESSIONAL') {
       const payload = {
         isAuthenticated, role, tenantId, tenantSlug, tenantName,
         tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab,
         _impersonatedFromRole: isImpersonating ? impersonatedFromRole.current : null,
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
+      // Save affiliateData when impersonating so F5 restores the reseller context
+      if (isImpersonating && affiliateData) localStorage.setItem('agz_affiliate', JSON.stringify(affiliateData));
     }
     if (isAuthenticated && role === 'PROFESSIONAL') {
       const payload = { isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, professionalId, professionalName };
       localStorage.setItem(PRO_SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
     }
-  }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab, professionalId, professionalName]);
+  }, [isAuthenticated, role, tenantId, tenantSlug, tenantName, tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab, professionalId, professionalName, affiliateData]);
 
   // Close sidebar on mobile after any nav action
   const navTo = (fn: () => void) => () => { fn(); setSidebarOpen(false); };
@@ -530,6 +541,17 @@ const App: React.FC = () => {
           const { _fp, ...payload } = s;
           if (_fp && _fp !== sessionFingerprint(payload)) {
             localStorage.removeItem(SESSION_KEY);
+          } else if (s.isAuthenticated && s.role === 'AFFILIATE') {
+            // Restore reseller (affiliate) session
+            const aff = localStorage.getItem('agz_affiliate');
+            if (aff) {
+              try { setAffiliateData(JSON.parse(aff)); } catch {}
+              setIsAuthenticated(true);
+              setRole('AFFILIATE');
+            } else {
+              // No affiliate data cached — force re-login
+              localStorage.removeItem(SESSION_KEY);
+            }
           } else if (s.isAuthenticated && s.role !== 'AFFILIATE') {
             setIsAuthenticated(true);
             setRole(s.role || 'TENANT');
@@ -538,8 +560,15 @@ const App: React.FC = () => {
             setTenantName(s.tenantName || '');
             setTenantPlan(s.tenantPlan || 'START');
             if (s.tenantNicho) setTenantNicho(s.tenantNicho);
-            if (s.isImpersonating && s._impersonatedFromRole) {
-              impersonatedFromRole.current = s._impersonatedFromRole;
+            if (s.isImpersonating) {
+              // Restore affiliate context so "Sair da conta" works after F5
+              const aff = localStorage.getItem('agz_affiliate');
+              if (aff) {
+                try { setAffiliateData(JSON.parse(aff)); } catch {}
+                impersonatedFromRole.current = 'AFFILIATE';
+              } else if (s._impersonatedFromRole) {
+                impersonatedFromRole.current = s._impersonatedFromRole;
+              }
             }
             setIsImpersonating(s.isImpersonating || false);
             setCurrentView(s.currentView || View.DASHBOARD);
@@ -758,6 +787,7 @@ const App: React.FC = () => {
     setProfessionalName('');
     setAffiliateData(null);
     setResellerProfile(null);
+    localStorage.removeItem('agz_affiliate');
     detectResellerDomain(); // re-apply domain branding after logout
     setCurrentView(View.DASHBOARD);
   };
