@@ -62,6 +62,24 @@ const STATUS_LABELS: Record<string, string> = {
   [TenantStatus.PENDING_PAYMENT]: 'Pag. Pendente',
 };
 
+const ALL_FEATURE_KEYS = [
+  { key: 'agendamentos', label: 'Agenda' },
+  { key: 'clientes',     label: 'Clientes' },
+  { key: 'conversas',    label: 'WhatsApp' },
+  { key: 'comandas',     label: 'Comandas' },
+  { key: 'financeiro',   label: 'Financeiro' },
+  { key: 'estoque',      label: 'Estoque' },
+  { key: 'follow_up',    label: 'Lembretes' },
+  { key: 'disparos',     label: 'Disparos' },
+  { key: 'social_midia', label: 'Social Mídia' },
+  { key: 'indicacoes',   label: 'Indicações' },
+  { key: 'relatorios',   label: 'Relatórios' },
+  { key: 'equipe',       label: 'Equipe' },
+  { key: 'servicos',     label: 'Serviços' },
+  { key: 'conexoes',     label: 'Conexões' },
+  { key: 'configuracoes',label: 'Configurações' },
+];
+
 const DEFAULT_BILLING_REMINDERS: BillingReminder[] = [
   { daysOffset: 3, label: 'Antepenúltimo dia', message: 'Olá {nome}! 👋 Sua mensalidade AgendeZap de R$ {valor} vence em *3 dias* (dia {dia}). Renove para manter seu acesso ativo! 🚀', enabled: false },
   { daysOffset: 2, label: 'Penúltimo dia', message: 'Olá {nome}! ⏰ Sua mensalidade AgendeZap de R$ {valor} vence em *2 dias* (dia {dia}). Não deixe seu sistema parar!', enabled: false },
@@ -124,6 +142,9 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   // Edit modal
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [saving, setSaving] = useState(false);
+  // Per-tenant feature overrides (null = use plan defaults; array = custom feature set)
+  const [editFeatureOverrides, setEditFeatureOverrides] = useState<string[] | null>(null);
+  const [editAllFeatures, setEditAllFeatures] = useState(true);
 
   // Delete confirm
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -495,6 +516,21 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     } finally { setCreating(false); }
   };
 
+  // ── Load feature overrides when opening edit modal ───────────────────────────
+  useEffect(() => {
+    if (!editingTenant?.id) return;
+    db.getSettings(editingTenant.id).then(s => {
+      const overrides = s?.resellerFeatureOverrides;
+      if (overrides && Array.isArray(overrides)) {
+        setEditAllFeatures(false);
+        setEditFeatureOverrides(overrides);
+      } else {
+        setEditAllFeatures(true);
+        setEditFeatureOverrides(null);
+      }
+    }).catch(() => { setEditAllFeatures(true); setEditFeatureOverrides(null); });
+  }, [editingTenant?.id]);
+
   // ── Update tenant ────────────────────────────────────────────────────────────
 
   const handleUpdate = async () => {
@@ -510,6 +546,10 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
         due_day: editingTenant.due_day,
         nicho: editingTenant.nicho,
         plan: editingTenant.plan,
+      });
+      // Save per-tenant feature overrides
+      await db.updateSettings(editingTenant.id, {
+        resellerFeatureOverrides: editAllFeatures ? null : (editFeatureOverrides || null),
       });
       saveAdminLog('TENANT_UPDATED', `${editingTenant.name}`);
       setLogs(loadAdminLogs());
@@ -2313,6 +2353,45 @@ END $$;`.trim();
                     })}
                   </div>
                 </div>
+                {/* Per-tenant feature overrides */}
+                <div className="space-y-2 border-t-2 border-slate-100 pt-4">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 block">Recursos Personalizados</label>
+                  <p className="text-[10px] text-slate-400 ml-4">Independe do plano. Quando configurado, substitui o conjunto padrão do plano.</p>
+                  <label className="flex items-center gap-3 cursor-pointer ml-4">
+                    <input
+                      type="checkbox"
+                      checked={editAllFeatures}
+                      onChange={e => {
+                        setEditAllFeatures(e.target.checked);
+                        if (e.target.checked) setEditFeatureOverrides(null);
+                        else setEditFeatureOverrides(ALL_FEATURE_KEYS.map(f => f.key));
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-sm font-bold text-slate-700">Usar padrão do plano (sem override)</span>
+                  </label>
+                  {!editAllFeatures && (
+                    <div className="grid grid-cols-2 gap-1.5 bg-slate-50 rounded-2xl p-3">
+                      {ALL_FEATURE_KEYS.map(f => (
+                        <label key={f.key} className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white">
+                          <input
+                            type="checkbox"
+                            checked={(editFeatureOverrides || []).includes(f.key)}
+                            onChange={e => {
+                              const prev = editFeatureOverrides || [];
+                              setEditFeatureOverrides(
+                                e.target.checked ? [...prev, f.key] : prev.filter(k => k !== f.key)
+                              );
+                            }}
+                            className="w-4 h-4 rounded"
+                          />
+                          <span className="text-xs font-bold text-slate-700">{f.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Reset quiz */}
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Quiz Social Midia</label>

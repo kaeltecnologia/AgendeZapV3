@@ -404,6 +404,15 @@ const App: React.FC = () => {
     }
   }, [darkMode]);
 
+  // Load per-tenant feature overrides when a tenant session is active (direct login or page reload)
+  // Impersonation already loads them inside handleImpersonate — this covers direct tenant login
+  useEffect(() => {
+    if (!tenantId || role !== 'TENANT' || isImpersonating) return;
+    db.getSettings(tenantId).then(s => {
+      setTenantResellerFeatures(s?.resellerFeatureOverrides ?? null);
+    }).catch(() => setTenantResellerFeatures(null));
+  }, [tenantId, role, isImpersonating]);
+
   // Force theme by nicho: Manicure/Pedicure → always light, others → always dark
   useEffect(() => {
     if (!tenantNicho) return;
@@ -725,18 +734,24 @@ const App: React.FC = () => {
     try { const s = await db.getSettings(id); setTenantResellerFeatures(s?.resellerFeatureOverrides ?? undefined); } catch { setTenantResellerFeatures(undefined); }
   };
 
-  // Returns true if the reseller allows this feature key for their clients
-  // Per-tenant overrides (tenantResellerFeatures) take precedence over profile-level visible_features
+  // Returns true if this feature should be visible for the current tenant
+  // Priority: per-tenant override > reseller global > plan default (all visible)
   const resellerAllows = (key: string) => {
+    // 1. Per-tenant override takes highest priority (set by reseller or SuperAdmin)
     if (tenantResellerFeatures !== undefined && tenantResellerFeatures !== null) {
       return tenantResellerFeatures.includes(key);
     }
-    if (!resellerProfile?.visible_features) return true;
-    return resellerProfile.visible_features.includes(key);
+    // 2. Reseller global setting
+    if (resellerProfile?.visible_features) {
+      return resellerProfile.visible_features.includes(key);
+    }
+    // 3. Default: all visible
+    return true;
   };
 
-  // For reseller clients, bypass ALL plan-based gating — access is controlled by resellerAllows()
-  const effectivePlan = resellerProfile ? 'ELITE' : tenantPlan;
+  // effectivePlan: when reseller is active OR when per-tenant overrides are configured,
+  // bypass plan-based gating — feature access is controlled by resellerAllows() / sidebar
+  const effectivePlan = (resellerProfile !== null || (tenantResellerFeatures !== undefined && tenantResellerFeatures !== null)) ? 'ELITE' : tenantPlan;
 
   const handleGatedNav = (view: View, feature: FeatureKey) => {
     setCurrentView(view);
