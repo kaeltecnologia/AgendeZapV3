@@ -533,11 +533,13 @@ const App: React.FC = () => {
 
       // Domain-based reseller detection — must resolve before Login renders
       const hostname = window.location.hostname;
+      console.log('[AgendeZap] hostname:', hostname);
       if (!hostname.includes('localhost') && !hostname.includes('agendezap') && !hostname.includes('vercel')) {
         try {
           const rp = await db.getResellerProfileByDomain(hostname);
+          console.log('[AgendeZap] resellerProfile:', rp);
           if (rp) setResellerProfile(rp);
-        } catch {}
+        } catch (e) { console.error('[AgendeZap] domain lookup error:', e); }
       }
 
       setIsReady(true);
