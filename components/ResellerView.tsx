@@ -53,6 +53,9 @@ const ResellerView: React.FC<Props> = ({
   const [fontColor, setFontColor] = useState(resellerProfile?.font_color || '');
   const [bgColor, setBgColor] = useState(resellerProfile?.bg_color || '');
   const [iconColor, setIconColor] = useState(resellerProfile?.icon_color || '');
+  const [pageBgColor, setPageBgColor] = useState(resellerProfile?.page_bg_color || '');
+  const [cardBgColor, setCardBgColor] = useState(resellerProfile?.card_bg_color || '');
+  const [textColor, setTextColor] = useState(resellerProfile?.text_color || '');
   const [customDomain, setCustomDomain] = useState(resellerProfile?.custom_domain || '');
 
   // Pricing form
@@ -110,6 +113,9 @@ const ResellerView: React.FC<Props> = ({
     setFontColor(resellerProfile.font_color || '');
     setBgColor(resellerProfile.bg_color || '');
     setIconColor(resellerProfile.icon_color || '');
+    setPageBgColor(resellerProfile.page_bg_color || '');
+    setCardBgColor(resellerProfile.card_bg_color || '');
+    setTextColor(resellerProfile.text_color || '');
     setCustomDomain(resellerProfile.custom_domain || '');
     setPriceStart(String(resellerProfile.plan_pricing?.START || ''));
     setPricePro(String(resellerProfile.plan_pricing?.PROFISSIONAL || ''));
@@ -126,9 +132,15 @@ const ResellerView: React.FC<Props> = ({
     setSaving(true);
     try {
       const saved = await db.saveResellerProfile(affiliate.id, patch);
-      if (saved) onResellerProfileChange(saved);
-    } catch (e) {
-      alert('Erro ao salvar. Tente novamente.');
+      onResellerProfileChange(saved);
+    } catch (e: any) {
+      console.error('[saveProfile]', e);
+      const msg: string = e?.message || String(e);
+      if (msg.includes('policy') || msg.includes('permission') || msg.includes('violates') || msg.includes('RLS')) {
+        alert('Sem permissão para salvar. Aplique a migration 20260426000005 no Supabase SQL Editor e tente novamente.');
+      } else {
+        alert('Erro ao salvar: ' + msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -141,6 +153,9 @@ const ResellerView: React.FC<Props> = ({
     font_color: fontColor || undefined,
     bg_color: bgColor || undefined,
     icon_color: iconColor || undefined,
+    page_bg_color: pageBgColor || undefined,
+    card_bg_color: cardBgColor || undefined,
+    text_color: textColor || undefined,
     custom_domain: customDomain || undefined,
   });
 
@@ -492,6 +507,33 @@ const ResellerView: React.FC<Props> = ({
                     {iconColor && <button onClick={() => setIconColor('')} className="text-[9px] text-slate-400 hover:text-red-500 font-bold">✕</button>}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1">Cor dos ícones no menu lateral</p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor de Fundo da Página</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={pageBgColor || '#d0d2da'} onChange={e => setPageBgColor(e.target.value)} className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
+                    <input value={pageBgColor} onChange={e => setPageBgColor(e.target.value)} className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono" placeholder="(padrão do tema)" />
+                    {pageBgColor && <button onClick={() => setPageBgColor('')} className="text-[9px] text-slate-400 hover:text-red-500 font-bold">✕</button>}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Cor de fundo principal da tela</p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor dos Cards / Painéis</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={cardBgColor || '#ffffff'} onChange={e => setCardBgColor(e.target.value)} className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
+                    <input value={cardBgColor} onChange={e => setCardBgColor(e.target.value)} className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono" placeholder="(padrão do tema)" />
+                    {cardBgColor && <button onClick={() => setCardBgColor('')} className="text-[9px] text-slate-400 hover:text-red-500 font-bold">✕</button>}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Cor de fundo dos cards, tabelas e modais</p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor do Texto Principal</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={textColor || '#1e1e32'} onChange={e => setTextColor(e.target.value)} className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
+                    <input value={textColor} onChange={e => setTextColor(e.target.value)} className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono" placeholder="(padrão do tema)" />
+                    {textColor && <button onClick={() => setTextColor('')} className="text-[9px] text-slate-400 hover:text-red-500 font-bold">✕</button>}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Cor dos títulos, números e textos do conteúdo</p>
                 </div>
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Domínio Personalizado</label>

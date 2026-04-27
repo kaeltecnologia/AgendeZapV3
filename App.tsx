@@ -185,32 +185,44 @@ const App: React.FC = () => {
   // Apply reseller brand colors via CSS vars whenever profile changes
   useEffect(() => {
     const root = document.documentElement;
+    const set = (v: string, val?: string) => val ? root.style.setProperty(v, val) : root.style.removeProperty(v);
+
+    // Accent / primary color
     if (resellerProfile?.primary_color) {
       root.style.setProperty('--color-primary', resellerProfile.primary_color);
       root.style.setProperty('--color-primary-dark', resellerProfile.primary_color);
       root.style.setProperty('--color-primary-light', resellerProfile.primary_color + '99');
       root.style.setProperty('--color-primary-bg', resellerProfile.primary_color + '15');
+      root.style.setProperty('--accent', resellerProfile.primary_color);
+      root.style.setProperty('--accent-light', resellerProfile.primary_color + 'cc');
+      root.style.setProperty('--accent-dark', resellerProfile.primary_color);
+      root.style.setProperty('--accent-darker', resellerProfile.primary_color);
+      root.style.setProperty('--accent-glow', resellerProfile.primary_color + '26');
+      root.style.setProperty('--accent-glow-strong', resellerProfile.primary_color + '4d');
+      root.style.setProperty('--accent-subtle', resellerProfile.primary_color + '14');
+      root.style.setProperty('--accent-subtle-hover', resellerProfile.primary_color + '26');
+      root.style.setProperty('--accent-border', resellerProfile.primary_color + '40');
+      root.style.setProperty('--accent-border-strong', resellerProfile.primary_color + '66');
+      root.style.setProperty('--accent-focus-shadow', resellerProfile.primary_color + '1a');
     } else {
-      root.style.removeProperty('--color-primary');
-      root.style.removeProperty('--color-primary-dark');
-      root.style.removeProperty('--color-primary-light');
-      root.style.removeProperty('--color-primary-bg');
+      ['--color-primary','--color-primary-dark','--color-primary-light','--color-primary-bg',
+       '--accent','--accent-light','--accent-dark','--accent-darker','--accent-glow',
+       '--accent-glow-strong','--accent-subtle','--accent-subtle-hover','--accent-border',
+       '--accent-border-strong','--accent-focus-shadow'].forEach(v => root.style.removeProperty(v));
     }
-    if (resellerProfile?.font_color) {
-      root.style.setProperty('--reseller-font-color', resellerProfile.font_color);
-    } else {
-      root.style.removeProperty('--reseller-font-color');
-    }
-    if (resellerProfile?.bg_color) {
-      root.style.setProperty('--reseller-bg-color', resellerProfile.bg_color);
-    } else {
-      root.style.removeProperty('--reseller-bg-color');
-    }
-    if (resellerProfile?.icon_color) {
-      root.style.setProperty('--reseller-icon-color', resellerProfile.icon_color);
-    } else {
-      root.style.removeProperty('--reseller-icon-color');
-    }
+
+    // Sidebar colors
+    set('--reseller-font-color', resellerProfile?.font_color);
+    set('--reseller-bg-color',   resellerProfile?.bg_color);
+    set('--reseller-icon-color', resellerProfile?.icon_color);
+
+    // Full-theme colors (page, cards, text)
+    set('--reseller-page-bg',    resellerProfile?.page_bg_color);
+    set('--reseller-card-bg',    resellerProfile?.card_bg_color);
+    set('--reseller-text',       resellerProfile?.text_color);
+    set('--reseller-text-muted', resellerProfile?.text_color
+      ? resellerProfile.text_color + '99'
+      : undefined);
   }, [resellerProfile]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
@@ -886,7 +898,9 @@ const App: React.FC = () => {
   const nichoThemeMap: Record<string, string> = {
     'Manicure/Pedicure': 'theme-manicure',
   };
-  const themeClass = nichoThemeMap[tenantNicho] || '';
+  const nichoThemeClass = nichoThemeMap[tenantNicho] || '';
+  const resellerThemeClass = resellerProfile && (resellerProfile.page_bg_color || resellerProfile.card_bg_color || resellerProfile.text_color) ? 'reseller-theme' : '';
+  const themeClass = [nichoThemeClass, resellerThemeClass].filter(Boolean).join(' ');
 
   // Nicho → ícone dinâmico para Comandas e Serviços
   const nichoIconComponents: Record<string, () => React.JSX.Element> = {

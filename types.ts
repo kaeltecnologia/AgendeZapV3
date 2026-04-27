@@ -652,6 +652,9 @@ export interface ResellerProfile {
   font_color?: string;
   bg_color?: string;
   icon_color?: string;
+  page_bg_color?: string;
+  card_bg_color?: string;
+  text_color?: string;
   custom_domain?: string;
   openai_api_key?: string;
   plan_pricing?: { START?: number; PROFISSIONAL?: number; ELITE?: number };

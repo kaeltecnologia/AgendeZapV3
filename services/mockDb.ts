@@ -3228,16 +3228,31 @@ class DatabaseService {
     } catch { return null; }
   }
 
-  async saveResellerProfile(affiliateLinkId: string, updates: Partial<ResellerProfile>): Promise<ResellerProfile | null> {
-    try {
+  async saveResellerProfile(affiliateLinkId: string, updates: Partial<ResellerProfile>): Promise<ResellerProfile> {
+    const { data: existing } = await supabase
+      .from('reseller_profiles')
+      .select('id')
+      .eq('affiliate_link_id', affiliateLinkId)
+      .maybeSingle();
+
+    if (existing?.id) {
       const { data, error } = await supabase
         .from('reseller_profiles')
-        .upsert({ ...updates, affiliate_link_id: affiliateLinkId }, { onConflict: 'affiliate_link_id' })
+        .update(updates)
+        .eq('id', existing.id)
         .select('*')
         .single();
       if (error) throw error;
       return data as ResellerProfile;
-    } catch (e) { console.error('[saveResellerProfile] error:', e); return null; }
+    } else {
+      const { data, error } = await supabase
+        .from('reseller_profiles')
+        .insert({ ...updates, affiliate_link_id: affiliateLinkId })
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data as ResellerProfile;
+    }
   }
 
   async getResellerTenants(resellerId: string): Promise<Tenant[]> {

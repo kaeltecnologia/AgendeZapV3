@@ -613,6 +613,104 @@ html:not(.dark) .theme-manicure .agz-sidebar .custom-scrollbar::-webkit-scrollba
 .dark .bg-orange-600 { background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 40%, var(--accent-darker) 100%) !important; }
 .dark .text-orange-500 { color: var(--accent) !important; }
 
+/* ── White-label Reseller Full Theme ────────────────── */
+/* Applied via .reseller-theme class on the root div when a reseller profile is active.
+   CSS variables set by App.tsx:
+     --reseller-page-bg, --reseller-card-bg, --reseller-text, --reseller-text-muted
+   Sidebar is already handled via inline style + --reseller-bg-color / --reseller-font-color */
+
+/* Page/body background */
+.reseller-theme body {
+  background: var(--reseller-page-bg) !important;
+}
+
+/* Cards & panels */
+.reseller-theme .bg-white {
+  background: var(--reseller-card-bg) !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+}
+.reseller-theme .bg-slate-50 {
+  background: color-mix(in srgb, var(--reseller-card-bg) 60%, var(--reseller-page-bg)) !important;
+  box-shadow: none !important;
+}
+.reseller-theme .bg-slate-50\/30 {
+  background: color-mix(in srgb, var(--reseller-card-bg) 20%, transparent) !important;
+}
+.reseller-theme .bg-slate-50\/50 {
+  background: color-mix(in srgb, var(--reseller-card-bg) 35%, transparent) !important;
+}
+.reseller-theme .bg-slate-100 {
+  background: color-mix(in srgb, var(--reseller-card-bg) 80%, var(--reseller-page-bg)) !important;
+}
+.reseller-theme .bg-slate-200 {
+  background: color-mix(in srgb, var(--reseller-card-bg) 60%, var(--reseller-page-bg)) !important;
+}
+
+/* Hover states */
+.reseller-theme .hover\:bg-slate-50:hover {
+  background: color-mix(in srgb, var(--reseller-card-bg) 70%, var(--reseller-page-bg)) !important;
+}
+.reseller-theme .hover\:bg-slate-100:hover {
+  background: color-mix(in srgb, var(--reseller-card-bg) 90%, var(--reseller-page-bg)) !important;
+}
+
+/* Text colors */
+.reseller-theme .text-black      { color: var(--reseller-text) !important; }
+.reseller-theme .text-slate-900  { color: var(--reseller-text) !important; }
+.reseller-theme .text-slate-800  { color: color-mix(in srgb, var(--reseller-text) 90%, transparent) !important; }
+.reseller-theme .text-slate-700  { color: color-mix(in srgb, var(--reseller-text) 80%, transparent) !important; }
+.reseller-theme .text-slate-600  { color: var(--reseller-text-muted) !important; }
+.reseller-theme .text-slate-500  { color: var(--reseller-text-muted) !important; }
+.reseller-theme .text-slate-400  { color: color-mix(in srgb, var(--reseller-text-muted) 70%, transparent) !important; }
+.reseller-theme .text-slate-300  { color: color-mix(in srgb, var(--reseller-text-muted) 50%, transparent) !important; }
+.reseller-theme .text-white      { color: var(--reseller-text) !important; }
+
+/* Borders */
+.reseller-theme .border-slate-50  { border-color: color-mix(in srgb, var(--reseller-card-bg) 50%, var(--reseller-page-bg)) !important; }
+.reseller-theme .border-slate-100 { border-color: color-mix(in srgb, var(--reseller-text-muted) 15%, transparent) !important; }
+.reseller-theme .border-slate-200 { border-color: color-mix(in srgb, var(--reseller-text-muted) 20%, transparent) !important; }
+.reseller-theme .border-slate-300 { border-color: color-mix(in srgb, var(--reseller-text-muted) 30%, transparent) !important; }
+
+/* Main action buttons (.bg-black) — use card bg slightly contrasted */
+.reseller-theme .bg-black:not(.agz-sidebar .bg-black) {
+  background: color-mix(in srgb, var(--reseller-text) 85%, var(--reseller-card-bg)) !important;
+  color: var(--reseller-card-bg) !important;
+  box-shadow: none !important;
+}
+.reseller-theme .text-white { color: var(--reseller-card-bg) !important; }
+
+/* Inputs */
+.reseller-theme input,
+.reseller-theme textarea,
+.reseller-theme select {
+  background: color-mix(in srgb, var(--reseller-card-bg) 95%, var(--reseller-page-bg)) !important;
+  color: var(--reseller-text) !important;
+  border-color: color-mix(in srgb, var(--reseller-text-muted) 25%, transparent) !important;
+}
+.reseller-theme input::placeholder,
+.reseller-theme textarea::placeholder {
+  color: var(--reseller-text-muted) !important;
+  opacity: 0.6;
+}
+
+/* Tables */
+.reseller-theme th {
+  background: color-mix(in srgb, var(--reseller-card-bg) 80%, var(--reseller-page-bg)) !important;
+}
+
+/* Shadows */
+.reseller-theme .shadow-xl  { box-shadow: 0 8px 30px rgba(0,0,0,0.12) !important; }
+.reseller-theme .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.18) !important; }
+.reseller-theme .shadow-lg  { box-shadow: 0 4px 20px rgba(0,0,0,0.10) !important; }
+.reseller-theme .shadow-md  { box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important; }
+
+/* Rounded card borders */
+.reseller-theme [class*="rounded-2xl"]:not(.agz-sidebar *),
+.reseller-theme [class*="rounded-3xl"]:not(.agz-sidebar *),
+.reseller-theme [class*="rounded-\["]:not(.agz-sidebar *) {
+  border-color: color-mix(in srgb, var(--reseller-text-muted) 18%, transparent);
+}
+
 /* ── BookingPage: always light (public page) ─────────── */
 /* Uses custom class names (bp-white, bp-white80) to avoid dark mode overrides */
 .bp-white  { background: #ffffff !important; box-shadow: 0 4px 15px rgba(0,0,0,0.08) !important; }
