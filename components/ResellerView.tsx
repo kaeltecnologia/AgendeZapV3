@@ -260,6 +260,25 @@ const ResellerView: React.FC<Props> = ({
     }
   };
 
+  const handleToggleBlock = async (t: any) => {
+    const isBlocked = t.status === 'BLOQUEADA';
+    const newStatus = isBlocked ? TenantStatus.ACTIVE : TenantStatus.BLOCKED;
+    const label = isBlocked ? 'ativar' : 'bloquear';
+    if (!confirm(`Deseja ${label} o cliente "${t.nome}"?`)) return;
+    try {
+      await db.updateTenant(t.id, { status: newStatus });
+      loadTenants();
+    } catch (e: any) { alert(e?.message || `Erro ao ${label} cliente.`); }
+  };
+
+  const handleDeleteTenant = async (t: any) => {
+    if (!confirm(`Excluir permanentemente "${t.nome}"? Esta ação não pode ser desfeita.`)) return;
+    try {
+      await db.deleteTenant(t.id);
+      loadTenants();
+    } catch (e: any) { alert(e?.message || 'Erro ao excluir cliente.'); }
+  };
+
   // KPIs
   const active = tenants.filter(t => t.status === 'ATIVA');
   const mrr = active.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
@@ -442,6 +461,18 @@ const ResellerView: React.FC<Props> = ({
                             className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-black transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100"
                           >
                             Editar
+                          </button>
+                          <button
+                            onClick={() => handleToggleBlock(t)}
+                            className={`text-[9px] font-black uppercase tracking-widest transition-colors px-3 py-1.5 rounded-lg ${t.status === 'BLOQUEADA' ? 'text-green-600 hover:text-green-800 hover:bg-green-50' : 'text-amber-600 hover:text-amber-800 hover:bg-amber-50'}`}
+                          >
+                            {t.status === 'BLOQUEADA' ? 'Ativar' : 'Bloquear'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTenant(t)}
+                            className="text-[9px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50"
+                          >
+                            Excluir
                           </button>
                           <button
                             onClick={() => onImpersonate(t.id, t.nome, t.slug || '', t.plan)}
