@@ -981,7 +981,7 @@ const App: React.FC = () => {
     <ToastContext.Provider value={showToast}>
     <div className={`flex h-screen bg-slate-50/30 ${themeClass}`}>
       <Toast toasts={toasts} onRemove={removeToast} />
-      {role === 'TENANT' && !pendingPayment && <WhatsNew />}
+      {role === 'TENANT' && !pendingPayment && !resellerProfile && <WhatsNew />}
       {tenantId && hasFeature(effectivePlan, 'agenteIA') && (
         <AiPollingManager
           tenantId={tenantId}

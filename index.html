@@ -4,14 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AgendeZap - Gestão de Agendamentos</title>
-
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="shortcut icon" href="/favicon.ico">
-    <!-- On reseller domains: fix favicon flash + title flash using localStorage cache -->
+    <!-- On reseller domains: fix favicon+title flash using localStorage cache (runs before <title>) -->
     <script>
       (function(){
         var h=window.location.hostname.replace(/^www\./,'');
@@ -19,10 +12,17 @@
           document.querySelectorAll("link[rel~='icon'],link[rel='shortcut icon']").forEach(function(el){el.parentNode.removeChild(el);});
           var l=document.createElement('link');l.rel='icon';l.href='data:,';document.head.appendChild(l);
           var brand=localStorage.getItem('agz_reseller_brand');
-          if(brand)document.title=brand+' - Gestão de Agendamentos';
+          document.title=(brand||'')+(brand?' - Gestão de Agendamentos':'');
         }
       })();
     </script>
+    <title>AgendeZap - Gestão de Agendamentos</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="shortcut icon" href="/favicon.ico">
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json">
