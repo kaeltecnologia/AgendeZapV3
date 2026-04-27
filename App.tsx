@@ -735,9 +735,12 @@ const App: React.FC = () => {
     return resellerProfile.visible_features.includes(key);
   };
 
+  // For reseller clients, bypass ALL plan-based gating — access is controlled by resellerAllows()
+  const effectivePlan = resellerProfile ? 'ELITE' : tenantPlan;
+
   const handleGatedNav = (view: View, feature: FeatureKey) => {
     setCurrentView(view);
-    if (!hasFeature(tenantPlan, feature)) {
+    if (!hasFeature(effectivePlan, feature)) {
       gatedNavRef.current = true;
       setUpgradeModal({ feature });
     }
@@ -836,12 +839,12 @@ const App: React.FC = () => {
       case View.DASHBOARD: return <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} />;
       case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} />;
       case View.SERVICOS: return <ServicesView tenantId={tenantId} />;
-      case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={tenantPlan} onNavigate={(v) => setCurrentView(v as View)} />;
+      case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={effectivePlan} onNavigate={(v) => setCurrentView(v as View)} />;
       case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
       case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
-      case View.FINANCEIRO: return <FinancialView tenantId={tenantId} tenantPlan={tenantPlan} />;
-      case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} tenantPlan={tenantPlan} />;
-      case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={tenantPlan} onUpgrade={(f) => setUpgradeModal({ feature: f })} />;
+      case View.FINANCEIRO: return <FinancialView tenantId={tenantId} tenantPlan={effectivePlan} />;
+      case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} tenantPlan={effectivePlan} />;
+      case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={effectivePlan} onUpgrade={(f) => setUpgradeModal({ feature: f })} />;
       case View.PLANOS: return <PlansView tenantId={tenantId} />;
       case View.TEST_WA: return <AIChatSimulator tenantId={tenantId} />;
       case View.CONVERSAS: return <ConversationsView tenantId={tenantId} onUnreadCount={setUnreadConvCount} />;
@@ -854,7 +857,7 @@ const App: React.FC = () => {
       case View.MARKETING: return <MarketingView tenantId={tenantId} />;
       case View.NOTAS_FISCAIS: return <NotasFiscaisView tenantId={tenantId} />;
       case View.FOLHA_PAGAMENTO: return <FolhaPagamentoView tenantId={tenantId} />;
-      case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} tenantPlan={tenantPlan} />;
+      case View.CONFIGURACOES: return <GeneralSettings tenantId={tenantId} tenantPlan={effectivePlan} />;
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
       case View.SOCIAL_MIDIA: return <SocialMidiaView tenantId={tenantId} />;
       case View.INDICACOES: return <IndicacoesView tenantId={tenantId} />;
@@ -889,7 +892,7 @@ const App: React.FC = () => {
     <div className={`flex h-screen bg-slate-50/30 ${themeClass}`}>
       <Toast toasts={toasts} onRemove={removeToast} />
       {role === 'TENANT' && !pendingPayment && <WhatsNew />}
-      {tenantId && hasFeature(tenantPlan, 'agenteIA') && (
+      {tenantId && hasFeature(effectivePlan, 'agenteIA') && (
         <AiPollingManager
           tenantId={tenantId}
           onStatus={(connected, aiActive) => setPollingStatus({ connected, aiActive })}
@@ -986,7 +989,8 @@ const App: React.FC = () => {
             </>
           ) : (
             <>
-              {/* ── Convidar Parceiro ── */}
+              {/* ── Convidar Parceiro — hidden for reseller clients ── */}
+              {!resellerProfile && (
               <button
                 onClick={navTo(() => setShowInviteModal(true))}
                 className={`w-full flex items-center gap-2 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-white hover:bg-orange-50 border-2 border-orange-400 transition-all group mb-1`}
@@ -994,6 +998,7 @@ const App: React.FC = () => {
                 <IconGift />
                 {!sidebarCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>}
               </button>
+              )}
               {/* ── Tutorial: Salvar app ── */}
               <button
                 onClick={navTo(() => setShowInstallTutorial(true))}
@@ -1020,7 +1025,7 @@ const App: React.FC = () => {
                 {resellerAllows('disparos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.DISPARADOR} onClick={navTo(() => handleGatedNav(View.DISPARADOR, 'disparo'))} icon={<IconBroadcast />} label="Disparos" />}
                 {resellerAllows('follow_up') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />}
                 {resellerAllows('estoque') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />}
-                {resellerAllows('planos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />}
+                {!resellerProfile && resellerAllows('planos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />}
                 {resellerAllows('indicacoes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.INDICACOES} onClick={navTo(() => setCurrentView(View.INDICACOES))} icon={<IconGift />} label="Indicações" />}
               </div>
 
@@ -1147,8 +1152,8 @@ const App: React.FC = () => {
         {/* ✅ Scroll acontece aqui, não no main — fixed dos modais escapa para a viewport corretamente */}
         <div className="flex-1 overflow-y-auto">
 
-          {/* ── Trial banner (active, non-expired) ──────────────────── */}
-          {trialInfo?.active && !trialInfo.isExpired && role === 'TENANT' && (
+          {/* ── Trial banner — never shown for reseller clients ──────── */}
+          {trialInfo?.active && !trialInfo.isExpired && role === 'TENANT' && !resellerProfile && (
             <div className={`mx-4 md:mx-6 mt-4 px-4 md:px-5 py-3 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 ${
               trialInfo.daysLeft <= 1
                 ? 'bg-orange-50 border border-orange-200'
@@ -1180,7 +1185,7 @@ const App: React.FC = () => {
           {/* ── Main content / Expired overlay ─────────────────────── */}
           <Suspense fallback={<div className="p-20 text-center"><div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin mx-auto" /></div>}>
             <ErrorBoundary key={currentView}>
-              {trialInfo?.isExpired && role === 'TENANT'
+              {trialInfo?.isExpired && role === 'TENANT' && !resellerProfile
                 ? <TrialExpiredView tenantId={tenantId} onActivated={() => { setTrialInfo(null); window.location.reload(); }} />
                 : <div className="p-4 md:p-6">{renderView()}</div>
               }
@@ -1189,7 +1194,8 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {upgradeModal && (
+      {/* Upgrade modal: never shown for reseller clients (reseller controls access via visible_features) */}
+      {upgradeModal && !resellerProfile && (
         <PlanUpgradeModal
           feature={upgradeModal.feature}
           tenantPlan={tenantPlan}
@@ -1199,8 +1205,8 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* ── Payment popup for unpaid tenants (7s delay) ──── */}
-      {pendingPayment && role === 'TENANT' && tenantId && !isImpersonating && (
+      {/* ── Payment popup for unpaid tenants (7s delay) — never for reseller clients ──── */}
+      {pendingPayment && role === 'TENANT' && tenantId && !isImpersonating && !resellerProfile && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-y-auto relative animate-toastIn" style={{ background: '#ffffff' }}>
             <div className="p-4 md:p-8">
