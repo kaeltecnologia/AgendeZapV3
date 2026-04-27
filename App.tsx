@@ -228,14 +228,17 @@ const App: React.FC = () => {
       ? `${resellerProfile.brand_name} - Gestão de Agendamentos`
       : 'AgendeZap - Gestão de Agendamentos';
 
-    // Dynamic favicon
+    // Dynamic favicon — replace all existing favicon links
     const faviconUrl = resellerProfile?.logo_url;
-    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
     if (faviconUrl) {
-      if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
-      link.href = faviconUrl;
-    } else if (link) {
-      link.href = '/favicon.ico';
+      // Remove all existing favicon links
+      document.querySelectorAll("link[rel~='icon'], link[rel='shortcut icon']").forEach(el => el.remove());
+      // Add single high-priority PNG favicon
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/png';
+      link.href = faviconUrl + '?v=' + Date.now();
+      document.head.appendChild(link);
     }
   }, [resellerProfile]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
