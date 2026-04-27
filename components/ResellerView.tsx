@@ -11,7 +11,7 @@ interface Props {
   onLogout: () => void;
 }
 
-type Tab = 'dashboard' | 'clientes' | 'marca' | 'precos' | 'recursos' | 'ia';
+type Tab = 'dashboard' | 'clientes' | 'marca' | 'precos' | 'ia';
 
 const FEATURE_KEYS = [
   { key: 'agendamentos', label: 'Agenda' },
@@ -315,7 +315,6 @@ const ResellerView: React.FC<Props> = ({
               ? <span className="text-xl font-black text-orange-500 uppercase italic">{resellerProfile.brand_name}</span>
               : null
           }
-          <span className="bg-orange-100 text-orange-600 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Afiliado</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500 hidden md:block">{affiliate.email}</span>
@@ -331,7 +330,6 @@ const ResellerView: React.FC<Props> = ({
         <TabBtn id="clientes" label="Clientes" />
         <TabBtn id="marca" label="Marca" />
         <TabBtn id="precos" label="Preços" />
-        <TabBtn id="recursos" label="Recursos" />
         <TabBtn id="ia" label="IA" />
       </div>
 
@@ -506,6 +504,30 @@ const ResellerView: React.FC<Props> = ({
                   <input value={logoUrl} onChange={e => setLogoUrl(e.target.value)} className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm" placeholder="https://cdn.seu-site.com/logo.png" />
                   <p className="text-[10px] text-slate-400 mt-1">PNG/SVG transparente recomendado</p>
                 </div>
+                {/* Preset buttons */}
+                <div className="flex gap-2 pb-2 border-b border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#ffffff'); setFontColor('#1e293b'); setIconColor('#64748b'); setPageBgColor('#f1f5f9'); setCardBgColor('#ffffff'); setTextColor('#1e293b'); }}
+                    className="flex-1 py-2 rounded-xl border-2 border-slate-200 text-[9px] font-black uppercase tracking-widest text-slate-600 hover:border-orange-400 hover:text-orange-600 transition-all bg-white"
+                  >
+                    ☀️ Padrão Light
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#1e293b'); setFontColor('#e2e8f0'); setIconColor('#94a3b8'); setPageBgColor('#0f172a'); setCardBgColor('#1e293b'); setTextColor('#f1f5f9'); }}
+                    className="flex-1 py-2 rounded-xl border-2 border-slate-700 text-[9px] font-black uppercase tracking-widest text-slate-300 hover:border-orange-400 hover:text-orange-400 transition-all bg-slate-800"
+                  >
+                    🌙 Padrão Dark
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPrimaryColor('#f97316'); setBgColor(''); setFontColor(''); setIconColor(''); setPageBgColor(''); setCardBgColor(''); setTextColor(''); }}
+                    className="px-3 py-2 rounded-xl border-2 border-slate-200 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:border-red-300 hover:text-red-500 transition-all"
+                  >
+                    ✕ Limpar
+                  </button>
+                </div>
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor Principal (Botões)</label>
                   <div className="flex items-center gap-2 mt-1">
@@ -624,42 +646,6 @@ const ResellerView: React.FC<Props> = ({
           </div>
         )}
 
-        {/* ── RECURSOS ── */}
-        {tab === 'recursos' && (
-          <div className="space-y-6">
-            <h2 className="text-lg font-black text-slate-800">Recursos Visíveis</h2>
-            <p className="text-sm text-slate-500">Controle quais abas e módulos aparecem no sistema para todos os seus clientes.</p>
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" checked={allFeatures} onChange={e => setAllFeatures(e.target.checked)} className="w-4 h-4 rounded" />
-                <span className="text-sm font-bold text-slate-700">Mostrar todos os recursos</span>
-              </label>
-              {!allFeatures && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pt-2 border-t border-slate-100">
-                  {FEATURE_KEYS.map(f => (
-                    <label key={f.key} className="flex items-center gap-2 cursor-pointer p-2.5 rounded-xl hover:bg-slate-50">
-                      <input
-                        type="checkbox"
-                        checked={selectedFeatures.includes(f.key)}
-                        onChange={e => {
-                          setSelectedFeatures(prev =>
-                            e.target.checked ? [...prev, f.key] : prev.filter(k => k !== f.key)
-                          );
-                        }}
-                        className="w-4 h-4 rounded"
-                      />
-                      <span className="text-sm text-slate-700">{f.label}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-              <button onClick={handleSaveFeatures} disabled={saving} className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl hover:bg-orange-500 transition-colors disabled:opacity-50">
-                {saving ? 'Salvando…' : 'Salvar Recursos'}
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* ── IA ── */}
         {tab === 'ia' && (
           <div className="space-y-6">
@@ -675,27 +661,6 @@ const ResellerView: React.FC<Props> = ({
                   placeholder="sk-proj-…"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">Substitui a chave global para todos seus clientes. Deixe em branco para usar a chave da plataforma.</p>
-              </div>
-              <div>
-                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Nome do Agente IA</label>
-                <input
-                  value={agentName}
-                  onChange={e => setAgentName(e.target.value)}
-                  className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm"
-                  placeholder="Ex: Sofia, Max, Lia…"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Nome padrão do agente IA para seus clientes</p>
-              </div>
-              <div>
-                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Prompt de Sistema (Pré-fixo)</label>
-                <textarea
-                  value={systemPrompt}
-                  onChange={e => setSystemPrompt(e.target.value)}
-                  rows={6}
-                  className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono resize-y"
-                  placeholder="Instruções globais que serão adicionadas antes do prompt personalizado de cada cliente..."
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Este texto é adicionado no início de todos os prompts dos seus clientes. Use para definir tom, regras de marca ou restrições globais.</p>
               </div>
               <button onClick={handleSaveAI} disabled={saving} className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl hover:bg-orange-500 transition-colors disabled:opacity-50">
                 {saving ? 'Salvando…' : 'Salvar IA'}
