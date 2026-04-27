@@ -666,21 +666,21 @@ const ResellerView: React.FC<Props> = ({
                   {/* Light preset */}
                   <button
                     type="button"
-                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#ffffff'); setFontColor('#1e293b'); setIconColor('#64748b'); setPageBgColor('#f1f5f9'); setCardBgColor('#ffffff'); setTextColor('#1e293b'); }}
+                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#28283e'); setFontColor('#e0e0f0'); setIconColor('#8888a0'); setPageBgColor('#d0d2da'); setCardBgColor('#f2f2fa'); setTextColor('#1a1a2e'); }}
                     className="group flex-1 rounded-2xl border-2 border-slate-200 hover:border-orange-400 transition-all overflow-hidden text-left"
                   >
                     <div className="h-16 flex">
-                      <div className="w-10 h-full bg-white border-r border-slate-100 flex flex-col items-center pt-2 gap-1.5">
+                      <div className="w-10 h-full flex flex-col items-center pt-2 gap-1.5" style={{ background: '#28283e' }}>
                         <div className="w-5 h-1.5 bg-orange-400 rounded-full" />
-                        <div className="w-5 h-1 bg-slate-200 rounded-full" />
-                        <div className="w-5 h-1 bg-slate-200 rounded-full" />
-                        <div className="w-5 h-1 bg-slate-200 rounded-full" />
+                        <div className="w-5 h-1 rounded-full" style={{ background: '#8888a0' }} />
+                        <div className="w-5 h-1 rounded-full" style={{ background: '#8888a0' }} />
+                        <div className="w-5 h-1 rounded-full" style={{ background: '#8888a0' }} />
                       </div>
-                      <div className="flex-1 bg-slate-100 p-2 space-y-1.5">
-                        <div className="bg-white h-3 rounded w-full" />
+                      <div className="flex-1 p-2 space-y-1.5" style={{ background: '#d0d2da' }}>
+                        <div className="h-3 rounded w-full" style={{ background: '#f2f2fa' }} />
                         <div className="grid grid-cols-2 gap-1">
-                          <div className="bg-white h-4 rounded" />
-                          <div className="bg-white h-4 rounded" />
+                          <div className="h-4 rounded" style={{ background: '#f2f2fa' }} />
+                          <div className="h-4 rounded" style={{ background: '#f2f2fa' }} />
                         </div>
                       </div>
                     </div>
@@ -692,25 +692,26 @@ const ResellerView: React.FC<Props> = ({
                   {/* Dark preset */}
                   <button
                     type="button"
-                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#1e293b'); setFontColor('#e2e8f0'); setIconColor('#94a3b8'); setPageBgColor('#0f172a'); setCardBgColor('#1e293b'); setTextColor('#f1f5f9'); }}
-                    className="group flex-1 rounded-2xl border-2 border-slate-700 hover:border-orange-400 transition-all overflow-hidden text-left"
+                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#18182e'); setFontColor('#e0e0f0'); setIconColor('#707088'); setPageBgColor('#0e0e18'); setCardBgColor('#1e1e2c'); setTextColor('#d0d0e0'); }}
+                    className="group flex-1 rounded-2xl border-2 hover:border-orange-400 transition-all overflow-hidden text-left"
+                    style={{ borderColor: '#2a2a3c' }}
                   >
                     <div className="h-16 flex">
-                      <div className="w-10 h-full bg-slate-800 flex flex-col items-center pt-2 gap-1.5">
+                      <div className="w-10 h-full flex flex-col items-center pt-2 gap-1.5" style={{ background: '#18182e' }}>
                         <div className="w-5 h-1.5 bg-orange-400 rounded-full" />
-                        <div className="w-5 h-1 bg-slate-600 rounded-full" />
-                        <div className="w-5 h-1 bg-slate-600 rounded-full" />
-                        <div className="w-5 h-1 bg-slate-600 rounded-full" />
+                        <div className="w-5 h-1 rounded-full" style={{ background: '#707088' }} />
+                        <div className="w-5 h-1 rounded-full" style={{ background: '#707088' }} />
+                        <div className="w-5 h-1 rounded-full" style={{ background: '#707088' }} />
                       </div>
-                      <div className="flex-1 bg-slate-900 p-2 space-y-1.5">
-                        <div className="bg-slate-700 h-3 rounded w-full" />
+                      <div className="flex-1 p-2 space-y-1.5" style={{ background: '#0e0e18' }}>
+                        <div className="h-3 rounded w-full" style={{ background: '#1e1e2c' }} />
                         <div className="grid grid-cols-2 gap-1">
-                          <div className="bg-slate-700 h-4 rounded" />
-                          <div className="bg-slate-700 h-4 rounded" />
+                          <div className="h-4 rounded" style={{ background: '#1e1e2c' }} />
+                          <div className="h-4 rounded" style={{ background: '#1e1e2c' }} />
                         </div>
                       </div>
                     </div>
-                    <div className="px-3 py-2 bg-slate-800 border-t border-slate-700">
+                    <div className="px-3 py-2 border-t" style={{ background: '#18182e', borderColor: '#2a2a3c' }}>
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-300 group-hover:text-orange-400 transition-colors">🌙 Padrão Dark</span>
                     </div>
                   </button>
@@ -729,22 +730,22 @@ const ResellerView: React.FC<Props> = ({
 
               {/* Live preview strip */}
               <div className="rounded-xl overflow-hidden border border-slate-100 flex h-10 shadow-sm">
-                <div className="flex-none w-14 flex items-center justify-center gap-1" style={{ background: bgColor || '#1e293b' }}>
+                <div className="flex-none w-14 flex items-center justify-center gap-1" style={{ background: bgColor || '#28283e' }}>
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: primaryColor || '#f97316' }} />
                   <div className="space-y-0.5">
-                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#94a3b8' }} />
-                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#94a3b8' }} />
-                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#94a3b8' }} />
+                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#8888a0' }} />
+                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#8888a0' }} />
+                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#8888a0' }} />
                   </div>
                 </div>
                 <div className="flex-1 flex items-center px-3 gap-2" style={{ background: pageBgColor || '#d0d2da' }}>
-                  <div className="flex-1 h-5 rounded-lg" style={{ background: cardBgColor || '#ffffff' }} />
+                  <div className="flex-1 h-5 rounded-lg" style={{ background: cardBgColor || '#f2f2fa' }} />
                   <div className="w-14 h-5 rounded-lg flex items-center justify-center" style={{ background: primaryColor || '#f97316' }}>
                     <span className="text-[8px] font-black text-white">botão</span>
                   </div>
                 </div>
-                <div className="flex-none px-3 flex items-center gap-1.5" style={{ background: cardBgColor || '#ffffff' }}>
-                  <span className="text-[10px] font-bold" style={{ color: textColor || '#1e1e32' }}>Texto</span>
+                <div className="flex-none px-3 flex items-center gap-1.5" style={{ background: cardBgColor || '#f2f2fa' }}>
+                  <span className="text-[10px] font-bold" style={{ color: textColor || '#1a1a2e' }}>Texto</span>
                   <span className="text-[8px]" style={{ color: primaryColor || '#f97316' }}>link</span>
                 </div>
               </div>
@@ -757,24 +758,24 @@ const ResellerView: React.FC<Props> = ({
                   <div>
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Fundo do Menu</label>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={bgColor || '#1e293b'} onChange={e => setBgColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={bgColor} onChange={e => setBgColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#1e293b" />
+                      <input type="color" value={bgColor || '#28283e'} onChange={e => setBgColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                      <input value={bgColor} onChange={e => setBgColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#28283e" />
                       {bgColor && <button type="button" onClick={() => setBgColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
                     </div>
                   </div>
                   <div>
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Texto do Menu</label>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={fontColor || '#e2e8f0'} onChange={e => setFontColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={fontColor} onChange={e => setFontColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#e2e8f0" />
+                      <input type="color" value={fontColor || '#e0e0f0'} onChange={e => setFontColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                      <input value={fontColor} onChange={e => setFontColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#e0e0f0" />
                       {fontColor && <button type="button" onClick={() => setFontColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
                     </div>
                   </div>
                   <div>
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ícones</label>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={iconColor || '#94a3b8'} onChange={e => setIconColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={iconColor} onChange={e => setIconColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#94a3b8" />
+                      <input type="color" value={iconColor || '#8888a0'} onChange={e => setIconColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                      <input value={iconColor} onChange={e => setIconColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#8888a0" />
                       {iconColor && <button type="button" onClick={() => setIconColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
                     </div>
                   </div>
@@ -803,16 +804,16 @@ const ResellerView: React.FC<Props> = ({
                   <div>
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cards / Painéis</label>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={cardBgColor || '#ffffff'} onChange={e => setCardBgColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={cardBgColor} onChange={e => setCardBgColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#ffffff" />
+                      <input type="color" value={cardBgColor || '#f2f2fa'} onChange={e => setCardBgColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                      <input value={cardBgColor} onChange={e => setCardBgColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#f2f2fa" />
                       {cardBgColor && <button type="button" onClick={() => setCardBgColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
                     </div>
                   </div>
                   <div>
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Texto Principal</label>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={textColor || '#1e1e32'} onChange={e => setTextColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={textColor} onChange={e => setTextColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#1e1e32" />
+                      <input type="color" value={textColor || '#1a1a2e'} onChange={e => setTextColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                      <input value={textColor} onChange={e => setTextColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#1a1a2e" />
                       {textColor && <button type="button" onClick={() => setTextColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
                     </div>
                   </div>
