@@ -1062,8 +1062,8 @@ const App: React.FC = () => {
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>}
                 {resellerAllows('financeiro') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />}
-                {resellerAllows('financeiro') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />}
-                {resellerAllows('financeiro') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />}
+                {resellerAllows('notasFiscais') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />}
+                {resellerAllows('folhaPagamento') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />}
                 {/* Relatórios */}
                 {resellerAllows('relatorios') && (sidebarCollapsed ? (
                   <NavItem collapsed={true} active={currentView === View.MARKETING || currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.MARKETING, 'relatorios'))} icon={<IconMarketing />} label="Relatórios" />
