@@ -656,6 +656,13 @@ export interface ResellerProfile {
   page_bg_color?: string;
   card_bg_color?: string;
   text_color?: string;
+  // Dark-mode color overrides (applied when app is in dark mode)
+  dark_bg_color?: string;
+  dark_font_color?: string;
+  dark_icon_color?: string;
+  dark_page_bg_color?: string;
+  dark_card_bg_color?: string;
+  dark_text_color?: string;
   custom_domain?: string;
   openai_api_key?: string;
   plan_pricing?: { START?: number; PROFISSIONAL?: number; ELITE?: number };

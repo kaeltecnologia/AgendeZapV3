@@ -183,12 +183,12 @@ const App: React.FC = () => {
     });
   }, [affiliateSlug]);
 
-  // Apply reseller brand colors via CSS vars whenever profile changes
+  // Apply reseller brand colors via CSS vars whenever profile or dark mode changes
   useEffect(() => {
     const root = document.documentElement;
     const set = (v: string, val?: string) => val ? root.style.setProperty(v, val) : root.style.removeProperty(v);
 
-    // Accent / primary color
+    // Accent / primary color (same for both modes)
     if (resellerProfile?.primary_color) {
       root.style.setProperty('--color-primary', resellerProfile.primary_color);
       root.style.setProperty('--color-primary-dark', resellerProfile.primary_color);
@@ -212,23 +212,30 @@ const App: React.FC = () => {
        '--accent-border-strong','--accent-focus-shadow'].forEach(v => root.style.removeProperty(v));
     }
 
+    // Pick light or dark color set based on current dark mode
+    const rp = resellerProfile;
+    const bgColor      = darkMode ? (rp?.dark_bg_color      || rp?.bg_color)       : rp?.bg_color;
+    const fontColor    = darkMode ? (rp?.dark_font_color    || rp?.font_color)     : rp?.font_color;
+    const iconColor    = darkMode ? (rp?.dark_icon_color    || rp?.icon_color)     : rp?.icon_color;
+    const pageBgColor  = darkMode ? (rp?.dark_page_bg_color || rp?.page_bg_color)  : rp?.page_bg_color;
+    const cardBgColor  = darkMode ? (rp?.dark_card_bg_color || rp?.card_bg_color)  : rp?.card_bg_color;
+    const textColor    = darkMode ? (rp?.dark_text_color    || rp?.text_color)     : rp?.text_color;
+
     // Sidebar colors
-    set('--reseller-font-color', resellerProfile?.font_color);
-    set('--reseller-bg-color',   resellerProfile?.bg_color);
-    set('--reseller-icon-color', resellerProfile?.icon_color);
+    set('--reseller-font-color', fontColor);
+    set('--reseller-bg-color',   bgColor);
+    set('--reseller-icon-color', iconColor);
 
     // Full-theme colors (page, cards, text)
-    set('--reseller-page-bg',    resellerProfile?.page_bg_color);
-    set('--reseller-card-bg',    resellerProfile?.card_bg_color);
-    set('--reseller-text',       resellerProfile?.text_color);
-    set('--reseller-text-muted', resellerProfile?.text_color
-      ? resellerProfile.text_color + '99'
-      : undefined);
+    set('--reseller-page-bg',    pageBgColor);
+    set('--reseller-card-bg',    cardBgColor);
+    set('--reseller-text',       textColor);
+    set('--reseller-text-muted', textColor ? textColor + '99' : undefined);
 
     // Apply page background directly to body — CSS descendant selector can't target
     // body from a child div, so we must set it via JS to override .dark body rules.
-    if (resellerProfile?.page_bg_color) {
-      document.body.style.setProperty('background', resellerProfile.page_bg_color, 'important');
+    if (pageBgColor) {
+      document.body.style.setProperty('background', pageBgColor, 'important');
     } else {
       document.body.style.removeProperty('background');
     }
@@ -252,7 +259,7 @@ const App: React.FC = () => {
       link.href = faviconUrl + '?v=' + Date.now();
       document.head.appendChild(link);
     }
-  }, [resellerProfile]);
+  }, [resellerProfile, darkMode]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
   }, []);
@@ -1003,8 +1010,12 @@ const App: React.FC = () => {
         onMouseLeave={handleSidebarLeave}
         className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${sidebarCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-[500] h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
         style={{
-          ...(resellerProfile?.bg_color ? { backgroundColor: resellerProfile.bg_color } : {}),
-          ...(resellerProfile?.font_color ? { color: resellerProfile.font_color } : {}),
+          ...(darkMode ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color)
+            ? { backgroundColor: darkMode ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color }
+            : {},
+          ...(darkMode ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color)
+            ? { color: darkMode ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color }
+            : {},
         }}
       >
         {/* Logo / toggle */}

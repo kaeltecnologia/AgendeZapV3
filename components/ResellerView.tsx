@@ -51,14 +51,27 @@ const ResellerView: React.FC<Props> = ({
   // Brand form
   const [brandName, setBrandName] = useState(resellerProfile?.brand_name || '');
   const [logoUrl, setLogoUrl] = useState(resellerProfile?.logo_url || '');
+  const [customDomain, setCustomDomain] = useState(resellerProfile?.custom_domain || '');
   const [primaryColor, setPrimaryColor] = useState(resellerProfile?.primary_color || '#f97316');
-  const [fontColor, setFontColor] = useState(resellerProfile?.font_color || '');
+
+  // Light mode colors
   const [bgColor, setBgColor] = useState(resellerProfile?.bg_color || '');
+  const [fontColor, setFontColor] = useState(resellerProfile?.font_color || '');
   const [iconColor, setIconColor] = useState(resellerProfile?.icon_color || '');
   const [pageBgColor, setPageBgColor] = useState(resellerProfile?.page_bg_color || '');
   const [cardBgColor, setCardBgColor] = useState(resellerProfile?.card_bg_color || '');
   const [textColor, setTextColor] = useState(resellerProfile?.text_color || '');
-  const [customDomain, setCustomDomain] = useState(resellerProfile?.custom_domain || '');
+
+  // Dark mode colors
+  const [darkBgColor, setDarkBgColor] = useState(resellerProfile?.dark_bg_color || '');
+  const [darkFontColor, setDarkFontColor] = useState(resellerProfile?.dark_font_color || '');
+  const [darkIconColor, setDarkIconColor] = useState(resellerProfile?.dark_icon_color || '');
+  const [darkPageBgColor, setDarkPageBgColor] = useState(resellerProfile?.dark_page_bg_color || '');
+  const [darkCardBgColor, setDarkCardBgColor] = useState(resellerProfile?.dark_card_bg_color || '');
+  const [darkTextColor, setDarkTextColor] = useState(resellerProfile?.dark_text_color || '');
+
+  // Which color mode is being edited
+  const [colorEditMode, setColorEditMode] = useState<'light' | 'dark'>('light');
 
   // Pricing form
   const [priceStart, setPriceStart] = useState<string>(String(resellerProfile?.plan_pricing?.START || ''));
@@ -112,12 +125,18 @@ const ResellerView: React.FC<Props> = ({
     setBrandName(resellerProfile.brand_name || '');
     setLogoUrl(resellerProfile.logo_url || '');
     setPrimaryColor(resellerProfile.primary_color || '#f97316');
-    setFontColor(resellerProfile.font_color || '');
     setBgColor(resellerProfile.bg_color || '');
+    setFontColor(resellerProfile.font_color || '');
     setIconColor(resellerProfile.icon_color || '');
     setPageBgColor(resellerProfile.page_bg_color || '');
     setCardBgColor(resellerProfile.card_bg_color || '');
     setTextColor(resellerProfile.text_color || '');
+    setDarkBgColor(resellerProfile.dark_bg_color || '');
+    setDarkFontColor(resellerProfile.dark_font_color || '');
+    setDarkIconColor(resellerProfile.dark_icon_color || '');
+    setDarkPageBgColor(resellerProfile.dark_page_bg_color || '');
+    setDarkCardBgColor(resellerProfile.dark_card_bg_color || '');
+    setDarkTextColor(resellerProfile.dark_text_color || '');
     setCustomDomain(resellerProfile.custom_domain || '');
     setPriceStart(String(resellerProfile.plan_pricing?.START || ''));
     setPricePro(String(resellerProfile.plan_pricing?.PROFISSIONAL || ''));
@@ -152,13 +171,21 @@ const ResellerView: React.FC<Props> = ({
     brand_name: brandName || undefined,
     logo_url: logoUrl || undefined,
     primary_color: primaryColor,
-    font_color: fontColor || undefined,
+    custom_domain: customDomain || undefined,
+    // Light mode colors
     bg_color: bgColor || undefined,
+    font_color: fontColor || undefined,
     icon_color: iconColor || undefined,
     page_bg_color: pageBgColor || undefined,
     card_bg_color: cardBgColor || undefined,
     text_color: textColor || undefined,
-    custom_domain: customDomain || undefined,
+    // Dark mode colors
+    dark_bg_color: darkBgColor || undefined,
+    dark_font_color: darkFontColor || undefined,
+    dark_icon_color: darkIconColor || undefined,
+    dark_page_bg_color: darkPageBgColor || undefined,
+    dark_card_bg_color: darkCardBgColor || undefined,
+    dark_text_color: darkTextColor || undefined,
   });
 
   const handleSavePricing = () => saveProfile({
@@ -656,170 +683,178 @@ const ResellerView: React.FC<Props> = ({
             </div>
 
             {/* Colors */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6">
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cores do Sistema</p>
+            {(() => {
+              const isLight = colorEditMode === 'light';
+              // Active color state for the currently edited mode
+              const eBg       = isLight ? bgColor       : darkBgColor;
+              const eFont     = isLight ? fontColor     : darkFontColor;
+              const eIcon     = isLight ? iconColor     : darkIconColor;
+              const ePage     = isLight ? pageBgColor   : darkPageBgColor;
+              const eCard     = isLight ? cardBgColor   : darkCardBgColor;
+              const eText     = isLight ? textColor     : darkTextColor;
+              const setEBg    = isLight ? setBgColor       : setDarkBgColor;
+              const setEFont  = isLight ? setFontColor     : setDarkFontColor;
+              const setEIcon  = isLight ? setIconColor     : setDarkIconColor;
+              const setEPage  = isLight ? setPageBgColor   : setDarkPageBgColor;
+              const setECard  = isLight ? setCardBgColor   : setDarkCardBgColor;
+              const setEText  = isLight ? setTextColor     : setDarkTextColor;
+              // Fallback display colors for preview
+              const prevBg   = eBg   || (isLight ? '#28283e' : '#18182e');
+              const prevIcon = eIcon || (isLight ? '#8888a0' : '#707088');
+              const prevPage = ePage || (isLight ? '#d0d2da' : '#0e0e18');
+              const prevCard = eCard || (isLight ? '#f2f2fa' : '#1e1e2c');
+              const prevText = eText || (isLight ? '#1a1a2e' : '#d0d0e0');
 
-              {/* Preset cards */}
-              <div>
-                <p className="text-xs font-bold text-slate-400 mb-3">Escolha um tema base e personalize:</p>
-                <div className="flex gap-3">
-                  {/* Light preset */}
-                  <button
-                    type="button"
-                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#28283e'); setFontColor('#e0e0f0'); setIconColor('#8888a0'); setPageBgColor('#d0d2da'); setCardBgColor('#f2f2fa'); setTextColor('#1a1a2e'); }}
-                    className="group flex-1 rounded-2xl border-2 border-slate-200 hover:border-orange-400 transition-all overflow-hidden text-left"
-                  >
-                    <div className="h-16 flex">
-                      <div className="w-10 h-full flex flex-col items-center pt-2 gap-1.5" style={{ background: '#28283e' }}>
-                        <div className="w-5 h-1.5 bg-orange-400 rounded-full" />
-                        <div className="w-5 h-1 rounded-full" style={{ background: '#8888a0' }} />
-                        <div className="w-5 h-1 rounded-full" style={{ background: '#8888a0' }} />
-                        <div className="w-5 h-1 rounded-full" style={{ background: '#8888a0' }} />
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cores do Sistema</p>
+                    <div className="flex items-center gap-2">
+                      {/* Padrão button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPrimaryColor('#f97316');
+                          setBgColor('#28283e'); setFontColor('#e0e0f0'); setIconColor('#8888a0');
+                          setPageBgColor('#d0d2da'); setCardBgColor('#f2f2fa'); setTextColor('#1a1a2e');
+                          setDarkBgColor('#18182e'); setDarkFontColor('#e0e0f0'); setDarkIconColor('#707088');
+                          setDarkPageBgColor('#0e0e18'); setDarkCardBgColor('#1e1e2c'); setDarkTextColor('#d0d0e0');
+                        }}
+                        className="px-3 py-1.5 rounded-xl border-2 border-orange-300 bg-orange-50 text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-100 transition-all"
+                      >
+                        Padrão AgendeZap
+                      </button>
+                      {/* Limpar button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPrimaryColor('#f97316');
+                          setBgColor(''); setFontColor(''); setIconColor('');
+                          setPageBgColor(''); setCardBgColor(''); setTextColor('');
+                          setDarkBgColor(''); setDarkFontColor(''); setDarkIconColor('');
+                          setDarkPageBgColor(''); setDarkCardBgColor(''); setDarkTextColor('');
+                        }}
+                        className="px-3 py-1.5 rounded-xl border border-slate-200 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:border-red-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                      >
+                        ✕ Limpar
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mode toggle */}
+                  <div className="flex rounded-xl border border-slate-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setColorEditMode('light')}
+                      className={`flex-1 py-2.5 text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${colorEditMode === 'light' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:bg-slate-50'}`}
+                    >
+                      <span>☀️</span> Modo Light
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setColorEditMode('dark')}
+                      className={`flex-1 py-2.5 text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${colorEditMode === 'dark' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-50'}`}
+                    >
+                      <span>🌙</span> Modo Dark
+                    </button>
+                  </div>
+
+                  {/* Live preview strip */}
+                  <div className="rounded-xl overflow-hidden border border-slate-200 flex h-10 shadow-sm">
+                    <div className="flex-none w-14 flex items-center justify-center gap-1" style={{ background: prevBg }}>
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: primaryColor || '#f97316' }} />
+                      <div className="space-y-0.5">
+                        <div className="w-4 h-0.5 rounded-full" style={{ background: prevIcon }} />
+                        <div className="w-4 h-0.5 rounded-full" style={{ background: prevIcon }} />
+                        <div className="w-4 h-0.5 rounded-full" style={{ background: prevIcon }} />
                       </div>
-                      <div className="flex-1 p-2 space-y-1.5" style={{ background: '#d0d2da' }}>
-                        <div className="h-3 rounded w-full" style={{ background: '#f2f2fa' }} />
-                        <div className="grid grid-cols-2 gap-1">
-                          <div className="h-4 rounded" style={{ background: '#f2f2fa' }} />
-                          <div className="h-4 rounded" style={{ background: '#f2f2fa' }} />
-                        </div>
+                    </div>
+                    <div className="flex-1 flex items-center px-3 gap-2" style={{ background: prevPage }}>
+                      <div className="flex-1 h-5 rounded-lg" style={{ background: prevCard }} />
+                      <div className="w-14 h-5 rounded-lg flex items-center justify-center" style={{ background: primaryColor || '#f97316' }}>
+                        <span className="text-[8px] font-black text-white">botão</span>
                       </div>
                     </div>
-                    <div className="px-3 py-2 bg-slate-50 border-t border-slate-100">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 group-hover:text-orange-600 transition-colors">☀️ Padrão Light</span>
+                    <div className="flex-none px-3 flex items-center gap-1.5" style={{ background: prevCard }}>
+                      <span className="text-[10px] font-bold" style={{ color: prevText }}>Texto</span>
+                      <span className="text-[8px]" style={{ color: primaryColor || '#f97316' }}>link</span>
                     </div>
-                  </button>
-
-                  {/* Dark preset */}
-                  <button
-                    type="button"
-                    onClick={() => { setPrimaryColor('#f97316'); setBgColor('#18182e'); setFontColor('#e0e0f0'); setIconColor('#707088'); setPageBgColor('#0e0e18'); setCardBgColor('#1e1e2c'); setTextColor('#d0d0e0'); }}
-                    className="group flex-1 rounded-2xl border-2 hover:border-orange-400 transition-all overflow-hidden text-left"
-                    style={{ borderColor: '#2a2a3c' }}
-                  >
-                    <div className="h-16 flex">
-                      <div className="w-10 h-full flex flex-col items-center pt-2 gap-1.5" style={{ background: '#18182e' }}>
-                        <div className="w-5 h-1.5 bg-orange-400 rounded-full" />
-                        <div className="w-5 h-1 rounded-full" style={{ background: '#707088' }} />
-                        <div className="w-5 h-1 rounded-full" style={{ background: '#707088' }} />
-                        <div className="w-5 h-1 rounded-full" style={{ background: '#707088' }} />
-                      </div>
-                      <div className="flex-1 p-2 space-y-1.5" style={{ background: '#0e0e18' }}>
-                        <div className="h-3 rounded w-full" style={{ background: '#1e1e2c' }} />
-                        <div className="grid grid-cols-2 gap-1">
-                          <div className="h-4 rounded" style={{ background: '#1e1e2c' }} />
-                          <div className="h-4 rounded" style={{ background: '#1e1e2c' }} />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="px-3 py-2 border-t" style={{ background: '#18182e', borderColor: '#2a2a3c' }}>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-300 group-hover:text-orange-400 transition-colors">🌙 Padrão Dark</span>
-                    </div>
-                  </button>
-
-                  {/* Clear */}
-                  <button
-                    type="button"
-                    onClick={() => { setPrimaryColor('#f97316'); setBgColor(''); setFontColor(''); setIconColor(''); setPageBgColor(''); setCardBgColor(''); setTextColor(''); }}
-                    className="px-5 rounded-2xl border-2 border-dashed border-slate-200 hover:border-red-300 hover:bg-red-50 transition-all flex flex-col items-center justify-center gap-1"
-                  >
-                    <span className="text-slate-300 text-xl leading-none">✕</span>
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Limpar</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Live preview strip */}
-              <div className="rounded-xl overflow-hidden border border-slate-100 flex h-10 shadow-sm">
-                <div className="flex-none w-14 flex items-center justify-center gap-1" style={{ background: bgColor || '#28283e' }}>
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: primaryColor || '#f97316' }} />
-                  <div className="space-y-0.5">
-                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#8888a0' }} />
-                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#8888a0' }} />
-                    <div className="w-4 h-0.5 rounded-full" style={{ background: iconColor || '#8888a0' }} />
                   </div>
-                </div>
-                <div className="flex-1 flex items-center px-3 gap-2" style={{ background: pageBgColor || '#d0d2da' }}>
-                  <div className="flex-1 h-5 rounded-lg" style={{ background: cardBgColor || '#f2f2fa' }} />
-                  <div className="w-14 h-5 rounded-lg flex items-center justify-center" style={{ background: primaryColor || '#f97316' }}>
-                    <span className="text-[8px] font-black text-white">botão</span>
-                  </div>
-                </div>
-                <div className="flex-none px-3 flex items-center gap-1.5" style={{ background: cardBgColor || '#f2f2fa' }}>
-                  <span className="text-[10px] font-bold" style={{ color: textColor || '#1a1a2e' }}>Texto</span>
-                  <span className="text-[8px]" style={{ color: primaryColor || '#f97316' }}>link</span>
-                </div>
-              </div>
-              <p className="text-[9px] text-slate-300 -mt-4">↑ Preview ao vivo das cores selecionadas</p>
 
-              {/* Sidebar group */}
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-3">Menu Lateral</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Cor Principal (same for both modes) */}
                   <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Fundo do Menu</label>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={bgColor || '#28283e'} onChange={e => setBgColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={bgColor} onChange={e => setBgColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#28283e" />
-                      {bgColor && <button type="button" onClick={() => setBgColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Texto do Menu</label>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={fontColor || '#e0e0f0'} onChange={e => setFontColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={fontColor} onChange={e => setFontColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#e0e0f0" />
-                      {fontColor && <button type="button" onClick={() => setFontColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ícones</label>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={iconColor || '#8888a0'} onChange={e => setIconColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={iconColor} onChange={e => setIconColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#8888a0" />
-                      {iconColor && <button type="button" onClick={() => setIconColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Content group */}
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-3">Conteúdo</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor Principal</label>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor Principal (Botões e Destaques)</label>
                     <div className="flex items-center gap-2 mt-1.5">
                       <input type="color" value={primaryColor || '#f97316'} onChange={e => setPrimaryColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
                       <input value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#f97316" />
                     </div>
+                    <p className="text-[9px] text-slate-300 mt-1">Mesma cor para Light e Dark</p>
                   </div>
+
+                  {/* Sidebar group */}
                   <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Fundo da Página</label>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={pageBgColor || '#d0d2da'} onChange={e => setPageBgColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={pageBgColor} onChange={e => setPageBgColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#d0d2da" />
-                      {pageBgColor && <button type="button" onClick={() => setPageBgColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-3">Menu Lateral</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Fundo do Menu</label>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <input type="color" value={eBg || prevBg} onChange={e => setEBg(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                          <input value={eBg} onChange={e => setEBg(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder={prevBg} />
+                          {eBg && <button type="button" onClick={() => setEBg('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Texto do Menu</label>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <input type="color" value={eFont || '#e0e0f0'} onChange={e => setEFont(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                          <input value={eFont} onChange={e => setEFont(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#e0e0f0" />
+                          {eFont && <button type="button" onClick={() => setEFont('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ícones</label>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <input type="color" value={eIcon || prevIcon} onChange={e => setEIcon(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                          <input value={eIcon} onChange={e => setEIcon(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder={prevIcon} />
+                          {eIcon && <button type="button" onClick={() => setEIcon('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                        </div>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Content group */}
                   <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cards / Painéis</label>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={cardBgColor || '#f2f2fa'} onChange={e => setCardBgColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={cardBgColor} onChange={e => setCardBgColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#f2f2fa" />
-                      {cardBgColor && <button type="button" onClick={() => setCardBgColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Texto Principal</label>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <input type="color" value={textColor || '#1a1a2e'} onChange={e => setTextColor(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
-                      <input value={textColor} onChange={e => setTextColor(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder="#1a1a2e" />
-                      {textColor && <button type="button" onClick={() => setTextColor('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-3">Conteúdo</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Fundo da Página</label>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <input type="color" value={ePage || prevPage} onChange={e => setEPage(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                          <input value={ePage} onChange={e => setEPage(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder={prevPage} />
+                          {ePage && <button type="button" onClick={() => setEPage('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cards / Painéis</label>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <input type="color" value={eCard || prevCard} onChange={e => setECard(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                          <input value={eCard} onChange={e => setECard(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder={prevCard} />
+                          {eCard && <button type="button" onClick={() => setECard('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Texto Principal</label>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <input type="color" value={eText || prevText} onChange={e => setEText(e.target.value)} className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 flex-none" />
+                          <input value={eText} onChange={e => setEText(e.target.value)} className="flex-1 min-w-0 px-2 py-2.5 border border-slate-200 rounded-xl text-xs font-mono" placeholder={prevText} />
+                          {eText && <button type="button" onClick={() => setEText('')} className="text-slate-300 hover:text-red-400 font-bold flex-none text-sm">✕</button>}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
 
             <button onClick={handleSaveBrand} disabled={saving} className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl hover:bg-orange-500 transition-colors disabled:opacity-50">
               {saving ? 'Salvando…' : 'Salvar Marca'}
