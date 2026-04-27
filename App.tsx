@@ -132,6 +132,16 @@ const App: React.FC = () => {
   const [professionalName, setProfessionalName] = useState<string>('');
   const [affiliateData, setAffiliateData] = useState<AffiliateLink | null>(null);
   const [resellerProfile, setResellerProfile] = useState<ResellerProfile | null>(null);
+
+  // Detect reseller from current domain (used on mount and after logout)
+  const detectResellerDomain = React.useCallback(async () => {
+    const hostname = window.location.hostname.replace(/^www\./, '');
+    if (hostname.includes('localhost') || hostname.includes('agendezap') || hostname.includes('vercel')) return;
+    try {
+      const rp = await db.getResellerProfileByDomain(hostname);
+      if (rp) setResellerProfile(rp);
+    } catch {}
+  }, []);
   const [tenantResellerFeatures, setTenantResellerFeatures] = useState<string[] | null | undefined>(undefined);
   const impersonatedFromRole = React.useRef<Role>('SUPERADMIN');
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -228,12 +238,10 @@ const App: React.FC = () => {
       ? `${resellerProfile.brand_name} - Gestão de Agendamentos`
       : 'AgendeZap - Gestão de Agendamentos';
 
-    // Dynamic favicon — replace all existing favicon links
-    const faviconUrl = resellerProfile?.logo_url;
+    // Dynamic favicon — prefer favicon_url, fall back to logo_url
+    const faviconUrl = resellerProfile?.favicon_url || resellerProfile?.logo_url;
     if (faviconUrl) {
-      // Remove all existing favicon links
       document.querySelectorAll("link[rel~='icon'], link[rel='shortcut icon']").forEach(el => el.remove());
-      // Add single high-priority PNG favicon
       const link = document.createElement('link');
       link.rel = 'icon';
       link.type = 'image/png';
@@ -550,14 +558,7 @@ const App: React.FC = () => {
       }
 
       // Domain-based reseller detection — must resolve before Login renders
-      // Strip leading www. so both chatfacil.net and www.chatfacil.net match the same record
-      const hostname = window.location.hostname.replace(/^www\./, '');
-      if (!hostname.includes('localhost') && !hostname.includes('agendezap') && !hostname.includes('vercel')) {
-        try {
-          const rp = await db.getResellerProfileByDomain(hostname);
-          if (rp) setResellerProfile(rp);
-        } catch {}
-      }
+      await detectResellerDomain();
 
       setIsReady(true);
     };
@@ -757,6 +758,7 @@ const App: React.FC = () => {
     setProfessionalName('');
     setAffiliateData(null);
     setResellerProfile(null);
+    detectResellerDomain(); // re-apply domain branding after logout
     setCurrentView(View.DASHBOARD);
   };
 

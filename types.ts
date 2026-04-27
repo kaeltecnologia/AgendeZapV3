@@ -647,6 +647,7 @@ export interface ResellerProfile {
   affiliate_link_id: string;
   brand_name?: string;
   logo_url?: string;
+  favicon_url?: string;
   primary_color?: string;
   secondary_color?: string;
   font_color?: string;
