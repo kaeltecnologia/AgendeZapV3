@@ -806,6 +806,8 @@ const App: React.FC = () => {
     // Safety guard: if affiliateData is in memory, this impersonation was always
     // started by a reseller — never allow escalation to SUPERADMIN
     const fromRole = affiliateData ? 'AFFILIATE' : impersonatedFromRole.current;
+    // Clear stale impersonation session so init() doesn't re-read it on next load
+    localStorage.removeItem(SESSION_KEY);
     setRole(fromRole);
     setIsImpersonating(false);
     setTenantId('');

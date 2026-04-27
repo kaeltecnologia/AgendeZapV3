@@ -11,12 +11,13 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="shortcut icon" href="/favicon.ico">
-    <!-- Remove default favicons immediately on reseller domains to avoid flash -->
+    <!-- On reseller domains: replace all favicons with empty placeholder to avoid AZ flash -->
     <script>
       (function(){
         var h=window.location.hostname.replace(/^www\./,'');
         if(!h.includes('localhost')&&!h.includes('agendezap')&&!h.includes('vercel')){
           document.querySelectorAll("link[rel~='icon'],link[rel='shortcut icon']").forEach(function(el){el.parentNode.removeChild(el);});
+          var l=document.createElement('link');l.rel='icon';l.href='data:,';document.head.appendChild(l);
         }
       })();
     </script>
