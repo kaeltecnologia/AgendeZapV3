@@ -1116,7 +1116,7 @@ const App: React.FC = () => {
                 {resellerAllows('follow_up') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />}
                 {resellerAllows('estoque') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />}
                 {!resellerProfile && resellerAllows('planos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />}
-                {resellerAllows('indicacoes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.INDICACOES} onClick={navTo(() => setCurrentView(View.INDICACOES))} icon={<IconGift />} label="Indicações" />}
+                {!resellerProfile && resellerAllows('indicacoes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.INDICACOES} onClick={navTo(() => setCurrentView(View.INDICACOES))} icon={<IconGift />} label="Indicações" />}
               </div>
 
               {/* ── Financeiro & Vendas ── */}
@@ -1468,7 +1468,7 @@ const App: React.FC = () => {
             </button>
           </div>
           <TutorialsPanel open={showTutorials} onClose={() => setShowTutorials(false)} />
-          <SupportChat tenantId={tenantId} tenantName={tenantName} />
+          {!resellerProfile && <SupportChat tenantId={tenantId} tenantName={tenantName} />}
         </>
       )}
 
