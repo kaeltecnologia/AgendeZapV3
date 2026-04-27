@@ -132,6 +132,7 @@ const App: React.FC = () => {
   const [professionalName, setProfessionalName] = useState<string>('');
   const [affiliateData, setAffiliateData] = useState<AffiliateLink | null>(null);
   const [resellerProfile, setResellerProfile] = useState<ResellerProfile | null>(null);
+  const [tenantResellerFeatures, setTenantResellerFeatures] = useState<string[] | null | undefined>(undefined);
   const impersonatedFromRole = React.useRef<Role>('SUPERADMIN');
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [tenantId, setTenantId] = useState<string>('');
@@ -186,7 +187,6 @@ const App: React.FC = () => {
     const root = document.documentElement;
     if (resellerProfile?.primary_color) {
       root.style.setProperty('--color-primary', resellerProfile.primary_color);
-      // Derive dark/light from primary (simple heuristic: just use same color darker/lighter)
       root.style.setProperty('--color-primary-dark', resellerProfile.primary_color);
       root.style.setProperty('--color-primary-light', resellerProfile.primary_color + '99');
       root.style.setProperty('--color-primary-bg', resellerProfile.primary_color + '15');
@@ -195,6 +195,21 @@ const App: React.FC = () => {
       root.style.removeProperty('--color-primary-dark');
       root.style.removeProperty('--color-primary-light');
       root.style.removeProperty('--color-primary-bg');
+    }
+    if (resellerProfile?.font_color) {
+      root.style.setProperty('--reseller-font-color', resellerProfile.font_color);
+    } else {
+      root.style.removeProperty('--reseller-font-color');
+    }
+    if (resellerProfile?.bg_color) {
+      root.style.setProperty('--reseller-bg-color', resellerProfile.bg_color);
+    } else {
+      root.style.removeProperty('--reseller-bg-color');
+    }
+    if (resellerProfile?.icon_color) {
+      root.style.setProperty('--reseller-icon-color', resellerProfile.icon_color);
+    } else {
+      root.style.removeProperty('--reseller-icon-color');
     }
   }, [resellerProfile]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
@@ -350,6 +365,7 @@ const App: React.FC = () => {
       const payload = {
         isAuthenticated, role, tenantId, tenantSlug, tenantName,
         tenantPlan, tenantNicho, isImpersonating, currentView, superAdminTab,
+        _impersonatedFromRole: isImpersonating ? impersonatedFromRole.current : null,
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...payload, _fp: sessionFingerprint(payload) }));
     }
@@ -476,6 +492,9 @@ const App: React.FC = () => {
             setTenantName(s.tenantName || '');
             setTenantPlan(s.tenantPlan || 'START');
             if (s.tenantNicho) setTenantNicho(s.tenantNicho);
+            if (s.isImpersonating && s._impersonatedFromRole) {
+              impersonatedFromRole.current = s._impersonatedFromRole;
+            }
             setIsImpersonating(s.isImpersonating || false);
             setCurrentView(s.currentView || View.DASHBOARD);
             setSuperAdminTab(s.superAdminTab || 'dashboard');
@@ -703,11 +722,15 @@ const App: React.FC = () => {
     setIsImpersonating(true);
     setCurrentView(View.DASHBOARD);
     try { const t = await db.getTenant(id); if (t?.nicho) setTenantNicho(t.nicho); else setTenantNicho(''); } catch { setTenantNicho(''); }
+    try { const s = await db.getSettings(id); setTenantResellerFeatures(s?.resellerFeatureOverrides ?? undefined); } catch { setTenantResellerFeatures(undefined); }
   };
 
   // Returns true if the reseller allows this feature key for their clients
-  // null visible_features = all allowed; array = only listed keys allowed
+  // Per-tenant overrides (tenantResellerFeatures) take precedence over profile-level visible_features
   const resellerAllows = (key: string) => {
+    if (tenantResellerFeatures !== undefined && tenantResellerFeatures !== null) {
+      return tenantResellerFeatures.includes(key);
+    }
     if (!resellerProfile?.visible_features) return true;
     return resellerProfile.visible_features.includes(key);
   };
@@ -721,12 +744,15 @@ const App: React.FC = () => {
   };
 
   const handleExitImpersonation = () => {
-    const fromRole = impersonatedFromRole.current;
+    // Safety guard: if affiliateData is in memory, this impersonation was always
+    // started by a reseller — never allow escalation to SUPERADMIN
+    const fromRole = affiliateData ? 'AFFILIATE' : impersonatedFromRole.current;
     setRole(fromRole);
     setIsImpersonating(false);
     setTenantId('');
     setTenantSlug('');
     setTenantNicho('');
+    setTenantResellerFeatures(undefined);
     if (fromRole === 'AFFILIATE') {
       // back to reseller portal — no view needed (ResellerView handles routing)
     } else {
@@ -883,13 +909,22 @@ const App: React.FC = () => {
         onMouseEnter={handleSidebarEnter}
         onMouseLeave={handleSidebarLeave}
         className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${sidebarCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-[500] h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+        style={{
+          ...(resellerProfile?.bg_color ? { backgroundColor: resellerProfile.bg_color } : {}),
+          ...(resellerProfile?.font_color ? { color: resellerProfile.font_color } : {}),
+        }}
       >
         {/* Logo / toggle */}
         <div className={`flex ${sidebarCollapsed ? 'flex-col items-center py-4 px-2 gap-3' : 'flex-row items-center justify-between px-5 py-5'} transition-all duration-300`}>
           {sidebarCollapsed ? (
             <>
-              {resellerProfile?.logo_url
-                ? <img src={resellerProfile.logo_url} alt="logo" className="w-8 h-8 rounded-lg object-contain" />
+              {resellerProfile
+                ? (resellerProfile.logo_url
+                    ? <img src={resellerProfile.logo_url} alt="logo" className="w-8 h-8 rounded-lg object-contain" />
+                    : resellerProfile.brand_name
+                      ? <span className="text-lg font-black text-orange-500 uppercase italic leading-none tracking-tighter">{resellerProfile.brand_name.slice(0, 3)}</span>
+                      : null
+                  )
                 : <span className="text-lg font-black text-orange-500 uppercase italic leading-none tracking-tighter">AGZ</span>
               }
               <button onClick={toggleSidebar} title="Expandir menu" className="text-slate-300 hover:text-orange-500 transition-colors">
@@ -899,9 +934,14 @@ const App: React.FC = () => {
           ) : (
             <>
               <div>
-                {resellerProfile?.logo_url
-                  ? <img src={resellerProfile.logo_url} alt={resellerProfile.brand_name || 'Logo'} className="h-8 max-w-[140px] object-contain" />
-                  : <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">{resellerProfile?.brand_name || 'AgendeZap'}</h1>
+                {resellerProfile
+                  ? (resellerProfile.logo_url
+                      ? <img src={resellerProfile.logo_url} alt={resellerProfile.brand_name || 'Logo'} className="h-8 max-w-[140px] object-contain" />
+                      : resellerProfile.brand_name
+                        ? <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">{resellerProfile.brand_name}</h1>
+                        : null
+                    )
+                  : <h1 className="text-2xl font-black text-black tracking-tighter uppercase italic">AgendeZap</h1>
                 }
                 {role === 'SUPERADMIN' && <span className="bg-orange-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full w-fit tracking-widest uppercase mt-1 block">SUPER ADMIN</span>}
               </div>
@@ -1555,7 +1595,7 @@ const NavItem = ({ active, onClick, icon, label, color, collapsed, badge }: any)
         active ? 'bg-black text-white shadow-xl scale-105' : `text-slate-500 hover:bg-slate-100 ${color || ''}`
       }`}
     >
-      <span className={`text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}>{icon}</span>
+      <span className={`text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-orange-500' : 'group-hover:text-black'}`} style={!active ? { color: 'var(--reseller-icon-color, #94a3b8)' } : undefined}>{icon}</span>
       {!collapsed && <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>}
       {!collapsed && badge > 0 && (
         <span className="ml-auto bg-orange-500 text-white text-[9px] font-black rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">

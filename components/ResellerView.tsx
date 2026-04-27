@@ -50,6 +50,9 @@ const ResellerView: React.FC<Props> = ({
   const [brandName, setBrandName] = useState(resellerProfile?.brand_name || '');
   const [logoUrl, setLogoUrl] = useState(resellerProfile?.logo_url || '');
   const [primaryColor, setPrimaryColor] = useState(resellerProfile?.primary_color || '#f97316');
+  const [fontColor, setFontColor] = useState(resellerProfile?.font_color || '');
+  const [bgColor, setBgColor] = useState(resellerProfile?.bg_color || '');
+  const [iconColor, setIconColor] = useState(resellerProfile?.icon_color || '');
   const [customDomain, setCustomDomain] = useState(resellerProfile?.custom_domain || '');
 
   // Pricing form
@@ -75,6 +78,14 @@ const ResellerView: React.FC<Props> = ({
   const [newPlan, setNewPlan] = useState('START');
   const [creatingClient, setCreatingClient] = useState(false);
 
+  // Edit client modal
+  const [editTenant, setEditTenant] = useState<any | null>(null);
+  const [editPlan, setEditPlan] = useState('START');
+  const [editFee, setEditFee] = useState('');
+  const [editAllFeatures, setEditAllFeatures] = useState(true);
+  const [editFeatures, setEditFeatures] = useState<string[]>(FEATURE_KEYS.map(f => f.key));
+  const [editLoading, setEditLoading] = useState(false);
+
   const loadTenants = useCallback(async () => {
     if (!resellerProfile?.id) { setLoading(false); return; }
     try {
@@ -96,6 +107,9 @@ const ResellerView: React.FC<Props> = ({
     setBrandName(resellerProfile.brand_name || '');
     setLogoUrl(resellerProfile.logo_url || '');
     setPrimaryColor(resellerProfile.primary_color || '#f97316');
+    setFontColor(resellerProfile.font_color || '');
+    setBgColor(resellerProfile.bg_color || '');
+    setIconColor(resellerProfile.icon_color || '');
     setCustomDomain(resellerProfile.custom_domain || '');
     setPriceStart(String(resellerProfile.plan_pricing?.START || ''));
     setPricePro(String(resellerProfile.plan_pricing?.PROFISSIONAL || ''));
@@ -124,6 +138,9 @@ const ResellerView: React.FC<Props> = ({
     brand_name: brandName || undefined,
     logo_url: logoUrl || undefined,
     primary_color: primaryColor,
+    font_color: fontColor || undefined,
+    bg_color: bgColor || undefined,
+    icon_color: iconColor || undefined,
     custom_domain: customDomain || undefined,
   });
 
@@ -181,6 +198,51 @@ const ResellerView: React.FC<Props> = ({
     }
   };
 
+  const openEditModal = async (t: any) => {
+    setEditTenant(t);
+    setEditPlan(t.plan || 'START');
+    setEditFee(t.mensalidade ? String(t.mensalidade) : '');
+    // Load per-tenant feature overrides from settings
+    try {
+      const { data } = await supabase
+        .from('tenant_settings')
+        .select('follow_up')
+        .eq('tenant_id', t.id)
+        .maybeSingle();
+      const overrides = data?.follow_up?._resellerFeatureOverrides;
+      if (overrides && Array.isArray(overrides)) {
+        setEditAllFeatures(false);
+        setEditFeatures(overrides);
+      } else {
+        setEditAllFeatures(true);
+        setEditFeatures(FEATURE_KEYS.map(f => f.key));
+      }
+    } catch {
+      setEditAllFeatures(true);
+      setEditFeatures(FEATURE_KEYS.map(f => f.key));
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTenant) return;
+    setEditLoading(true);
+    try {
+      await db.updateTenant(editTenant.id, {
+        plan: editPlan,
+        monthlyFee: editFee ? parseFloat(editFee) : 0,
+      });
+      await db.updateSettings(editTenant.id, {
+        resellerFeatureOverrides: editAllFeatures ? null : editFeatures,
+      });
+      setEditTenant(null);
+      loadTenants();
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao salvar.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
   // KPIs
   const active = tenants.filter(t => t.status === 'ATIVA');
   const mrr = active.reduce((s, t) => s + Number(t.mensalidade || 0), 0);
@@ -213,7 +275,9 @@ const ResellerView: React.FC<Props> = ({
         <div className="flex items-center gap-3">
           {resellerProfile?.logo_url
             ? <img src={resellerProfile.logo_url} alt="logo" className="h-8 object-contain" />
-            : <span className="text-xl font-black text-orange-500 uppercase italic">{resellerProfile?.brand_name || 'Reseller Portal'}</span>
+            : resellerProfile?.brand_name
+              ? <span className="text-xl font-black text-orange-500 uppercase italic">{resellerProfile.brand_name}</span>
+              : null
           }
           <span className="bg-orange-100 text-orange-600 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Afiliado</span>
         </div>
@@ -355,7 +419,13 @@ const ResellerView: React.FC<Props> = ({
                         <td className="px-4 py-3 hidden md:table-cell text-slate-600 font-bold">
                           {t.mensalidade ? `R$ ${Number(t.mensalidade).toFixed(2).replace('.', ',')}` : '—'}
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEditModal(t)}
+                            className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-black transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100"
+                          >
+                            Editar
+                          </button>
                           <button
                             onClick={() => onImpersonate(t.id, t.nome, t.slug || '', t.plan)}
                             className="text-[9px] font-black uppercase tracking-widest text-orange-500 hover:text-orange-700 transition-colors px-3 py-1.5 rounded-lg hover:bg-orange-50"
@@ -389,12 +459,39 @@ const ResellerView: React.FC<Props> = ({
                   <p className="text-[10px] text-slate-400 mt-1">PNG/SVG transparente recomendado</p>
                 </div>
                 <div>
-                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor Principal</label>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor Principal (Botões)</label>
                   <div className="flex items-center gap-2 mt-1">
                     <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
                     <input value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono" placeholder="#f97316" />
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">Cor dos botões, ícones e destaques</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Cor dos botões e destaques</p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor do Menu (Fundo)</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={bgColor || '#ffffff'} onChange={e => setBgColor(e.target.value)} className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
+                    <input value={bgColor} onChange={e => setBgColor(e.target.value)} className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono" placeholder="(padrão do tema)" />
+                    {bgColor && <button onClick={() => setBgColor('')} className="text-[9px] text-slate-400 hover:text-red-500 font-bold">✕</button>}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Cor de fundo do menu lateral</p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor do Texto do Menu</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={fontColor || '#000000'} onChange={e => setFontColor(e.target.value)} className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
+                    <input value={fontColor} onChange={e => setFontColor(e.target.value)} className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono" placeholder="(padrão do tema)" />
+                    {fontColor && <button onClick={() => setFontColor('')} className="text-[9px] text-slate-400 hover:text-red-500 font-bold">✕</button>}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Cor das fontes no menu lateral</p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cor dos Ícones</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={iconColor || '#94a3b8'} onChange={e => setIconColor(e.target.value)} className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" />
+                    <input value={iconColor} onChange={e => setIconColor(e.target.value)} className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono" placeholder="(padrão do tema)" />
+                    {iconColor && <button onClick={() => setIconColor('')} className="text-[9px] text-slate-400 hover:text-red-500 font-bold">✕</button>}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Cor dos ícones no menu lateral</p>
                 </div>
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Domínio Personalizado</label>
@@ -532,6 +629,75 @@ const ResellerView: React.FC<Props> = ({
           </div>
         )}
       </main>
+
+      {/* ── EDIT CLIENT MODAL ── */}
+      {editTenant && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <p className="font-black text-sm text-slate-800 uppercase tracking-widest">Editar — {editTenant.nome}</p>
+              <button onClick={() => setEditTenant(null)} className="text-slate-400 hover:text-black text-lg">✕</button>
+            </div>
+
+            {/* Plan */}
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Plano</label>
+              <select value={editPlan} onChange={e => setEditPlan(e.target.value)} className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm">
+                {Object.entries(PLAN_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Monthly fee */}
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Mensalidade (R$)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={editFee}
+                onChange={e => setEditFee(e.target.value)}
+                className="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm"
+                placeholder="0,00"
+              />
+            </div>
+
+            {/* Features */}
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Recursos Visíveis</label>
+              <label className="flex items-center gap-2 cursor-pointer mb-3">
+                <input type="checkbox" checked={editAllFeatures} onChange={e => setEditAllFeatures(e.target.checked)} className="w-4 h-4 rounded" />
+                <span className="text-sm font-bold text-slate-700">Usar padrão do portal (todos)</span>
+              </label>
+              {!editAllFeatures && (
+                <div className="grid grid-cols-2 gap-1.5 border-t border-slate-100 pt-3">
+                  {FEATURE_KEYS.map(f => (
+                    <label key={f.key} className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={editFeatures.includes(f.key)}
+                        onChange={e => setEditFeatures(prev =>
+                          e.target.checked ? [...prev, f.key] : prev.filter(k => k !== f.key)
+                        )}
+                        className="w-4 h-4 rounded"
+                      />
+                      <span className="text-sm text-slate-700">{f.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={handleSaveEdit} disabled={editLoading} className="bg-black text-white text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl hover:bg-orange-500 transition-colors disabled:opacity-50">
+                {editLoading ? 'Salvando…' : 'Salvar'}
+              </button>
+              <button onClick={() => setEditTenant(null)} className="text-slate-500 text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl hover:bg-slate-100">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

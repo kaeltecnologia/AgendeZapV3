@@ -1069,6 +1069,7 @@ class DatabaseService {
           contentCalendar: fu._contentCalendar ?? null,
           trendingContent: fu._trendingContent ?? null,
           trendingContentDate: fu._trendingContentDate ?? null,
+          resellerFeatureOverrides: fu._resellerFeatureOverrides !== undefined ? fu._resellerFeatureOverrides : null,
         };
         _cache.set(ck, result, TTL_LONG);
         return result;
@@ -1146,6 +1147,7 @@ class DatabaseService {
         _contentCalendar: newS.contentCalendar !== undefined ? newS.contentCalendar : (curr.contentCalendar ?? null),
         _trendingContent: newS.trendingContent !== undefined ? newS.trendingContent : (curr.trendingContent ?? null),
         _trendingContentDate: newS.trendingContentDate !== undefined ? newS.trendingContentDate : (curr.trendingContentDate ?? null),
+        _resellerFeatureOverrides: newS.resellerFeatureOverrides !== undefined ? newS.resellerFeatureOverrides : (curr.resellerFeatureOverrides ?? null),
       };
 
       // Always include operating_hours to prevent data loss on upsert (uses current value as fallback)

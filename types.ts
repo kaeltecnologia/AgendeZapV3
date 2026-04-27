@@ -305,6 +305,7 @@ export interface TenantSettings {
   contentCalendar?: ContentCalendar | null;        // AI-generated content calendar
   trendingContent?: TrendingItem[] | null;         // cached weekly trending content
   trendingContentDate?: string | null;             // ISO date of last trending fetch
+  resellerFeatureOverrides?: string[] | null;      // per-tenant feature override set by reseller (null = use reseller profile defaults)
 }
 
 export interface Appointment {
@@ -648,6 +649,9 @@ export interface ResellerProfile {
   logo_url?: string;
   primary_color?: string;
   secondary_color?: string;
+  font_color?: string;
+  bg_color?: string;
+  icon_color?: string;
   custom_domain?: string;
   openai_api_key?: string;
   plan_pricing?: { START?: number; PROFISSIONAL?: number; ELITE?: number };
