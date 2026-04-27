@@ -1,18 +1,20 @@
 
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
+import type { ResellerProfile } from '../types';
 
 interface LoginProps {
   onLogin: (role: 'SUPERADMIN' | 'TENANT' | 'PROFESSIONAL', userSlug?: string, userEmail?: string, userPassword?: string, professionalData?: any) => Promise<void> | void;
   onRegister?: (storeName: string, email: string, pass: string, phone: string) => Promise<void>;
   initialSignUp?: boolean;
   referralName?: string;
+  resellerProfile?: ResellerProfile | null;
 }
 
 const inputStyle = { background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#1a1a2e', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 2px rgba(160,160,190,0.12)' };
 const inputCls = 'w-full p-4 sm:p-5 rounded-xl sm:rounded-[24px] outline-none focus:border-orange-500 transition-all font-bold';
 
-const Login: React.FC<LoginProps> = ({ onLogin, onRegister, initialSignUp, referralName }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, onRegister, initialSignUp, referralName, resellerProfile }) => {
   const [mode, setMode] = useState<'admin' | 'pro'>('admin');
   const [isSignUp, setIsSignUp] = useState(initialSignUp || false);
 
@@ -88,12 +90,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, initialSignUp, refer
 
       <div className="w-full max-w-[420px] space-y-8 sm:space-y-10 animate-scaleUp z-10 p-6 sm:p-10 rounded-[40px] sm:rounded-[60px] border-2 shadow-2xl" style={{ background: 'linear-gradient(145deg, rgba(255,255,255,0.7) 0%, rgba(245,245,252,0.6) 30%, rgba(255,255,255,0.65) 50%, rgba(240,240,250,0.6) 70%, rgba(250,250,255,0.65) 100%)', backdropFilter: 'blur(16px)', borderColor: '#b8b8cc', boxShadow: '0 25px 50px -12px rgba(80,80,110,0.22), inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(160,160,190,0.15), 0 0 0 1px rgba(255,255,255,0.3)' }}>
         <div className="text-center space-y-4">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-orange-500 rounded-[20px] sm:rounded-[30px] flex items-center justify-center text-3xl sm:text-4xl mx-auto shadow-xl shadow-orange-100 animate-bounce transition-all">
-            ✂️
-          </div>
-          <h1 className="text-3xl sm:text-5xl font-black italic tracking-tighter uppercase" style={{ color: '#1a1a2e' }}>AgendeZap</h1>
+          {resellerProfile ? (
+            resellerProfile.logo_url
+              ? <img src={resellerProfile.logo_url} alt={resellerProfile.brand_name || 'Logo'} className="h-16 sm:h-20 max-w-[220px] object-contain mx-auto" />
+              : resellerProfile.brand_name
+                ? <h1 className="text-3xl sm:text-5xl font-black italic tracking-tighter uppercase" style={{ color: '#1a1a2e' }}>{resellerProfile.brand_name}</h1>
+                : null
+          ) : (
+            <>
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-orange-500 rounded-[20px] sm:rounded-[30px] flex items-center justify-center text-3xl sm:text-4xl mx-auto shadow-xl shadow-orange-100 animate-bounce transition-all">
+                ✂️
+              </div>
+              <h1 className="text-3xl sm:text-5xl font-black italic tracking-tighter uppercase" style={{ color: '#1a1a2e' }}>AgendeZap</h1>
+            </>
+          )}
           <p className="text-[9px] font-black uppercase tracking-[0.4em]" style={{ color: '#787890' }}>
-            {mode === 'pro' ? 'Portal do Profissional' : isSignUp ? 'Crie sua conta multi-tenant' : 'Gestão de Agendamentos Inteligente'}
+            {mode === 'pro' ? 'Portal do Profissional' : isSignUp ? 'Crie sua conta' : 'Gestão de Agendamentos Inteligente'}
           </p>
         </div>
 
@@ -167,7 +179,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, initialSignUp, refer
           </form>
         )}
 
-        {mode === 'admin' && (
+        {mode === 'admin' && !resellerProfile && (
           <div className="text-center space-y-4">
             <button onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
               className="text-[10px] font-black uppercase tracking-widest hover:text-orange-600 transition-colors" style={{ color: isSignUp ? '#787890' : '#f97316' }}>

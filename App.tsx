@@ -828,7 +828,7 @@ const App: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} onRegister={handleRegister} />;
+    return <Login onLogin={handleLogin} onRegister={handleRegister} resellerProfile={resellerProfile} />;
   }
 
   if (role === 'AFFILIATE' && affiliateData) {
