@@ -532,14 +532,13 @@ const App: React.FC = () => {
       }
 
       // Domain-based reseller detection — must resolve before Login renders
-      const hostname = window.location.hostname;
-      console.log('[AgendeZap] hostname:', hostname);
+      // Strip leading www. so both chatfacil.net and www.chatfacil.net match the same record
+      const hostname = window.location.hostname.replace(/^www\./, '');
       if (!hostname.includes('localhost') && !hostname.includes('agendezap') && !hostname.includes('vercel')) {
         try {
           const rp = await db.getResellerProfileByDomain(hostname);
-          console.log('[AgendeZap] resellerProfile:', rp);
           if (rp) setResellerProfile(rp);
-        } catch (e) { console.error('[AgendeZap] domain lookup error:', e); }
+        } catch {}
       }
 
       setIsReady(true);
