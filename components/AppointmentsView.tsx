@@ -8,6 +8,12 @@ import { notifyWaitlistLeads } from '../services/waitlistService';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+/** Returns YYYY-MM-DD using the browser's LOCAL timezone (not UTC). */
+function localDateStr(d: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // ── Visual calendar range picker ─────────────────────────────────────────────
 const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
@@ -21,7 +27,7 @@ function MiniCalendar({ startDate, endDate, disabled, onChange }: {
   });
   const [picking, setPicking] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
 
   const toISO = (y: number, m: number, d: number) =>
     `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -142,8 +148,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   } | null>(null);
   const [showBreakModal, setShowBreakModal] = useState(false);
 
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>(localDateStr());
+  const [endDate, setEndDate] = useState<string>(localDateStr());
   const [presetPeriod, setPresetPeriod] = useState<string>('today');
   const [filterProfId, setFilterProfId] = useState<string>(defaultProfessionalId || '');
 
@@ -221,14 +227,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setBreaks(loadedBreaks);
 
     let data = apps.filter(a => {
-      const appDate = new Date(a.startTime).toISOString().split('T')[0];
+      if (!a.startTime) return false;
+      const appDate = a.startTime.substring(0, 10);
       if (presetPeriod === 'all') return true;
       return appDate >= startDate && appDate <= endDate;
     });
 
     if (filterProfId) data = data.filter(a => a.professional_id === filterProfId);
 
-    setAppointments(data.sort((a, b) => a.startTime.localeCompare(b.startTime)));
+    setAppointments(data.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
   }, [tenantId, startDate, endDate, presetPeriod, filterProfId]);
 
   useEffect(() => { refreshData(); }, [refreshData]);
@@ -257,8 +264,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       case 'all': return;
     }
     if (period !== 'all') {
-      setStartDate(start.toISOString().split('T')[0]);
-      setEndDate(end.toISOString().split('T')[0]);
+      setStartDate(localDateStr(start));
+      setEndDate(localDateStr(end));
     }
   };
 
@@ -282,7 +289,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   const openBookingModal = () => {
     setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setProfId(''); setSvcIds([]);
-    setManualDate(new Date().toISOString().split('T')[0]); setManualTime('');
+    setManualDate(localDateStr()); setManualTime('');
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
     setBookingSlots([]); setBookingSlotsLoading(false);
     setShowBookingModal(true);
@@ -334,7 +341,16 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         isPlan: isPlanAppt
       });
       sendProfessionalNotification(newApp);
-      setShowBookingModal(false); setErrorMsg(''); refreshData();
+      setShowBookingModal(false); setErrorMsg('');
+      // Se a data agendada estiver fora do intervalo visível, expande o range para incluí-la
+      if (presetPeriod !== 'all' && (manualDate < startDate || manualDate > endDate)) {
+        if (manualDate > endDate) setEndDate(manualDate);
+        if (manualDate < startDate) setStartDate(manualDate);
+        setPresetPeriod('');
+        // useEffect dispara refreshData automaticamente quando startDate/endDate mudam
+      } else {
+        refreshData();
+      }
     } catch (e: any) {
       setErrorMsg(e.message || 'Erro ao criar agendamento. Tente novamente.');
     }
@@ -434,7 +450,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       const dayAppts = appointments.filter(a => {
         if (a.status === AppointmentStatus.CANCELLED || (a.status as string) === 'cancelado') return false;
         if (a.id === editAppt?.id) return false; // exclude self
-        const aDate = new Date(a.startTime).toISOString().split('T')[0];
+        const aDate = a.startTime.substring(0, 10);
         return aDate === date && a.professional_id === pId;
       });
 

@@ -336,7 +336,7 @@ class DatabaseService {
       const sinceISO = since.toISOString().slice(0, 10) + 'T00:00:00';
       const { data, error } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId).gte('inicio', sinceISO);
       if (error) throw error;
-      const result = (data || []).map(a => {
+      const result = (data || []).filter(a => a.inicio).map(a => {
         const start = new Date(a.inicio);
         const end = new Date(a.fim);
         const duration = Math.round((end.getTime() - start.getTime()) / 60000);
@@ -405,11 +405,18 @@ class DatabaseService {
 
       const insertOne = async (p: any) => {
         let { data, error } = await supabase.from('appointments').insert(p).select().single();
-        if (error && (error.message?.includes('is_plan') || (error as any).code === '42703')) {
-          console.warn('[DB] is_plan column missing — run migration. Retrying without it.');
-          const { is_plan, ...payloadWithout } = p;
-          const r2 = await supabase.from('appointments').insert(payloadWithout).select().single();
-          data = r2.data; error = r2.error;
+        if (error && ((error as any).code === '42703' || error.message?.includes('column'))) {
+          // Coluna desconhecida — remover campos extras e tentar com colunas base apenas
+          const { is_plan, origem, ...base } = p;
+          console.warn('[DB] coluna faltando, tentando base. Erro original:', error.message);
+          const r2 = await supabase.from('appointments').insert({ ...base, origem }).select().single();
+          if (r2.error && (r2.error as any).code === '42703') {
+            // origem também falta — inserir só com base
+            const r3 = await supabase.from('appointments').insert(base).select().single();
+            data = r3.data; error = r3.error;
+          } else {
+            data = r2.data; error = r2.error;
+          }
         }
         if (error) throw error;
         return data;
