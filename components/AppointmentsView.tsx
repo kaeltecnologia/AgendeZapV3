@@ -226,12 +226,14 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setCustomers(custs);
     setBreaks(loadedBreaks);
 
+    console.log('[refreshData] apps:', apps.length, 'startDate:', startDate, 'endDate:', endDate, 'preset:', presetPeriod, 'sample:', apps[0]?.startTime);
     let data = apps.filter(a => {
       if (!a.startTime) return false;
       const appDate = a.startTime.substring(0, 10);
       if (presetPeriod === 'all') return true;
       return appDate >= startDate && appDate <= endDate;
     });
+    console.log('[refreshData] after filter:', data.length);
 
     if (filterProfId) data = data.filter(a => a.professional_id === filterProfId);
 
@@ -342,13 +344,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       });
       sendProfessionalNotification(newApp);
       setShowBookingModal(false); setErrorMsg('');
+      console.log('[booking] manualDate:', manualDate, 'startDate:', startDate, 'endDate:', endDate, 'preset:', presetPeriod);
       // Se a data agendada estiver fora do intervalo visível, expande o range para incluí-la
       if (presetPeriod !== 'all' && (manualDate < startDate || manualDate > endDate)) {
+        console.log('[booking] expandindo range para:', manualDate);
         if (manualDate > endDate) setEndDate(manualDate);
         if (manualDate < startDate) setStartDate(manualDate);
         setPresetPeriod('');
-        // useEffect dispara refreshData automaticamente quando startDate/endDate mudam
       } else {
+        console.log('[booking] chamando refreshData direto');
         refreshData();
       }
     } catch (e: any) {
