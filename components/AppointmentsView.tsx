@@ -226,14 +226,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setCustomers(custs);
     setBreaks(loadedBreaks);
 
-    console.log('[refreshData] apps:', apps.length, 'startDate:', startDate, 'endDate:', endDate, 'preset:', presetPeriod, 'sample:', apps[0]?.startTime);
     let data = apps.filter(a => {
       if (!a.startTime) return false;
       const appDate = a.startTime.substring(0, 10);
       if (presetPeriod === 'all') return true;
       return appDate >= startDate && appDate <= endDate;
     });
-    console.log('[refreshData] after filter:', data.length);
 
     if (filterProfId) data = data.filter(a => a.professional_id === filterProfId);
 
@@ -343,16 +341,24 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         isPlan: isPlanAppt
       });
       sendProfessionalNotification(newApp);
+      // Adiciona o agendamento diretamente ao estado para aparecer imediatamente,
+      // independente do limite de 1000 linhas do Supabase no getAppointments
+      const appEntry: Appointment = {
+        id: newApp.id, tenant_id: tenantId, customer_id: customerId,
+        professional_id: profId, service_id: svcIds[0], serviceIds: svcIds,
+        startTime: `${manualDate}T${manualTime}:00`,
+        durationMinutes: totalDuration, status: AppointmentStatus.CONFIRMED,
+        source: isPlanAppt ? BookingSource.PLAN : BookingSource.MANUAL,
+        isPlan: isPlanAppt, paymentMethod: PaymentMethod.PIX, amountPaid: 0
+      };
+      setAppointments(prev => [...prev, appEntry].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
       setShowBookingModal(false); setErrorMsg('');
-      console.log('[booking] manualDate:', manualDate, 'startDate:', startDate, 'endDate:', endDate, 'preset:', presetPeriod);
-      // Se a data agendada estiver fora do intervalo visível, expande o range para incluí-la
+      // Expande o range visível se a data estiver fora do intervalo atual
       if (presetPeriod !== 'all' && (manualDate < startDate || manualDate > endDate)) {
-        console.log('[booking] expandindo range para:', manualDate);
         if (manualDate > endDate) setEndDate(manualDate);
         if (manualDate < startDate) setStartDate(manualDate);
         setPresetPeriod('');
       } else {
-        console.log('[booking] chamando refreshData direto');
         refreshData();
       }
     } catch (e: any) {

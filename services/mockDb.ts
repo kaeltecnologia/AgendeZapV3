@@ -334,8 +334,7 @@ class DatabaseService {
       const since = new Date();
       since.setDate(since.getDate() - daysBack);
       const sinceISO = since.toISOString().slice(0, 10) + 'T00:00:00';
-      const { data, error } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId).gte('inicio', sinceISO);
-      console.log('[DB:getAppointments]', { rows: data?.length, error: error?.message, sample: data?.[0]?.inicio });
+      const { data, error } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId).gte('inicio', sinceISO).order('inicio', { ascending: false });
       if (error) throw error;
       const result = (data || []).filter(a => a.inicio).map(a => {
         const start = new Date(a.inicio);
