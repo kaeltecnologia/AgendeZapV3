@@ -54,47 +54,57 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     </div>
   );
 
+  const sorted = [...services].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+
   return (
-    <div className="space-y-10 animate-fadeIn">
+    <div className="space-y-6 animate-fadeIn">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Catálogo de Serviços</h1>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Preços e tempos configurados</p>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Catálogo de Serviços</h1>
+          <p className="text-xs font-semibold text-slate-400 mt-0.5">{services.length} serviço{services.length !== 1 ? 's' : ''} cadastrado{services.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => setModal({show: true, data: { durationMinutes: 30, active: true }})} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 transition-all w-full sm:w-auto">
+        <button onClick={() => setModal({show: true, data: { durationMinutes: 30, active: true }})}
+          className="bg-orange-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-orange-600 transition-colors w-full sm:w-auto">
           + Novo Serviço
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {services.length === 0 ? (
-          <div className="col-span-full py-24 text-center border-4 border-dashed border-slate-100 rounded-[50px] bg-slate-50/30">
-             <span className="text-4xl mb-4 block opacity-20">✂️</span>
-             <p className="text-slate-300 font-black uppercase tracking-[0.2em] italic text-xs">Nenhum serviço disponível no momento.</p>
-          </div>
-        ) : (
-          services.map((svc) => (
-            <div key={svc.id} className="bg-white p-5 sm:p-6 md:p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
-              <div className="absolute top-5 right-5 sm:top-8 sm:right-8 flex space-x-2">
-                <button onClick={() => setModal({show: true, data: svc})} className="bg-slate-50 text-black px-3 py-2 rounded-xl font-black hover:bg-orange-500 hover:text-white transition-all text-[9px] uppercase tracking-widest">EDITAR</button>
-              </div>
-              
-              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-2xl mb-6 group-hover:bg-orange-50 transition-all shadow-sm">✂️</div>
-              
-              <h3 className="text-xl font-black text-black mb-1 pr-16 leading-tight uppercase tracking-tight">{svc.name}</h3>
-              <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em] inline-block mb-8 ${svc.active ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-400'}`}>
-                {svc.active ? 'Ativo' : 'Pausado'}
-              </span>
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        {/* Table header */}
+        <div className="grid gap-0 border-b border-slate-100" style={{ gridTemplateColumns: '1fr 80px 110px 80px 70px' }}>
+          {['Serviço', 'Duração', 'Preço', 'Status', ''].map(h => (
+            <div key={h} className="px-4 py-3">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{h}</span>
+            </div>
+          ))}
+        </div>
 
-              <div className="flex items-end justify-between pt-6 border-t-2 border-slate-50">
-                <div>
-                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Preço Final</p>
-                  <p className="text-lg sm:text-2xl font-black text-black tracking-tighter">R$ {Number(svc.price).toFixed(2)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Duração</p>
-                  <p className="text-sm font-black text-black">{svc.durationMinutes} MIN</p>
-                </div>
+        {sorted.length === 0 ? (
+          <div className="py-20 text-center text-slate-300 text-sm font-semibold">Nenhum serviço cadastrado.</div>
+        ) : (
+          sorted.map((svc, i) => (
+            <div key={svc.id}
+              className="grid items-center hover:bg-slate-50 transition-colors"
+              style={{ gridTemplateColumns: '1fr 80px 110px 80px 70px', borderTop: i === 0 ? 'none' : '1px solid #F1F5F9' }}>
+              <div className="px-4 py-3.5">
+                <p className="text-sm font-semibold text-slate-800">{svc.name}</p>
+              </div>
+              <div className="px-4 py-3.5">
+                <p className="text-sm text-slate-600">{svc.durationMinutes} min</p>
+              </div>
+              <div className="px-4 py-3.5">
+                <p className="text-sm font-bold text-slate-800">R$ {Number(svc.price).toFixed(2)}</p>
+              </div>
+              <div className="px-4 py-3.5">
+                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${svc.active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                  {svc.active ? 'Ativo' : 'Pausado'}
+                </span>
+              </div>
+              <div className="px-4 py-3.5 flex justify-end">
+                <button onClick={() => setModal({show: true, data: svc})}
+                  className="text-xs font-semibold text-slate-400 hover:text-orange-500 transition-colors">
+                  Editar
+                </button>
               </div>
             </div>
           ))
@@ -102,28 +112,37 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </div>
 
       {modal.show && createPortal(
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 sm:p-6">
-          <div className="rounded-[32px] sm:rounded-[40px] w-full max-w-md p-6 sm:p-10 space-y-6 sm:space-y-8 animate-scaleUp border-2" style={{ background: 'linear-gradient(145deg, #f8f8ff 0%, #f2f2fa 50%, #f6f6fc 100%)', borderColor: '#c0c0d0', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 25px 50px -12px rgba(40,40,60,0.25)' }}>
-            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight italic" style={{ color: '#1a1a2e' }}>{modal.data?.id ? 'Editar Serviço' : 'Novo Serviço'}</h2>
-            <div className="space-y-5 sm:space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: '#8888a0' }}>Nome do Procedimento</label>
-                <input value={modal.data?.name || ''} onChange={e=>setModal({...modal, data: {...modal.data, name: e.target.value}})} className="w-full p-4 sm:p-5 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#1a1a2e', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }} />
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-5 shadow-2xl">
+            <h2 className="text-base font-bold text-slate-800">{modal.data?.id ? 'Editar Serviço' : 'Novo Serviço'}</h2>
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500">Nome</label>
+                <input value={modal.data?.name || ''} onChange={e => setModal({...modal, data: {...modal.data, name: e.target.value}})}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 outline-none text-sm focus:border-orange-400 transition-colors" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: '#8888a0' }}>Preço (R$)</label>
-                  <input type="number" value={modal.data?.price || ''} onChange={e=>setModal({...modal, data: {...modal.data, price: Number(e.target.value)}})} className="w-full p-4 sm:p-5 rounded-2xl outline-none font-black text-lg" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#f97316', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }} />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">Preço (R$)</label>
+                  <input type="number" value={modal.data?.price || ''} onChange={e => setModal({...modal, data: {...modal.data, price: Number(e.target.value)}})}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 outline-none text-sm font-bold text-orange-500 focus:border-orange-400 transition-colors" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: '#8888a0' }}>Tempo (Min)</label>
-                  <input type="number" value={modal.data?.durationMinutes || ''} onChange={e=>setModal({...modal, data: {...modal.data, durationMinutes: Number(e.target.value)}})} className="w-full p-4 sm:p-5 rounded-2xl outline-none font-black text-lg" style={{ background: 'linear-gradient(180deg, #f4f4fc 0%, #eaeaf4 100%)', border: '2px solid #c8c8d8', color: '#1a1a2e', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9)' }} />
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">Duração (min)</label>
+                  <input type="number" value={modal.data?.durationMinutes || ''} onChange={e => setModal({...modal, data: {...modal.data, durationMinutes: Number(e.target.value)}})}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 outline-none text-sm focus:border-orange-400 transition-colors" />
                 </div>
               </div>
             </div>
-            <div className="flex gap-4 pt-2">
-              <button onClick={()=>setModal({show: false, data: null})} className="flex-1 py-4 font-black uppercase text-xs tracking-widest" style={{ color: '#8888a0' }}>Voltar</button>
-              <button onClick={handleSave} className="flex-1 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-500 transition-all" style={{ background: 'linear-gradient(180deg, #38384e 0%, #1a1a2e 60%, #222238 100%)', color: '#fff', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px rgba(20,20,40,0.25)' }}>Confirmar</button>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setModal({show: false, data: null})}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleSave}
+                className="flex-1 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 transition-colors">
+                Salvar
+              </button>
             </div>
           </div>
         </div>,

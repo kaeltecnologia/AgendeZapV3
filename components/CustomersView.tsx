@@ -112,10 +112,12 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       }));
   }, [editingCustomer?.id, appointments, services, professionals]);
 
-  const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone.includes(searchTerm)
-  );
+  const filteredCustomers = customers
+    .filter(c =>
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.phone.includes(searchTerm)
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
 
   const handleAdd = async () => {
     if (!newName || !newPhone) { alert("Nome e WhatsApp são obrigatórios!"); return; }
@@ -342,59 +344,61 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredCustomers.map(c => {
-              const planName = getPlanName(c.planId);
-              const avisoName = getModeName(c.avisoModeId, avisoModes);
-              const lembreteName = getModeName(c.lembreteModeId, lembreteModes);
-              const reativacaoName = getModeName(c.reativacaoModeId, reativacaoModes);
-              return (
-                <div key={c.id} className="bg-white p-5 sm:p-6 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-black transition-all">
-                  <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
-                    <button onClick={() => { setProfileTab('perfil'); setEditingCustomer({ ...c }); }} className="text-slate-300 hover:text-orange-500 transition-all font-black text-xs uppercase tracking-widest">VER PERFIL</button>
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            {filteredCustomers.length === 0 ? (
+              <div className="py-20 text-center text-slate-300 text-sm font-semibold">
+                {searchTerm ? 'Nenhum cliente encontrado.' : 'Nenhum cliente cadastrado.'}
+              </div>
+            ) : (() => {
+              const rows: React.ReactNode[] = [];
+              let lastLetter = '';
+              filteredCustomers.forEach((c, i) => {
+                const letter = c.name.charAt(0).toUpperCase();
+                if (letter !== lastLetter) {
+                  lastLetter = letter;
+                  rows.push(
+                    <div key={`sep-${letter}`} className="px-4 py-1.5 bg-slate-50 border-b border-slate-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{letter}</span>
+                    </div>
+                  );
+                }
+                const planName = getPlanName(c.planId);
+                const avisoName = getModeName(c.avisoModeId, avisoModes);
+                const lembreteName = getModeName(c.lembreteModeId, lembreteModes);
+                const reativacaoName = getModeName(c.reativacaoModeId, reativacaoModes);
+                const hasRecurring = (c.recurringEntries || []).some(e => e.active);
+                rows.push(
+                  <div key={c.id}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                    style={{ borderTop: '1px solid #F1F5F9' }}
+                    onClick={() => { setProfileTab('perfil'); setEditingCustomer({ ...c }); }}>
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                      <span className="text-sm font-bold text-orange-500">{c.name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 leading-tight truncate">{c.name}</p>
+                      <p className="text-xs text-slate-400">{c.phone}</p>
+                    </div>
+                    {/* Badges */}
+                    <div className="hidden sm:flex items-center gap-1.5 flex-wrap justify-end">
+                      {planName && (() => {
+                        const st = c.planStatus || 'ativo';
+                        const cls = st === 'ativo' ? 'bg-green-50 text-green-700' : st === 'pendente' ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700';
+                        return <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${cls}`}>{planName}</span>;
+                      })()}
+                      {avisoName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700">Aviso</span>}
+                      {lembreteName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">Lembrete</span>}
+                      {reativacaoName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">Reativação</span>}
+                      {hasRecurring && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Recorrente</span>}
+                    </div>
+                    <svg className="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </div>
-                  <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:bg-orange-50 transition-all">👤</div>
-                  <h3 className="text-base sm:text-xl font-black text-black mb-1 pr-16 leading-tight uppercase tracking-tight">{c.name}</h3>
-                  <p className="text-xs font-black text-orange-500 mb-4">{c.phone}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {planName && (() => {
-                      const st = c.planStatus || 'ativo';
-                      const colors = st === 'ativo' ? 'bg-green-100 text-green-700' : st === 'pendente' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
-                      return (
-                        <span className={`text-[8px] font-black px-3 py-1 rounded-full ${colors} uppercase tracking-widest`}>
-                          📦 {planName} ({st})
-                        </span>
-                      );
-                    })()}
-                    {avisoName && (
-                      <span className="text-[8px] font-black px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 uppercase tracking-widest">
-                        📢 {avisoName}
-                      </span>
-                    )}
-                    {lembreteName && (
-                      <span className="text-[8px] font-black px-3 py-1 rounded-full bg-purple-100 text-purple-700 uppercase tracking-widest">
-                        🕒 {lembreteName}
-                      </span>
-                    )}
-                    {reativacaoName && (
-                      <span className="text-[8px] font-black px-3 py-1 rounded-full bg-green-100 text-green-700 uppercase tracking-widest">
-                        ♻️ {reativacaoName}
-                      </span>
-                    )}
-                    {((c.recurringEntries || []).filter(e => e.active).length > 0) && (() => {
-                      const activeEntries = (c.recurringEntries || []).filter(e => e.active);
-                      const svcNames = [...new Set(activeEntries.map(e => services.find(s => s.id === e.serviceId)?.name).filter(Boolean))];
-                      const label = svcNames.length > 0 ? svcNames.join(' / ') : `${activeEntries.length} recorrência(s)`;
-                      return (
-                        <span className="text-[8px] font-black px-3 py-1 rounded-full bg-blue-100 text-blue-700 uppercase tracking-widest">
-                          🔄 {label}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+              return rows;
+            })()}
           </div>
         </>
       )}
