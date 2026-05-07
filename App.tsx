@@ -1143,11 +1143,11 @@ const App: React.FC = () => {
                   <>
                     <button
                       onClick={() => setRelatoriosOpen(v => !v)}
-                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'bg-black text-white shadow-xl scale-105' : 'text-slate-500 hover:bg-slate-100'}`}
+                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'bg-black text-slate-800 shadow-none' : 'text-slate-500 hover:bg-slate-100'}`}
                     >
                       <span className={`text-xl mr-3 ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}><IconMarketing /></span>
-                      <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : ''}`}>Relatórios</span>
-                      <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-300'}`}>▶</span>
+                      <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : ''}`}>Relatórios</span>
+                      <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : 'text-slate-300'}`}>▶</span>
                     </button>
                     {relatoriosOpen && (
                       <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
@@ -1699,11 +1699,11 @@ const NavItem = ({ active, onClick, icon, label, color, collapsed, badge }: any)
     <button
       onClick={onClick}
       className={`w-full flex items-center ${collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3'} rounded-xl transition-all group ${
-        active ? 'bg-black text-white shadow-xl scale-105' : `text-slate-500 hover:bg-slate-100 ${color || ''}`
+        active ? 'bg-black text-slate-800 shadow-none' : `text-slate-500 hover:bg-slate-100 ${color || ''}`
       }`}
     >
       <span className={`text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-orange-500' : 'group-hover:text-black'}`} style={!active ? { color: 'var(--reseller-icon-color, #94a3b8)' } : undefined}>{icon}</span>
-      {!collapsed && <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>}
+      {!collapsed && <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-orange-500' : ''}`}>{label}</span>}
       {!collapsed && badge > 0 && (
         <span className="ml-auto bg-orange-500 text-white text-[9px] font-black rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
           {badge > 99 ? '99+' : badge}
