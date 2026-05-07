@@ -330,13 +330,13 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
 
       // Confirmation to customer
       await evolutionService.sendMessage(instanceName, phone,
-        `✅ *Agendamento Confirmado!*\n\n` +
-        `💈 *${tenant.name}*\n\n` +
+        `Agendamento Confirmado!\n\n` +
+        `💖 *${tenant.name}*\n\n` +
         `📅 *Dia:* ${dateLabel}\n` +
         `⏰ *Horário:* ${selectedTime}\n` +
-        `✂️ *Serviço:* ${selectedService.name}\n` +
+        `💅🏻 *Serviço:* ${selectedService.name.toUpperCase()}\n` +
         `👤 *Profissional:* ${selectedBarber.name}\n\n` +
-        `_Em caso de imprevisto entre em contato. Aguardamos você! ✂️_`
+        `_Em caso de imprevisto entre em contato. Aguardamos você! 🫶🏻_`
       );
 
       // Individual appointment notifications are disabled.
@@ -477,8 +477,51 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
   };
   const dividerColor = isManicure ? '#ec4899' : '#f97316';
 
+  // ── Custom booking theme (set by tenant in Conexões > Link Web) ───────────
+  const bt = settings.bookingTheme || {};
+  const btPrimary   = bt.primaryColor  || (isManicure ? '#ec4899' : '#f97316');
+  const btBg1       = bt.bgColor1      || (isManicure ? '#be185d' : '#1e3a8a');
+  const btBg2       = bt.bgColor2      || (isManicure ? '#ec4899' : '#3b82f6');
+  const btFont      = bt.fontStyle === 'elegant' ? '"Georgia", "Times New Roman", serif'
+                    : bt.fontStyle === 'rounded'  ? '"Nunito", "Varela Round", system-ui, sans-serif'
+                    : 'system-ui, -apple-system, sans-serif';
+  const btRadius    = bt.buttonRadius === 'pill' ? '9999px'
+                    : bt.buttonRadius === 'square' ? '8px'
+                    : '16px';
+  const btShowPrices   = bt.showPrices   !== false;
+  const btShowDuration = bt.showDuration !== false;
+  const btLogo      = bt.logoUrl || (settings as any)?.logoImage || (settings as any)?.heroImage;
+
+  // Override inline-style elements with custom primary color
+  const customBronzeRing: React.CSSProperties = {
+    background: `linear-gradient(135deg, ${btPrimary}cc, ${btPrimary}, #ffffff55, ${btPrimary}, ${btPrimary}cc)`,
+    padding: '5px', borderRadius: '9999px',
+    boxShadow: `0 4px 12px ${btPrimary}55, inset 0 1px 0 rgba(255,255,255,0.2)`,
+  };
+  const customBtn3d: React.CSSProperties = {
+    background: `linear-gradient(180deg, ${btPrimary}ff 0%, ${btPrimary}cc 40%, ${btPrimary}aa 60%, ${btPrimary}88 100%)`,
+    boxShadow: `0 4px 0 ${btPrimary}88, 0 6px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)`,
+    borderRadius: btRadius,
+    transform: 'translateY(-2px)', transition: 'all 0.15s',
+  };
+  const customCopperText: React.CSSProperties = {
+    background: `linear-gradient(180deg, ${btPrimary} 0%, ${btPrimary}cc 30%, ${btPrimary}88 60%, ${btPrimary} 100%)`,
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+  };
+  const hasCustomTheme = !!(bt.primaryColor || bt.bgColor1 || bt.bgColor2);
+  const effectiveBronzeRing  = hasCustomTheme ? customBronzeRing  : bronzeRing;
+  const effectiveBtn3d       = hasCustomTheme ? customBtn3d       : btn3d;
+  const effectiveCopperText  = hasCustomTheme ? customCopperText  : copperText;
+  const effectiveDividerColor = hasCustomTheme ? btPrimary : dividerColor;
+
   return (
-    <div className={`booking-page min-h-screen bg-gradient-to-b ${$.pageBg} relative`} ref={topRef}>
+    <div
+      className={`booking-page min-h-screen relative ${hasCustomTheme ? '' : `bg-gradient-to-b ${$.pageBg}`}`}
+      style={hasCustomTheme ? { background: `linear-gradient(to bottom, ${btBg1}, ${btBg2})`, fontFamily: btFont } : { fontFamily: btFont }}
+      ref={topRef}
+    >
       {/* Leather texture overlay */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
@@ -486,15 +529,21 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
 
       {/* ── STICKY HEADER (wizard steps only) ───────────────────── */}
       {step !== 'SERVICE' && (
-        <div className={`${$.headBg} text-white sticky top-0 z-50`}>
+        <div
+          className={`${hasCustomTheme ? '' : $.headBg} text-white sticky top-0 z-50`}
+          style={hasCustomTheme ? { backgroundColor: btBg1 } : undefined}
+        >
           <div className="max-w-lg mx-auto px-6 py-4 flex items-center justify-between">
             <div>
               <p className={`text-[9px] font-black uppercase tracking-[0.3em] ${$.headLabel}`}>{tenant?.name}</p>
             </div>
           </div>
           {step !== 'SUCCESS' && (
-            <div className={`h-1 ${$.headBarBg}`}>
-              <div className={`h-full ${$.headBarFill} transition-all duration-500`} style={{ width: `${((stepIdx + 1) / stepOrder.length) * 100}%` }} />
+            <div className={`h-1 ${hasCustomTheme ? 'bg-black/20' : $.headBarBg}`}>
+              <div
+                className={`h-full transition-all duration-500 ${hasCustomTheme ? '' : $.headBarFill}`}
+                style={{ width: `${((stepIdx + 1) / stepOrder.length) * 100}%`, ...(hasCustomTheme ? { backgroundColor: btPrimary } : {}) }}
+              />
             </div>
           )}
         </div>
@@ -517,10 +566,10 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
 
             <div className="relative z-10 text-center px-6 max-w-lg mx-auto">
               {/* Avatar with bronze frame */}
-              <div className={`w-40 h-40 mx-auto mb-6 shadow-2xl ${$.s9}`} style={bronzeRing}>
+              <div className={`w-40 h-40 mx-auto mb-6 shadow-2xl ${$.s9}`} style={effectiveBronzeRing}>
                 <div className={`w-full h-full rounded-full bg-gradient-to-br ${$.avGrad} flex items-center justify-center text-white text-5xl font-black overflow-hidden`}>
-                  {((settings as any)?.logoImage || (settings as any)?.heroImage)
-                    ? <img src={(settings as any).logoImage || (settings as any).heroImage} alt="" className="w-full h-full object-cover" />
+                  {btLogo
+                    ? <img src={btLogo} alt="" className="w-full h-full object-cover" />
                     : (tenant?.name || 'E').charAt(0).toUpperCase()
                   }
                 </div>
@@ -603,7 +652,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                 <button
                   onClick={() => servicosRef.current?.scrollIntoView({ behavior: 'smooth' })}
                   className="w-full py-4 text-white rounded-full font-black text-sm uppercase tracking-widest transition-all hover:brightness-110 active:translate-y-0 active:shadow-none"
-                  style={{...btn3d, transform: 'translateY(-2px) rotateX(2deg)'}}
+                  style={{...effectiveBtn3d, transform: 'translateY(-2px) rotateX(2deg)'}}
                 >
                   Agendar Agora
                 </button>
@@ -733,11 +782,15 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
                         <p className={`font-black ${$.t9} text-sm ${$.ght6} transition-all truncate`}>{svc.name}</p>
-                        <p className={`text-[11px] font-bold ${$.t4} mt-1`}>⏱ {svc.durationMinutes} min</p>
+                        {btShowDuration && (
+                          <p className={`text-[11px] font-bold ${$.t4} mt-1`}>⏱ {svc.durationMinutes} min</p>
+                        )}
                       </div>
-                      <div className="text-right flex-shrink-0 ml-4">
-                        <p className="text-lg font-black" style={copperText}>R$ {svc.price.toFixed(2)}</p>
-                      </div>
+                      {btShowPrices && (
+                        <div className="text-right flex-shrink-0 ml-4">
+                          <p className="text-lg font-black" style={effectiveCopperText}>R$ {svc.price.toFixed(2)}</p>
+                        </div>
+                      )}
                     </div>
                   </button>
                 ))}
@@ -1014,7 +1067,8 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
             <button
               onClick={handleSubmit}
               disabled={submitting || !customerName.trim() || rawPhone.replace(/\D/g,'').length < 10}
-              className={`w-full py-5 ${$.bg5} text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl ${$.s3} ${$.hbg6} hover:scale-[1.02] transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none`}
+              className={`w-full py-5 ${hasCustomTheme ? '' : `${$.bg5} ${$.s3} ${$.hbg6}`} text-white font-black text-sm uppercase tracking-widest shadow-xl hover:scale-[1.02] transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none`}
+              style={hasCustomTheme ? { backgroundColor: btPrimary, borderRadius: btRadius } : { borderRadius: btRadius }}
             >
               {submitting ? 'Confirmando...' : '✅ Confirmar Agendamento'}
             </button>

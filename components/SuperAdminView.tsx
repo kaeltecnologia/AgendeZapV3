@@ -147,6 +147,8 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   // Per-tenant feature overrides (null = use plan defaults; array = custom feature set)
   const [editFeatureOverrides, setEditFeatureOverrides] = useState<string[] | null>(null);
   const [editAllFeatures, setEditAllFeatures] = useState(true);
+  // START plan: manually released extra collaborator slots
+  const [editColabsReleased, setEditColabsReleased] = useState(0);
 
   // Delete confirm
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -518,7 +520,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     } finally { setCreating(false); }
   };
 
-  // ── Load feature overrides when opening edit modal ───────────────────────────
+  // ── Load feature overrides + colab limit when opening edit modal ────────────
   useEffect(() => {
     if (!editingTenant?.id) return;
     db.getSettings(editingTenant.id).then(s => {
@@ -530,7 +532,8 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
         setEditAllFeatures(true);
         setEditFeatureOverrides(null);
       }
-    }).catch(() => { setEditAllFeatures(true); setEditFeatureOverrides(null); });
+      setEditColabsReleased(s?.manualColabsReleased ?? 0);
+    }).catch(() => { setEditAllFeatures(true); setEditFeatureOverrides(null); setEditColabsReleased(0); });
   }, [editingTenant?.id]);
 
   // ── Update tenant ────────────────────────────────────────────────────────────
@@ -549,9 +552,10 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
         nicho: editingTenant.nicho,
         plan: editingTenant.plan,
       });
-      // Save per-tenant feature overrides
+      // Save per-tenant feature overrides + manual colab limit
       await db.updateSettings(editingTenant.id, {
         resellerFeatureOverrides: editAllFeatures ? null : (editFeatureOverrides || null),
+        manualColabsReleased: editColabsReleased,
       });
       saveAdminLog('TENANT_UPDATED', `${editingTenant.name}`);
       setLogs(loadAdminLogs());
@@ -2355,6 +2359,37 @@ END $$;`.trim();
                     })}
                   </div>
                 </div>
+                {/* START plan: manual collaborator slot release */}
+                {getPlanConfig(editingTenant?.plan).id === 'START' && (
+                  <div className="space-y-1 border-t-2 border-slate-100 pt-4">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 block">
+                      Colaboradores Liberados Manualmente
+                    </label>
+                    <p className="text-[10px] text-slate-400 ml-4 mb-2">
+                      Slots adicionais liberados sem pagamento (plano Start inclui 1 profissional por padrão).
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditColabsReleased(Math.max(0, editColabsReleased - 1))}
+                        className="w-10 h-10 rounded-xl bg-slate-100 font-black text-slate-600 hover:bg-slate-200 transition-all text-lg flex items-center justify-center"
+                      >−</button>
+                      <div className="flex-1 p-3 bg-green-50 border-2 border-green-200 rounded-2xl text-center">
+                        <span className="text-xl font-black text-green-700">{editColabsReleased}</span>
+                        <span className="text-xs font-bold text-green-500 ml-2">slot{editColabsReleased !== 1 ? 's' : ''} extra{editColabsReleased !== 1 ? 's' : ''}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditColabsReleased(editColabsReleased + 1)}
+                        className="w-10 h-10 rounded-xl bg-green-500 font-black text-white hover:bg-green-600 transition-all text-lg flex items-center justify-center"
+                      >+</button>
+                    </div>
+                    <p className="text-[10px] text-green-600 font-bold ml-4 mt-1">
+                      Total permitido: {1 + editColabsReleased} profissional{1 + editColabsReleased !== 1 ? 'is' : ''}
+                    </p>
+                  </div>
+                )}
+
                 {/* Per-tenant feature overrides */}
                 <div className="space-y-2 border-t-2 border-slate-100 pt-4">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 block">Recursos Personalizados</label>

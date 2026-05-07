@@ -51,6 +51,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [showUpsell, setShowUpsell] = useState(false);
   const [upsellLoading, setUpsellLoading] = useState(false);
   const [extraPros, setExtraPros] = useState(0);
+  const [manualColabsReleased, setManualColabsReleased] = useState(0);
 
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -81,6 +82,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
       // Load extra professionals from settings
       const fup = (settings as any).follow_up || {};
       setExtraPros(fup._extraProfessionals || 0);
+      setManualColabsReleased(settings.manualColabsReleased ?? 0);
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
     }
@@ -93,7 +95,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
 
     // Check plan limit
     const planCfg = getPlanConfig(tenantPlan);
-    const maxAllowed = planCfg.maxProfessionals + extraPros;
+    const maxAllowed = planCfg.maxProfessionals + extraPros + manualColabsReleased;
     if (pros.length >= maxAllowed) {
       setShowUpsell(true);
       return;

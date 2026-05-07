@@ -306,6 +306,19 @@ export interface TenantSettings {
   trendingContent?: TrendingItem[] | null;         // cached weekly trending content
   trendingContentDate?: string | null;             // ISO date of last trending fetch
   resellerFeatureOverrides?: string[] | null;      // per-tenant feature override set by reseller (null = use reseller profile defaults)
+  manualColabsReleased?: number;                   // extra team slots released manually by superadmin (START plan)
+  bookingTheme?: BookingTheme | null;              // visual customization for the web booking page
+}
+
+export interface BookingTheme {
+  primaryColor?: string;       // hex — buttons, accents, progress bar
+  bgColor1?: string;           // hex — hero/header gradient start
+  bgColor2?: string;           // hex — hero/header gradient end
+  fontStyle?: 'modern' | 'rounded' | 'elegant';
+  showPrices?: boolean;        // show service prices (default: true)
+  showDuration?: boolean;      // show service duration (default: true)
+  buttonRadius?: 'pill' | 'rounded' | 'square';
+  logoUrl?: string;            // uploaded logo URL (Supabase Storage)
 }
 
 export interface Appointment {

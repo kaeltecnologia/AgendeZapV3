@@ -181,6 +181,24 @@ Deno.serve(async (req) => {
     if (addon === 'additional_professional') {
       const ADDON_PRICE = 19.90;
 
+      // ── Segunda via: check for existing pending addon payment ──────────
+      const addonSubIds: string[] = fup._addonSubscriptions || [];
+      if (addonSubIds.length > 0) {
+        for (const addonSubId of addonSubIds) {
+          try {
+            const existingPayments = await asaasFetch(`/subscriptions/${addonSubId}/payments?status=PENDING`);
+            const pendingPayment = existingPayments.data?.[0];
+            if (pendingPayment) {
+              console.log(`[asaas] Pending addon payment found (${pendingPayment.id}) — returning segunda via`);
+              const invoiceUrl = pendingPayment.invoiceUrl || `https://www.asaas.com/i/${pendingPayment.id}`;
+              return json({ invoiceUrl, secondVia: true, subscriptionId: addonSubId, customerId: asaasCustomerId });
+            }
+          } catch (e) {
+            console.error(`[asaas] Failed to check pending payments for addon sub ${addonSubId}:`, e);
+          }
+        }
+      }
+
       const addonSub = await asaasFetch('/subscriptions', {
         method: 'POST',
         body: JSON.stringify({
@@ -256,6 +274,22 @@ Deno.serve(async (req) => {
     // ── Detect upgrade ──────────────────────────────────────────────────
     const oldSubId = fup._asaasSubscriptionId || null;
     const oldPlanId = fup._asaasPlanId || null;
+
+    // ── Segunda via: same plan + existing subscription with pending payment ──
+    if (oldSubId && planId === oldPlanId) {
+      try {
+        const existingPayments = await asaasFetch(`/subscriptions/${oldSubId}/payments?status=PENDING`);
+        const pendingPayment = existingPayments.data?.[0];
+        if (pendingPayment) {
+          console.log(`[asaas] Pending payment found for sub ${oldSubId} (${pendingPayment.id}) — returning segunda via`);
+          const invoiceUrl = pendingPayment.invoiceUrl || `https://www.asaas.com/i/${pendingPayment.id}`;
+          return json({ invoiceUrl, secondVia: true, subscriptionId: oldSubId, customerId: asaasCustomerId });
+        }
+      } catch (e) {
+        console.error('[asaas] Error checking for pending payment (segunda via):', e);
+        // Non-fatal: fall through to create new subscription
+      }
+    }
     const lastPaymentDate = fup._asaasLastPaymentDate || null;
     const isUpgrade = !!(oldSubId && oldPlanId && PLAN_PRICES[oldPlanId] && planId !== oldPlanId && lastPaymentDate);
 
