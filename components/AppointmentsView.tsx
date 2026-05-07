@@ -144,6 +144,51 @@ const HOUR_START = 8;
 const HOUR_END = 20;
 const HOUR_PX = 96; // px per hour
 
+/** Compute side-by-side column layout for overlapping appointments (Google Calendar style) */
+function computeApptLayout(appts: Appointment[]): Record<string, { col: number; totalCols: number }> {
+  if (!appts.length) return {};
+  const sorted = [...appts].sort((a, b) =>
+    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  );
+  const cols: string[][] = [];
+  const colOf: Record<string, number> = {};
+
+  for (const appt of sorted) {
+    const start = new Date(appt.startTime).getTime();
+    let placed = false;
+    for (let c = 0; c < cols.length; c++) {
+      const lastId = cols[c][cols[c].length - 1];
+      const last = sorted.find(a => a.id === lastId)!;
+      const lastEnd = new Date(last.startTime).getTime() + (last.durationMinutes || 30) * 60000;
+      if (lastEnd <= start) {
+        cols[c].push(appt.id);
+        colOf[appt.id] = c;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      colOf[appt.id] = cols.length;
+      cols.push([appt.id]);
+    }
+  }
+
+  const result: Record<string, { col: number; totalCols: number }> = {};
+  for (const appt of sorted) {
+    const start = new Date(appt.startTime).getTime();
+    const end = start + (appt.durationMinutes || 30) * 60000;
+    let maxCol = colOf[appt.id];
+    for (const other of sorted) {
+      if (other.id === appt.id) continue;
+      const os = new Date(other.startTime).getTime();
+      const oe = os + (other.durationMinutes || 30) * 60000;
+      if (start < oe && end > os) maxCol = Math.max(maxCol, colOf[other.id]);
+    }
+    result[appt.id] = { col: colOf[appt.id], totalCols: maxCol + 1 };
+  }
+  return result;
+}
+
 function useNow() {
   const [now, setNow] = React.useState(new Date());
   React.useEffect(() => {
@@ -178,27 +223,42 @@ function WeekCalendar({
     : null;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+    <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
       {/* Day header row */}
-      <div className="grid border-b border-slate-100" style={{ gridTemplateColumns: `52px repeat(${cols}, 1fr)` }}>
-        <div className="border-r border-slate-100 bg-slate-50/80" />
+      <div className="grid" style={{ gridTemplateColumns: `56px repeat(${cols}, 1fr)`, borderBottom: '1px solid #E2E8F0' }}>
+        <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
         {days.map((d, i) => {
           const dateStr = localDateStr(d);
           const isToday = dateStr === todayStr;
           const isWeekend = d.getDay() === 0 || d.getDay() === 6;
           const dayApptCount = appointments.filter(a => a.startTime?.startsWith(dateStr)).length;
           return (
-            <div key={i} className={`py-3 px-1 text-center border-r border-slate-100 last:border-0 ${isToday ? 'bg-orange-50' : isWeekend ? 'bg-slate-50/60' : ''}`}>
-              <p className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-orange-500' : isWeekend ? 'text-slate-300' : 'text-slate-400'}`}>
+            <div key={i} style={{
+              padding: '10px 4px',
+              textAlign: 'center',
+              borderRight: i < cols - 1 ? '1px solid #E2E8F0' : 'none',
+              background: isToday ? '#FFF7ED' : isWeekend ? '#FAFAFA' : '#ffffff',
+            }}>
+              <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: isToday ? '#f97316' : isWeekend ? '#94A3B8' : '#94A3B8', margin: 0 }}>
                 {DAY_NAMES[d.getDay()]}
               </p>
-              <div className={`mx-auto mt-1 flex items-center justify-center w-8 h-8 rounded-full ${isToday ? 'bg-orange-500' : ''}`}>
-                <p className={`text-base font-black leading-none ${isToday ? 'text-white' : isWeekend ? 'text-slate-300' : 'text-slate-700'}`}>
+              <div style={{
+                margin: '4px auto 0',
+                width: 32, height: 32, borderRadius: '50%',
+                background: isToday ? '#f97316' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <p style={{ fontSize: 15, fontWeight: 800, lineHeight: 1, margin: 0, color: isToday ? '#ffffff' : isWeekend ? '#94A3B8' : '#1E293B' }}>
                   {d.getDate()}
                 </p>
               </div>
               {dayApptCount > 0 && (
-                <div className={`mx-auto mt-1 rounded-full text-[8px] font-bold px-1.5 py-0.5 w-fit ${isToday ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
+                <div style={{
+                  margin: '4px auto 0', width: 'fit-content',
+                  borderRadius: 99, fontSize: 9, fontWeight: 700, padding: '2px 6px',
+                  background: isToday ? '#FFEDD5' : '#F1F5F9',
+                  color: isToday ? '#EA580C' : '#64748B',
+                }}>
                   {dayApptCount}
                 </div>
               )}
@@ -208,17 +268,16 @@ function WeekCalendar({
       </div>
 
       {/* Scrollable time grid */}
-      <div className="overflow-y-auto" style={{ maxHeight: '580px' }}>
-        <div className="relative grid" style={{ gridTemplateColumns: `52px repeat(${cols}, 1fr)`, height: totalHeight }}>
+      <div style={{ overflowY: 'auto', maxHeight: 560 }}>
+        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: `56px repeat(${cols}, 1fr)`, height: totalHeight }}>
           {/* Time labels column */}
-          <div className="border-r border-slate-100 bg-slate-50/40 relative" style={{ height: totalHeight }}>
+          <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC', position: 'relative', height: totalHeight }}>
             {hours.map(h => (
               <div
                 key={h}
-                className="absolute w-full flex items-start justify-end pr-2 pt-1"
-                style={{ top: `${(h - HOUR_START) * HOUR_PX}px`, height: `${HOUR_PX}px` }}
+                style={{ position: 'absolute', width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', paddingRight: 8, paddingTop: 4, top: `${(h - HOUR_START) * HOUR_PX}px`, height: `${HOUR_PX}px` }}
               >
-                <span className="text-[9px] font-semibold text-slate-400 tabular-nums">{String(h).padStart(2, '0')}:00</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#94A3B8', fontVariantNumeric: 'tabular-nums' }}>{String(h).padStart(2, '0')}:00</span>
               </div>
             ))}
           </div>
@@ -233,76 +292,101 @@ function WeekCalendar({
             return (
               <div
                 key={dayIdx}
-                className={`relative border-r border-slate-100 last:border-0 ${isWeekend && !isToday ? 'bg-slate-50/40' : ''}`}
-                style={{ height: totalHeight }}
+                style={{
+                  position: 'relative',
+                  borderRight: dayIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
+                  background: isWeekend && !isToday ? '#FAFAFA' : '#ffffff',
+                  height: totalHeight,
+                }}
               >
                 {/* Hour grid lines — solid */}
                 {hours.map(h => (
-                  <div key={h} className="absolute w-full" style={{ top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: 'rgba(226,232,240,0.8)' }} />
+                  <div key={h} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: '#E2E8F0' }} />
                 ))}
                 {/* Half-hour grid lines — dashed */}
                 {hours.map(h => (
-                  <div key={`${h}h`} className="absolute w-full" style={{
+                  <div key={`${h}h`} style={{
+                    position: 'absolute', width: '100%',
                     top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`,
                     height: 1,
-                    background: 'repeating-linear-gradient(90deg, rgba(226,232,240,0.5) 0, rgba(226,232,240,0.5) 4px, transparent 4px, transparent 8px)',
+                    background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)',
                   }} />
                 ))}
 
                 {/* Current time indicator */}
                 {isToday && nowPx !== null && (
-                  <div className="absolute w-full z-10 flex items-center" style={{ top: `${nowPx}px` }}>
-                    <div className="w-2 h-2 rounded-full bg-orange-500 -ml-1 shrink-0" />
-                    <div className="flex-1 h-px bg-orange-500" />
+                  <div style={{ position: 'absolute', width: '100%', zIndex: 10, display: 'flex', alignItems: 'center', top: `${nowPx}px` }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', marginLeft: -4, flexShrink: 0 }} />
+                    <div style={{ flex: 1, height: 1.5, background: '#f97316' }} />
                   </div>
                 )}
 
-                {/* Appointment blocks */}
-                {dayAppts.map(a => {
-                  const startDt = new Date(a.startTime);
-                  const startH = startDt.getHours();
-                  const startM = startDt.getMinutes();
-                  if (startH < HOUR_START || startH >= HOUR_END) return null;
+                {/* Appointment blocks — with overlap layout */}
+                {(() => {
+                  const layout = computeApptLayout(dayAppts);
+                  return dayAppts.map(a => {
+                    const startDt = new Date(a.startTime);
+                    const startH = startDt.getHours();
+                    const startM = startDt.getMinutes();
+                    if (startH < HOUR_START || startH >= HOUR_END) return null;
 
-                  const topPx = ((startH - HOUR_START) * 60 + startM) / 60 * HOUR_PX;
-                  const heightPx = Math.max(26, (a.durationMinutes || 30) / 60 * HOUR_PX - 2);
+                    const topPx = ((startH - HOUR_START) * 60 + startM) / 60 * HOUR_PX;
+                    const heightPx = Math.max(28, (a.durationMinutes || 30) / 60 * HOUR_PX - 2);
 
-                  const profIdx = professionals.findIndex(p => p.id === a.professional_id);
-                  const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
-                  const cust = customers.find(c => c.id === a.customer_id);
-                  const svc = services.find(s => s.id === a.service_id);
-                  const isCancelled = a.status === AppointmentStatus.CANCELLED;
-                  const isFinished = a.status === AppointmentStatus.FINISHED;
+                    const profIdx = professionals.findIndex(p => p.id === a.professional_id);
+                    const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
+                    const cust = customers.find(c => c.id === a.customer_id);
+                    const svc = services.find(s => s.id === a.service_id);
+                    const isCancelled = a.status === AppointmentStatus.CANCELLED;
+                    const isFinished = a.status === AppointmentStatus.FINISHED;
 
-                  return (
-                    <div
-                      key={a.id}
-                      onClick={() => onApptClick(a)}
-                      className={`absolute left-1 right-1 rounded-lg cursor-pointer transition-all hover:scale-[1.02] hover:z-20 overflow-hidden ${isCancelled ? 'opacity-30' : ''}`}
-                      style={{
-                        top: `${topPx}px`,
-                        height: `${heightPx}px`,
-                        backgroundColor: isFinished ? `${color}12` : `${color}18`,
-                        borderLeft: `3px solid ${color}`,
-                        boxShadow: `0 1px 4px ${color}25`,
-                      }}
-                    >
-                      <div className="px-1.5 py-1 h-full flex flex-col justify-start overflow-hidden">
-                        <p className="text-[9px] font-bold leading-none tabular-nums" style={{ color }}>
-                          {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                        {heightPx >= 36 && (
-                          <p className="text-[10px] font-semibold text-slate-700 leading-tight truncate mt-0.5">
-                            {cust?.name || '—'}
+                    const r = parseInt(color.slice(1, 3), 16);
+                    const g = parseInt(color.slice(3, 5), 16);
+                    const b = parseInt(color.slice(5, 7), 16);
+                    const bgAlpha = isCancelled ? 0.04 : isFinished ? 0.07 : 0.11;
+                    const bgColor = `rgba(${r},${g},${b},${bgAlpha})`;
+                    const borderColor = isCancelled ? '#CBD5E1' : color;
+
+                    const { col, totalCols } = layout[a.id] ?? { col: 0, totalCols: 1 };
+                    const GAP = 2;
+                    const colW = `calc((100% - ${GAP * (totalCols + 1)}px) / ${totalCols})`;
+                    const leftPos = `calc(${GAP}px + ${col} * (${colW} + ${GAP}px))`;
+
+                    return (
+                      <div
+                        key={a.id}
+                        onClick={() => onApptClick(a)}
+                        style={{
+                          position: 'absolute',
+                          top: `${topPx}px`, height: `${heightPx}px`,
+                          left: leftPos, width: colW,
+                          borderRadius: 7, cursor: 'pointer', overflow: 'hidden',
+                          backgroundColor: bgColor,
+                          borderLeft: `3px solid ${borderColor}`,
+                          boxShadow: `0 1px 3px rgba(0,0,0,0.08)`,
+                          opacity: isCancelled ? 0.45 : 1,
+                          transition: 'transform 0.1s, box-shadow 0.1s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.015)'; (e.currentTarget as HTMLElement).style.zIndex = '20'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.zIndex = ''; }}
+                      >
+                        <div style={{ padding: '3px 6px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', overflow: 'hidden' }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, margin: 0, color: borderColor, fontVariantNumeric: 'tabular-nums' }}>
+                            {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </p>
-                        )}
-                        {heightPx >= 52 && svc && (
-                          <p className="text-[9px] text-slate-400 leading-tight truncate">{svc.name}</p>
-                        )}
+                          {heightPx >= 38 && (
+                            <p style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', lineHeight: 1.3, margin: '2px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                              {cust?.name || '—'}
+                            </p>
+                          )}
+                          {heightPx >= 56 && svc && (
+                            <p style={{ fontSize: 10, color: '#64748B', lineHeight: 1.3, margin: '1px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{svc.name}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             );
           })}
@@ -311,13 +395,13 @@ function WeekCalendar({
 
       {/* Professional legend */}
       {professionals.length > 0 && (
-        <div className="px-4 py-2.5 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-1.5">
+        <div style={{ padding: '8px 16px', borderTop: '1px solid #E2E8F0', display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
           {professionals
             .filter(p => !filterProfId || p.id === filterProfId)
             .map((p, i) => (
-              <div key={p.id} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PROF_COLORS[i % PROF_COLORS.length] }} />
-                <span className="text-[10px] font-medium text-slate-500">{p.name}</span>
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: PROF_COLORS[i % PROF_COLORS.length] }} />
+                <span style={{ fontSize: 11, fontWeight: 500, color: '#475569' }}>{p.name}</span>
               </div>
             ))}
         </div>
@@ -385,6 +469,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   // inline status editing
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
+
+  // appointment info panel (week view click)
+  const [infoAppt, setInfoAppt] = useState<Appointment | null>(null);
 
   // delete confirmation
   const [deleteApptId, setDeleteApptId] = useState<string | null>(null);
@@ -1022,7 +1109,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
             professionals={professionals}
             services={services}
             filterProfId={filterProfId}
-            onApptClick={openEditModal}
+            onApptClick={(a) => setInfoAppt(a)}
           />
         </div>
       )}
@@ -1350,6 +1437,195 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         </div>
       </div>
       )} {/* end calView === 'lista' */}
+
+      {/* ─── Appointment Info Panel ─────────────────── */}
+      {infoAppt && (() => {
+        const ia = infoAppt;
+        const iaCust = customers.find(c => c.id === ia.customer_id);
+        const iaProf = professionals.find(p => p.id === ia.professional_id);
+        const iaSvcIds = ia.serviceIds?.length ? ia.serviceIds : [ia.service_id];
+        const iaSvcs = services.filter(s => iaSvcIds.includes(s.id));
+        const iaStartDt = new Date(ia.startTime);
+        const profIdx = professionals.findIndex(p => p.id === ia.professional_id);
+        const iaColor = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
+
+        const statusLabel: Record<string, string> = {
+          PENDING: 'Pendente', CONFIRMED: 'Confirmado', ARRIVED: 'Chegou',
+          FINISHED: 'Finalizado', NO_SHOW: 'Faltou', CANCELLED: 'Cancelado',
+        };
+        const statusColor: Record<string, string> = {
+          PENDING: '#f59e0b', CONFIRMED: '#3b82f6', ARRIVED: '#10b981',
+          FINISHED: '#64748b', NO_SHOW: '#ef4444', CANCELLED: '#94a3b8',
+        };
+        const sc = statusColor[ia.status] ?? '#94a3b8';
+        const totalPrice = iaSvcs.reduce((s, v) => s + (v.price || 0), 0);
+
+        return (
+          <div
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
+            style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setInfoAppt(null)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: '#ffffff', borderRadius: 20, width: '100%', maxWidth: 440,
+                margin: '0 12px 12px', boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Color accent top bar */}
+              <div style={{ height: 4, background: iaColor }} />
+
+              {/* Header */}
+              <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: sc,
+                      background: `${sc}18`, borderRadius: 99, padding: '3px 10px',
+                    }}>
+                      {statusLabel[ia.status] ?? ia.status}
+                    </span>
+                    {ia.source === BookingSource.AI && (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', borderRadius: 99, padding: '3px 8px' }}>IA</span>
+                    )}
+                    {ia.isPlan && (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#10b981', background: '#f0fdf4', borderRadius: 99, padding: '3px 8px' }}>Plano</span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0, lineHeight: 1.2 }}>
+                    {iaCust?.name || 'Cliente desconhecido'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setInfoAppt(null)}
+                  style={{ flexShrink: 0, width: 32, height: 32, borderRadius: '50%', background: '#F1F5F9', border: 'none', cursor: 'pointer', fontSize: 16, color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* Date / Time / Duration row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  {[
+                    { label: 'Data', value: iaStartDt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }) },
+                    { label: 'Horário', value: iaStartDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) },
+                    { label: 'Duração', value: `${ia.durationMinutes} min` },
+                  ].map(item => (
+                    <div key={item.label} style={{ background: '#F8FAFC', borderRadius: 10, padding: '8px 10px' }}>
+                      <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>{item.label}</p>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', margin: 0 }}>{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Services */}
+                <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '10px 12px' }}>
+                  <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>Serviços</p>
+                  {iaSvcs.length > 0 ? iaSvcs.map(sv => (
+                    <div key={sv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#1E293B' }}>{sv.name}</span>
+                      <span style={{ fontSize: 12, color: '#64748B' }}>R$ {sv.price.toFixed(2)}</span>
+                    </div>
+                  )) : (
+                    <span style={{ fontSize: 13, color: '#64748B' }}>{services.find(s => s.id === ia.service_id)?.name || '—'}</span>
+                  )}
+                  {totalPrice > 0 && iaSvcs.length > 1 && (
+                    <div style={{ borderTop: '1px solid #E2E8F0', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Total</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>R$ {totalPrice.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Professional */}
+                {iaProf && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8FAFC', borderRadius: 10, padding: '8px 12px' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: iaColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>{iaProf.name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 1px' }}>Profissional</p>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', margin: 0 }}>{iaProf.name}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Client contact */}
+                {iaCust && (iaCust.phone || iaCust.email) && (
+                  <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '10px 12px', display: 'flex', gap: 16 }}>
+                    {iaCust.phone && (
+                      <div>
+                        <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>Telefone</p>
+                        <a href={`https://wa.me/55${iaCust.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"
+                          style={{ fontSize: 13, fontWeight: 600, color: '#16a34a', textDecoration: 'none' }}>
+                          {iaCust.phone}
+                        </a>
+                      </div>
+                    )}
+                    {iaCust.email && (
+                      <div>
+                        <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>E-mail</p>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#1E293B' }}>{iaCust.email}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Payment info (if finished) */}
+                {ia.status === AppointmentStatus.FINISHED && ia.amountPaid != null && (
+                  <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ fontSize: 9, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>Pago</p>
+                      <p style={{ fontSize: 15, fontWeight: 800, color: '#15803d', margin: 0 }}>R$ {ia.amountPaid.toFixed(2)}</p>
+                    </div>
+                    {ia.paymentMethod && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#16a34a', background: '#dcfce7', borderRadius: 99, padding: '4px 10px' }}>{ia.paymentMethod}</span>
+                    )}
+                  </div>
+                )}
+
+                {ia.extraNote && (
+                  <div style={{ background: '#FFFBEB', borderRadius: 10, padding: '10px 12px' }}>
+                    <p style={{ fontSize: 9, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>Observação</p>
+                    <p style={{ fontSize: 12, color: '#78350f', margin: 0 }}>{ia.extraNote}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              {ia.status !== AppointmentStatus.CANCELLED && ia.status !== AppointmentStatus.FINISHED && (
+                <div style={{ padding: '0 20px 20px', display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => { setInfoAppt(null); openEditModal(ia); }}
+                    style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1.5px solid #E2E8F0', background: '#ffffff', fontSize: 13, fontWeight: 700, color: '#334155', cursor: 'pointer' }}
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInfoAppt(null);
+                      setShowFinishModal({
+                        id: ia.id, basePrice: iaSvcs.reduce((s, v) => s + v.price, 0) || 0,
+                        professional_id: ia.professional_id, service_id: ia.service_id,
+                        customer_id: ia.customer_id, startTime: ia.startTime,
+                        source: ia.source, isPlan: ia.isPlan,
+                      });
+                    }}
+                    style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: iaColor, fontSize: 13, fontWeight: 700, color: '#ffffff', cursor: 'pointer' }}
+                  >
+                    Finalizar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      })()}
 
       {/* ─── Edit Appointment Modal ─────────────────── */}
       {editAppt && (

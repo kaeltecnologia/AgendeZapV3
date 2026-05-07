@@ -246,6 +246,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         const now = new Date();
         const isToday = selectedDate === todayISO();
         const duration = selectedService.durationMinutes;
+        const breaks: any[] = settings.breaks || [];
         const result: string[] = [];
         let cursor = startH * 60 + startM;
         const endCursor = endH * 60 + endM;
@@ -254,15 +255,41 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
           const h = Math.floor(cursor / 60);
           const m = cursor % 60;
           const label = `${_pad(h)}:${_pad(m)}`;
+          const endH2 = Math.floor((cursor + duration) / 60);
+          const endM2 = (cursor + duration) % 60;
+          const slotEndLabel = `${_pad(endH2)}:${_pad(endM2)}`;
           const slotStart = new Date(`${selectedDate}T${label}:00`);
           const slotEnd = new Date(slotStart.getTime() + duration * 60000);
 
           if (isToday && slotStart <= now) { cursor += 30; continue; }
 
-          const conflict = (appts || []).some((a: any) =>
+          const apptConflict = (appts || []).some((a: any) =>
             new Date(a.inicio) < slotEnd && new Date(a.fim) > slotStart
           );
-          if (!conflict) result.push(label);
+          if (apptConflict) { cursor += 30; continue; }
+
+          const brkConflict = breaks.some((brk: any) => {
+            // Holiday: applies to everyone on that date
+            if (brk.type === 'holiday' && !brk.professionalId && brk.date === selectedDate) {
+              if (brk.startTime === '00:00' && (brk.endTime === '23:59' || brk.endTime === '23:00')) return true;
+              return label >= brk.startTime;
+            }
+            // Vacation: requires professionalId match + date range
+            if (brk.type === 'vacation') {
+              if (!brk.professionalId || brk.professionalId !== selectedBarber.id) return false;
+              const vacEnd = brk.vacationEndDate || brk.date || '';
+              return !!brk.date && selectedDate >= brk.date && selectedDate <= vacEnd;
+            }
+            // Regular break: check professional + date/dayOfWeek + time overlap
+            if (brk.professionalId && brk.professionalId !== selectedBarber.id) return false;
+            const matchDate = !brk.date || brk.date === selectedDate;
+            const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
+            if (!matchDate || !matchDay) return false;
+            return label < brk.endTime && slotEndLabel > brk.startTime;
+          });
+          if (brkConflict) { cursor += 30; continue; }
+
+          result.push(label);
           cursor += 30;
         }
         setSlots(result);
