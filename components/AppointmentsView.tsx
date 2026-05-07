@@ -138,6 +138,157 @@ function generateId(): string {
     : Math.random().toString(36).substring(2, 11);
 }
 
+// ── Visual Week Calendar ──────────────────────────────────────────────────────
+const PROF_COLORS = ['#f97316', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#ef4444'];
+const HOUR_START = 8;
+const HOUR_END = 20;
+const HOUR_PX = 96; // px per hour
+
+function WeekCalendar({
+  days, appointments, customers, professionals, services, filterProfId, onApptClick,
+}: {
+  days: Date[];
+  appointments: Appointment[];
+  customers: Customer[];
+  professionals: Professional[];
+  services: Service[];
+  filterProfId: string;
+  onApptClick: (a: Appointment) => void;
+}) {
+  const todayStr = localDateStr();
+  const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
+  const totalHeight = (HOUR_END - HOUR_START) * HOUR_PX;
+  const cols = days.length;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+      {/* Day header row */}
+      <div className="grid border-b border-slate-100" style={{ gridTemplateColumns: `48px repeat(${cols}, 1fr)` }}>
+        <div className="border-r border-slate-100 bg-slate-50" />
+        {days.map((d, i) => {
+          const dateStr = localDateStr(d);
+          const isToday = dateStr === todayStr;
+          const dayApptCount = appointments.filter(a => a.startTime?.startsWith(dateStr)).length;
+          return (
+            <div key={i} className={`py-3 px-1 text-center border-r border-slate-100 last:border-0 ${isToday ? 'bg-orange-50' : 'bg-slate-50'}`}>
+              <p className={`text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-orange-500' : 'text-slate-400'}`}>
+                {DAY_NAMES[d.getDay()]}
+              </p>
+              <p className={`text-xl font-black leading-none mt-0.5 ${isToday ? 'text-orange-500' : 'text-slate-700'}`}>
+                {d.getDate()}
+              </p>
+              {dayApptCount > 0 && (
+                <div className={`mx-auto mt-1.5 rounded-full text-[9px] font-bold px-1.5 py-0.5 w-fit ${isToday ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
+                  {dayApptCount}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Scrollable time grid */}
+      <div className="overflow-y-auto" style={{ maxHeight: '560px' }}>
+        <div className="relative grid" style={{ gridTemplateColumns: `48px repeat(${cols}, 1fr)`, height: totalHeight }}>
+          {/* Time labels column */}
+          <div className="border-r border-slate-100 relative" style={{ height: totalHeight }}>
+            {hours.map(h => (
+              <div
+                key={h}
+                className="absolute w-full border-b border-slate-50 flex items-start justify-end pr-2 pt-1"
+                style={{ top: `${(h - HOUR_START) * HOUR_PX}px`, height: `${HOUR_PX}px` }}
+              >
+                <span className="text-[9px] font-semibold text-slate-300">{String(h).padStart(2, '0')}:00</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Day columns */}
+          {days.map((d, dayIdx) => {
+            const dateStr = localDateStr(d);
+            const isToday = dateStr === todayStr;
+            const dayAppts = appointments.filter(a => a.startTime?.startsWith(dateStr));
+
+            return (
+              <div
+                key={dayIdx}
+                className={`relative border-r border-slate-100 last:border-0 ${isToday ? 'bg-orange-50/30' : ''}`}
+                style={{ height: totalHeight }}
+              >
+                {/* Hour grid lines */}
+                {hours.map(h => (
+                  <div key={h} className="absolute w-full border-b border-slate-50" style={{ top: `${(h - HOUR_START) * HOUR_PX}px` }} />
+                ))}
+                {/* Half-hour dashed lines */}
+                {hours.map(h => (
+                  <div key={`${h}h`} className="absolute w-full border-b border-slate-50/80" style={{ top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, borderStyle: 'dashed' }} />
+                ))}
+
+                {/* Appointment blocks */}
+                {dayAppts.map(a => {
+                  const startDt = new Date(a.startTime);
+                  const startH = startDt.getHours();
+                  const startM = startDt.getMinutes();
+                  if (startH < HOUR_START || startH >= HOUR_END) return null;
+
+                  const topPx = ((startH - HOUR_START) * 60 + startM) / 60 * HOUR_PX;
+                  const heightPx = Math.max(28, (a.durationMinutes || 30) / 60 * HOUR_PX - 2);
+
+                  const profIdx = professionals.findIndex(p => p.id === a.professional_id);
+                  const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
+                  const cust = customers.find(c => c.id === a.customer_id);
+                  const svc = services.find(s => s.id === a.service_id);
+                  const isCancelled = a.status === AppointmentStatus.CANCELLED;
+
+                  return (
+                    <div
+                      key={a.id}
+                      onClick={() => onApptClick(a)}
+                      className={`absolute left-0.5 right-0.5 rounded-lg px-1.5 py-1 cursor-pointer hover:brightness-95 transition-all overflow-hidden ${isCancelled ? 'opacity-35' : ''}`}
+                      style={{
+                        top: `${topPx}px`,
+                        height: `${heightPx}px`,
+                        backgroundColor: `${color}1a`,
+                        borderLeft: `3px solid ${color}`,
+                      }}
+                    >
+                      <p className="text-[9px] font-bold leading-none" style={{ color }}>
+                        {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      {heightPx >= 38 && (
+                        <p className="text-[10px] font-semibold text-slate-700 leading-tight truncate mt-0.5">
+                          {cust?.name || '—'}
+                        </p>
+                      )}
+                      {heightPx >= 54 && svc && (
+                        <p className="text-[9px] text-slate-400 leading-tight truncate">{svc.name}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Professional legend */}
+      {professionals.length > 0 && (
+        <div className="px-4 py-2.5 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-1.5">
+          {professionals
+            .filter(p => !filterProfId || p.id === filterProfId)
+            .map((p, i) => (
+              <div key={p.id} className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PROF_COLORS[i % PROF_COLORS.length] }} />
+                <span className="text-[10px] font-medium text-slate-500">{p.name}</span>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string }> = ({ tenantId, onOpenComandas, defaultProfessionalId }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
@@ -147,6 +298,16 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     startTime?: string; source?: BookingSource; isPlan?: boolean;
   } | null>(null);
   const [showBreakModal, setShowBreakModal] = useState(false);
+
+  const [calView, setCalView] = useState<'semana' | 'lista'>('semana');
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day; // Monday
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + diff);
+    return mon;
+  });
 
   const [startDate, setStartDate] = useState<string>(localDateStr());
   const [endDate, setEndDate] = useState<string>(localDateStr());
@@ -247,6 +408,23 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [refreshData]);
+
+  const gotoWeek = (mon: Date) => {
+    const end = new Date(mon);
+    end.setDate(mon.getDate() + 6);
+    setWeekStart(mon);
+    setStartDate(localDateStr(mon));
+    setEndDate(localDateStr(end));
+    setPresetPeriod('custom');
+  };
+
+  // Initialize week view on mount
+  React.useEffect(() => {
+    if (calView === 'semana') {
+      gotoWeek(weekStart);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const applyPreset = (period: string) => {
     setPresetPeriod(period);
@@ -706,18 +884,114 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       })
     : appointments;
 
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const weekLabel = (() => {
+    const s = weekDays[0];
+    const e = weekDays[6];
+    const same = s.getMonth() === e.getMonth();
+    if (same) return `${s.getDate()} – ${e.getDate()} de ${s.toLocaleDateString('pt-BR', { month: 'long' })}`;
+    return `${s.getDate()} ${s.toLocaleDateString('pt-BR', { month: 'short' })} – ${e.getDate()} ${e.toLocaleDateString('pt-BR', { month: 'short' })}`;
+  })();
+
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-5 animate-fadeIn">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-black">AGENDA OPERACIONAL</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-black">Agenda</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Gestão de horários e períodos</p>
         </div>
-        <button onClick={openBookingModal} className="bg-orange-500 text-white px-5 sm:px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-100 hover:scale-105 active:scale-95 transition-all w-full sm:w-auto">
-          + Novo Horário
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* View toggle */}
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
+            <button
+              onClick={() => { setCalView('semana'); gotoWeek(weekStart); }}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${calView === 'semana' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}
+            >
+              Semana
+            </button>
+            <button
+              onClick={() => { setCalView('lista'); applyPreset('today'); }}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${calView === 'lista' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}
+            >
+              Lista
+            </button>
+          </div>
+          <button onClick={openBookingModal} className="bg-orange-500 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-colors ml-auto sm:ml-0 whitespace-nowrap">
+            + Novo Horário
+          </button>
+        </div>
       </div>
 
+      {/* Week navigation (only in semana view) */}
+      {calView === 'semana' && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); gotoWeek(d); }}
+            className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span className="text-sm font-semibold text-slate-700 min-w-[200px] text-center">{weekLabel}</span>
+          <button
+            onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); gotoWeek(d); }}
+            className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button
+            onClick={() => {
+              const now = new Date();
+              const day = now.getDay();
+              const diff = day === 0 ? -6 : 1 - day;
+              const mon = new Date(now);
+              mon.setDate(now.getDate() + diff);
+              gotoWeek(mon);
+            }}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            Hoje
+          </button>
+        </div>
+      )}
+
+      {/* ─── Semana view (visual calendar) ─── */}
+      {calView === 'semana' && (
+        <div className="space-y-3">
+          {!defaultProfessionalId && professionals.length > 1 && (
+            <div className="flex items-center gap-2">
+              <select
+                value={filterProfId}
+                onChange={e => setFilterProfId(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold bg-white text-slate-600 outline-none cursor-pointer"
+              >
+                <option value="">Todos os profissionais</option>
+                {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {filterProfId && (
+                <button onClick={() => setFilterProfId('')} className="text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors">✕ Limpar</button>
+              )}
+            </div>
+          )}
+          <WeekCalendar
+            days={weekDays}
+            appointments={appointments}
+            customers={customers}
+            professionals={professionals}
+            services={services}
+            filterProfId={filterProfId}
+            onApptClick={openEditModal}
+          />
+        </div>
+      )}
+
+      {/* ─── Lista view (existing table layout) ─── */}
+      {calView === 'lista' && (
       <div className="flex flex-col lg:flex-row gap-6">
         {/* ─── Sidebar ─────────────────────────────── */}
         <div className="w-full lg:w-72 shrink-0 space-y-6">
@@ -1038,6 +1312,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           </div>
         </div>
       </div>
+      )} {/* end calView === 'lista' */}
 
       {/* ─── Edit Appointment Modal ─────────────────── */}
       {editAppt && (
