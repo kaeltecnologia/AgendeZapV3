@@ -149,6 +149,8 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [editAllFeatures, setEditAllFeatures] = useState(true);
   // START plan: manually released extra collaborator slots
   const [editColabsReleased, setEditColabsReleased] = useState(0);
+  // Acquisition channel (how tenant found AgendeZap)
+  const [editComoConheceu, setEditComoConheceu] = useState<string | null>(null);
 
   // Delete confirm
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -533,7 +535,8 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
         setEditFeatureOverrides(null);
       }
       setEditColabsReleased(s?.manualColabsReleased ?? 0);
-    }).catch(() => { setEditAllFeatures(true); setEditFeatureOverrides(null); setEditColabsReleased(0); });
+      setEditComoConheceu(s?.comoConheceu ?? null);
+    }).catch(() => { setEditAllFeatures(true); setEditFeatureOverrides(null); setEditColabsReleased(0); setEditComoConheceu(null); });
   }, [editingTenant?.id]);
 
   // ── Update tenant ────────────────────────────────────────────────────────────
@@ -552,10 +555,11 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
         nicho: editingTenant.nicho,
         plan: editingTenant.plan,
       });
-      // Save per-tenant feature overrides + manual colab limit
+      // Save per-tenant feature overrides + manual colab limit + acquisition channel
       await db.updateSettings(editingTenant.id, {
         resellerFeatureOverrides: editAllFeatures ? null : (editFeatureOverrides || null),
         manualColabsReleased: editColabsReleased,
+        comoConheceu: editComoConheceu,
       });
       saveAdminLog('TENANT_UPDATED', `${editingTenant.name}`);
       setLogs(loadAdminLogs());
@@ -923,8 +927,8 @@ END $$;`.trim();
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4">
-                        <span className="text-[9px] font-black px-2 py-1 bg-slate-100 text-slate-600 rounded-lg uppercase">{(t as any).nicho || 'Barbearia'}</span>
+                      <td className="px-5 py-4 space-y-1">
+                        <span className="text-[9px] font-black px-2 py-1 bg-slate-100 text-slate-600 rounded-lg uppercase block w-fit">{(t as any).nicho || 'Barbearia'}</span>
                       </td>
                       <td className="px-5 py-4">
                         {(() => { const p = getPlanConfig(t.plan); return (
@@ -2337,6 +2341,31 @@ END $$;`.trim();
                   <datalist id="nicho-edit-list">
                     {NICHOS.map(n => <option key={n} value={n} />)}
                   </datalist>
+                </div>
+                {/* Acquisition channel */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Como conheceu o AgendeZap</label>
+                  {editComoConheceu ? (
+                    <div className="flex items-center gap-2 p-4 bg-blue-50 border-2 border-blue-100 rounded-2xl">
+                      <span className="text-lg">
+                        {editComoConheceu === 'Instagram' ? '📸' : editComoConheceu === 'TikTok' ? '🎵' : editComoConheceu === 'Google' ? '🔍' : editComoConheceu === 'YouTube' ? '▶️' : editComoConheceu === 'Indicação' ? '🤝' : editComoConheceu === 'WhatsApp' ? '💬' : '💡'}
+                      </span>
+                      <span className="font-black text-sm text-blue-700">{editComoConheceu}</span>
+                      <button type="button" onClick={() => setEditComoConheceu(null)} className="ml-auto text-[9px] font-black text-slate-400 hover:text-red-500 uppercase">Limpar</button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'Instagram', emoji: '📸' }, { id: 'TikTok', emoji: '🎵' }, { id: 'Google', emoji: '🔍' },
+                        { id: 'YouTube', emoji: '▶️' }, { id: 'Indicação', emoji: '🤝' }, { id: 'WhatsApp', emoji: '💬' }, { id: 'Outro', emoji: '💡' },
+                      ].map(opt => (
+                        <button key={opt.id} type="button" onClick={() => setEditComoConheceu(opt.id)}
+                          className="flex items-center gap-1 p-2 rounded-xl bg-slate-50 border-2 border-slate-100 hover:border-orange-300 font-bold text-xs text-slate-600 transition-all">
+                          <span>{opt.emoji}</span><span>{opt.id}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {/* Plan selector */}
                 <div className="space-y-2">

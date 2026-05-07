@@ -308,6 +308,7 @@ export interface TenantSettings {
   resellerFeatureOverrides?: string[] | null;      // per-tenant feature override set by reseller (null = use reseller profile defaults)
   manualColabsReleased?: number;                   // extra team slots released manually by superadmin (START plan)
   bookingTheme?: BookingTheme | null;              // visual customization for the web booking page
+  comoConheceu?: string | null;                    // channel/source where the lead found AgendeZap
 }
 
 export interface BookingTheme {

@@ -11,7 +11,7 @@ import { db } from './mockDb';
 import { AppointmentStatus, BookingSource, BreakPeriod } from '../types';
 import { sendProfessionalNotification } from './notificationService';
 import { evolutionService } from './evolutionService';
-import { nichoConfigs, isBarbearia, getNutriPersonalConfig } from '../config/nichoConfigs';
+import { nichoConfigs, isBarbearia } from '../config/nichoConfigs';
 import { logAIUsage, estimateTokens } from './usageTracker';
 import { notifyWaitlistLeads } from './waitlistService';
 import { maskPhone } from './security';
@@ -585,10 +585,7 @@ async function callBrain(
 
   // ── Nicho-aware sections ─────────────────────────────────────────────
   const nicho = nichoName || 'Barbearia';
-  // Para Nutrição/Personal: refinar config com base nos nomes dos serviços
-  const cfg = nicho === 'Nutrição/Personal'
-    ? getNutriPersonalConfig(services.map(s => s.name))
-    : (nichoConfigs[nicho as keyof typeof nichoConfigs] ?? nichoConfigs['Barbearia']);
+  const cfg = nichoConfigs[nicho as keyof typeof nichoConfigs] ?? nichoConfigs['Barbearia'];
   const isBrb = isBarbearia(nicho);
 
   // Intro line (after tenant name)

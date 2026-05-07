@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { PLAN_CONFIGS, PlanId } from '../config/planConfig';
+import { NICHOS } from '../config/nichoConfigs';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
@@ -8,13 +9,23 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJ
 const PLANS: PlanId[] = ['START', 'PROFISSIONAL', 'ELITE'];
 
 type Cycle = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
-type Step = 'plan' | 'procount' | 'cycle' | 'cpf' | 'payment' | 'loading' | 'waiting';
+type Step = 'info' | 'plan' | 'procount' | 'cycle' | 'cpf' | 'payment' | 'loading' | 'waiting';
 
 const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; discount: number; tag?: string }[] = [
   { id: 'MONTHLY',      label: 'Mensal',      months: 1,  discount: 0 },
   { id: 'QUARTERLY',    label: 'Trimestral',  months: 3,  discount: 0.10, tag: '10% OFF' },
   { id: 'SEMIANNUALLY', label: 'Semestral',   months: 6,  discount: 0.15, tag: '15% OFF' },
   { id: 'YEARLY',       label: 'Anual',       months: 12, discount: 0.25, tag: '25% OFF' },
+];
+
+const COMO_CONHECEU_OPTIONS = [
+  { id: 'Instagram', label: 'Instagram', emoji: '📸' },
+  { id: 'TikTok', label: 'TikTok', emoji: '🎵' },
+  { id: 'Google', label: 'Google', emoji: '🔍' },
+  { id: 'YouTube', label: 'YouTube', emoji: '▶️' },
+  { id: 'Indicação', label: 'Indicação de amigo', emoji: '🤝' },
+  { id: 'WhatsApp', label: 'WhatsApp', emoji: '💬' },
+  { id: 'Outro', label: 'Outro', emoji: '💡' },
 ];
 
 function calcCyclePrice(monthlyPrice: number, months: number, discount: number) {
@@ -52,18 +63,36 @@ const TrialExpiredView: React.FC<{
   mode?: 'trial_expired' | 'pending_payment';
   onActivated?: () => void;
 }> = ({ tenantId, mode = 'trial_expired', onActivated }) => {
-  const [step, setStep] = useState<Step>('plan');
+  const [step, setStep] = useState<Step>('info');
+  const [selectedNicho, setSelectedNicho] = useState('');
+  const [selectedComoConheceu, setSelectedComoConheceu] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [selectedCycle, setSelectedCycle] = useState<Cycle>('MONTHLY');
   const [proCount, setProCount] = useState(1);
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
+
+  const handleInfoSubmit = async () => {
+    if (!selectedNicho) { setError('Selecione o seu nicho.'); return; }
+    if (!selectedComoConheceu) { setError('Selecione como nos conheceu.'); return; }
+    setError(null);
+    setSavingInfo(true);
+    try {
+      await Promise.all([
+        db.updateTenant(tenantId, { nicho: selectedNicho }),
+        db.updateSettings(tenantId, { comoConheceu: selectedComoConheceu }),
+      ]);
+    } catch { /* non-blocking */ }
+    setSavingInfo(false);
+    setStep('plan');
+  };
 
   const handleSelectPlan = (planId: PlanId) => {
     setSelectedPlan(planId);
@@ -204,7 +233,8 @@ const TrialExpiredView: React.FC<{
       else { setStep('plan'); setSelectedPlan(null); }
     }
     else if (step === 'procount') { setStep('plan'); setSelectedPlan(null); }
-    else { setStep('plan'); setSelectedPlan(null); }
+    else if (step === 'plan') { setStep('info'); }
+    else { setStep('info'); }
   };
 
   const planCfg = selectedPlan ? PLAN_CONFIGS[selectedPlan] : null;
@@ -212,7 +242,7 @@ const TrialExpiredView: React.FC<{
   const cycleTotal = planCfg ? calcCyclePrice(planCfg.price, cycleCfg.months, cycleCfg.discount) : 0;
 
   // Header text per step
-  const headerIcon = step === 'waiting' ? '⏳' : step === 'loading' ? '⏳' : mode === 'pending_payment' ? '🚀' : '🔒';
+  const headerIcon = step === 'waiting' ? '⏳' : step === 'loading' ? '⏳' : step === 'info' ? '👋' : mode === 'pending_payment' ? '🚀' : '🔒';
   const headerTitle =
     step === 'waiting' ? 'Aguardando pagamento'
     : step === 'loading' ? 'Gerando assinatura...'
@@ -220,6 +250,7 @@ const TrialExpiredView: React.FC<{
     : step === 'payment' ? 'Forma de pagamento'
     : step === 'cpf' ? 'Dados para cobranca'
     : step === 'cycle' ? 'Periodo de assinatura'
+    : step === 'info' ? 'Antes de comecar'
     : mode === 'pending_payment' ? 'Escolha seu plano para comecar'
     : 'Periodo de teste encerrado';
   const headerSubtitle =
@@ -227,6 +258,7 @@ const TrialExpiredView: React.FC<{
     : step === 'payment' ? `${planCfg?.name} ${cycleCfg.label} — R$ ${fmt(cycleTotal)}`
     : step === 'cpf' ? `${planCfg?.name} ${cycleCfg.label} — R$ ${fmt(cycleTotal)}`
     : step === 'cycle' ? `Plano ${planCfg?.name} — escolha o periodo`
+    : step === 'info' ? 'Nos conte um pouco sobre voce. Isso nos ajuda a personalizar a sua experiencia.'
     : mode === 'pending_payment' ? 'Para maior controle e seguranca, nosso sistema faz a cobranca do plano desejado antecipadamente, porem voce pode pedir reembolso a qualquer momento dentro de 7 dias.'
     : 'Seus dados estao salvos e seguros. Escolha um plano para continuar usando o AgendeZap.';
 
@@ -247,48 +279,115 @@ const TrialExpiredView: React.FC<{
           </div>
         )}
 
+        {/* ── Step 0: Info (nicho + comoConheceu) ── */}
+        {step === 'info' && (
+          <div className="space-y-6 max-w-lg mx-auto">
+            <div className="rounded-[24px] p-8 space-y-6" style={{ background: '#fff', border: '2px solid #f1f5f9' }}>
+
+              {/* Nicho */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#000' }}>
+                  Qual e o seu nicho?
+                </label>
+                <select
+                  value={selectedNicho}
+                  onChange={(e) => setSelectedNicho(e.target.value)}
+                  className="w-full p-4 rounded-2xl outline-none transition-all font-bold text-sm"
+                  style={{ background: '#f8fafc', border: `2px solid ${selectedNicho ? '#f97316' : '#f1f5f9'}`, color: selectedNicho ? '#000' : '#94a3b8' }}
+                >
+                  <option value="">Selecione seu nicho...</option>
+                  {NICHOS.map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Como conheceu */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#000' }}>
+                  Como voce nos conheceu?
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {COMO_CONHECEU_OPTIONS.map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSelectedComoConheceu(opt.id)}
+                      className="flex items-center gap-2 p-3 rounded-2xl font-bold text-xs transition-all text-left"
+                      style={{
+                        background: selectedComoConheceu === opt.id ? '#fff7ed' : '#f8fafc',
+                        border: `2px solid ${selectedComoConheceu === opt.id ? '#f97316' : '#f1f5f9'}`,
+                        color: selectedComoConheceu === opt.id ? '#f97316' : '#475569',
+                      }}
+                    >
+                      <span className="text-base">{opt.emoji}</span>
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={handleInfoSubmit}
+                disabled={savingInfo}
+                className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-orange-500"
+                style={{ background: '#000', color: '#fff', opacity: savingInfo ? 0.6 : 1 }}
+              >
+                {savingInfo ? 'Salvando...' : 'Continuar →'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Step 1: Plan Selection ── */}
         {step === 'plan' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {PLANS.map(planId => {
-              const cfg = PLAN_CONFIGS[planId];
-              return (
-                <div key={planId} className="rounded-[32px] p-8 space-y-6 transition-all hover:shadow-lg" style={{ background: '#fff', border: '2px solid #f1f5f9' }}>
-                  <div className="space-y-1">
-                    <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${cfg.bgClass} ${cfg.textClass}`}>
-                      {cfg.badge}
-                    </span>
-                    <h3 className="text-xl font-black uppercase tracking-tight mt-2" style={{ color: '#000' }}>{cfg.name}</h3>
-                    <p className="text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>{cfg.subtitle}</p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {PLANS.map(planId => {
+                const cfg = PLAN_CONFIGS[planId];
+                return (
+                  <div key={planId} className="rounded-[32px] p-8 space-y-6 transition-all hover:shadow-lg" style={{ background: '#fff', border: '2px solid #f1f5f9' }}>
+                    <div className="space-y-1">
+                      <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${cfg.bgClass} ${cfg.textClass}`}>
+                        {cfg.badge}
+                      </span>
+                      <h3 className="text-xl font-black uppercase tracking-tight mt-2" style={{ color: '#000' }}>{cfg.name}</h3>
+                      <p className="text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>{cfg.subtitle}</p>
+                    </div>
+
+                    <div>
+                      <span className="text-3xl font-black" style={{ color: '#000' }}>R$ {fmt(cfg.price)}</span>
+                      <span className="text-xs font-bold" style={{ color: '#94a3b8' }}>/mes</span>
+                    </div>
+
+                    <ul className="space-y-2">
+                      {cfg.features.slice(0, 5).map((f, i) => (
+                        <li key={i} className="flex items-start gap-2 text-[10px] font-bold" style={{ color: '#475569' }}>
+                          <span className="text-orange-500 mt-0.5">✓</span>
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                      {cfg.features.length > 5 && (
+                        <li className="text-[10px] font-black ml-4" style={{ color: '#94a3b8' }}>+ {cfg.features.length - 5} mais...</li>
+                      )}
+                    </ul>
+
+                    <button
+                      onClick={() => handleSelectPlan(planId)}
+                      className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-orange-500"
+                      style={{ background: '#000', color: '#fff' }}
+                    >
+                      Quero o {cfg.name}
+                    </button>
                   </div>
-
-                  <div>
-                    <span className="text-3xl font-black" style={{ color: '#000' }}>R$ {fmt(cfg.price)}</span>
-                    <span className="text-xs font-bold" style={{ color: '#94a3b8' }}>/mes</span>
-                  </div>
-
-                  <ul className="space-y-2">
-                    {cfg.features.slice(0, 5).map((f, i) => (
-                      <li key={i} className="flex items-start gap-2 text-[10px] font-bold" style={{ color: '#475569' }}>
-                        <span className="text-orange-500 mt-0.5">✓</span>
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                    {cfg.features.length > 5 && (
-                      <li className="text-[10px] font-black ml-4" style={{ color: '#94a3b8' }}>+ {cfg.features.length - 5} mais...</li>
-                    )}
-                  </ul>
-
-                  <button
-                    onClick={() => handleSelectPlan(planId)}
-                    className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-orange-500"
-                    style={{ background: '#000', color: '#fff' }}
-                  >
-                    Quero o {cfg.name}
-                  </button>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            <div className="text-center">
+              <button onClick={handleBack} className="text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest">
+                ← Voltar
+              </button>
+            </div>
           </div>
         )}
 

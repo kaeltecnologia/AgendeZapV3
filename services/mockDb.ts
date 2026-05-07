@@ -1079,6 +1079,7 @@ class DatabaseService {
           resellerFeatureOverrides: fu._resellerFeatureOverrides !== undefined ? fu._resellerFeatureOverrides : null,
           manualColabsReleased: fu._manualColabsReleased ?? 0,
           bookingTheme: fu._bookingTheme ?? null,
+          comoConheceu: fu._comoConheceu ?? null,
         };
         _cache.set(ck, result, TTL_LONG);
         return result;
@@ -1159,6 +1160,7 @@ class DatabaseService {
         _resellerFeatureOverrides: newS.resellerFeatureOverrides !== undefined ? newS.resellerFeatureOverrides : (curr.resellerFeatureOverrides ?? null),
         _manualColabsReleased: newS.manualColabsReleased !== undefined ? newS.manualColabsReleased : (curr.manualColabsReleased ?? 0),
         _bookingTheme: newS.bookingTheme !== undefined ? newS.bookingTheme : (curr.bookingTheme ?? null),
+        _comoConheceu: newS.comoConheceu !== undefined ? newS.comoConheceu : (curr.comoConheceu ?? null),
       };
 
       // Always include operating_hours to prevent data loss on upsert (uses current value as fallback)
