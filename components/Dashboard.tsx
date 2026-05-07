@@ -4,8 +4,75 @@ import { db } from '../services/mockDb';
 import { AppointmentStatus, Professional, Service, Customer } from '../types';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid
+  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, LineChart, Line
 } from 'recharts';
+
+const QUOTES = [
+  'Cada cliente é uma oportunidade de fazer a diferença.',
+  'O sucesso é a soma de pequenos esforços repetidos dia após dia.',
+  'Seu talento é o seu maior investimento.',
+  'Hoje é o dia perfeito para superar suas metas.',
+  'Grandes resultados começam com pequenas atitudes.',
+  'A excelência não é um ato, é um hábito.',
+  'Faça do seu trabalho a sua obra-prima.',
+  'Cada atendimento é uma chance de fidelizar.',
+  'O profissionalismo é o que transforma clientes em fãs.',
+  'Sua dedicação de hoje constrói o sucesso de amanhã.',
+  'Quem ama o que faz, faz com excelência.',
+  'A consistência vence o talento quando o talento não é consistente.',
+  'Construa sua reputação um cliente de cada vez.',
+  'O melhor marketing é um cliente satisfeito.',
+  'Acredite no seu potencial — seus resultados provam.',
+  'Disciplina é a ponte entre metas e conquistas.',
+  'Seu diferencial é a forma como você trata cada pessoa.',
+  'Não espere oportunidades, crie-as.',
+  'A qualidade do seu serviço define o tamanho do seu futuro.',
+  'Mais um dia para brilhar. Vamos com tudo!',
+  'Trabalhe em silêncio, deixe os resultados falarem.',
+  'O segredo do sucesso? Nunca parar de melhorar.',
+  'Transforme cada desafio em combustível para crescer.',
+  'A atitude certa abre portas que o talento sozinho não abre.',
+  'Clientes voltam por causa de experiências, não só serviços.',
+  'Você não precisa ser perfeito, precisa ser comprometido.',
+  'Pequenos detalhes fazem grandes profissionais.',
+  'Seu melhor concorrente é quem você era ontem.',
+  'Comece cada dia com propósito e termine com orgulho.',
+  'A persistência é o caminho mais curto para o sucesso.',
+];
+
+const DICAS_SAUDE = [
+  'Beba pelo menos 2 litros de água hoje. Seu corpo e sua mente funcionam melhor hidratados.',
+  'Levante e alongue o corpo a cada 2 horas. Sua coluna agradece no final do expediente.',
+  'Durma de 7 a 8 horas por noite. Sono de qualidade é o melhor investimento em produtividade.',
+  'Respire fundo por 1 minuto antes de começar o dia. Reduz ansiedade e melhora o foco.',
+  'Cuide da sua postura enquanto trabalha. Ombros para trás, coluna reta.',
+  'Faça uma pausa de 10 minutos para um lanche saudável. Frutas e castanhas são ótimas opções.',
+  'Evite o celular 30 minutos antes de dormir. A luz azul prejudica a qualidade do sono.',
+  'Caminhe pelo menos 30 minutos hoje. Movimento é remédio para o corpo e para a mente.',
+  'Pratique gratidão: pense em 3 coisas boas que aconteceram hoje antes de dormir.',
+  'Reduza o açúcar refinado. Energia constante vale mais que picos de disposição.',
+  'Reserve um momento do dia só para você. Autocuidado não é luxo, é necessidade.',
+  'Cuide das suas mãos — são sua ferramenta de trabalho. Hidrate e descanse elas.',
+  'Ria mais. O humor reduz cortisol e fortalece o sistema imunológico.',
+  'Não pule refeições. Seu cérebro precisa de combustível para tomar boas decisões.',
+  'Tome sol por 15 minutos pela manhã. Vitamina D melhora humor e imunidade.',
+  'Reduza a cafeína depois das 14h. Seu sono à noite será muito melhor.',
+  'Faça exercícios de respiração entre um atendimento e outro. Três respirações profundas bastam.',
+  'Mantenha um hobby fora do trabalho. Equilíbrio mental melhora tudo na vida.',
+  'Cuide da saúde mental tanto quanto da física. Terapia é manutenção, não conserto.',
+  'Celebre suas pequenas vitórias. Reconhecer seu progresso alimenta a motivação.',
+];
+
+const weatherLabel = (code: number): string => {
+  if (code === 0) return 'Céu limpo';
+  if (code <= 3) return 'Nublado';
+  if (code <= 48) return 'Nevoeiro';
+  if (code <= 57) return 'Garoa';
+  if (code <= 67) return 'Chuva';
+  if (code <= 77) return 'Neve';
+  if (code <= 82) return 'Pancadas';
+  return 'Tempestade';
+};
 
 const fmtBRL = (n: number) =>
   n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -54,6 +121,8 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
   const [settings, setSettings] = useState<any>({});
   const [selectedProfId, setSelectedProfId] = useState<string>('');
   const [period, setPeriod] = useState(30);
+  const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
+  const [weatherCity, setWeatherCity] = useState('');
   const [tenantSlugLocal, setTenantSlugLocal] = useState('');
   const [referralData, setReferralData] = useState<{
     activeReferrals: number; discountPercent: number; pixBonus: number;
@@ -88,6 +157,16 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
           const rd = await db.getReferralData(tenantId);
           if (rd.referrals.length > 0 || rd.activeReferrals > 0) setReferralData(rd);
         } catch { /* referral is optional */ }
+
+        // Fetch weather
+        if (tenant?.latitude && tenant?.longitude) {
+          setWeatherCity(tenant.cidade || '');
+          try {
+            const wr = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${tenant.latitude}&longitude=${tenant.longitude}&current=temperature_2m,weather_code&timezone=America/Sao_Paulo`);
+            const wd = await wr.json();
+            if (wd?.current) setWeather({ temp: Math.round(wd.current.temperature_2m), code: wd.current.weather_code });
+          } catch { /* weather is optional */ }
+        }
 
       } catch (err) {
         console.error('Erro ao carregar dashboard:', err);
@@ -239,6 +318,21 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
 
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const dayOfYear = Math.floor((Date.now() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
+  const carouselSlides = React.useMemo(() => [
+    { label: 'FRASE DO DIA', text: QUOTES[dayOfYear % QUOTES.length] },
+    { label: 'SAÚDE & BEM-ESTAR', text: DICAS_SAUDE[dayOfYear % DICAS_SAUDE.length] },
+  ], [dayOfYear]);
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  const [carouselFade, setCarouselFade] = useState(true);
+  const goToSlide = useCallback((idx: number) => {
+    setCarouselFade(false);
+    setTimeout(() => { setCarouselIdx(idx); setCarouselFade(true); }, 280);
+  }, []);
+  useEffect(() => {
+    const t = setInterval(() => goToSlide((carouselIdx + 1) % carouselSlides.length), 8000);
+    return () => clearInterval(t);
+  }, [carouselIdx, carouselSlides.length, goToSlide]);
 
   if (loading) {
     return (
@@ -307,115 +401,129 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         </div>
       )}
 
-      {/* Header greeting + KPIs label */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{greeting},</p>
-          <h2 className="text-xl font-black text-slate-800 leading-tight">{tenantName || 'Meu Negócio'}</h2>
-        </div>
-      </div>
-
-      {/* CLARIS-style monthly KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 cursor-pointer hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5 transition-all" onClick={() => onNavigate?.('AGENDAMENTOS')}>
-          <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Agendados / Atendidos</p>
-          <p className="text-3xl sm:text-4xl font-black text-black leading-none mt-3">
-            <AnimatedNumber value={monthlyAppts.length} />
-          </p>
-          <p className="text-xs text-slate-400 mt-2">para o mês · <span className="text-green-600 font-bold">{monthlyFinished} concluídos</span></p>
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 cursor-pointer hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5 transition-all" onClick={() => onNavigate?.('CLIENTES')}>
-          <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Clientes</p>
-          <p className="text-3xl sm:text-4xl font-black text-black leading-none mt-3">
-            <AnimatedNumber value={totalClients} />
-          </p>
-          <p className="text-xs text-slate-400 mt-2">cadastrados</p>
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6">
-          <p className="text-xs font-bold text-red-400 uppercase tracking-wider">Cancelados</p>
-          <p className={`text-3xl sm:text-4xl font-black leading-none mt-3 ${monthlyCancelled > 0 ? 'text-red-500' : 'text-slate-300'}`}>
-            <AnimatedNumber value={monthlyCancelled} />
-          </p>
-          <p className="text-xs text-slate-400 mt-2">para o mês</p>
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6">
-          <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Hoje</p>
-          <p className="text-3xl sm:text-4xl font-black text-black leading-none mt-3">
-            <AnimatedNumber value={todayAppts.length} />
-          </p>
-          <p className="text-xs text-slate-400 mt-2">{pendingCount > 0 ? <span className="text-orange-500 font-bold">{pendingCount} pendentes</span> : <span>{todayFinished} concluídos</span>}</p>
-        </div>
-      </div>
-
-      {/* Meta + Projeção + Margem + Dia forte */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 col-span-2 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all" onClick={() => onNavigate?.('FINANCEIRO')}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Faturamento do Mês</p>
-              <p className="text-2xl sm:text-3xl font-black text-black leading-none mt-2 truncate">R$ {fmtBRL(thisMonthRevenue)}</p>
-              {monthlyGoal > 0
-                ? <p className="text-xs text-slate-400 mt-1">Meta: R$ {fmtBRL(monthlyGoal)}</p>
-                : <p className="text-xs text-slate-400 mt-1">Meta não configurada</p>
-              }
+      {/* Carousel motivacional */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+        {/* Greeting + weather */}
+        <div className="sm:w-56 shrink-0">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">{greeting}</p>
+          <h2 className="text-xl font-black text-slate-800 leading-tight mt-0.5 truncate">{tenantName || 'Meu Negócio'}</h2>
+          {weather ? (
+            <div className="flex items-baseline gap-1.5 mt-2">
+              <span className="text-2xl font-black text-slate-700">{weather.temp}°</span>
+              <span className="text-[10px] font-semibold text-slate-400 uppercase">{weatherLabel(weather.code)}{weatherCity ? ` · ${weatherCity}` : ''}</span>
             </div>
-            {monthlyGoal > 0 && (
-              <span className={`text-sm font-black px-3 py-1 rounded-full ${goalPct >= 100 ? 'bg-green-50 text-green-600' : goalPct >= 70 ? 'bg-orange-50 text-orange-500' : 'bg-red-50 text-red-500'}`}>
-                {goalPct}%
-              </span>
-            )}
+          ) : null}
+        </div>
+        {/* Divider */}
+        <div className="hidden sm:block w-px self-stretch bg-slate-100" />
+        {/* Carousel content */}
+        <div className="flex-1 min-w-0">
+          <div
+            className="transition-all duration-300 ease-in-out"
+            style={{ opacity: carouselFade ? 1 : 0, transform: carouselFade ? 'translateY(0)' : 'translateY(8px)' }}
+          >
+            <p className="text-[9px] font-bold text-orange-500 uppercase tracking-[0.3em] mb-1.5">{carouselSlides[carouselIdx].label}</p>
+            <p className="text-sm sm:text-base font-semibold text-slate-600 leading-relaxed italic">"{carouselSlides[carouselIdx].text}"</p>
           </div>
-          {monthlyGoal > 0 && (
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${goalPct >= 100 ? 'bg-green-500' : goalPct >= 70 ? 'bg-orange-500' : 'bg-red-400'}`}
-                style={{ width: `${goalPct}%` }}
+          <div className="flex items-center gap-1.5 mt-3">
+            {carouselSlides.map((_, i) => (
+              <button key={i} onClick={() => goToSlide(i)}
+                className={`rounded-full transition-all duration-300 ${i === carouselIdx ? 'w-6 h-1.5 bg-orange-400' : 'w-1.5 h-1.5 bg-slate-200 hover:bg-slate-300'}`}
               />
-            </div>
-          )}
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Projeção</p>
-          <p className="text-xl sm:text-2xl font-black text-black leading-none mt-2 truncate">R$ {fmtBRL(projection)}</p>
-          <p className="text-[10px] text-slate-400 mt-1">Média: R$ {fmtBRL(dailyAvg)}/dia</p>
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Margem Real</p>
-          <p className={`text-xl sm:text-2xl font-black leading-none mt-2 ${margin >= 50 ? 'text-green-600' : margin >= 20 ? 'text-orange-500' : 'text-red-500'}`}>
-            {margin.toFixed(1)}%
-          </p>
-          <p className="text-[10px] text-slate-400 mt-1">Despesas: R$ {fmtBRL(thisMonthExpenses)}</p>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Bar chart + Total Financeiro (CLARIS-style) */}
+      {/* Stats bar — agendamentos */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-slate-100">
+          <button className="p-5 text-left hover:bg-slate-50/60 transition-colors" onClick={() => onNavigate?.('AGENDAMENTOS')}>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Agendamentos</p>
+            <p className="text-3xl font-black text-slate-900 mt-2 leading-none"><AnimatedNumber value={monthlyAppts.length} /></p>
+            <p className="text-xs text-slate-400 mt-1.5">{monthlyFinished} <span className="text-green-500 font-semibold">concluídos</span></p>
+          </button>
+          <button className="p-5 text-left hover:bg-slate-50/60 transition-colors" onClick={() => onNavigate?.('CLIENTES')}>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Clientes</p>
+            <p className="text-3xl font-black text-slate-900 mt-2 leading-none"><AnimatedNumber value={totalClients} /></p>
+            <p className="text-xs text-slate-400 mt-1.5">cadastrados</p>
+          </button>
+          <div className="p-5">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Cancelados</p>
+            <p className={`text-3xl font-black mt-2 leading-none ${monthlyCancelled > 0 ? 'text-red-400' : 'text-slate-200'}`}><AnimatedNumber value={monthlyCancelled} /></p>
+            <p className="text-xs text-slate-400 mt-1.5">no mês</p>
+          </div>
+          <div className="p-5">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hoje</p>
+            <p className="text-3xl font-black text-slate-900 mt-2 leading-none"><AnimatedNumber value={todayAppts.length} /></p>
+            <p className="text-xs text-slate-400 mt-1.5">{pendingCount > 0 ? <span className="text-orange-500 font-semibold">{pendingCount} pendentes</span> : `${todayFinished} concluídos`}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats bar — financeiro */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden cursor-pointer hover:shadow-md transition-all" onClick={() => onNavigate?.('FINANCEIRO')}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 divide-x-0 sm:divide-x divide-slate-100">
+          <div className="p-5 sm:col-span-1">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Faturamento do Mês</p>
+            <p className="text-2xl font-black text-slate-900 mt-2 leading-none truncate">R$ {fmtBRL(thisMonthRevenue)}</p>
+            {monthlyGoal > 0 ? (
+              <div className="mt-3">
+                <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                  <span>Meta <span className={goalPct >= 100 ? 'text-green-500 font-bold' : goalPct >= 70 ? 'text-orange-500 font-bold' : 'text-red-400 font-bold'}>{goalPct}%</span></span>
+                  <span>R$ {fmtBRL(monthlyGoal)}</span>
+                </div>
+                <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-700 ${goalPct >= 100 ? 'bg-green-500' : goalPct >= 70 ? 'bg-orange-400' : 'bg-red-400'}`} style={{ width: `${Math.min(100, goalPct)}%` }} />
+                </div>
+              </div>
+            ) : <p className="text-[10px] text-slate-400 mt-1.5">Meta não configurada</p>}
+          </div>
+          <div className="p-5">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Projeção do Mês</p>
+            <p className="text-xl font-black text-slate-900 mt-2 leading-none truncate">R$ {fmtBRL(projection)}</p>
+            <p className="text-[10px] text-slate-400 mt-1.5">R$ {fmtBRL(dailyAvg)}/dia (média)</p>
+          </div>
+          <div className="p-5">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Margem Real</p>
+            <p className={`text-xl font-black mt-2 leading-none ${margin >= 50 ? 'text-green-500' : margin >= 20 ? 'text-orange-400' : 'text-red-400'}`}>{margin.toFixed(1)}%</p>
+            <p className="text-[10px] text-slate-400 mt-1.5">Despesas: R$ {fmtBRL(thisMonthExpenses)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Bar chart + Donut financeiro — dark tech */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="md:col-span-3 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
+        <div className="md:col-span-3 bg-slate-900 rounded-2xl p-4 sm:p-6">
           <div className="flex items-start justify-between mb-5">
             <div>
-              <h3 className="font-black text-sm text-black">Estatísticas de Receita</h3>
-              <p className="text-xs text-slate-400">Faturamento dos últimos 7 dias</p>
+              <h3 className="font-semibold text-sm text-slate-100">Receita — últimos 7 dias</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Faturamento por dia</p>
             </div>
-            <span className="text-xs font-bold text-slate-500">R$ {fmtBRL(barTotal)}</span>
+            <span className="text-xs font-bold text-slate-400 tabular-nums">R$ {fmtBRL(barTotal)}</span>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={barData} barSize={30} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} />
+          <ResponsiveContainer width="100%" height={196}>
+            <BarChart data={barData} barSize={28} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} />
               <YAxis hide />
               <Tooltip
                 formatter={(v: any) => [`R$ ${fmtBRL(v)}`, 'Receita']}
-                contentStyle={{ borderRadius: 10, border: '1px solid #f1f5f9', fontSize: 11, background: '#fff', color: '#0f172a', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
-                cursor={{ fill: '#f8fafc' }}
+                contentStyle={{ borderRadius: 10, border: '1px solid #1e293b', fontSize: 11, background: '#0f172a', color: '#e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
+                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
               />
-              <Bar dataKey="value" fill={accent} radius={[8, 8, 0, 0]} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                {barData.map((_, i) => (
+                  <Cell key={i} fill={i === barData.length - 1 ? accent : `${accent}55`} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="md:col-span-2 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 flex flex-col items-center justify-center">
+        <div className="md:col-span-2 bg-slate-900 rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center">
           <div className="w-full mb-3">
-            <h3 className="font-black text-sm text-black">Total Financeiro</h3>
-            <p className="text-xs text-slate-400">Receita vs despesas do mês</p>
+            <h3 className="font-semibold text-sm text-slate-100">Total Financeiro</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Receita vs despesas do mês</p>
           </div>
           <div className="relative">
             <PieChart width={180} height={180}>
@@ -424,30 +532,21 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
                   { name: 'Receita', value: Math.max(thisMonthRevenue, 1) },
                   { name: 'Despesas', value: Math.max(thisMonthExpenses, 0.01) },
                 ]}
-                cx={85} cy={85}
-                innerRadius={55} outerRadius={80}
-                dataKey="value"
-                strokeWidth={2}
-                stroke="#fff"
+                cx={85} cy={85} innerRadius={55} outerRadius={80}
+                dataKey="value" strokeWidth={0}
               >
                 <Cell fill="#22c55e" />
                 <Cell fill="#ef4444" />
               </Pie>
             </PieChart>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-lg font-black text-black leading-none">R$ {fmtBRL(thisMonthRevenue)}</span>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total</span>
+              <span className="text-base font-black text-slate-100 leading-none">R$ {(thisMonthRevenue/1000).toFixed(1)}k</span>
+              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">Receita</span>
             </div>
           </div>
           <div className="flex items-center gap-4 mt-2">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-              <span className="text-[11px] text-slate-600">Receita</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-              <span className="text-[11px] text-slate-600">Despesas</span>
-            </div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-[11px] text-slate-400">Receita</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[11px] text-slate-400">Despesas</span></div>
           </div>
         </div>
       </div>
@@ -509,28 +608,37 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         </div>
       </div>
 
-      {/* Weekly trend */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
-        <div className="mb-4">
-          <h3 className="font-black text-sm text-black">Tendência Semanal</h3>
-          <p className="text-xs text-slate-400">Receita das últimas 4 semanas</p>
+      {/* Weekly trend — dark tech */}
+      <div className="bg-slate-900 rounded-2xl p-4 sm:p-6">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <h3 className="font-semibold text-sm text-slate-100">Tendência Semanal</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Receita das últimas 4 semanas</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Última semana</p>
+            <p className="text-sm font-black text-slate-200 mt-0.5">R$ {fmtBRL(weeklyData[weeklyData.length - 1]?.receita || 0)}</p>
+          </div>
         </div>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={weeklyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={weeklyData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
             <defs>
-              <linearGradient id="gradReceita" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={accent} stopOpacity={0.3} />
-                <stop offset="100%" stopColor={accent} stopOpacity={0.02} />
+              <linearGradient id="gradTech" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={accent} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={accent} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} />
+            <CartesianGrid strokeDasharray="1 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} />
             <YAxis hide />
             <Tooltip
               formatter={(v: any) => [`R$ ${fmtBRL(v)}`, 'Receita']}
-              contentStyle={{ borderRadius: 12, border: '1px solid #f1f5f9', fontSize: 11, background: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
+              contentStyle={{ borderRadius: 10, border: '1px solid #1e293b', fontSize: 11, background: '#0f172a', color: '#e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}
             />
-            <Area type="monotone" dataKey="receita" name="Receita" stroke={accent} strokeWidth={2.5} fill="url(#gradReceita)" dot={{ r: 4, fill: accent, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6, fill: accent, stroke: '#fff', strokeWidth: 2 }} />
+            <Area type="monotone" dataKey="receita" name="Receita" stroke={accent} strokeWidth={2} fill="url(#gradTech)"
+              dot={{ r: 3.5, fill: accent, strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: accent, stroke: 'rgba(255,255,255,0.2)', strokeWidth: 3 }}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>

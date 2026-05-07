@@ -144,6 +144,15 @@ const HOUR_START = 8;
 const HOUR_END = 20;
 const HOUR_PX = 96; // px per hour
 
+function useNow() {
+  const [now, setNow] = React.useState(new Date());
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
 function WeekCalendar({
   days, appointments, customers, professionals, services, filterProfId, onApptClick,
 }: {
@@ -156,29 +165,40 @@ function WeekCalendar({
   onApptClick: (a: Appointment) => void;
 }) {
   const todayStr = localDateStr();
+  const now = useNow();
   const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
   const totalHeight = (HOUR_END - HOUR_START) * HOUR_PX;
   const cols = days.length;
 
+  // Current time indicator position
+  const nowH = now.getHours();
+  const nowM = now.getMinutes();
+  const nowPx = nowH >= HOUR_START && nowH < HOUR_END
+    ? ((nowH - HOUR_START) * 60 + nowM) / 60 * HOUR_PX
+    : null;
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
       {/* Day header row */}
-      <div className="grid border-b border-slate-100" style={{ gridTemplateColumns: `48px repeat(${cols}, 1fr)` }}>
-        <div className="border-r border-slate-100 bg-slate-50" />
+      <div className="grid border-b border-slate-100" style={{ gridTemplateColumns: `52px repeat(${cols}, 1fr)` }}>
+        <div className="border-r border-slate-100 bg-slate-50/80" />
         {days.map((d, i) => {
           const dateStr = localDateStr(d);
           const isToday = dateStr === todayStr;
+          const isWeekend = d.getDay() === 0 || d.getDay() === 6;
           const dayApptCount = appointments.filter(a => a.startTime?.startsWith(dateStr)).length;
           return (
-            <div key={i} className={`py-3 px-1 text-center border-r border-slate-100 last:border-0 ${isToday ? 'bg-orange-50' : 'bg-slate-50'}`}>
-              <p className={`text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-orange-500' : 'text-slate-400'}`}>
+            <div key={i} className={`py-3 px-1 text-center border-r border-slate-100 last:border-0 ${isToday ? 'bg-orange-50' : isWeekend ? 'bg-slate-50/60' : ''}`}>
+              <p className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-orange-500' : isWeekend ? 'text-slate-300' : 'text-slate-400'}`}>
                 {DAY_NAMES[d.getDay()]}
               </p>
-              <p className={`text-xl font-black leading-none mt-0.5 ${isToday ? 'text-orange-500' : 'text-slate-700'}`}>
-                {d.getDate()}
-              </p>
+              <div className={`mx-auto mt-1 flex items-center justify-center w-8 h-8 rounded-full ${isToday ? 'bg-orange-500' : ''}`}>
+                <p className={`text-base font-black leading-none ${isToday ? 'text-white' : isWeekend ? 'text-slate-300' : 'text-slate-700'}`}>
+                  {d.getDate()}
+                </p>
+              </div>
               {dayApptCount > 0 && (
-                <div className={`mx-auto mt-1.5 rounded-full text-[9px] font-bold px-1.5 py-0.5 w-fit ${isToday ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
+                <div className={`mx-auto mt-1 rounded-full text-[8px] font-bold px-1.5 py-0.5 w-fit ${isToday ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
                   {dayApptCount}
                 </div>
               )}
@@ -188,17 +208,17 @@ function WeekCalendar({
       </div>
 
       {/* Scrollable time grid */}
-      <div className="overflow-y-auto" style={{ maxHeight: '560px' }}>
-        <div className="relative grid" style={{ gridTemplateColumns: `48px repeat(${cols}, 1fr)`, height: totalHeight }}>
+      <div className="overflow-y-auto" style={{ maxHeight: '580px' }}>
+        <div className="relative grid" style={{ gridTemplateColumns: `52px repeat(${cols}, 1fr)`, height: totalHeight }}>
           {/* Time labels column */}
-          <div className="border-r border-slate-100 relative" style={{ height: totalHeight }}>
+          <div className="border-r border-slate-100 bg-slate-50/40 relative" style={{ height: totalHeight }}>
             {hours.map(h => (
               <div
                 key={h}
-                className="absolute w-full border-b border-slate-50 flex items-start justify-end pr-2 pt-1"
+                className="absolute w-full flex items-start justify-end pr-2 pt-1"
                 style={{ top: `${(h - HOUR_START) * HOUR_PX}px`, height: `${HOUR_PX}px` }}
               >
-                <span className="text-[9px] font-semibold text-slate-300">{String(h).padStart(2, '0')}:00</span>
+                <span className="text-[9px] font-semibold text-slate-400 tabular-nums">{String(h).padStart(2, '0')}:00</span>
               </div>
             ))}
           </div>
@@ -207,22 +227,35 @@ function WeekCalendar({
           {days.map((d, dayIdx) => {
             const dateStr = localDateStr(d);
             const isToday = dateStr === todayStr;
+            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             const dayAppts = appointments.filter(a => a.startTime?.startsWith(dateStr));
 
             return (
               <div
                 key={dayIdx}
-                className={`relative border-r border-slate-100 last:border-0 ${isToday ? 'bg-orange-50/30' : ''}`}
+                className={`relative border-r border-slate-100 last:border-0 ${isWeekend && !isToday ? 'bg-slate-50/40' : ''}`}
                 style={{ height: totalHeight }}
               >
-                {/* Hour grid lines */}
+                {/* Hour grid lines — solid */}
                 {hours.map(h => (
-                  <div key={h} className="absolute w-full border-b border-slate-50" style={{ top: `${(h - HOUR_START) * HOUR_PX}px` }} />
+                  <div key={h} className="absolute w-full" style={{ top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: 'rgba(226,232,240,0.8)' }} />
                 ))}
-                {/* Half-hour dashed lines */}
+                {/* Half-hour grid lines — dashed */}
                 {hours.map(h => (
-                  <div key={`${h}h`} className="absolute w-full border-b border-slate-50/80" style={{ top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, borderStyle: 'dashed' }} />
+                  <div key={`${h}h`} className="absolute w-full" style={{
+                    top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`,
+                    height: 1,
+                    background: 'repeating-linear-gradient(90deg, rgba(226,232,240,0.5) 0, rgba(226,232,240,0.5) 4px, transparent 4px, transparent 8px)',
+                  }} />
                 ))}
+
+                {/* Current time indicator */}
+                {isToday && nowPx !== null && (
+                  <div className="absolute w-full z-10 flex items-center" style={{ top: `${nowPx}px` }}>
+                    <div className="w-2 h-2 rounded-full bg-orange-500 -ml-1 shrink-0" />
+                    <div className="flex-1 h-px bg-orange-500" />
+                  </div>
+                )}
 
                 {/* Appointment blocks */}
                 {dayAppts.map(a => {
@@ -232,37 +265,41 @@ function WeekCalendar({
                   if (startH < HOUR_START || startH >= HOUR_END) return null;
 
                   const topPx = ((startH - HOUR_START) * 60 + startM) / 60 * HOUR_PX;
-                  const heightPx = Math.max(28, (a.durationMinutes || 30) / 60 * HOUR_PX - 2);
+                  const heightPx = Math.max(26, (a.durationMinutes || 30) / 60 * HOUR_PX - 2);
 
                   const profIdx = professionals.findIndex(p => p.id === a.professional_id);
                   const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
                   const cust = customers.find(c => c.id === a.customer_id);
                   const svc = services.find(s => s.id === a.service_id);
                   const isCancelled = a.status === AppointmentStatus.CANCELLED;
+                  const isFinished = a.status === AppointmentStatus.FINISHED;
 
                   return (
                     <div
                       key={a.id}
                       onClick={() => onApptClick(a)}
-                      className={`absolute left-0.5 right-0.5 rounded-lg px-1.5 py-1 cursor-pointer hover:brightness-95 transition-all overflow-hidden ${isCancelled ? 'opacity-35' : ''}`}
+                      className={`absolute left-1 right-1 rounded-lg cursor-pointer transition-all hover:scale-[1.02] hover:z-20 overflow-hidden ${isCancelled ? 'opacity-30' : ''}`}
                       style={{
                         top: `${topPx}px`,
                         height: `${heightPx}px`,
-                        backgroundColor: `${color}1a`,
+                        backgroundColor: isFinished ? `${color}12` : `${color}18`,
                         borderLeft: `3px solid ${color}`,
+                        boxShadow: `0 1px 4px ${color}25`,
                       }}
                     >
-                      <p className="text-[9px] font-bold leading-none" style={{ color }}>
-                        {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      {heightPx >= 38 && (
-                        <p className="text-[10px] font-semibold text-slate-700 leading-tight truncate mt-0.5">
-                          {cust?.name || '—'}
+                      <div className="px-1.5 py-1 h-full flex flex-col justify-start overflow-hidden">
+                        <p className="text-[9px] font-bold leading-none tabular-nums" style={{ color }}>
+                          {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </p>
-                      )}
-                      {heightPx >= 54 && svc && (
-                        <p className="text-[9px] text-slate-400 leading-tight truncate">{svc.name}</p>
-                      )}
+                        {heightPx >= 36 && (
+                          <p className="text-[10px] font-semibold text-slate-700 leading-tight truncate mt-0.5">
+                            {cust?.name || '—'}
+                          </p>
+                        )}
+                        {heightPx >= 52 && svc && (
+                          <p className="text-[9px] text-slate-400 leading-tight truncate">{svc.name}</p>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
