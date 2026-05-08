@@ -2152,11 +2152,11 @@ END $$;`.trim();
                     ))}
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nicho / Segmento</label>
-                      <input list="nicho-create-list" value={newNicho} onChange={e => setNewNicho(e.target.value)} placeholder="Selecione ou digite o nicho"
-                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
-                      <datalist id="nicho-create-list">
-                        {NICHOS.map(n => <option key={n} value={n} />)}
-                      </datalist>
+                      <select value={newNicho} onChange={e => setNewNicho(e.target.value)}
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500 appearance-none">
+                        <option value="">— Selecione o nicho —</option>
+                        {NICHOS.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
                     </div>
                     {/* Plan selector */}
                     <div className="space-y-2">
@@ -2336,11 +2336,11 @@ END $$;`.trim();
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nicho / Segmento</label>
-                  <input list="nicho-edit-list" value={(editingTenant as any).nicho || ''} onChange={e => setEditingTenant({ ...editingTenant, nicho: e.target.value } as Tenant)} placeholder="Selecione ou digite o nicho"
-                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
-                  <datalist id="nicho-edit-list">
-                    {NICHOS.map(n => <option key={n} value={n} />)}
-                  </datalist>
+                  <select value={editingTenant.nicho || ''} onChange={e => setEditingTenant({ ...editingTenant, nicho: e.target.value } as Tenant)}
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500 appearance-none">
+                    <option value="">— Selecione o nicho —</option>
+                    {NICHOS.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
                 </div>
                 {/* Acquisition channel */}
                 <div className="space-y-1">
