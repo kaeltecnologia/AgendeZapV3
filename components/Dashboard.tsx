@@ -382,20 +382,20 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
       {settings?.lastOptimizedAt && (
         <div
           onClick={() => onNavigate?.('OTIMIZACAO')}
-          className="cursor-pointer bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-100 rounded-2xl px-4 sm:px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 hover:border-violet-300 transition-all"
+          className="cursor-pointer bg-slate-50 border border-slate-200 rounded-2xl px-4 sm:px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 hover:border-orange-200 transition-all"
         >
           <div className="flex items-center gap-3">
             <span className="text-xl">🤖</span>
             <div>
-              <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">IA Otimizada</p>
-              <p className="text-xs font-bold text-violet-500 truncate max-w-xs">
+              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">IA Otimizada</p>
+              <p className="text-xs font-bold text-slate-600 truncate max-w-xs">
                 {settings.lastOptimizationSummary
                   ? settings.lastOptimizationSummary.slice(0, 80) + (settings.lastOptimizationSummary.length > 80 ? '…' : '')
                   : 'Otimização aplicada com sucesso.'}
               </p>
             </div>
           </div>
-          <span className="text-[9px] font-black text-violet-400 shrink-0 ml-4">
+          <span className="text-[9px] font-black text-slate-400 shrink-0 ml-4">
             {new Date(settings.lastOptimizedAt).toLocaleDateString('pt-BR')}
           </span>
         </div>
@@ -404,13 +404,13 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
       {/* Carousel motivacional */}
       <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
         {/* Greeting + weather */}
-        <div className="sm:w-56 shrink-0">
-          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">{greeting}</p>
-          <h2 className="text-xl font-black text-slate-800 leading-tight mt-0.5 truncate">{tenantName || 'Meu Negócio'}</h2>
+        <div className="sm:w-52 shrink-0">
+          <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">{greeting}</p>
+          <h2 className="text-xl font-bold text-slate-800 leading-tight mt-1 truncate">{tenantName || 'Meu Negócio'}</h2>
           {weather ? (
-            <div className="flex items-baseline gap-1.5 mt-2">
-              <span className="text-2xl font-black text-slate-700">{weather.temp}°</span>
-              <span className="text-[10px] font-semibold text-slate-400 uppercase">{weatherLabel(weather.code)}{weatherCity ? ` · ${weatherCity}` : ''}</span>
+            <div className="flex items-baseline gap-1.5 mt-1.5">
+              <span className="text-xl font-semibold text-slate-600">{weather.temp}°</span>
+              <span className="text-[10px] font-medium text-slate-400">{weatherLabel(weather.code)}{weatherCity ? ` · ${weatherCity}` : ''}</span>
             </div>
           ) : null}
         </div>
@@ -423,7 +423,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
             style={{ opacity: carouselFade ? 1 : 0, transform: carouselFade ? 'translateY(0)' : 'translateY(8px)' }}
           >
             <p className="text-[9px] font-bold text-orange-500 uppercase tracking-[0.3em] mb-1.5">{carouselSlides[carouselIdx].label}</p>
-            <p className="text-sm sm:text-base font-semibold text-slate-600 leading-relaxed italic">"{carouselSlides[carouselIdx].text}"</p>
+            <p className="text-base sm:text-lg font-semibold text-slate-600 leading-relaxed italic">"{carouselSlides[carouselIdx].text}"</p>
           </div>
           <div className="flex items-center gap-1.5 mt-3">
             {carouselSlides.map((_, i) => (
@@ -438,115 +438,115 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
       {/* Stats bar — agendamentos */}
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-slate-100">
-          <button className="p-5 text-left hover:bg-slate-50/60 transition-colors" onClick={() => onNavigate?.('AGENDAMENTOS')}>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Agendamentos</p>
-            <p className="text-3xl font-black text-slate-900 mt-2 leading-none"><AnimatedNumber value={monthlyAppts.length} /></p>
-            <p className="text-xs text-slate-400 mt-1.5">{monthlyFinished} <span className="text-green-500 font-semibold">concluídos</span></p>
+          <button className="p-5 text-left hover:bg-slate-50/50 transition-colors" onClick={() => onNavigate?.('AGENDAMENTOS')}>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Agendamentos</p>
+            <p className="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><AnimatedNumber value={monthlyAppts.length} /></p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">{monthlyFinished} concluídos</p>
           </button>
-          <button className="p-5 text-left hover:bg-slate-50/60 transition-colors" onClick={() => onNavigate?.('CLIENTES')}>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Clientes</p>
-            <p className="text-3xl font-black text-slate-900 mt-2 leading-none"><AnimatedNumber value={totalClients} /></p>
-            <p className="text-xs text-slate-400 mt-1.5">cadastrados</p>
+          <button className="p-5 text-left hover:bg-slate-50/50 transition-colors" onClick={() => onNavigate?.('CLIENTES')}>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Clientes</p>
+            <p className="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><AnimatedNumber value={totalClients} /></p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">cadastrados</p>
           </button>
           <div className="p-5">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Cancelados</p>
-            <p className={`text-3xl font-black mt-2 leading-none ${monthlyCancelled > 0 ? 'text-red-400' : 'text-slate-200'}`}><AnimatedNumber value={monthlyCancelled} /></p>
-            <p className="text-xs text-slate-400 mt-1.5">no mês</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Cancelados</p>
+            <p className={`text-2xl font-bold mt-2 leading-none ${monthlyCancelled > 0 ? 'text-red-400' : 'text-slate-200'}`}><AnimatedNumber value={monthlyCancelled} /></p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">no mês</p>
           </div>
           <div className="p-5">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hoje</p>
-            <p className="text-3xl font-black text-slate-900 mt-2 leading-none"><AnimatedNumber value={todayAppts.length} /></p>
-            <p className="text-xs text-slate-400 mt-1.5">{pendingCount > 0 ? <span className="text-orange-500 font-semibold">{pendingCount} pendentes</span> : `${todayFinished} concluídos`}</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Hoje</p>
+            <p className="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><AnimatedNumber value={todayAppts.length} /></p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">{pendingCount > 0 ? <span className="text-orange-500">{pendingCount} pendentes</span> : `${todayFinished} concluídos`}</p>
           </div>
         </div>
       </div>
 
       {/* Stats bar — financeiro */}
-      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden cursor-pointer hover:shadow-md transition-all" onClick={() => onNavigate?.('FINANCEIRO')}>
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden cursor-pointer hover:shadow-sm transition-all" onClick={() => onNavigate?.('FINANCEIRO')}>
         <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 divide-x-0 sm:divide-x divide-slate-100">
           <div className="p-5 sm:col-span-1">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Faturamento do Mês</p>
-            <p className="text-2xl font-black text-slate-900 mt-2 leading-none truncate">R$ {fmtBRL(thisMonthRevenue)}</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Faturamento do Mês</p>
+            <p className="text-xl font-extrabold text-slate-800 mt-2 leading-none truncate">R$ {fmtBRL(thisMonthRevenue)}</p>
             {monthlyGoal > 0 ? (
               <div className="mt-3">
-                <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                  <span>Meta <span className={goalPct >= 100 ? 'text-green-500 font-bold' : goalPct >= 70 ? 'text-orange-500 font-bold' : 'text-red-400 font-bold'}>{goalPct}%</span></span>
+                <div className="flex justify-between text-[10px] text-slate-400 mb-1.5">
+                  <span>Meta <span className={goalPct >= 100 ? 'text-green-500' : goalPct >= 70 ? 'text-orange-500' : 'text-red-400'}>{goalPct}%</span></span>
                   <span>R$ {fmtBRL(monthlyGoal)}</span>
                 </div>
-                <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-700 ${goalPct >= 100 ? 'bg-green-500' : goalPct >= 70 ? 'bg-orange-400' : 'bg-red-400'}`} style={{ width: `${Math.min(100, goalPct)}%` }} />
+                <div className="h-0.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-700 ${goalPct >= 100 ? 'bg-green-400' : goalPct >= 70 ? 'bg-orange-400' : 'bg-red-400'}`} style={{ width: `${Math.min(100, goalPct)}%` }} />
                 </div>
               </div>
-            ) : <p className="text-[10px] text-slate-400 mt-1.5">Meta não configurada</p>}
+            ) : <p className="text-[10px] font-medium text-slate-500 mt-1.5">Meta não configurada</p>}
           </div>
           <div className="p-5">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Projeção do Mês</p>
-            <p className="text-xl font-black text-slate-900 mt-2 leading-none truncate">R$ {fmtBRL(projection)}</p>
-            <p className="text-[10px] text-slate-400 mt-1.5">R$ {fmtBRL(dailyAvg)}/dia (média)</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Projeção do Mês</p>
+            <p className="text-xl font-extrabold text-slate-800 mt-2 leading-none truncate">R$ {fmtBRL(projection)}</p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">R$ {fmtBRL(dailyAvg)}/dia</p>
           </div>
           <div className="p-5">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Margem Real</p>
-            <p className={`text-xl font-black mt-2 leading-none ${margin >= 50 ? 'text-green-500' : margin >= 20 ? 'text-orange-400' : 'text-red-400'}`}>{margin.toFixed(1)}%</p>
-            <p className="text-[10px] text-slate-400 mt-1.5">Despesas: R$ {fmtBRL(thisMonthExpenses)}</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Margem</p>
+            <p className={`text-xl font-bold mt-2 leading-none ${margin >= 50 ? 'text-green-500' : margin >= 20 ? 'text-orange-400' : 'text-red-400'}`}>{margin.toFixed(1)}%</p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">Despesas: R$ {fmtBRL(thisMonthExpenses)}</p>
           </div>
         </div>
       </div>
 
       {/* Bar chart + Donut financeiro — dark tech */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="md:col-span-3 bg-slate-900 rounded-2xl p-4 sm:p-6">
-          <div className="flex items-start justify-between mb-5">
+        <div className="md:col-span-3 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
+          <div className="flex items-start justify-between mb-4">
             <div>
-              <h3 className="font-semibold text-sm text-slate-100">Receita — últimos 7 dias</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Faturamento por dia</p>
+              <h3 className="font-semibold text-sm text-slate-700">Receita — últimos 7 dias</h3>
+              <p className="text-[11px] font-medium text-slate-500 mt-0.5">Faturamento por dia</p>
             </div>
-            <span className="text-xs font-bold text-slate-400 tabular-nums">R$ {fmtBRL(barTotal)}</span>
+            <span className="text-[11px] font-semibold text-slate-500 tabular-nums">R$ {fmtBRL(barTotal)}</span>
           </div>
-          <ResponsiveContainer width="100%" height={196}>
-            <BarChart data={barData} barSize={28} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} />
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={barData} barSize={10} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8', fontWeight: 500 }} />
               <YAxis hide />
               <Tooltip
                 formatter={(v: any) => [`R$ ${fmtBRL(v)}`, 'Receita']}
-                contentStyle={{ borderRadius: 10, border: '1px solid #1e293b', fontSize: 11, background: '#0f172a', color: '#e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
-                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                contentStyle={{ borderRadius: 8, border: '1px solid #F1F5F9', fontSize: 11, background: '#ffffff', color: '#475569', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
+                cursor={{ fill: 'rgba(0,0,0,0.02)' }}
               />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {barData.map((_, i) => (
-                  <Cell key={i} fill={i === barData.length - 1 ? accent : `${accent}55`} />
+                  <Cell key={i} fill={i === barData.length - 1 ? accent : '#E2E8F0'} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="md:col-span-2 bg-slate-900 rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center">
-          <div className="w-full mb-3">
-            <h3 className="font-semibold text-sm text-slate-100">Total Financeiro</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Receita vs despesas do mês</p>
+        <div className="md:col-span-2 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 flex flex-col items-center justify-center">
+          <div className="w-full mb-2">
+            <h3 className="font-semibold text-sm text-slate-700">Financeiro do Mês</h3>
+            <p className="text-[11px] font-medium text-slate-500 mt-0.5">Receita vs despesas</p>
           </div>
           <div className="relative">
-            <PieChart width={180} height={180}>
+            <PieChart width={160} height={160}>
               <Pie
                 data={[
                   { name: 'Receita', value: Math.max(thisMonthRevenue, 1) },
                   { name: 'Despesas', value: Math.max(thisMonthExpenses, 0.01) },
                 ]}
-                cx={85} cy={85} innerRadius={55} outerRadius={80}
+                cx={76} cy={76} innerRadius={50} outerRadius={70}
                 dataKey="value" strokeWidth={0}
               >
-                <Cell fill="#22c55e" />
-                <Cell fill="#ef4444" />
+                <Cell fill="#4ade80" />
+                <Cell fill="#fca5a5" />
               </Pie>
             </PieChart>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-base font-black text-slate-100 leading-none">R$ {(thisMonthRevenue/1000).toFixed(1)}k</span>
-              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">Receita</span>
+              <span className="text-sm font-semibold text-slate-700 leading-none">R$ {(thisMonthRevenue/1000).toFixed(1)}k</span>
+              <span className="text-[9px] font-medium text-slate-400 mt-1">receita</span>
             </div>
           </div>
-          <div className="flex items-center gap-4 mt-2">
-            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-[11px] text-slate-400">Receita</span></div>
-            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[11px] text-slate-400">Despesas</span></div>
+          <div className="flex items-center gap-4 mt-1">
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-300" /><span className="text-[10px] text-slate-400">Receita</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-300" /><span className="text-[10px] text-slate-400">Despesas</span></div>
           </div>
         </div>
       </div>
@@ -555,16 +555,16 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="md:col-span-3 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="mb-4">
-            <h3 className="font-black text-sm text-black">Serviços Populares</h3>
-            <p className="text-xs text-slate-400">Distribuição por categoria</p>
+            <h3 className="font-semibold text-sm text-slate-700">Serviços Populares</h3>
+            <p className="text-[11px] font-medium text-slate-500">Distribuição por categoria</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="relative shrink-0">
-              <PieChart width={110} height={110}>
+              <PieChart width={100} height={100}>
                 <Pie
                   data={donutData.length ? donutData : [{ name: '', value: 1, pct: 0 }]}
-                  cx={50} cy={50}
-                  innerRadius={34} outerRadius={52}
+                  cx={46} cy={46}
+                  innerRadius={32} outerRadius={46}
                   dataKey="value"
                   strokeWidth={0}
                 >
@@ -574,70 +574,70 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
                 </Pie>
               </PieChart>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-base font-black text-black leading-none">{donutData[0]?.pct || 0}%</span>
-                <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mt-0.5">top serv.</span>
+                <span className="text-base font-semibold text-slate-700 leading-none">{donutData[0]?.pct || 0}%</span>
+                <span className="text-[8px] font-medium text-slate-400 mt-0.5">top</span>
               </div>
             </div>
             <div className="flex-1 space-y-2.5 min-w-0">
               {(donutData.length ? donutData : []).slice(0, 5).map((d, i) => (
                 <div key={i} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: DONUT_COLORS[i] }} />
-                    <span className="text-[11px] text-slate-600 font-medium truncate">{d.name}</span>
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: DONUT_COLORS[i] }} />
+                    <span className="text-[11px] text-slate-500 truncate">{d.name}</span>
                   </div>
-                  <span className="text-[11px] font-bold text-slate-700 shrink-0">{d.pct}%</span>
+                  <span className="text-[11px] font-medium text-slate-600 shrink-0">{d.pct}%</span>
                 </div>
               ))}
-              {donutData.length === 0 && <p className="text-[11px] text-slate-400">Sem dados</p>}
+              {donutData.length === 0 && <p className="text-[11px] font-medium text-slate-500">Sem dados</p>}
             </div>
           </div>
         </div>
         <div className="md:col-span-2 grid grid-cols-1 gap-4">
           <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
-            <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Dia Mais Forte</p>
-            <p className="text-3xl font-black text-black leading-none mt-2">{strongestDayName}</p>
-            <p className="text-[10px] text-slate-400 mt-1">Últimos 30 dias</p>
+            <p className="text-[10px] font-medium text-orange-400 uppercase tracking-wider">Dia Mais Forte</p>
+            <p className="text-2xl font-semibold text-slate-700 leading-none mt-2">{strongestDayName}</p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">Últimos 30 dias</p>
           </div>
           <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
-            <p className="text-xs font-bold text-orange-500 uppercase tracking-wider">Profissionais Ativos</p>
-            <p className="text-3xl font-black text-black leading-none mt-2">
+            <p className="text-[10px] font-medium text-orange-400 uppercase tracking-wider">Profissionais Ativos</p>
+            <p className="text-2xl font-semibold text-slate-700 leading-none mt-2">
               <AnimatedNumber value={professionals.length} />
             </p>
-            <p className="text-[10px] text-slate-400 mt-1">no sistema</p>
+            <p className="text-[10px] font-medium text-slate-500 mt-1.5">no sistema</p>
           </div>
         </div>
       </div>
 
-      {/* Weekly trend — dark tech */}
-      <div className="bg-slate-900 rounded-2xl p-4 sm:p-6">
-        <div className="mb-5 flex items-start justify-between">
+      {/* Weekly trend */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
+        <div className="mb-4 flex items-start justify-between">
           <div>
-            <h3 className="font-semibold text-sm text-slate-100">Tendência Semanal</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Receita das últimas 4 semanas</p>
+            <h3 className="font-semibold text-sm text-slate-700">Tendência Semanal</h3>
+            <p className="text-[11px] font-medium text-slate-500 mt-0.5">Receita das últimas 4 semanas</p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Última semana</p>
-            <p className="text-sm font-black text-slate-200 mt-0.5">R$ {fmtBRL(weeklyData[weeklyData.length - 1]?.receita || 0)}</p>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider">Última semana</p>
+            <p className="text-sm font-semibold text-slate-700 mt-0.5">R$ {fmtBRL(weeklyData[weeklyData.length - 1]?.receita || 0)}</p>
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={180}>
-          <AreaChart data={weeklyData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+        <ResponsiveContainer width="100%" height={160}>
+          <AreaChart data={weeklyData} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
             <defs>
               <linearGradient id="gradTech" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={accent} stopOpacity={0.35} />
+                <stop offset="0%" stopColor={accent} stopOpacity={0.12} />
                 <stop offset="100%" stopColor={accent} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="1 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
-            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} />
+            <CartesianGrid strokeDasharray="2 6" stroke="#F1F5F9" vertical={false} />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8', fontWeight: 400 }} />
             <YAxis hide />
             <Tooltip
               formatter={(v: any) => [`R$ ${fmtBRL(v)}`, 'Receita']}
-              contentStyle={{ borderRadius: 10, border: '1px solid #1e293b', fontSize: 11, background: '#0f172a', color: '#e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}
+              contentStyle={{ borderRadius: 8, border: '1px solid #F1F5F9', fontSize: 11, background: '#ffffff', color: '#475569', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
             />
-            <Area type="monotone" dataKey="receita" name="Receita" stroke={accent} strokeWidth={2} fill="url(#gradTech)"
-              dot={{ r: 3.5, fill: accent, strokeWidth: 0 }}
-              activeDot={{ r: 5, fill: accent, stroke: 'rgba(255,255,255,0.2)', strokeWidth: 3 }}
+            <Area type="monotone" dataKey="receita" name="Receita" stroke={accent} strokeWidth={1.5} fill="url(#gradTech)"
+              dot={{ r: 2.5, fill: accent, strokeWidth: 0 }}
+              activeDot={{ r: 4, fill: accent, stroke: '#ffffff', strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -645,38 +645,38 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
 
       {/* Referral / Indicacao card */}
       {referralData && (
-        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border border-purple-100 p-4 sm:p-6">
+        <div className="bg-orange-50 rounded-2xl border border-orange-100 p-4 sm:p-6">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h3 className="font-black text-sm text-purple-700">Programa de Indicacao</h3>
-              <p className="text-[10px] font-bold text-purple-400">Indique parceiros e ganhe descontos</p>
+              <h3 className="font-black text-sm text-orange-600">Programa de Indicacao</h3>
+              <p className="text-[10px] font-bold text-orange-400">Indique parceiros e ganhe descontos</p>
             </div>
-            <span className="text-2xl">💜</span>
+            <span className="text-2xl">🎁</span>
           </div>
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-white/70 rounded-xl p-3 text-center">
-              <p className="text-2xl font-black text-purple-600">{referralData.activeReferrals}</p>
-              <p className="text-[8px] font-black text-purple-400 uppercase tracking-wider">Ativas</p>
+            <div className="bg-white rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-orange-500">{referralData.activeReferrals}</p>
+              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Ativas</p>
             </div>
-            <div className="bg-white/70 rounded-xl p-3 text-center">
+            <div className="bg-white rounded-xl p-3 text-center">
               <p className="text-2xl font-black text-green-600">{referralData.discountPercent}%</p>
-              <p className="text-[8px] font-black text-green-500 uppercase tracking-wider">Desconto</p>
+              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Desconto</p>
             </div>
-            <div className="bg-white/70 rounded-xl p-3 text-center">
-              <p className="text-lg font-black text-purple-600">
+            <div className="bg-white rounded-xl p-3 text-center">
+              <p className="text-lg font-black text-orange-500">
                 {referralData.pixBonus > 0 ? `R$${fmtBRL(referralData.pixBonus)}` : '--'}
               </p>
-              <p className="text-[8px] font-black text-purple-400 uppercase tracking-wider">PIX/mes</p>
+              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">PIX/mes</p>
             </div>
           </div>
           {tenantSlugLocal && (
-            <div className="bg-white/80 rounded-xl p-3 flex items-center gap-2 mb-3">
-              <p className="text-[10px] font-mono text-purple-600 truncate flex-1">
+            <div className="bg-white rounded-xl p-3 flex items-center gap-2 mb-3">
+              <p className="text-[10px] font-mono text-slate-600 truncate flex-1">
                 www.agendezap.com/?ref={tenantSlugLocal}
               </p>
               <button
                 onClick={() => { navigator.clipboard.writeText(`https://www.agendezap.com/?ref=${tenantSlugLocal}`); }}
-                className="shrink-0 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-purple-700 transition-all"
+                className="shrink-0 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-[9px] font-black uppercase hover:bg-orange-600 transition-all"
               >
                 Copiar
               </button>
@@ -686,7 +686,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
             <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
               {referralData.referrals.slice(0, 5).map((r) => (
                 <div key={r.id} className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-purple-700 truncate">{r.name}</span>
+                  <span className="font-bold text-slate-700 truncate">{r.name}</span>
                   <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${
                     r.status === 'ATIVA' ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-400'
                   }`}>{r.status}</span>
@@ -695,7 +695,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
             </div>
           )}
           {referralData.activeReferrals < 5 && (
-            <p className="text-[10px] text-purple-500 mt-3 text-center">
+            <p className="text-[10px] text-orange-500 mt-3 text-center">
               Faltam <strong>{5 - referralData.activeReferrals}</strong> indicacoes ativas para ganhar <strong>10% via PIX</strong>
             </p>
           )}
@@ -707,26 +707,26 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
           <div className="flex items-start justify-between mb-5">
             <div>
-              <h3 className="font-black text-sm text-black">Top Profissionais</h3>
-              <p className="text-xs text-slate-400">Ranking por faturamento</p>
+              <h3 className="font-semibold text-sm text-slate-700">Top Profissionais</h3>
+              <p className="text-[11px] font-medium text-slate-500">Ranking por faturamento</p>
             </div>
           </div>
-          <div className="space-y-5">
+          <div className="space-y-4">
             {topProfs.map(p => (
               <div key={p.id} className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xs font-black shrink-0">
+                <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
                   {p.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-sm font-bold text-black truncate">{p.name}</p>
-                    <p className="text-sm font-black text-black ml-2 shrink-0">R$ {p.revenue.toLocaleString()}</p>
+                    <p className="text-sm font-semibold text-slate-700 truncate">{p.name}</p>
+                    <p className="text-sm font-semibold text-slate-700 ml-2 shrink-0">R$ {p.revenue.toLocaleString()}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-slate-900 rounded-full transition-all" style={{ width: `${Math.max(4, (p.revenue / maxRev) * 100)}%` }} />
+                    <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-orange-400 rounded-full transition-all" style={{ width: `${Math.max(4, (p.revenue / maxRev) * 100)}%` }} />
                     </div>
-                    <span className="text-[10px] text-slate-400 font-medium shrink-0">{p.count} atend.</span>
+                    <span className="text-[10px] font-medium text-slate-500 shrink-0">{p.count} atend.</span>
                   </div>
                 </div>
               </div>
@@ -736,18 +736,18 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6">
-          <div className="flex items-start justify-between mb-5">
+          <div className="flex items-start justify-between mb-4">
             <div>
-              <h3 className="font-black text-sm text-black">Agendamentos de Hoje</h3>
-              <p className="text-xs text-slate-400">Próximos atendimentos</p>
+              <h3 className="font-semibold text-sm text-slate-700">Agendamentos de Hoje</h3>
+              <p className="text-[11px] font-medium text-slate-500">Próximos atendimentos</p>
             </div>
             {pendingCount > 0 && (
-              <span className="text-[10px] font-bold bg-orange-50 text-orange-500 border border-orange-100 px-3 py-1 rounded-full shrink-0">
+              <span className="text-[10px] font-medium text-orange-500 bg-orange-50 px-2.5 py-1 rounded-full shrink-0">
                 {pendingCount} pendentes
               </span>
             )}
           </div>
-          <div className="space-y-1 overflow-y-auto max-h-[260px] custom-scrollbar">
+          <div className="space-y-0 overflow-y-auto max-h-[260px] custom-scrollbar">
             {todayAppts.length === 0 ? (
               <p className="text-xs text-slate-400 text-center py-8">Nenhum agendamento hoje</p>
             ) : todayAppts.map(a => {
@@ -757,21 +757,16 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
               const done = a.status === AppointmentStatus.CONFIRMED || a.status === AppointmentStatus.FINISHED;
               return (
                 <div key={a.id} className="flex items-center gap-3 py-2.5 border-b border-slate-50 last:border-0">
-                  <span className="text-sm font-black text-black w-12 shrink-0 tabular-nums">
+                  <span className="text-xs font-medium text-slate-400 w-11 shrink-0 tabular-nums">
                     {new Date(a.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-black truncate">{cust?.name || 'Cliente'}</p>
-                    <p className="text-[10px] text-slate-400 uppercase font-medium truncate">
-                      {svc?.name || 'Serviço'}{prof ? ` · ${prof.name.toUpperCase()}` : ''}
+                    <p className="text-sm font-medium text-slate-700 truncate">{cust?.name || 'Cliente'}</p>
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {svc?.name || 'Serviço'}{prof ? ` · ${prof.name}` : ''}
                     </p>
                   </div>
-                  <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full shrink-0 ${done ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-500'}`}>
-                    {done ? 'CONFIRMADO' : 'PENDENTE'}
-                  </span>
-                  <span className="text-xs font-bold text-slate-600 shrink-0 tabular-nums">
-                    R$ {(a.amountPaid || 0).toLocaleString()}
-                  </span>
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${done ? 'bg-green-400' : 'bg-orange-300'}`} />
                 </div>
               );
             })}

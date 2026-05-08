@@ -3170,6 +3170,18 @@ async function _handleMessage(
 
       // Check plan coverage (per-service quotas)
       const customer = await db.findOrCreateCustomer(tenantId, phone, session.data.clientName || pushName || 'Cliente');
+
+      // ── Subscription block check ────────────────────────────────────────
+      if (customer.subscriptionStatus === 'overdue') {
+        const subCfg = settings.subscriptionConfig;
+        const blockedMsg = subCfg?.blockedMessage
+          ? subCfg.blockedMessage.replace(/\{nome\}/gi, customer.name)
+          : `Olá ${customer.name}! Seu plano está com pagamento em atraso. Por favor regularize para agendar. 💳`;
+        session.history.push({ role: 'bot', text: blockedMsg });
+        saveSession(session);
+        return blockedMsg;
+      }
+
       let isPlanAppointment = false;
       let planBalanceNote = '';
       if (customer.planId && customer.planStatus === 'ativo') {

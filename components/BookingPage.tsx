@@ -48,7 +48,7 @@ const PERIODS = [
 const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const DAY_NAMES = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
-type Step = 'SERVICE' | 'DATE' | 'BARBER' | 'PERIOD' | 'TIME' | 'INFO' | 'SUCCESS';
+type Step = 'SERVICE' | 'DATE' | 'BARBER' | 'PERIOD' | 'TIME' | 'INFO' | 'SUCCESS' | 'BLOCKED';
 
 // ── Mini Calendar ─────────────────────────────────────────────────────
 const MiniCalendar: React.FC<{
@@ -340,6 +340,13 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
     try {
       const startTimeStr = `${selectedDate}T${selectedTime}:00`;
       const customer = await db.findOrCreateCustomer(tenant.id, phone, customerName.trim());
+
+      // ── Subscription block check ─────────────────────────────────────────
+      if (customer.subscriptionStatus === 'overdue') {
+        goTo('BLOCKED');
+        setSubmitting(false);
+        return;
+      }
 
       await db.addAppointment({
         tenant_id: tenant.id,
@@ -904,6 +911,26 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
       {/* WIZARD STEPS (DATE, BARBER, PERIOD, TIME, INFO, SUCCESS)     */}
       {/* ══════════════════════════════════════════════════════════════ */}
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6 relative z-10">
+
+        {/* ── BLOCKED ─────────────────────────────────────────────── */}
+        {step === 'BLOCKED' && (
+          <div className="text-center space-y-6 py-8 animate-fadeIn">
+            <div className="text-6xl">💳</div>
+            <div>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tight">Pagamento Pendente</h2>
+              <p className="text-sm font-bold text-white/70 mt-2">
+                {settings?.subscriptionConfig?.blockedMessage
+                  ? settings.subscriptionConfig.blockedMessage.replace(/\{nome\}/gi, customerName)
+                  : 'Seu plano está com pagamento em atraso. Por favor regularize para agendar.'}
+              </p>
+            </div>
+            <p className="text-xs text-white/60">Entre em contato pelo WhatsApp para regularizar sua assinatura.</p>
+            <button
+              onClick={() => goTo('INFO')}
+              className="w-full py-4 border-2 border-white/40 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/20 transition-all"
+            >Voltar</button>
+          </div>
+        )}
 
         {/* ── SUCCESS ─────────────────────────────────────────────── */}
         {step === 'SUCCESS' && (

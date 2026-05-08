@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod, parseServiceIds, encodeServiceIds } from '../types';
@@ -410,6 +410,246 @@ function WeekCalendar({
   );
 }
 
+function DayCalendar({
+  date, appointments, customers, professionals, services, filterProfId, onApptClick,
+}: {
+  date: Date;
+  appointments: Appointment[];
+  customers: Customer[];
+  professionals: Professional[];
+  services: Service[];
+  filterProfId: string;
+  onApptClick: (a: Appointment) => void;
+}) {
+  const todayStr = localDateStr();
+  const dateStr = localDateStr(date);
+  const now = useNow();
+  const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
+  const totalHeight = (HOUR_END - HOUR_START) * HOUR_PX;
+
+  const visibleProfs = filterProfId
+    ? professionals.filter(p => p.id === filterProfId)
+    : professionals;
+  const cols = Math.max(1, visibleProfs.length);
+
+  const isToday = dateStr === todayStr;
+  const nowH = now.getHours();
+  const nowM = now.getMinutes();
+  const nowPx = isToday && nowH >= HOUR_START && nowH < HOUR_END
+    ? ((nowH - HOUR_START) * 60 + nowM) / 60 * HOUR_PX
+    : null;
+
+  const dayAppts = appointments.filter(a => a.startTime?.startsWith(dateStr));
+
+  return (
+    <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+      {/* Professional header row */}
+      <div className="grid" style={{ gridTemplateColumns: `56px repeat(${cols}, 1fr)`, borderBottom: '1px solid #E2E8F0' }}>
+        <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
+        {visibleProfs.map((p, i) => {
+          const profIdx = professionals.findIndex(pr => pr.id === p.id);
+          const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
+          const profDayCount = dayAppts.filter(a => a.professional_id === p.id).length;
+          return (
+            <div key={p.id} style={{
+              padding: '10px 8px',
+              textAlign: 'center',
+              borderRight: i < cols - 1 ? '1px solid #E2E8F0' : 'none',
+              background: '#ffffff',
+            }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 4px' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{p.name.charAt(0).toUpperCase()}</span>
+              </div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#1E293B', margin: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '100%' }}>{p.name}</p>
+              {profDayCount > 0 && (
+                <div style={{ margin: '3px auto 0', width: 'fit-content', borderRadius: 99, fontSize: 9, fontWeight: 700, padding: '2px 6px', background: '#FEF3C7', color: '#92400E' }}>
+                  {profDayCount}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Scrollable time grid */}
+      <div style={{ overflowY: 'auto', maxHeight: 560 }}>
+        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: `56px repeat(${cols}, 1fr)`, height: totalHeight }}>
+          {/* Time labels */}
+          <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC', position: 'relative', height: totalHeight }}>
+            {hours.map(h => (
+              <div key={h} style={{ position: 'absolute', width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', paddingRight: 8, paddingTop: 4, top: `${(h - HOUR_START) * HOUR_PX}px`, height: `${HOUR_PX}px` }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#94A3B8', fontVariantNumeric: 'tabular-nums' }}>{String(h).padStart(2, '0')}:00</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Professional columns */}
+          {visibleProfs.map((p, colIdx) => {
+            const globalProfIdx = professionals.findIndex(pr => pr.id === p.id);
+            const color = PROF_COLORS[globalProfIdx >= 0 ? globalProfIdx % PROF_COLORS.length : 0];
+            const profAppts = dayAppts.filter(a => a.professional_id === p.id);
+            const layout = computeApptLayout(profAppts);
+
+            return (
+              <div key={p.id} style={{
+                position: 'relative',
+                borderRight: colIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
+                background: isToday ? '#FFFBF7' : '#ffffff',
+                height: totalHeight,
+              }}>
+                {hours.map(h => (
+                  <div key={h} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: '#E2E8F0' }} />
+                ))}
+                {hours.map(h => (
+                  <div key={`${h}h`} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, height: 1, background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)' }} />
+                ))}
+
+                {nowPx !== null && (
+                  <div style={{ position: 'absolute', width: '100%', zIndex: 10, display: 'flex', alignItems: 'center', top: `${nowPx}px` }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', marginLeft: -4, flexShrink: 0 }} />
+                    <div style={{ flex: 1, height: 1.5, background: '#f97316' }} />
+                  </div>
+                )}
+
+                {profAppts.map(a => {
+                  const startDt = new Date(a.startTime);
+                  const startH = startDt.getHours();
+                  const startM = startDt.getMinutes();
+                  if (startH < HOUR_START || startH >= HOUR_END) return null;
+
+                  const topPx = ((startH - HOUR_START) * 60 + startM) / 60 * HOUR_PX;
+                  const heightPx = Math.max(28, (a.durationMinutes || 30) / 60 * HOUR_PX - 2);
+
+                  const cust = customers.find(c => c.id === a.customer_id);
+                  const svc = services.find(s => s.id === a.service_id);
+                  const isCancelled = a.status === AppointmentStatus.CANCELLED;
+                  const isFinished = a.status === AppointmentStatus.FINISHED;
+
+                  const r = parseInt(color.slice(1, 3), 16);
+                  const g = parseInt(color.slice(3, 5), 16);
+                  const b = parseInt(color.slice(5, 7), 16);
+                  const bgAlpha = isCancelled ? 0.04 : isFinished ? 0.07 : 0.11;
+                  const bgColor = `rgba(${r},${g},${b},${bgAlpha})`;
+                  const borderColor = isCancelled ? '#CBD5E1' : color;
+
+                  const { col, totalCols } = layout[a.id] ?? { col: 0, totalCols: 1 };
+                  const GAP = 2;
+                  const colW = `calc((100% - ${GAP * (totalCols + 1)}px) / ${totalCols})`;
+                  const leftPos = `calc(${GAP}px + ${col} * (${colW} + ${GAP}px))`;
+
+                  return (
+                    <div
+                      key={a.id}
+                      onClick={() => onApptClick(a)}
+                      style={{
+                        position: 'absolute',
+                        top: `${topPx}px`, height: `${heightPx}px`,
+                        left: leftPos, width: colW,
+                        borderRadius: 7, cursor: 'pointer', overflow: 'hidden',
+                        backgroundColor: bgColor,
+                        borderLeft: `3px solid ${borderColor}`,
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                        opacity: isCancelled ? 0.45 : 1,
+                        transition: 'transform 0.1s, box-shadow 0.1s',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.015)'; (e.currentTarget as HTMLElement).style.zIndex = '20'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.zIndex = ''; }}
+                    >
+                      <div style={{ padding: '3px 6px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', overflow: 'hidden' }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, margin: 0, color: borderColor, fontVariantNumeric: 'tabular-nums' }}>
+                          {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        {heightPx >= 38 && (
+                          <p style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', lineHeight: 1.3, margin: '2px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                            {cust?.name || '—'}
+                          </p>
+                        )}
+                        {heightPx >= 56 && svc && (
+                          <p style={{ fontSize: 10, color: '#64748B', lineHeight: 1.3, margin: '1px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{svc.name}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Navigation Day Picker (mini-calendar popup for dia view) ─────────────────
+function NavDayPicker({ selectedDate, apptDays, onSelect }: {
+  selectedDate: Date;
+  apptDays: Set<string>;
+  onSelect: (d: Date) => void;
+}) {
+  const [view, setView] = React.useState({ year: selectedDate.getFullYear(), month: selectedDate.getMonth() });
+  const today = localDateStr();
+  const selectedStr = localDateStr(selectedDate);
+
+  React.useEffect(() => {
+    setView({ year: selectedDate.getFullYear(), month: selectedDate.getMonth() });
+  }, [selectedDate]);
+
+  const prevMonth = () => setView(v => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 });
+  const nextMonth = () => setView(v => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 });
+
+  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+  const firstDay = new Date(view.year, view.month, 1).getDay();
+
+  return (
+    <div className="w-60">
+      {/* Month nav */}
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMonth} className="w-7 h-7 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+          <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span className="text-[11px] font-black text-slate-800 uppercase tracking-widest">
+          {MONTH_NAMES[view.month]} {view.year}
+        </span>
+        <button onClick={nextMonth} className="w-7 h-7 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+          <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+      {/* Day headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {['D','S','T','Q','Q','S','S'].map((d, i) => (
+          <div key={i} className="text-center text-[9px] font-black text-slate-300 py-0.5">{d}</div>
+        ))}
+      </div>
+      {/* Days grid */}
+      <div className="grid grid-cols-7">
+        {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const iso = `${view.year}-${String(view.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isSelected = iso === selectedStr;
+          const isToday = iso === today;
+          const hasAppts = apptDays.has(iso);
+          return (
+            <div key={iso} className="flex flex-col items-center mb-0.5">
+              <button
+                onClick={() => onSelect(new Date(iso + 'T12:00:00'))}
+                className={`w-7 h-7 rounded-full text-[11px] font-bold transition-all flex items-center justify-center
+                  ${isSelected ? 'bg-orange-500 text-white shadow-md' : ''}
+                  ${isToday && !isSelected ? 'ring-2 ring-orange-400 text-orange-600 font-black' : ''}
+                  ${!isSelected ? 'hover:bg-slate-100 text-slate-700' : ''}
+                `}
+              >
+                {day}
+              </button>
+              <div className={`w-1 h-1 rounded-full ${hasAppts ? 'bg-orange-400' : 'invisible'}`} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string }> = ({ tenantId, onOpenComandas, defaultProfessionalId }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
@@ -420,7 +660,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   } | null>(null);
   const [showBreakModal, setShowBreakModal] = useState(false);
 
-  const [calView, setCalView] = useState<'semana' | 'lista'>('semana');
+  const [calView, setCalView] = useState<'dia' | 'lista'>('dia');
+  const [dayDate, setDayDate] = useState<Date>(new Date());
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const now = new Date();
     const day = now.getDay();
@@ -434,6 +675,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [endDate, setEndDate] = useState<string>(localDateStr());
   const [presetPeriod, setPresetPeriod] = useState<string>('today');
   const [filterProfId, setFilterProfId] = useState<string>(defaultProfessionalId || '');
+
+  const [showDayPicker, setShowDayPicker] = useState(false);
+  const dayPickerRef = useRef<HTMLDivElement>(null);
+  const [calApptDays, setCalApptDays] = useState<Set<string>>(new Set());
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -542,13 +787,40 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setPresetPeriod('custom');
   };
 
-  // Initialize week view on mount
+  const gotoDay = (d: Date) => {
+    setDayDate(d);
+    setStartDate(localDateStr(d));
+    setEndDate(localDateStr(d));
+    setPresetPeriod('custom');
+  };
+
+  // Initialize day view on mount
   React.useEffect(() => {
-    if (calView === 'semana') {
-      gotoWeek(weekStart);
+    if (calView === 'dia') {
+      gotoDay(dayDate);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load appointment days for mini-calendar dots when picker opens
+  React.useEffect(() => {
+    if (!showDayPicker) return;
+    db.getAppointments(tenantId).then(apps => {
+      setCalApptDays(new Set(apps.map((a: Appointment) => a.startTime?.substring(0, 10)).filter(Boolean) as string[]));
+    });
+  }, [showDayPicker, tenantId]);
+
+  // Close day picker on outside click
+  React.useEffect(() => {
+    if (!showDayPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (dayPickerRef.current && !dayPickerRef.current.contains(e.target as Node)) {
+        setShowDayPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showDayPicker]);
 
   const applyPreset = (period: string) => {
     setPresetPeriod(period);
@@ -1008,20 +1280,6 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       })
     : appointments;
 
-  const weekDays = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
-
-  const weekLabel = (() => {
-    const s = weekDays[0];
-    const e = weekDays[6];
-    const same = s.getMonth() === e.getMonth();
-    if (same) return `${s.getDate()} – ${e.getDate()} de ${s.toLocaleDateString('pt-BR', { month: 'long' })}`;
-    return `${s.getDate()} ${s.toLocaleDateString('pt-BR', { month: 'short' })} – ${e.getDate()} ${e.toLocaleDateString('pt-BR', { month: 'short' })}`;
-  })();
-
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* Header */}
@@ -1034,10 +1292,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           {/* View toggle */}
           <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
             <button
-              onClick={() => { setCalView('semana'); gotoWeek(weekStart); }}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${calView === 'semana' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}
+              onClick={() => { setCalView('dia'); gotoDay(dayDate); }}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${calView === 'dia' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}
             >
-              Semana
+              Dia
             </button>
             <button
               onClick={() => { setCalView('lista'); applyPreset('today'); }}
@@ -1052,31 +1310,47 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         </div>
       </div>
 
-      {/* Week navigation (only in semana view) */}
-      {calView === 'semana' && (
+      {/* Day navigation (only in dia view) */}
+      {calView === 'dia' && (
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); gotoWeek(d); }}
+            onClick={() => { const d = new Date(dayDate); d.setDate(d.getDate() - 1); gotoDay(d); }}
             className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
           >
             <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <span className="text-sm font-semibold text-slate-700 min-w-[200px] text-center">{weekLabel}</span>
+
+          {/* Clickable date — opens mini-calendar popup */}
+          <div className="relative" ref={dayPickerRef}>
+            <button
+              onClick={() => setShowDayPicker(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-orange-300 hover:bg-orange-50 transition-colors group"
+            >
+              <svg className="w-3.5 h-3.5 text-slate-400 group-hover:text-orange-400 transition-colors shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span className="text-sm font-semibold text-slate-700 capitalize group-hover:text-orange-600 transition-colors whitespace-nowrap">
+                {dayDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </span>
+            </button>
+
+            {showDayPicker && (
+              <div className="absolute top-full left-0 mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl p-4">
+                <NavDayPicker
+                  selectedDate={dayDate}
+                  apptDays={calApptDays}
+                  onSelect={(d) => { gotoDay(d); setShowDayPicker(false); }}
+                />
+              </div>
+            )}
+          </div>
+
           <button
-            onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); gotoWeek(d); }}
+            onClick={() => { const d = new Date(dayDate); d.setDate(d.getDate() + 1); gotoDay(d); }}
             className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
           >
             <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
           <button
-            onClick={() => {
-              const now = new Date();
-              const day = now.getDay();
-              const diff = day === 0 ? -6 : 1 - day;
-              const mon = new Date(now);
-              mon.setDate(now.getDate() + diff);
-              gotoWeek(mon);
-            }}
+            onClick={() => gotoDay(new Date())}
             className="px-3 py-1.5 text-xs font-semibold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
           >
             Hoje
@@ -1084,34 +1358,17 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         </div>
       )}
 
-      {/* ─── Semana view (visual calendar) ─── */}
-      {calView === 'semana' && (
-        <div className="space-y-3">
-          {!defaultProfessionalId && professionals.length > 1 && (
-            <div className="flex items-center gap-2">
-              <select
-                value={filterProfId}
-                onChange={e => setFilterProfId(e.target.value)}
-                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold bg-white text-slate-600 outline-none cursor-pointer"
-              >
-                <option value="">Todos os profissionais</option>
-                {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              {filterProfId && (
-                <button onClick={() => setFilterProfId('')} className="text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors">✕ Limpar</button>
-              )}
-            </div>
-          )}
-          <WeekCalendar
-            days={weekDays}
-            appointments={appointments}
-            customers={customers}
-            professionals={professionals}
-            services={services}
-            filterProfId={filterProfId}
-            onApptClick={(a) => setInfoAppt(a)}
-          />
-        </div>
+      {/* ─── Dia view (professional columns) ─── */}
+      {calView === 'dia' && (
+        <DayCalendar
+          date={dayDate}
+          appointments={appointments}
+          customers={customers}
+          professionals={professionals}
+          services={services}
+          filterProfId={filterProfId}
+          onApptClick={(a) => setInfoAppt(a)}
+        />
       )}
 
       {/* ─── Lista view (existing table layout) ─── */}
@@ -1283,7 +1540,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                           <div className="flex flex-col gap-1">
                             <span className="text-xs font-black text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 uppercase transition-colors">{appDate.toLocaleDateString('pt-BR')}</span>
                             <span className="text-lg font-black text-orange-500">{appDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full w-fit uppercase tracking-widest ${isAI ? 'bg-orange-100 text-orange-600' : isPlan ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
+                            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full w-fit uppercase tracking-widest ${isAI ? 'bg-orange-100 text-orange-600' : isPlan ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
                               {isAI ? '⚡ Agente IA' : isPlan ? '📦 Plano' : '✏️ Manual'}
                             </span>
                           </div>
@@ -1377,12 +1634,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                               onClick={() => setEditingStatusId(a.id)}
                               title="Clique para alterar status"
                               className={`text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest cursor-pointer hover:opacity-75 transition-opacity ${
-                                a.status === AppointmentStatus.FINISHED  ? 'bg-black text-white dark:bg-white dark:text-black' :
-                                a.status === AppointmentStatus.ARRIVED   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                a.status === AppointmentStatus.NO_SHOW   ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
-                                a.status === AppointmentStatus.CANCELLED ? 'bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400' :
-                                a.status === AppointmentStatus.CONFIRMED ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                                'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                                a.status === AppointmentStatus.FINISHED  ? 'bg-slate-100 text-slate-500' :
+                                a.status === AppointmentStatus.ARRIVED   ? 'bg-green-50 text-green-700' :
+                                a.status === AppointmentStatus.NO_SHOW   ? 'bg-red-50 text-red-600' :
+                                a.status === AppointmentStatus.CANCELLED ? 'bg-slate-100 text-slate-400' :
+                                a.status === AppointmentStatus.CONFIRMED ? 'bg-blue-50 text-blue-600' :
+                                'bg-orange-100 text-orange-600'
                               }`}>{
                                 a.status === AppointmentStatus.ARRIVED  ? 'CHEGOU' :
                                 a.status === AppointmentStatus.NO_SHOW  ? 'FALTOU' :
@@ -1454,8 +1711,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           FINISHED: 'Finalizado', NO_SHOW: 'Faltou', CANCELLED: 'Cancelado',
         };
         const statusColor: Record<string, string> = {
-          PENDING: '#f59e0b', CONFIRMED: '#3b82f6', ARRIVED: '#10b981',
-          FINISHED: '#64748b', NO_SHOW: '#ef4444', CANCELLED: '#94a3b8',
+          PENDING: '#EA580C', CONFIRMED: '#2563EB', ARRIVED: '#15803D',
+          FINISHED: '#94A3B8', NO_SHOW: '#DC2626', CANCELLED: '#94A3B8',
         };
         const sc = statusColor[ia.status] ?? '#94a3b8';
         const totalPrice = iaSvcs.reduce((s, v) => s + (v.price || 0), 0);
@@ -1491,7 +1748,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                       <span style={{ fontSize: 10, fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', borderRadius: 99, padding: '3px 8px' }}>IA</span>
                     )}
                     {ia.isPlan && (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: '#10b981', background: '#f0fdf4', borderRadius: 99, padding: '3px 8px' }}>Plano</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#2563EB', background: '#EFF6FF', borderRadius: 99, padding: '3px 8px' }}>Plano</span>
                     )}
                   </div>
                   <p style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0, lineHeight: 1.2 }}>

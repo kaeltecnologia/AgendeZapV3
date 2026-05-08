@@ -5,6 +5,7 @@ import { supabase } from '../services/supabase';
 import { handleMessage } from '../services/agentService';
 import { handleProfessionalMessage } from '../services/professionalAgentService';
 import { runFollowUp, runDailyProfessionalAgenda } from '../services/followUpService';
+import { runSubscriptionCycle } from '../services/subscriptionService';
 import { runRatingRequests } from '../services/ratingService';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
 import { maskPhone } from '../services/security';
@@ -501,6 +502,16 @@ const AiPollingManager: React.FC<{
         if (tenant) await runFollowUp(tenant);
         if (tenant) await runDailyProfessionalAgenda(tenant);
         if (tenant) await runRatingRequests(tenant);
+
+        // ── Subscription cycle ──────────────────────────────────────
+        if (tenant) {
+          const subSettings = await db.getSettings(tenantId);
+          if (subSettings.subscriptionConfig?.enabled) {
+            const subCustomers = await db.getCustomers(tenantId);
+            const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+            await runSubscriptionCycle(tenantId, subSettings, subCustomers, instanceName);
+          }
+        }
 
         // ── Trial Day 6 warning ─────────────────────────────────────
         const settings = await db.getSettings(tenantId);

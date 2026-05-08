@@ -699,6 +699,13 @@ class DatabaseService {
       planServiceId: cData.planServiceId || null,
       recurringSchedule: cData.recurringSchedule,
       recurringEntries: cData.recurringEntries || [],
+      subscriptionPlanId: cData.subscriptionPlanId || null,
+      subscriptionStatus: cData.subscriptionStatus || null,
+      subscriptionDueDay: cData.subscriptionDueDay,
+      subscriptionNextDue: cData.subscriptionNextDue,
+      subscriptionLastPaid: cData.subscriptionLastPaid,
+      subscriptionPendingProof: cData.subscriptionPendingProof,
+      subscriptionProofAnalysis: cData.subscriptionProofAnalysis,
     };
   }
 
@@ -814,7 +821,7 @@ class DatabaseService {
         if (error) throw error;
       }
 
-      // Write plan/mode assignments to settings JSONB (_customerData)
+      // Write plan/mode/subscription assignments to settings JSONB (_customerData)
       const hasCData =
         'planId' in updates ||
         'planStatus' in updates ||
@@ -823,7 +830,14 @@ class DatabaseService {
         'recurringEntries' in updates ||
         updates.avisoModeId !== undefined ||
         updates.lembreteModeId !== undefined ||
-        updates.reativacaoModeId !== undefined;
+        updates.reativacaoModeId !== undefined ||
+        'subscriptionPlanId' in updates ||
+        'subscriptionStatus' in updates ||
+        'subscriptionDueDay' in updates ||
+        'subscriptionNextDue' in updates ||
+        'subscriptionLastPaid' in updates ||
+        'subscriptionPendingProof' in updates ||
+        'subscriptionProofAnalysis' in updates;
 
       if (hasCData) {
         const s = await this.getSettings(tenantId);
@@ -839,6 +853,13 @@ class DatabaseService {
           reativacaoModeId: updates.reativacaoModeId !== undefined ? updates.reativacaoModeId : prev.reativacaoModeId,
           recurringSchedule: 'recurringSchedule' in updates ? (updates.recurringSchedule as RecurringSchedule | undefined) : prev.recurringSchedule,
           recurringEntries: 'recurringEntries' in updates ? (updates.recurringEntries as RecurringEntry[] | undefined) : prev.recurringEntries,
+          subscriptionPlanId: 'subscriptionPlanId' in updates ? (updates.subscriptionPlanId ?? null) : prev.subscriptionPlanId,
+          subscriptionStatus: 'subscriptionStatus' in updates ? (updates.subscriptionStatus ?? null) : prev.subscriptionStatus,
+          subscriptionDueDay: 'subscriptionDueDay' in updates ? updates.subscriptionDueDay : prev.subscriptionDueDay,
+          subscriptionNextDue: 'subscriptionNextDue' in updates ? updates.subscriptionNextDue : prev.subscriptionNextDue,
+          subscriptionLastPaid: 'subscriptionLastPaid' in updates ? updates.subscriptionLastPaid : prev.subscriptionLastPaid,
+          subscriptionPendingProof: 'subscriptionPendingProof' in updates ? updates.subscriptionPendingProof : prev.subscriptionPendingProof,
+          subscriptionProofAnalysis: 'subscriptionProofAnalysis' in updates ? updates.subscriptionProofAnalysis : prev.subscriptionProofAnalysis,
         };
         await this.updateSettings(tenantId, { customerData: allCData });
       }
@@ -1080,6 +1101,7 @@ class DatabaseService {
           manualColabsReleased: fu._manualColabsReleased ?? 0,
           bookingTheme: fu._bookingTheme ?? null,
           comoConheceu: fu._comoConheceu ?? null,
+          subscriptionConfig: fu._subscriptionConfig ?? null,
         };
         _cache.set(ck, result, TTL_LONG);
         return result;
@@ -1161,6 +1183,7 @@ class DatabaseService {
         _manualColabsReleased: newS.manualColabsReleased !== undefined ? newS.manualColabsReleased : (curr.manualColabsReleased ?? 0),
         _bookingTheme: newS.bookingTheme !== undefined ? newS.bookingTheme : (curr.bookingTheme ?? null),
         _comoConheceu: newS.comoConheceu !== undefined ? newS.comoConheceu : (curr.comoConheceu ?? null),
+        _subscriptionConfig: newS.subscriptionConfig !== undefined ? newS.subscriptionConfig : (curr.subscriptionConfig ?? null),
       };
 
       // Always include operating_hours to prevent data loss on upsert (uses current value as fallback)

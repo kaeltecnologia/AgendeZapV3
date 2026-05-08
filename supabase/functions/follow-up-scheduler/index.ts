@@ -954,6 +954,139 @@ Deno.serve(async (_req) => {
           }
         }
 
+        // ── SUBSCRIPTION BILLING CYCLE ─────────────────────────────────
+        // Verifica vencimentos, atualiza status e envia avisos/cobranças
+        // via WhatsApp sem depender do navegador estar aberto.
+        try {
+          const subCfg = settings.rawFollowUp._subscriptionConfig;
+          if (subCfg?.enabled && Array.isArray(subCfg.plans) && subCfg.plans.length) {
+            const custData: Record<string, any> = { ...settings.customerData };
+            let anySubChanged = false;
+
+            const pad2 = (n: number) => String(n).padStart(2, '0');
+
+            // Calcula próximo vencimento baseado no dia do mês (usa UTC Brasília)
+            function calcNextDueEdge(dueDay: number): string {
+              const d = now; // nowBrasilia() — UTC-3
+              const thisMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), dueDay));
+              if (thisMonth > d) {
+                return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(dueDay)}`;
+              }
+              const nm = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, dueDay));
+              return `${nm.getUTCFullYear()}-${pad2(nm.getUTCMonth() + 1)}-${pad2(dueDay)}`;
+            }
+
+            function diffDaysEdge(a: string, b: string): number {
+              return Math.round(
+                (new Date(b + 'T12:00:00Z').getTime() - new Date(a + 'T12:00:00Z').getTime()) / 86400000
+              );
+            }
+
+            function fmtDateBR2(iso: string): string {
+              const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`;
+            }
+
+            function fmtBRL2(n: number): string {
+              return n.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            }
+
+            function interpolateSub(tpl: string, vars: Record<string, string>): string {
+              return tpl
+                .replace(/\{nome\}/gi, vars.nome || '')
+                .replace(/\{plano\}/gi, vars.plano || '')
+                .replace(/\{valor\}/gi, vars.valor || '')
+                .replace(/\{vencimento\}/gi, vars.vencimento || '')
+                .replace(/\{diasRestantes\}/gi, vars.diasRestantes || '')
+                .replace(/\{diasAtraso\}/gi, vars.diasAtraso || '');
+            }
+
+            for (const cust of customers) {
+              const cd = custData[cust.id] || {};
+              if (!cd.subscriptionPlanId) continue;
+              if (cd.subscriptionStatus === 'cancelled') continue;
+
+              const plan = subCfg.plans.find((p: any) => p.id === cd.subscriptionPlanId);
+              if (!plan) continue;
+
+              // Calcular nextDue se ainda não definido
+              let nextDue: string = cd.subscriptionNextDue || '';
+              if (!nextDue && cd.subscriptionDueDay) {
+                nextDue = calcNextDueEdge(Number(cd.subscriptionDueDay));
+                custData[cust.id] = { ...(custData[cust.id] || {}), subscriptionNextDue: nextDue };
+                anySubChanged = true;
+              }
+              if (!nextDue) continue;
+
+              const daysUntilDue = diffDaysEdge(nowDate, nextDue); // positivo = faltam N dias
+              const daysOverdue  = -daysUntilDue;                   // positivo quando vencido
+
+              const vars: Record<string, string> = {
+                nome:          cust.name,
+                plano:         plan.name,
+                valor:         `R$ ${fmtBRL2(plan.value)}`,
+                vencimento:    fmtDateBR2(nextDue),
+                diasRestantes: String(Math.max(0, daysUntilDue)),
+                diasAtraso:    String(Math.max(0, daysOverdue)),
+              };
+
+              // ── Atualizar status ─────────────────────────────────────
+              let newStatus: string = cd.subscriptionStatus ?? 'active';
+              const grace = subCfg.gracePeriodDays ?? 5;
+
+              if (daysOverdue <= 0) {
+                if (!newStatus || newStatus === 'pending' || newStatus === 'overdue') newStatus = 'active';
+              } else if (daysOverdue <= grace) {
+                if (newStatus !== 'overdue') newStatus = 'pending';
+              } else {
+                newStatus = 'overdue';
+              }
+
+              if (newStatus !== cd.subscriptionStatus) {
+                custData[cust.id] = { ...(custData[cust.id] || {}), subscriptionStatus: newStatus };
+                anySubChanged = true;
+                console.log(`[Sub] ${tenant.nome} → ${cust.name}: ${cd.subscriptionStatus ?? 'null'} → ${newStatus}`);
+              }
+
+              if (!cust.phone) continue;
+
+              // ── Aviso prévio (N dias antes, 1x por ciclo) ────────────
+              const warnDays = subCfg.daysBeforeWarning ?? 3;
+              const alreadyWarnSent = cd.subscriptionWarnSent === nextDue;
+              if (daysUntilDue === warnDays && newStatus === 'active' && !alreadyWarnSent) {
+                const claimKey = `sub_warn::${cust.id}::${nextDue}`;
+                if (await claimMessage(claimKey)) {
+                  const fallbackWarn = 'Olá {nome}! Seu plano *{plano}* vence em {diasRestantes} dia(s) ({vencimento}). Valor: {valor}. 💳';
+                  const msg = interpolateSub(subCfg.warningMessage || fallbackWarn, vars);
+                  const ok = await sendWhatsApp(instance, cust.phone, msg);
+                  if (ok) {
+                    custData[cust.id] = { ...(custData[cust.id] || {}), subscriptionWarnSent: nextDue };
+                    anySubChanged = true;
+                    console.log(`[Sub Aviso] ${tenant.nome} → ${cust.name} (vence em ${daysUntilDue}d)`);
+                  }
+                }
+              }
+
+              // ── Cobrança diária (pending ou overdue) ─────────────────
+              if ((newStatus === 'pending' || newStatus === 'overdue') && daysOverdue > 0) {
+                const claimKey = `sub_charge::${cust.id}::${nowDate}`;
+                if (await claimMessage(claimKey)) {
+                  const fallbackCharge = 'Olá {nome}! Seu plano *{plano}* está em atraso há {diasAtraso} dia(s). Regularize para continuar agendando. 💳';
+                  const msg = interpolateSub(subCfg.overdueMessage || fallbackCharge, vars);
+                  const ok = await sendWhatsApp(instance, cust.phone, msg);
+                  if (ok) console.log(`[Sub Cobrança] ${tenant.nome} → ${cust.name} (${daysOverdue}d atraso)`);
+                }
+              }
+            }
+
+            // Persistir mudanças de status no _customerData
+            if (anySubChanged) {
+              await saveFollowUpField(tenantId, settings.rawFollowUp, '_customerData', custData);
+            }
+          }
+        } catch (e: any) {
+          console.error(`[Sub] Error ${tenant.nome}:`, e.message);
+        }
+
         processed++;
       } catch (e: any) {
         errors.push(`${tenant.nome || tenantId}: ${e.message}`);

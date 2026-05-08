@@ -11,6 +11,7 @@ const AppointmentsView = lazy(() => import('./components/AppointmentsView'));
 const ServicesView = lazy(() => import('./components/ServicesView'));
 const ProfessionalsView = lazy(() => import('./components/ProfessionalsView'));
 const CustomersView = lazy(() => import('./components/CustomersView'));
+const SubscriptionsView = lazy(() => import('./components/SubscriptionsView'));
 const AiAgentConfig = lazy(() => import('./components/AiAgentConfig'));
 const StoreProfile = lazy(() => import('./components/StoreProfile'));
 const FinancialView = lazy(() => import('./components/FinancialView'));
@@ -83,6 +84,7 @@ enum View {
   MARKETPLACE = 'MARKETPLACE',
   SOCIAL_MIDIA = 'SOCIAL_MIDIA',
   INDICACOES = 'INDICACOES',
+  ASSINATURAS = 'ASSINATURAS',
 }
 
 type Role = 'TENANT' | 'SUPERADMIN' | 'AFFILIATE' | 'PROFESSIONAL';
@@ -956,6 +958,7 @@ const App: React.FC = () => {
       case View.OTIMIZACAO: return <OtimizacaoView tenantId={tenantId} tenantName={tenantName} />;
       case View.SOCIAL_MIDIA: return <SocialMidiaView tenantId={tenantId} />;
       case View.INDICACOES: return <IndicacoesView tenantId={tenantId} />;
+      case View.ASSINATURAS: return <SubscriptionsView tenantId={tenantId} />;
       default: return <Dashboard tenantId={tenantId} />;
     }
   };
@@ -1117,6 +1120,7 @@ const App: React.FC = () => {
                 {resellerAllows('comandas') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<NichoIcon />} label="Comandas" />}
                 {resellerAllows('conversas') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />}
                 {resellerAllows('clientes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />}
+                <NavItem collapsed={sidebarCollapsed} active={currentView === View.ASSINATURAS} onClick={navTo(() => setCurrentView(View.ASSINATURAS))} icon={<IconCreditCard />} label="Assinaturas" />
               </div>
 
               {/* ── Operação ── */}
@@ -1470,7 +1474,7 @@ const App: React.FC = () => {
             <button
               onClick={() => setShowTutorials(true)}
               title="Tutoriais"
-              className="w-14 h-14 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:shadow-2xl transition-all cursor-pointer"
+              className="w-14 h-14 bg-slate-800 rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:shadow-2xl transition-all cursor-pointer"
             >
               <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="5 3 19 12 5 21 5 3" />
@@ -1737,6 +1741,7 @@ const IconTerminal = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-
 const IconLogout = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;
 const IconPlans = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>;
 const IconChat = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>;
+const IconCreditCard = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>;
 const IconBroadcast = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>;
 const IconTrophy = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
 const IconMarketing = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;

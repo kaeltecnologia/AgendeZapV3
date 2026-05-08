@@ -114,6 +114,28 @@ export interface InventoryItem {
   lastUpdated: string;   // ISO datetime
 }
 
+// ── Subscription (mensalidade de clientes do tenant) ──────────────────────────
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;        // ex: "Silver", "Gold", "Premium"
+  value: number;       // R$ mensal
+  description?: string;
+}
+
+export type SubscriptionStatus = 'active' | 'pending' | 'overdue' | 'cancelled';
+
+export interface SubscriptionConfig {
+  enabled: boolean;
+  plans: SubscriptionPlan[];
+  daysBeforeWarning: number;      // N dias antes do vencimento para enviar aviso
+  gracePeriodDays: number;        // N dias após vencimento antes de bloquear
+  warningMessage: string;         // vars: {nome} {plano} {valor} {vencimento} {diasRestantes}
+  overdueMessage: string;         // vars: {nome} {plano} {valor} {diasAtraso}
+  blockedMessage: string;         // mensagem do agente/web quando bloqueado
+  paymentConfirmedMessage: string; // enviado ao cliente após admin confirmar
+}
+
 // Quota por serviço dentro de um plano
 export interface PlanQuota {
   serviceId: string;
@@ -257,7 +279,17 @@ export interface TenantSettings {
     recurringEntries?: RecurringEntry[];    // new multi-entry recurring system
     aiPaused?: boolean;                  // true = IA desativada manualmente para este lead
     waitlistAlert?: boolean;             // true = lead pediu lista de espera (alerta para operador)
+    humanTakeoverAt?: string;            // ISO datetime de início do atendimento humano
+    // subscription fields
+    subscriptionPlanId?: string | null;
+    subscriptionStatus?: SubscriptionStatus | null;
+    subscriptionDueDay?: number;
+    subscriptionNextDue?: string;
+    subscriptionLastPaid?: string;
+    subscriptionPendingProof?: string;
+    subscriptionProofAnalysis?: string;
   }>;
+  subscriptionConfig?: SubscriptionConfig; // configurações do sistema de assinatura
   followUpSent?: Record<string, string>; // tracks sent messages e.g. "aviso::apptId" → "YYYY-MM-DD"
   profAgendaSent?: Record<string, string>; // tracks daily agenda sent: "profId::YYYY-MM-DD" → "sent"
   agendaDiariaHora?: string;             // HH:MM to send daily professional agenda (default "00:01")
@@ -429,6 +461,14 @@ export interface Customer {
   planServiceId?: string | null; // LEGACY — specific service covered by plan
   recurringSchedule?: RecurringSchedule;  // @deprecated
   recurringEntries?: RecurringEntry[];    // new multi-entry recurring system
+  // ── Subscription fields ───────────────────────────────────────────────────
+  subscriptionPlanId?: string | null;      // ID do SubscriptionPlan
+  subscriptionStatus?: SubscriptionStatus | null;
+  subscriptionDueDay?: number;             // dia do mês de vencimento (1-31)
+  subscriptionNextDue?: string;            // ISO date do próximo vencimento
+  subscriptionLastPaid?: string;           // ISO date do último pagamento confirmado
+  subscriptionPendingProof?: string;       // base64 da imagem aguardando confirmação
+  subscriptionProofAnalysis?: string;      // JSON string com resultado da análise IA
 }
 
 // ── Comanda (ordem de serviço) ─────────────────────────────────────────────

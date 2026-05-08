@@ -3,6 +3,7 @@ import { evolutionService, EVOLUTION_API_URL, EVOLUTION_API_KEY } from './evolut
 import { supabase } from './supabase';
 import { db } from './mockDb';
 import { maskPhone } from './security';
+import { analyzePaymentProof, fetchImageBase64 } from './subscriptionService';
 
 // ─── Dedup ────────────────────────────────────────────────────────────
 const processedIds = new Set<string>();
@@ -302,6 +303,37 @@ export async function processarMensagem(tenant: any, msg: any, overrideText?: st
           ts:        msg.messageTimestamp || Math.floor(Date.now() / 1000),
           raw:       { key: msg.key, message: msg.message, messageType: msg.messageType },
         }]).catch(() => {});
+
+        // ── Subscription proof detection ──────────────────────────────────
+        if (_isImg && tenant.gemini_api_key) {
+          try {
+            const settings = await db.getSettings(tenant.id);
+            if (settings.subscriptionConfig?.enabled) {
+              const customers = await db.getCustomers(tenant.id);
+              const customer = customers.find(c => c.phone === _mPhone || c.phone.replace(/\D/g, '') === _mPhone.replace(/\D/g, ''));
+              if (customer && (customer.subscriptionStatus === 'pending' || customer.subscriptionStatus === 'overdue')) {
+                log('INFO', `[Assinatura] Imagem de ${maskPhone(_mPhone)} — possível comprovante. Analisando...`);
+                const imgData = await fetchImageBase64(tenant.evolution_instance, msg);
+                if (imgData) {
+                  const plan = settings.subscriptionConfig.plans.find(p => p.id === customer.subscriptionPlanId);
+                  const analysis = await analyzePaymentProof(imgData.base64, imgData.mimeType, tenant.gemini_api_key, plan?.value);
+                  await db.updateCustomer(tenant.id, customer.id, {
+                    subscriptionPendingProof: imgData.base64,
+                    subscriptionProofAnalysis: JSON.stringify(analysis),
+                  } as any);
+                  const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+                  await evolutionService.sendMessage(
+                    instanceName, _mPhone,
+                    `✅ Recebemos seu comprovante! Em breve nosso time confirmará o pagamento e seu plano será reativado. Obrigado, ${customer.name}! 😊`
+                  );
+                  log('INFO', `[Assinatura] Comprovante salvo para ${customer.name} — isPaymentProof: ${analysis.isPaymentProof}`);
+                }
+              }
+            }
+          } catch (eProof) {
+            log('ERROR', `[Assinatura] Erro ao analisar comprovante: ${(eProof as any)?.message}`);
+          }
+        }
       }
     }
     return;
