@@ -2,44 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── White-label brand color CSS variables ───────────────────────────
-   Override these via JS: document.documentElement.style.setProperty('--color-primary', '#hex')
-   All orange-* utility classes below are mapped to these vars so
-   changing --color-primary propagates to the entire UI automatically. */
+/* ── Theme CSS variables — propagam por todo sistema de cores ─────────────
+   Controlled via JS (App.tsx THEMES): document.documentElement.style.setProperty(...)
+   All orange-* Tailwind classes below map to these vars automatically.      */
 :root {
-  --color-primary:      #f97316;  /* orange-500 */
-  --color-primary-dark: #ea580c;  /* orange-600 */
-  --color-primary-light:#fdba74;  /* orange-300 */
-  --color-primary-bg:   #fff7ed;  /* orange-50  */
+  --color-primary:       #f97316;
+  --color-primary-dark:  #ea580c;
+  --color-primary-light: #fdba74;
+  --color-primary-bg:    #fff7ed;
 }
 
-/* Map Tailwind orange-* to CSS vars so reseller branding propagates everywhere */
-.bg-orange-500                        { background-color: var(--color-primary) !important; }
-.bg-orange-600                        { background-color: var(--color-primary-dark) !important; }
-.bg-orange-400                        { background-color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
-.bg-orange-50                         { background-color: var(--color-primary-bg) !important; }
-.text-orange-500                      { color: var(--color-primary) !important; }
-.text-orange-600                      { color: var(--color-primary-dark) !important; }
-.text-orange-400                      { color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
-.border-orange-500                    { border-color: var(--color-primary) !important; }
-.border-orange-400                    { border-color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
-.border-orange-300                    { border-color: var(--color-primary-light) !important; }
-.ring-orange-500                      { --tw-ring-color: var(--color-primary) !important; }
-.from-orange-400                      { --tw-gradient-from: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
-.from-orange-500                      { --tw-gradient-from: var(--color-primary) !important; }
-.to-orange-500                        { --tw-gradient-to: var(--color-primary) !important; }
-.hover\:bg-orange-500:hover           { background-color: var(--color-primary) !important; }
-.hover\:bg-orange-50:hover            { background-color: var(--color-primary-bg) !important; }
-.hover\:text-orange-500:hover         { color: var(--color-primary) !important; }
-.hover\:border-orange-500:hover       { border-color: var(--color-primary) !important; }
-.focus\:border-orange-500:focus       { border-color: var(--color-primary) !important; }
-.focus\:ring-orange-500:focus         { --tw-ring-color: var(--color-primary) !important; }
-.shadow-orange-200                    { --tw-shadow-color: color-mix(in srgb, var(--color-primary) 40%, white) !important; }
-.bg-orange-50\/30                     { background-color: color-mix(in srgb, var(--color-primary-bg) 30%, transparent) !important; }
-.bg-orange-50\/50                     { background-color: color-mix(in srgb, var(--color-primary-bg) 50%, transparent) !important; }
-.border-orange-200                    { border-color: color-mix(in srgb, var(--color-primary) 40%, white) !important; }
-.border-orange-200\/50                { border-color: color-mix(in srgb, var(--color-primary) 20%, transparent) !important; }
-.border-t-orange-500                  { border-top-color: var(--color-primary) !important; }
+/* ── Backgrounds ──────────────────────────────────────────────────────── */
+.bg-orange-500   { background-color: var(--color-primary) !important; }
+.bg-orange-600   { background-color: var(--color-primary-dark) !important; }
+.bg-orange-400   { background-color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.bg-orange-300   { background-color: color-mix(in srgb, var(--color-primary) 60%, white) !important; }
+.bg-orange-200   { background-color: color-mix(in srgb, var(--color-primary) 35%, white) !important; }
+.bg-orange-100   { background-color: color-mix(in srgb, var(--color-primary) 15%, white) !important; }
+.bg-orange-50    { background-color: var(--color-primary-bg) !important; }
+.bg-orange-50\/30{ background-color: color-mix(in srgb, var(--color-primary-bg) 30%, transparent) !important; }
+.bg-orange-50\/50{ background-color: color-mix(in srgb, var(--color-primary-bg) 50%, transparent) !important; }
+
+/* ── Text ─────────────────────────────────────────────────────────────── */
+.text-orange-500 { color: var(--color-primary) !important; }
+.text-orange-600 { color: var(--color-primary-dark) !important; }
+.text-orange-700 { color: color-mix(in srgb, var(--color-primary-dark) 90%, black) !important; }
+.text-orange-800 { color: color-mix(in srgb, var(--color-primary-dark) 70%, black) !important; }
+.text-orange-400 { color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.text-orange-300 { color: var(--color-primary-light) !important; }
+
+/* ── Borders ──────────────────────────────────────────────────────────── */
+.border-orange-500    { border-color: var(--color-primary) !important; }
+.border-orange-400    { border-color: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.border-orange-300    { border-color: var(--color-primary-light) !important; }
+.border-orange-200    { border-color: color-mix(in srgb, var(--color-primary) 40%, white) !important; }
+.border-orange-200\/50{ border-color: color-mix(in srgb, var(--color-primary) 20%, transparent) !important; }
+.border-orange-100    { border-color: color-mix(in srgb, var(--color-primary) 15%, white) !important; }
+.border-t-orange-500  { border-top-color: var(--color-primary) !important; }
+
+/* ── Ring / Focus ─────────────────────────────────────────────────────── */
+.ring-orange-500         { --tw-ring-color: var(--color-primary) !important; }
+.focus\:border-orange-500:focus { border-color: var(--color-primary) !important; }
+.focus\:ring-orange-500:focus   { --tw-ring-color: var(--color-primary) !important; }
+
+/* ── Gradients ────────────────────────────────────────────────────────── */
+.from-orange-400 { --tw-gradient-from: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+.from-orange-500 { --tw-gradient-from: var(--color-primary) !important; }
+.from-orange-600 { --tw-gradient-from: var(--color-primary-dark) !important; }
+.to-orange-500   { --tw-gradient-to: var(--color-primary) !important; }
+.to-orange-600   { --tw-gradient-to: var(--color-primary-dark) !important; }
+.via-orange-500  { --tw-gradient-via: var(--color-primary) !important; }
+
+/* ── Shadows ──────────────────────────────────────────────────────────── */
+.shadow-orange-100 { --tw-shadow-color: color-mix(in srgb, var(--color-primary) 20%, white) !important; }
+.shadow-orange-200 { --tw-shadow-color: color-mix(in srgb, var(--color-primary) 40%, white) !important; }
+
+/* ── SVG Fill ─────────────────────────────────────────────────────────── */
+.fill-orange-500 { fill: var(--color-primary) !important; }
+.fill-orange-400 { fill: color-mix(in srgb, var(--color-primary) 80%, white) !important; }
+
+/* ── Hover / Interactive ──────────────────────────────────────────────── */
+.hover\:bg-orange-500:hover    { background-color: var(--color-primary) !important; }
+.hover\:bg-orange-600:hover    { background-color: var(--color-primary-dark) !important; }
+.hover\:bg-orange-100:hover    { background-color: color-mix(in srgb, var(--color-primary) 15%, white) !important; }
+.hover\:bg-orange-50:hover     { background-color: var(--color-primary-bg) !important; }
+.hover\:text-orange-500:hover  { color: var(--color-primary) !important; }
+.hover\:text-orange-600:hover  { color: var(--color-primary-dark) !important; }
+.hover\:border-orange-500:hover{ border-color: var(--color-primary) !important; }
+.hover\:border-orange-300:hover{ border-color: var(--color-primary-light) !important; }
+.group:hover .group-hover\:text-orange-500 { color: var(--color-primary) !important; }
+
+/* ── Accent variables (used in inputs, focus rings, etc.) ─────────────── */
+/* These are set dynamically by the theme effect in App.tsx */
 
 /* Escala base 14px para o layout caber em 90% de zoom sem cortes */
 html { font-size: 14px; }
@@ -107,13 +141,30 @@ input:focus, textarea:focus, select:focus {
 .hover\:bg-slate-50:hover  { background: #F0F4F8 !important; }
 .hover\:bg-slate-100:hover { background: #E8EDF4 !important; }
 
-/* Status color backgrounds — clean flat */
-.bg-green-50  { background: #F0FDF4 !important; }
-.bg-blue-50   { background: #EFF6FF !important; }
-.bg-red-50    { background: #FEF2F2 !important; }
-.bg-yellow-50 { background: #FEFCE8 !important; }
-.bg-purple-50 { background: #FAF5FF !important; }
-.bg-orange-50 { background: #FFF7ED !important; }
+/* Status color backgrounds — clean flat (-50 series) */
+.bg-green-50   { background: #F0FDF4 !important; }
+.bg-blue-50    { background: #EFF6FF !important; }
+.bg-red-50     { background: #FEF2F2 !important; }
+.bg-yellow-50  { background: #FEFCE8 !important; }
+.bg-purple-50  { background: #FAF5FF !important; }
+/* .bg-orange-50 is theme-aware — defined in the CSS variables section above */
+
+/* Status color backgrounds — normalize -100 to match design system lightness */
+.bg-green-100  { background: #DCFCE7 !important; }
+.bg-blue-100   { background: #DBEAFE !important; }
+.bg-red-100    { background: #FEE2E2 !important; }
+.bg-yellow-100 { background: #FEF9C3 !important; }
+.bg-purple-100 { background: #EDE9FE !important; }
+/* .bg-orange-100 is theme-aware — defined in the CSS variables section above */
+
+/* Consistent status text colors */
+.text-green-500                  { color: #22c55e !important; }
+.text-green-600, .text-green-700 { color: #16a34a !important; }
+.text-blue-600,  .text-blue-700  { color: #2563eb !important; }
+.text-yellow-600,.text-yellow-700{ color: #a16207 !important; }
+.text-red-500                    { color: #ef4444 !important; }
+.text-red-600,   .text-red-700   { color: #dc2626 !important; }
+.text-purple-600,.text-purple-700{ color: #7c3aed !important; }
 
 /* Buttons — flat, no gradient */
 .bg-black:not(.agz-sidebar .bg-black) {
@@ -531,13 +582,20 @@ body:has(.theme-manicure) {
   transform: scale(0.97) !important;
 }
 
+/* ── Border-radius normalization — consistent across all breakpoints ── */
+/* Old heavy style used 40-50px radius; normalize to 20px (rounded-2xl) */
+[class*="rounded-\[40px\]"] { border-radius: 1.25rem !important; }
+[class*="rounded-\[50px\]"] { border-radius: 1.25rem !important; }
+[class*="rounded-\[30px\]"] { border-radius: 1.25rem !important; }
+[class*="rounded-\[32px\]"] { border-radius: 1.25rem !important; }
+[class*="rounded-\[28px\]"] { border-radius: 1.125rem !important; }
+
+/* Modal overlays — use consistent subtle blur instead of heavy black */
+.fixed.bg-black\/80  { background: rgba(15,23,42,0.55) !important; backdrop-filter: blur(4px) !important; }
+.fixed.bg-black\/90  { background: rgba(15,23,42,0.65) !important; backdrop-filter: blur(4px) !important; }
+
 /* ── Mobile Responsiveness ────────────────────────────── */
 @media (max-width: 640px) {
-    /* Reduce extreme border-radius on mobile */
-    [class*="rounded-\[40px\]"] { border-radius: 1rem !important; }
-    [class*="rounded-\[50px\]"] { border-radius: 1.25rem !important; }
-    [class*="rounded-\[30px\]"] { border-radius: 1rem !important; }
-    [class*="rounded-\[28px\]"] { border-radius: 0.875rem !important; }
 
     /* Modal dialogs: reduce padding on mobile */
     .animate-scaleUp { padding: 1.25rem !important; }

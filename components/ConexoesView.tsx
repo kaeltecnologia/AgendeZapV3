@@ -8,7 +8,7 @@ import { supabase } from '../services/supabase';
 import { hasFeature } from '../config/planConfig';
 import type { BookingTheme } from '../types';
 
-type Tab = 'whatsapp' | 'agente' | 'linkweb' | 'instagram' | 'google';
+type Tab = 'whatsapp' | 'agente' | 'linkweb' | 'instagram';
 
 const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?: string }> = ({ tenantId, tenantSlug, tenantPlan }) => {
   const [tab, setTab] = useState<Tab>('whatsapp');
@@ -47,7 +47,6 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
         <TabBtn active={tab === 'whatsapp'} onClick={() => setTab('whatsapp')} icon="📱" label="WhatsApp" />
         <TabBtn active={tab === 'agente'}   onClick={() => setTab('agente')}   icon="🤖" label="Agente IA" />
         <TabBtn active={tab === 'instagram'} onClick={() => setTab('instagram')} icon="📸" label="Instagram" />
-        <TabBtn active={tab === 'google'}   onClick={() => setTab('google')}   icon="📍" label="Google" />
         <TabBtn active={tab === 'linkweb'}  onClick={() => setTab('linkweb')}  icon="🔗" label="Link Web" />
       </div>
 
@@ -58,10 +57,6 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
         {tab === 'instagram' && (hasFeature(tenantPlan, 'socialMidia')
           ? <InstagramConfig tenantId={tenantId} />
           : <UpgradeNotice feature="Instagram" />
-        )}
-        {tab === 'google' && (hasFeature(tenantPlan, 'caixaAvancado')
-          ? <GoogleBusinessConfig tenantId={tenantId} />
-          : <UpgradeNotice feature="Google Meu Negócio (exclusivo Elite)" />
         )}
         {tab === 'linkweb' && (
           <WebLinkPanel

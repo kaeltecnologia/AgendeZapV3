@@ -103,6 +103,51 @@ function sessionFingerprint(data: Record<string, any>): string {
   return (hash >>> 0).toString(36);
 }
 
+const THEMES = {
+  white: {
+    label: 'Branco', primary: '#f97316', dark: '#ea580c', light: '#fdba74', bg: '#fff7ed', pageBg: '#f1f5f9',
+    accent: '#f97316', accentLight: '#fb923c', accentDark: '#ea580c', accentDarker: '#c2410c',
+    accentGlow: 'rgba(249,115,22,0.10)', accentGlowStrong: 'rgba(249,115,22,0.20)', accentSubtle: 'rgba(249,115,22,0.07)',
+    accentSubtleHover: 'rgba(249,115,22,0.12)', accentBorder: 'rgba(249,115,22,0.20)', accentBorderStrong: 'rgba(249,115,22,0.35)', accentFocusShadow: 'rgba(249,115,22,0.12)', isDark: false,
+  },
+  dark: {
+    label: 'Escuro', primary: '#f97316', dark: '#ea580c', light: '#fdba74', bg: '#fff7ed', pageBg: '#0f172a',
+    accent: '#f97316', accentLight: '#fb923c', accentDark: '#ea580c', accentDarker: '#c2410c',
+    accentGlow: 'rgba(249,115,22,0.15)', accentGlowStrong: 'rgba(249,115,22,0.30)', accentSubtle: 'rgba(249,115,22,0.10)',
+    accentSubtleHover: 'rgba(249,115,22,0.15)', accentBorder: 'rgba(249,115,22,0.25)', accentBorderStrong: 'rgba(249,115,22,0.45)', accentFocusShadow: 'rgba(249,115,22,0.20)', isDark: true,
+  },
+  cold: {
+    label: 'Frio', primary: '#6366f1', dark: '#4f46e5', light: '#a5b4fc', bg: '#eef2ff', pageBg: '#f0f4ff',
+    accent: '#6366f1', accentLight: '#818cf8', accentDark: '#4f46e5', accentDarker: '#3730a3',
+    accentGlow: 'rgba(99,102,241,0.10)', accentGlowStrong: 'rgba(99,102,241,0.20)', accentSubtle: 'rgba(99,102,241,0.07)',
+    accentSubtleHover: 'rgba(99,102,241,0.12)', accentBorder: 'rgba(99,102,241,0.20)', accentBorderStrong: 'rgba(99,102,241,0.35)', accentFocusShadow: 'rgba(99,102,241,0.12)', isDark: false,
+  },
+  warm: {
+    label: 'Quente', primary: '#f59e0b', dark: '#d97706', light: '#fcd34d', bg: '#fffbeb', pageBg: '#fef9f0',
+    accent: '#f59e0b', accentLight: '#fbbf24', accentDark: '#d97706', accentDarker: '#b45309',
+    accentGlow: 'rgba(245,158,11,0.10)', accentGlowStrong: 'rgba(245,158,11,0.20)', accentSubtle: 'rgba(245,158,11,0.07)',
+    accentSubtleHover: 'rgba(245,158,11,0.12)', accentBorder: 'rgba(245,158,11,0.20)', accentBorderStrong: 'rgba(245,158,11,0.35)', accentFocusShadow: 'rgba(245,158,11,0.12)', isDark: false,
+  },
+  pink: {
+    label: 'Rosa', primary: '#ec4899', dark: '#db2777', light: '#f9a8d4', bg: '#fdf2f8', pageBg: '#fff0f7',
+    accent: '#ec4899', accentLight: '#f472b6', accentDark: '#db2777', accentDarker: '#be185d',
+    accentGlow: 'rgba(236,72,153,0.10)', accentGlowStrong: 'rgba(236,72,153,0.20)', accentSubtle: 'rgba(236,72,153,0.07)',
+    accentSubtleHover: 'rgba(236,72,153,0.12)', accentBorder: 'rgba(236,72,153,0.20)', accentBorderStrong: 'rgba(236,72,153,0.35)', accentFocusShadow: 'rgba(236,72,153,0.12)', isDark: false,
+  },
+  blue: {
+    label: 'Azul', primary: '#2563eb', dark: '#1d4ed8', light: '#93c5fd', bg: '#eff6ff', pageBg: '#f0f5ff',
+    accent: '#2563eb', accentLight: '#3b82f6', accentDark: '#1d4ed8', accentDarker: '#1e3a8a',
+    accentGlow: 'rgba(37,99,235,0.10)', accentGlowStrong: 'rgba(37,99,235,0.20)', accentSubtle: 'rgba(37,99,235,0.07)',
+    accentSubtleHover: 'rgba(37,99,235,0.12)', accentBorder: 'rgba(37,99,235,0.20)', accentBorderStrong: 'rgba(37,99,235,0.35)', accentFocusShadow: 'rgba(37,99,235,0.12)', isDark: false,
+  },
+  gray: {
+    label: 'Cinza', primary: '#64748b', dark: '#475569', light: '#94a3b8', bg: '#f1f5f9', pageBg: '#f8fafc',
+    accent: '#64748b', accentLight: '#94a3b8', accentDark: '#475569', accentDarker: '#334155',
+    accentGlow: 'rgba(100,116,139,0.10)', accentGlowStrong: 'rgba(100,116,139,0.20)', accentSubtle: 'rgba(100,116,139,0.07)',
+    accentSubtleHover: 'rgba(100,116,139,0.12)', accentBorder: 'rgba(100,116,139,0.20)', accentBorderStrong: 'rgba(100,116,139,0.35)', accentFocusShadow: 'rgba(100,116,139,0.12)', isDark: false,
+  },
+} as const;
+
 const App: React.FC = () => {
   // OAuth callback: if this window is a popup opened for OAuth,
   // capture the code from query params, send it to the opener, and close.
@@ -155,11 +200,15 @@ const App: React.FC = () => {
   const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('dashboard');
   const [tenantPlan, setTenantPlan] = useState<string>('START');
   const [tenantNicho, setTenantNicho] = useState<string>('');
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('agz_dark');
-    if (saved !== null) return saved === '1';
-    return false; // default light — dark is set after login by nicho
+  const [colorTheme, setColorTheme] = useState<keyof typeof THEMES>(() => {
+    const saved = localStorage.getItem('agz_theme');
+    if (saved && saved in THEMES) return saved as keyof typeof THEMES;
+    const oldDark = localStorage.getItem('agz_dark');
+    if (oldDark === '1') return 'dark';
+    return 'white';
   });
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const themePickerRef = useRef<HTMLDivElement>(null);
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
   const UPDATE_KEY = 'agz_update_seen_v3';
   const [showUpdateNotice, setShowUpdateNotice] = useState(() => !localStorage.getItem('agz_update_seen_v3'));
@@ -215,13 +264,14 @@ const App: React.FC = () => {
     }
 
     // Pick light or dark color set based on current dark mode
+    const isDark = THEMES[colorTheme].isDark;
     const rp = resellerProfile;
-    const bgColor      = darkMode ? (rp?.dark_bg_color      || rp?.bg_color)       : rp?.bg_color;
-    const fontColor    = darkMode ? (rp?.dark_font_color    || rp?.font_color)     : rp?.font_color;
-    const iconColor    = darkMode ? (rp?.dark_icon_color    || rp?.icon_color)     : rp?.icon_color;
-    const pageBgColor  = darkMode ? (rp?.dark_page_bg_color || rp?.page_bg_color)  : rp?.page_bg_color;
-    const cardBgColor  = darkMode ? (rp?.dark_card_bg_color || rp?.card_bg_color)  : rp?.card_bg_color;
-    const textColor    = darkMode ? (rp?.dark_text_color    || rp?.text_color)     : rp?.text_color;
+    const bgColor      = isDark ? (rp?.dark_bg_color      || rp?.bg_color)       : rp?.bg_color;
+    const fontColor    = isDark ? (rp?.dark_font_color    || rp?.font_color)     : rp?.font_color;
+    const iconColor    = isDark ? (rp?.dark_icon_color    || rp?.icon_color)     : rp?.icon_color;
+    const pageBgColor  = isDark ? (rp?.dark_page_bg_color || rp?.page_bg_color)  : rp?.page_bg_color;
+    const cardBgColor  = isDark ? (rp?.dark_card_bg_color || rp?.card_bg_color)  : rp?.card_bg_color;
+    const textColor    = isDark ? (rp?.dark_text_color    || rp?.text_color)     : rp?.text_color;
 
     // Sidebar colors
     set('--reseller-font-color', fontColor);
@@ -261,7 +311,7 @@ const App: React.FC = () => {
       link.href = faviconUrl + '?v=' + Date.now();
       document.head.appendChild(link);
     }
-  }, [resellerProfile, darkMode]);
+  }, [resellerProfile, colorTheme]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
   }, []);
@@ -451,15 +501,44 @@ const App: React.FC = () => {
     }
   }, [currentView]);
 
+  // Apply color theme: CSS variables + dark class + page background
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('agz_dark', '1');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('agz_dark', '0');
+    const t = THEMES[colorTheme];
+    const root = document.documentElement;
+    // Only apply color vars if no reseller is overriding them
+    if (!resellerProfile?.primary_color) {
+      root.style.setProperty('--color-primary',       t.primary);
+      root.style.setProperty('--color-primary-dark',  t.dark);
+      root.style.setProperty('--color-primary-light', t.light);
+      root.style.setProperty('--color-primary-bg',    t.bg);
+      root.style.setProperty('--accent',              t.accent);
+      root.style.setProperty('--accent-light',        t.accentLight);
+      root.style.setProperty('--accent-dark',         t.accentDark);
+      root.style.setProperty('--accent-darker',       t.accentDarker);
+      root.style.setProperty('--accent-glow',         t.accentGlow);
+      root.style.setProperty('--accent-glow-strong',  t.accentGlowStrong);
+      root.style.setProperty('--accent-subtle',       t.accentSubtle);
+      root.style.setProperty('--accent-subtle-hover', t.accentSubtleHover);
+      root.style.setProperty('--accent-border',       t.accentBorder);
+      root.style.setProperty('--accent-border-strong',t.accentBorderStrong);
+      root.style.setProperty('--accent-focus-shadow', t.accentFocusShadow);
+      document.body.style.setProperty('background', t.pageBg, 'important');
     }
-  }, [darkMode]);
+    if (t.isDark) { root.classList.add('dark'); } else { root.classList.remove('dark'); }
+    localStorage.setItem('agz_theme', colorTheme);
+  }, [colorTheme, resellerProfile]);
+
+  // Close theme picker on outside click
+  useEffect(() => {
+    if (!showThemePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
+        setShowThemePicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showThemePicker]);
 
   // Load per-tenant feature overrides when a tenant session is active (direct login or page reload)
   // Impersonation already loads them inside handleImpersonate — this covers direct tenant login
@@ -469,16 +548,6 @@ const App: React.FC = () => {
       setTenantResellerFeatures(s?.resellerFeatureOverrides ?? null);
     }).catch(() => setTenantResellerFeatures(null));
   }, [tenantId, role, isImpersonating]);
-
-  // Force theme by nicho: Manicure/Pedicure → always light, others → always dark
-  useEffect(() => {
-    if (!tenantNicho) return;
-    if (tenantNicho === 'Manicure/Pedicure') {
-      setDarkMode(false);
-    } else {
-      setDarkMode(true);
-    }
-  }, [tenantNicho]);
 
   // ── Trial check — runs every minute; auto-disables AI when expired ───
   useEffect(() => {
@@ -1013,12 +1082,8 @@ const App: React.FC = () => {
         onMouseLeave={handleSidebarLeave}
         className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${sidebarCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-[500] h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
         style={{
-          ...(darkMode ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color)
-            ? { backgroundColor: darkMode ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color }
-            : {},
-          ...(darkMode ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color)
-            ? { color: darkMode ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color }
-            : {},
+          ...(() => { const _isDark = THEMES[colorTheme].isDark; return (_isDark ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color) ? { backgroundColor: _isDark ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color } : {}; })(),
+          ...(() => { const _isDark = THEMES[colorTheme].isDark; return (_isDark ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color) ? { color: _isDark ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color } : {}; })(),
         }}
       >
         {/* Logo / toggle */}
@@ -1117,7 +1182,7 @@ const App: React.FC = () => {
                 {!sidebarCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Operacional</p>}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.DASHBOARD} onClick={navTo(() => setCurrentView(View.DASHBOARD))} icon={<IconDashboard />} label="Dashboard" />
                 {resellerAllows('agendamentos') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.AGENDAMENTOS} onClick={navTo(() => setCurrentView(View.AGENDAMENTOS))} icon={<IconCalendar />} label="Agenda" />}
-                {resellerAllows('comandas') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<NichoIcon />} label="Comandas" />}
+                {resellerAllows('comandas') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<IconNotebook />} label="Comandas" />}
                 {resellerAllows('conversas') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />}
                 {resellerAllows('clientes') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />}
                 <NavItem collapsed={sidebarCollapsed} active={currentView === View.ASSINATURAS} onClick={navTo(() => setCurrentView(View.ASSINATURAS))} icon={<IconCreditCard />} label="Assinaturas" />
@@ -1146,11 +1211,12 @@ const App: React.FC = () => {
                   <>
                     <button
                       onClick={() => setRelatoriosOpen(v => !v)}
-                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'bg-black text-slate-800 shadow-none' : 'text-slate-500 hover:bg-slate-100'}`}
+                      style={(currentView === View.MARKETING || currentView === View.PERFORMANCE) ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 4px 12px var(--accent-glow-strong)' } : undefined}
+                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white shadow-none' : 'text-slate-500 hover:bg-slate-100'}`}
                     >
-                      <span className={`text-xl mr-3 ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : 'text-slate-400 group-hover:text-black'}`}><IconMarketing /></span>
-                      <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : ''}`}>Relatórios</span>
-                      <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-orange-500' : 'text-slate-300'}`}>▶</span>
+                      <span className={`text-xl mr-3 ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-400 group-hover:text-black'}`}><IconMarketing /></span>
+                      <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : ''}`}>Relatórios</span>
+                      <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-300'}`}>▶</span>
                     </button>
                     {relatoriosOpen && (
                       <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
@@ -1240,16 +1306,34 @@ const App: React.FC = () => {
                 {!pollingStatus.aiActive ? 'IA off' : pollingStatus.connected ? 'IA online' : 'WA offline'}
               </button>
             )}
-            <button
-              onClick={() => setDarkMode(d => !d)}
-              title={darkMode ? 'Modo Claro' : 'Modo Escuro'}
-              className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-slate-400 hover:bg-slate-100 transition-all"
-            >
-              {darkMode
-                ? <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                : <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              }
-            </button>
+            {/* Theme picker */}
+            <div className="relative" ref={themePickerRef}>
+              <button
+                onClick={() => setShowThemePicker(v => !v)}
+                title="Escolher tema de cores"
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-slate-400 hover:bg-slate-100 transition-all"
+              >
+                <span className="w-4 h-4 rounded-full border-2 border-white shadow-md block" style={{ backgroundColor: THEMES[colorTheme].primary }} />
+              </button>
+              {showThemePicker && (
+                <div className="absolute right-0 top-full mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 min-w-[160px]">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Tema de cores</p>
+                  <div className="space-y-0.5">
+                    {(Object.keys(THEMES) as (keyof typeof THEMES)[]).map(key => (
+                      <button
+                        key={key}
+                        onClick={() => { setColorTheme(key); setShowThemePicker(false); }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all ${colorTheme === key ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                      >
+                        <span className="w-3.5 h-3.5 rounded-full border border-slate-200 shadow-sm shrink-0" style={{ backgroundColor: THEMES[key].primary }} />
+                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest flex-1 text-left">{THEMES[key].label}</span>
+                        {colorTheme === key && <span className="text-[9px] text-slate-400">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -1701,12 +1785,13 @@ const NavItem = ({ active, onClick, icon, label, color, collapsed, badge }: any)
   <div className="relative group/ni">
     <button
       onClick={onClick}
+      style={active ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 4px 12px var(--accent-glow-strong)' } : undefined}
       className={`w-full flex items-center ${collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3'} rounded-xl transition-all group ${
-        active ? 'bg-black text-slate-800 shadow-none' : `text-slate-500 hover:bg-slate-100 ${color || ''}`
+        active ? 'text-white shadow-none' : `text-slate-500 hover:bg-slate-100 ${color || ''}`
       }`}
     >
-      <span className={`text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-orange-500' : 'group-hover:text-black'}`} style={!active ? { color: 'var(--reseller-icon-color, #94a3b8)' } : undefined}>{icon}</span>
-      {!collapsed && <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-orange-500' : ''}`}>{label}</span>}
+      <span className={`text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-white' : 'group-hover:text-black'}`} style={!active ? { color: 'var(--reseller-icon-color, #94a3b8)' } : undefined}>{icon}</span>
+      {!collapsed && <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>}
       {!collapsed && badge > 0 && (
         <span className="ml-auto bg-orange-500 text-white text-[9px] font-black rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
           {badge > 99 ? '99+' : badge}
@@ -1742,6 +1827,7 @@ const IconLogout = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 
 const IconPlans = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>;
 const IconChat = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>;
 const IconCreditCard = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>;
+const IconNotebook = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><line x1="9" y1="8" x2="16" y2="8"/><line x1="9" y1="12" x2="16" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>;
 const IconBroadcast = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>;
 const IconTrophy = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
 const IconMarketing = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;

@@ -63,6 +63,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [role, setRole] = useState<'admin' | 'colab'>('colab');
   const [proServiceIds, setProServiceIds] = useState<string[]>([]);
   const [loginPin, setLoginPin] = useState('');
+  const [proPhoto, setProPhoto] = useState<string>('');
 
   const load = useCallback(async () => {
     try {
@@ -104,7 +105,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     setSaving(true);
     try {
       const newPro = await db.addProfessional({ tenant_id: tenantId, name, phone, specialty, active: true });
-      await db.updateProfessional(tenantId, newPro.id, { role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone });
+      await db.updateProfessional(tenantId, newPro.id, { role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
       await load();
       setShowModal(false);
       resetForm();
@@ -146,7 +147,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     if (!editingPro || !name || !phone) return;
     setSaving(true);
     try {
-      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone });
+      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
       await load();
       setEditingPro(null);
       resetForm();
@@ -155,7 +156,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     } finally { setSaving(false); }
   };
 
-  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); };
+  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setProPhoto(''); };
 
   const handleDeletePro = async () => {
     if (!deleteProId) return;
@@ -381,8 +382,11 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
           return (
             <div key={p.id} className="bg-white p-5 sm:p-6 md:p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-orange-500 transition-all">
               <div className="flex items-center space-x-5 mb-6 cursor-pointer" onClick={() => { setSelectedProForReport(p); setReportTab('appointments'); }}>
-                <div className="w-16 h-16 bg-black text-white rounded-[24px] flex items-center justify-center text-2xl font-black group-hover:bg-orange-500 transition-all shadow-lg">
-                  {p.name[0]}
+                <div className="w-16 h-16 rounded-[24px] overflow-hidden shrink-0 shadow-lg group-hover:ring-2 group-hover:ring-orange-500 transition-all">
+                  {p.photoBase64
+                    ? <img src={p.photoBase64} alt={p.name} className="w-full h-full object-cover" />
+                    : <div className="w-full h-full bg-black text-white flex items-center justify-center text-2xl font-black group-hover:bg-orange-500 transition-all">{p.name[0]}</div>
+                  }
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-black leading-tight">{p.name}</h3>
@@ -406,15 +410,15 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                   </div>
                 )}
                 {intervals.map(intv => (
-                  <div key={intv.id} className="flex items-center justify-between bg-purple-50 border border-purple-100 rounded-xl px-3 py-1.5">
+                  <div key={intv.id} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
                     <div className="flex items-center gap-2">
                       <span className="text-xs">⏸️</span>
-                      <span className="text-[10px] font-black text-purple-700">
+                      <span className="text-[10px] font-black text-slate-600">
                         Intervalo {intv.startTime}–{intv.endTime}
                         {intv.date ? ` (${intv.date})` : intv.dayOfWeek != null ? ` (${DAYS_PT[intv.dayOfWeek]})` : ' (todos os dias)'}
                       </span>
                     </div>
-                    <button onClick={() => openInterval(p, intv.id)} className="text-purple-400 hover:text-purple-700 text-[9px] font-black">
+                    <button onClick={() => openInterval(p, intv.id)} className="text-slate-400 hover:text-slate-600 text-[9px] font-black">
                       Editar
                     </button>
                   </div>
@@ -425,7 +429,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                   <button onClick={() => openLunch(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
                     🍽️ Almoço
                   </button>
-                  <button onClick={() => openInterval(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                  <button onClick={() => openInterval(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
                     ⏸️ Intervalo
                   </button>
                   <button onClick={() => openVacation(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
@@ -434,7 +438,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); }}
+                    <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); }}
                       className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
                       📝 Editar
                     </button>
@@ -567,11 +571,11 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
               {/* Mode selector */}
               <div className="flex gap-2">
                 <button onClick={() => setIntervalMode('recurring')}
-                  className={`flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${intervalMode === 'recurring' ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-purple-50'}`}>
+                  className={`flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${intervalMode === 'recurring' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
                   Recorrente
                 </button>
                 <button onClick={() => setIntervalMode('specific')}
-                  className={`flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${intervalMode === 'specific' ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-purple-50'}`}>
+                  className={`flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${intervalMode === 'specific' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
                   Data Específica
                 </button>
               </div>
@@ -580,12 +584,12 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Início</label>
                   <input type="time" value={intervalStart} onChange={e => setIntervalStart(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-purple-400" />
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-orange-400" />
                 </div>
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fim</label>
                   <input type="time" value={intervalEnd} onChange={e => setIntervalEnd(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-purple-400" />
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-orange-400" />
                 </div>
               </div>
               {/* Days or date */}
@@ -595,7 +599,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                   <div className="flex gap-1.5 flex-wrap">
                     {DAYS_PT.map((d, i) => (
                       <button key={i} onClick={() => toggleIntervalDay(i)}
-                        className={`w-9 h-9 rounded-xl font-black text-[9px] uppercase transition-all ${intervalDays.includes(i) ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-purple-100'}`}>
+                        className={`w-9 h-9 rounded-xl font-black text-[9px] uppercase transition-all ${intervalDays.includes(i) ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
                         {d.slice(0, 3)}
                       </button>
                     ))}
@@ -605,7 +609,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Data</label>
                   <input type="date" value={intervalDate} onChange={e => setIntervalDate(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black outline-none focus:border-purple-400" />
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black outline-none focus:border-orange-400" />
                 </div>
               )}
             </div>
@@ -617,7 +621,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                 </button>
               )}
               <button onClick={() => setIntervalPro(null)} className="flex-1 py-3 font-black text-slate-400 uppercase text-xs" disabled={saving}>Cancelar</button>
-              <button onClick={saveInterval} disabled={saving} className="flex-1 py-3 bg-purple-500 text-white rounded-2xl font-black uppercase text-xs hover:bg-purple-600 transition-all disabled:opacity-40">
+              <button onClick={saveInterval} disabled={saving} className="flex-1 py-3 bg-slate-700 text-white rounded-2xl font-black uppercase text-xs hover:bg-slate-800 transition-all disabled:opacity-40">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
@@ -631,7 +635,12 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
           <div className="bg-white rounded-[50px] w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-scaleUp border-4 border-black">
             <div className="p-10 border-b-2 border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
               <div className="flex items-center space-x-5">
-                <div className="w-16 h-16 bg-orange-500 text-white rounded-3xl flex items-center justify-center text-2xl font-black shadow-xl">{selectedProForReport.name[0]}</div>
+                <div className="w-16 h-16 rounded-3xl overflow-hidden shadow-xl shrink-0">
+                  {selectedProForReport.photoBase64
+                    ? <img src={selectedProForReport.photoBase64} alt={selectedProForReport.name} className="w-full h-full object-cover" />
+                    : <div className="w-full h-full bg-orange-500 text-white flex items-center justify-center text-2xl font-black">{selectedProForReport.name[0]}</div>
+                  }
+                </div>
                 <div>
                   <h2 className="text-2xl font-black text-black uppercase tracking-tight">{selectedProForReport.name}</h2>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Relatório de Atividade</p>
@@ -680,10 +689,10 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                   {(reportData?.appointments ?? []).map((a: Appointment) => {
                     const svcName = allServices.find(s => s.id === a.service_id)?.name ?? '—';
                     const statusColors: Record<string, string> = {
-                      FINISHED:  'bg-emerald-100 text-emerald-700',
-                      CONFIRMED: 'bg-blue-100 text-blue-700',
-                      CANCELLED: 'bg-red-100 text-red-600',
-                      PENDING:   'bg-amber-100 text-amber-700',
+                      FINISHED:  'bg-slate-100 text-slate-500',
+                      CONFIRMED: 'bg-blue-50 text-blue-600',
+                      CANCELLED: 'bg-slate-100 text-slate-400',
+                      PENDING:   'bg-orange-100 text-orange-600',
                     };
                     const statusLabel: Record<string, string> = {
                       FINISHED: 'Finalizado', CONFIRMED: 'Confirmado',
@@ -700,7 +709,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                           </div>
                           <div>
                             <p className="text-sm font-black text-black">{svcName}</p>
-                            {a.isPlan && <span className="text-[9px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full uppercase">Plano</span>}
+                            {a.isPlan && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">Plano</span>}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -781,6 +790,36 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
               {editingPro ? 'Editar Profissional' : 'Novo Profissional'}
             </h2>
             <div className="space-y-4">
+              {/* Foto de Perfil */}
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-slate-100 border-2 border-slate-200">
+                  {proPhoto
+                    ? <img src={proPhoto} alt="Foto" className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex items-center justify-center text-slate-300">
+                        <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                      </div>
+                  }
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Foto de Perfil</label>
+                  <label className="cursor-pointer flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-2 border-slate-200 hover:border-orange-400 rounded-2xl transition-all">
+                    <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Escolher foto</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => setProPhoto(ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }} />
+                  </label>
+                  {proPhoto && (
+                    <button onClick={() => setProPhoto('')} className="mt-1.5 text-[9px] font-black text-red-400 hover:text-red-600 uppercase tracking-widest ml-1">
+                      Remover foto
+                    </button>
+                  )}
+                </div>
+              </div>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome Completo"
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500" />
               <div className="space-y-1">

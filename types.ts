@@ -429,6 +429,7 @@ export interface Professional {
   serviceIds?: string[];    // IDs dos serviços que este profissional realiza (vazio = faz tudo)
   loginPin?: string;        // PIN de 4 dígitos para acesso ao portal profissional
   loginPhone?: string;      // Telefone de login (padrão = phone)
+  photoBase64?: string;     // Foto de perfil em base64
 }
 
 export interface Service {
