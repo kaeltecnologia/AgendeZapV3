@@ -623,7 +623,8 @@ async function callBrain(
 
   // ── Sequential flow + professional selection rule ─────────────────────
   const flowSection = `\n📋 FLUXO OBRIGATÓRIO (pule etapas que o cliente já informou — não repita perguntas):
-1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ PERÍODO (manhã/tarde) → 5️⃣ HORÁRIO → 6️⃣ CONFIRMAÇÃO
+1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ PERÍODO (manhã/tarde) → 5️⃣ HORÁRIO → 5️⃣.5 NOME (se não constar no contexto) → 6️⃣ CONFIRMAÇÃO
+⚠️ NOME OBRIGATÓRIO: Se "Nome" NÃO aparecer no CONTEXTO ATUAL quando tiver Serviço + Profissional + Dia + Horário definidos, pergunte o nome ANTES do resumo final. Exemplo: "Ótimo! Antes de confirmar, qual é o seu nome?"
 ⛔ REGRAS ABSOLUTAS:
 • Se DIA não estiver no CONTEXTO ATUAL → pergunte "Tem algum dia de preferência?" ANTES de qualquer horário
 • EXCEÇÃO: se o cliente perguntar sobre horários SEM mencionar dia ("tem horário?", "como estão os horários?", "horário disponível", "tem vaga?") → assuma HOJE SOMENTE se hoje estiver aberto. Se hoje estiver FECHADO, diga "Hoje estamos fechados. Para qual dia você gostaria?" e NÃO extraia data
@@ -2785,10 +2786,35 @@ async function _handleMessage(
   }
   const _fullCtx = [_vacCtx, _holidayCtx].filter(Boolean).join('\n') || '';
 
+  // ─── Pending name capture: client provided name after being asked ─────
+  let _syntheticBrainAS: any = null;
+  if (session.data._pendingNameForBooking && session.data.serviceId && session.data.date && session.data.time && session.data.professionalId) {
+    const _rawNameAS = lowerText.trim();
+    const _looksLikeNameAS = _rawNameAS.length >= 2 && _rawNameAS.length <= 80 && !/\d{4,}/.test(_rawNameAS);
+    if (_looksLikeNameAS) {
+      const _norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+      const _capturedNameAS = text.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      session.data.clientName = _capturedNameAS;
+      session.data._pendingNameForBooking = false;
+      _syntheticBrainAS = {
+        reply: '',
+        extracted: {
+          clientName: _capturedNameAS,
+          serviceId: session.data.serviceId,
+          professionalId: session.data.professionalId,
+          date: session.data.date,
+          time: session.data.time,
+          confirmed: true,
+          cancelled: null, waitlist: null, reschedule: null,
+        }
+      };
+    }
+  }
+
   // ─── First AI Brain call ────────────────────────────────────────────
   const tenantNicho: string = (tenant.nicho as string) || 'Barbearia';
   const groupBookingCtx = buildGroupCtx(session.data);
-  let brain = await callBrain(
+  let brain = _syntheticBrainAS ?? await callBrain(
     apiKey, tenantName, formatDate(todayISO),
     serviceOptions, profOptionsVisible,
     session.history, session.data, prefetchedSlots, customPrompt || undefined,
@@ -3190,8 +3216,20 @@ async function _handleMessage(
         return takenMsg;
       }
 
+      // Guard: require client name before booking
+      const _nameForBooking = session.data.clientName ||
+        (pushName && pushName !== phone && pushName !== 'Cliente' && pushName.length > 1 ? pushName : null);
+      if (!_nameForBooking) {
+        session.data._pendingNameForBooking = true;
+        const _askNameMsg = `Para confirmar o agendamento, preciso do seu nome. Como você se chama? 😊`;
+        session.history.push({ role: 'bot', text: _askNameMsg });
+        saveSession(session);
+        return _askNameMsg;
+      }
+      session.data.clientName = _nameForBooking;
+
       // Check plan coverage (per-service quotas)
-      const customer = await db.findOrCreateCustomer(tenantId, phone, session.data.clientName || pushName || 'Cliente');
+      const customer = await db.findOrCreateCustomer(tenantId, phone, _nameForBooking);
 
       // ── Subscription block check ────────────────────────────────────────
       if (customer.subscriptionStatus === 'overdue') {

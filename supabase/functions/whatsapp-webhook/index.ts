@@ -506,7 +506,9 @@ ${_nichoCfg.tom}
 ${customSystemPrompt ? `\n## Regras do Estabelecimento\n${customSystemPrompt}\n` : ''}
 # Fluxo de Agendamento
 Siga nesta ordem, pule etapas já presentes no CONTEXTO ATUAL:
-1. SERVIÇO -> 2. PROFISSIONAL -> 3. DIA -> 4. HORÁRIO -> 5. CONFIRMAÇÃO
+1. SERVIÇO -> 2. PROFISSIONAL -> 3. DIA -> 4. HORÁRIO -> 4.5. NOME (se não constar no contexto) -> 5. CONFIRMAÇÃO
+
+⚠️ NOME OBRIGATÓRIO: Se "Nome" NÃO aparecer no CONTEXTO ATUAL quando tiver Serviço + Profissional + Dia + Horário definidos, pergunte o nome do cliente ANTES de mostrar o resumo. Exemplo: "Ótimo! Antes de confirmar, qual é o seu nome?"
 
 - Se cliente perguntar sobre horários SEM mencionar dia E NÃO houver Data no CONTEXTO ATUAL -> assuma HOJE e mostre horários.
 - Se CONTEXTO ATUAL já contém uma Data -> todos os horários disponíveis são para AQUELE dia, NÃO para hoje. NUNCA diga "hoje não temos" quando a data é outro dia.
@@ -3262,8 +3264,36 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
   const _fullCtxWh = [_vacCtxWh, _holidayCtxWh, _customerHistoryCtx].filter(Boolean).join('\n') || undefined;
 
+  // ── Pending name capture: client provided name after being asked ─────
+  // When _pendingNameForBooking is set, the next message should be the client's name.
+  // Capture it and create a synthetic brain response to trigger booking directly.
+  let _syntheticBrain: any = null;
+  if (session.data._pendingNameForBooking && session.data.serviceId && session.data.date && session.data.time && session.data.professionalId) {
+    const _rawName = text.trim();
+    // Looks like a name: 2-80 chars, no phone-number-like digit sequences
+    const _looksLikeName = _rawName.length >= 2 && _rawName.length <= 80 && !/\d{4,}/.test(_rawName);
+    if (_looksLikeName) {
+      session.data.clientName = capitalizeName(_rawName);
+      session.data._pendingNameForBooking = false;
+      console.log(`[Agent] Captured client name from pending: "${session.data.clientName}"`);
+      // Synthetic brain: skip AI call and go straight to booking confirmation
+      _syntheticBrain = {
+        reply: '',
+        extracted: {
+          clientName: session.data.clientName,
+          serviceId: session.data.serviceId,
+          professionalId: session.data.professionalId,
+          date: session.data.date,
+          time: session.data.time,
+          confirmed: true,
+          cancelled: null, waitlist: null, reschedule: null,
+        }
+      };
+    }
+  }
+
   // First brain call
-  let brain = await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any, tenant.nicho);
+  let brain = _syntheticBrain ?? await callBrain(apiKey, tenantName, todayISO, services, professionalsVisible, session.history, session.data, prefetchedSlots, customPrompt || undefined, effectiveShouldGreet, brasiliaGreeting, tenantId, phone, _fullCtxWh, settings.operatingHours as any, tenant.nicho);
 
   // Fallback: if primary key failed and it was OpenAI, retry with Gemini key
   if (!brain && apiKey.startsWith('sk-')) {
@@ -3510,14 +3540,30 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         return;
       }
 
+      // Guard: require client name before booking
+      const _effectiveName = session.data.clientName ||
+        (pushName && pushName !== phone && pushName !== 'Cliente' && pushName.length > 1 ? pushName : null);
+      if (!_effectiveName) {
+        session.data._pendingNameForBooking = true;
+        const _askNameMsg = `Para confirmar o agendamento, preciso do seu nome. Como você se chama? 😊`;
+        session.history.push({ role: 'bot', text: _askNameMsg });
+        await sendMsg(instanceName, phone, _askNameMsg, tenantId);
+        saveSession(tenantId, phone, session.data, session.history).catch(() => {});
+        return;
+      }
+      session.data.clientName = _effectiveName;
+
       // Find or create customer
-      let { data: customer } = await supabase.from('customers').select('id')
+      let { data: customer } = await supabase.from('customers').select('id, nome')
         .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
       if (!customer) {
         const { data: newC } = await supabase.from('customers')
-          .insert({ tenant_id: tenantId, telefone: phone, nome: session.data.clientName || pushName || 'Cliente' })
+          .insert({ tenant_id: tenantId, telefone: phone, nome: _effectiveName })
           .select('id').single();
         customer = newC;
+      } else if (customer && (!customer.nome || customer.nome === 'Cliente') && _effectiveName !== 'Cliente') {
+        // Update existing customer name if it was unknown
+        await supabase.from('customers').update({ nome: _effectiveName }).eq('id', customer.id);
       }
       if (!customer) throw new Error('Failed to find or create customer');
 
