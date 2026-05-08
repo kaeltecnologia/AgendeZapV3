@@ -108,43 +108,93 @@ const THEMES = {
     label: 'Branco', primary: '#f97316', dark: '#ea580c', light: '#fdba74', bg: '#fff7ed', pageBg: '#f1f5f9',
     accent: '#f97316', accentLight: '#fb923c', accentDark: '#ea580c', accentDarker: '#c2410c',
     accentGlow: 'rgba(249,115,22,0.10)', accentGlowStrong: 'rgba(249,115,22,0.20)', accentSubtle: 'rgba(249,115,22,0.07)',
-    accentSubtleHover: 'rgba(249,115,22,0.12)', accentBorder: 'rgba(249,115,22,0.20)', accentBorderStrong: 'rgba(249,115,22,0.35)', accentFocusShadow: 'rgba(249,115,22,0.12)', isDark: false,
+    accentSubtleHover: 'rgba(249,115,22,0.12)', accentBorder: 'rgba(249,115,22,0.20)', accentBorderStrong: 'rgba(249,115,22,0.35)', accentFocusShadow: 'rgba(249,115,22,0.12)',
+    // Palette estrutural
+    cardBg: '#ffffff', cardShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    sidebarBg: '#ffffff', sidebarBorder: '#e2e8f0',
+    bgSubtle: '#f8fafc', bgMuted: '#f1f5f9',
+    borderSubtle: '#e2e8f0', borderDefault: '#e2e8f0',
+    inputBg: '#ffffff', inputText: '#0f172a', inputBorder: '#e2e8f0',
+    textHeading: '#0f172a', textBody: '#334155', textMuted: '#64748b', textSubtle: '#94a3b8',
+    isDark: false,
   },
   dark: {
     label: 'Escuro', primary: '#f97316', dark: '#ea580c', light: '#fdba74', bg: '#fff7ed', pageBg: '#0f172a',
     accent: '#f97316', accentLight: '#fb923c', accentDark: '#ea580c', accentDarker: '#c2410c',
     accentGlow: 'rgba(249,115,22,0.15)', accentGlowStrong: 'rgba(249,115,22,0.30)', accentSubtle: 'rgba(249,115,22,0.10)',
-    accentSubtleHover: 'rgba(249,115,22,0.15)', accentBorder: 'rgba(249,115,22,0.25)', accentBorderStrong: 'rgba(249,115,22,0.45)', accentFocusShadow: 'rgba(249,115,22,0.20)', isDark: true,
+    accentSubtleHover: 'rgba(249,115,22,0.15)', accentBorder: 'rgba(249,115,22,0.25)', accentBorderStrong: 'rgba(249,115,22,0.45)', accentFocusShadow: 'rgba(249,115,22,0.20)',
+    cardBg: '#1e293b', cardShadow: '0 1px 4px rgba(0,0,0,0.40)',
+    sidebarBg: '#0f172a', sidebarBorder: '#1e293b',
+    bgSubtle: '#162032', bgMuted: '#1e293b',
+    borderSubtle: '#1e293b', borderDefault: '#334155',
+    inputBg: '#1e293b', inputText: '#f1f5f9', inputBorder: '#334155',
+    textHeading: '#f1f5f9', textBody: '#cbd5e1', textMuted: '#94a3b8', textSubtle: '#64748b',
+    isDark: true,
   },
   cold: {
-    label: 'Frio', primary: '#6366f1', dark: '#4f46e5', light: '#a5b4fc', bg: '#eef2ff', pageBg: '#f0f4ff',
+    label: 'Frio', primary: '#6366f1', dark: '#4f46e5', light: '#a5b4fc', bg: '#eef2ff', pageBg: '#eef2ff',
     accent: '#6366f1', accentLight: '#818cf8', accentDark: '#4f46e5', accentDarker: '#3730a3',
     accentGlow: 'rgba(99,102,241,0.10)', accentGlowStrong: 'rgba(99,102,241,0.20)', accentSubtle: 'rgba(99,102,241,0.07)',
-    accentSubtleHover: 'rgba(99,102,241,0.12)', accentBorder: 'rgba(99,102,241,0.20)', accentBorderStrong: 'rgba(99,102,241,0.35)', accentFocusShadow: 'rgba(99,102,241,0.12)', isDark: false,
+    accentSubtleHover: 'rgba(99,102,241,0.12)', accentBorder: 'rgba(99,102,241,0.20)', accentBorderStrong: 'rgba(99,102,241,0.35)', accentFocusShadow: 'rgba(99,102,241,0.12)',
+    cardBg: '#f8f9ff', cardShadow: '0 1px 3px rgba(99,102,241,0.12)',
+    sidebarBg: '#f0f2ff', sidebarBorder: '#c7d2fe',
+    bgSubtle: '#eef2ff', bgMuted: '#e0e7ff',
+    borderSubtle: '#e0e7ff', borderDefault: '#c7d2fe',
+    inputBg: '#f8f9ff', inputText: '#1e1b4b', inputBorder: '#c7d2fe',
+    textHeading: '#1e1b4b', textBody: '#312e81', textMuted: '#6366f1', textSubtle: '#a5b4fc',
+    isDark: false,
   },
   warm: {
     label: 'Quente', primary: '#f59e0b', dark: '#d97706', light: '#fcd34d', bg: '#fffbeb', pageBg: '#fef9f0',
     accent: '#f59e0b', accentLight: '#fbbf24', accentDark: '#d97706', accentDarker: '#b45309',
     accentGlow: 'rgba(245,158,11,0.10)', accentGlowStrong: 'rgba(245,158,11,0.20)', accentSubtle: 'rgba(245,158,11,0.07)',
-    accentSubtleHover: 'rgba(245,158,11,0.12)', accentBorder: 'rgba(245,158,11,0.20)', accentBorderStrong: 'rgba(245,158,11,0.35)', accentFocusShadow: 'rgba(245,158,11,0.12)', isDark: false,
+    accentSubtleHover: 'rgba(245,158,11,0.12)', accentBorder: 'rgba(245,158,11,0.20)', accentBorderStrong: 'rgba(245,158,11,0.35)', accentFocusShadow: 'rgba(245,158,11,0.12)',
+    cardBg: '#fffef8', cardShadow: '0 1px 3px rgba(245,158,11,0.12)',
+    sidebarBg: '#fffbf0', sidebarBorder: '#fde68a',
+    bgSubtle: '#fffbeb', bgMuted: '#fef3c7',
+    borderSubtle: '#fef3c7', borderDefault: '#fde68a',
+    inputBg: '#fffef8', inputText: '#451a03', inputBorder: '#fde68a',
+    textHeading: '#451a03', textBody: '#78350f', textMuted: '#92400e', textSubtle: '#b45309',
+    isDark: false,
   },
   pink: {
     label: 'Rosa', primary: '#ec4899', dark: '#db2777', light: '#f9a8d4', bg: '#fdf2f8', pageBg: '#fff0f7',
     accent: '#ec4899', accentLight: '#f472b6', accentDark: '#db2777', accentDarker: '#be185d',
     accentGlow: 'rgba(236,72,153,0.10)', accentGlowStrong: 'rgba(236,72,153,0.20)', accentSubtle: 'rgba(236,72,153,0.07)',
-    accentSubtleHover: 'rgba(236,72,153,0.12)', accentBorder: 'rgba(236,72,153,0.20)', accentBorderStrong: 'rgba(236,72,153,0.35)', accentFocusShadow: 'rgba(236,72,153,0.12)', isDark: false,
+    accentSubtleHover: 'rgba(236,72,153,0.12)', accentBorder: 'rgba(236,72,153,0.20)', accentBorderStrong: 'rgba(236,72,153,0.35)', accentFocusShadow: 'rgba(236,72,153,0.12)',
+    cardBg: '#fff5f9', cardShadow: '0 1px 3px rgba(236,72,153,0.10)',
+    sidebarBg: '#fff0f7', sidebarBorder: '#fbcfe8',
+    bgSubtle: '#fdf2f8', bgMuted: '#fce7f3',
+    borderSubtle: '#fce7f3', borderDefault: '#fbcfe8',
+    inputBg: '#fff8fb', inputText: '#500724', inputBorder: '#fbcfe8',
+    textHeading: '#500724', textBody: '#831843', textMuted: '#be185d', textSubtle: '#f9a8d4',
+    isDark: false,
   },
   blue: {
-    label: 'Azul', primary: '#2563eb', dark: '#1d4ed8', light: '#93c5fd', bg: '#eff6ff', pageBg: '#f0f5ff',
+    label: 'Azul', primary: '#2563eb', dark: '#1d4ed8', light: '#93c5fd', bg: '#eff6ff', pageBg: '#eff6ff',
     accent: '#2563eb', accentLight: '#3b82f6', accentDark: '#1d4ed8', accentDarker: '#1e3a8a',
     accentGlow: 'rgba(37,99,235,0.10)', accentGlowStrong: 'rgba(37,99,235,0.20)', accentSubtle: 'rgba(37,99,235,0.07)',
-    accentSubtleHover: 'rgba(37,99,235,0.12)', accentBorder: 'rgba(37,99,235,0.20)', accentBorderStrong: 'rgba(37,99,235,0.35)', accentFocusShadow: 'rgba(37,99,235,0.12)', isDark: false,
+    accentSubtleHover: 'rgba(37,99,235,0.12)', accentBorder: 'rgba(37,99,235,0.20)', accentBorderStrong: 'rgba(37,99,235,0.35)', accentFocusShadow: 'rgba(37,99,235,0.12)',
+    cardBg: '#f8faff', cardShadow: '0 1px 3px rgba(37,99,235,0.10)',
+    sidebarBg: '#eff4ff', sidebarBorder: '#bfdbfe',
+    bgSubtle: '#eff6ff', bgMuted: '#dbeafe',
+    borderSubtle: '#dbeafe', borderDefault: '#bfdbfe',
+    inputBg: '#f8faff', inputText: '#1e3a8a', inputBorder: '#bfdbfe',
+    textHeading: '#1e3a8a', textBody: '#1d4ed8', textMuted: '#3b82f6', textSubtle: '#93c5fd',
+    isDark: false,
   },
   gray: {
     label: 'Cinza', primary: '#64748b', dark: '#475569', light: '#94a3b8', bg: '#f1f5f9', pageBg: '#f8fafc',
     accent: '#64748b', accentLight: '#94a3b8', accentDark: '#475569', accentDarker: '#334155',
     accentGlow: 'rgba(100,116,139,0.10)', accentGlowStrong: 'rgba(100,116,139,0.20)', accentSubtle: 'rgba(100,116,139,0.07)',
-    accentSubtleHover: 'rgba(100,116,139,0.12)', accentBorder: 'rgba(100,116,139,0.20)', accentBorderStrong: 'rgba(100,116,139,0.35)', accentFocusShadow: 'rgba(100,116,139,0.12)', isDark: false,
+    accentSubtleHover: 'rgba(100,116,139,0.12)', accentBorder: 'rgba(100,116,139,0.20)', accentBorderStrong: 'rgba(100,116,139,0.35)', accentFocusShadow: 'rgba(100,116,139,0.12)',
+    cardBg: '#ffffff', cardShadow: '0 1px 3px rgba(100,116,139,0.08)',
+    sidebarBg: '#f8fafc', sidebarBorder: '#e2e8f0',
+    bgSubtle: '#f8fafc', bgMuted: '#f1f5f9',
+    borderSubtle: '#e2e8f0', borderDefault: '#cbd5e1',
+    inputBg: '#ffffff', inputText: '#0f172a', inputBorder: '#e2e8f0',
+    textHeading: '#0f172a', textBody: '#334155', textMuted: '#64748b', textSubtle: '#94a3b8',
+    isDark: false,
   },
 } as const;
 
@@ -524,6 +574,22 @@ const App: React.FC = () => {
       root.style.setProperty('--accent-focus-shadow', t.accentFocusShadow);
       document.body.style.setProperty('background', t.pageBg, 'important');
     }
+    // Always apply structural palette vars (independent of reseller branding)
+    root.style.setProperty('--theme-card-bg',        t.cardBg);
+    root.style.setProperty('--theme-card-shadow',    t.cardShadow);
+    root.style.setProperty('--theme-sidebar-bg',     t.sidebarBg);
+    root.style.setProperty('--theme-sidebar-border', t.sidebarBorder);
+    root.style.setProperty('--theme-bg-subtle',      t.bgSubtle);
+    root.style.setProperty('--theme-bg-muted',       t.bgMuted);
+    root.style.setProperty('--theme-border-subtle',  t.borderSubtle);
+    root.style.setProperty('--theme-border-default', t.borderDefault);
+    root.style.setProperty('--theme-input-bg',       t.inputBg);
+    root.style.setProperty('--theme-input-text',     t.inputText);
+    root.style.setProperty('--theme-input-border',   t.inputBorder);
+    root.style.setProperty('--theme-text-heading',   t.textHeading);
+    root.style.setProperty('--theme-text-body',      t.textBody);
+    root.style.setProperty('--theme-text-muted',     t.textMuted);
+    root.style.setProperty('--theme-text-subtle',    t.textSubtle);
     if (t.isDark) { root.classList.add('dark'); } else { root.classList.remove('dark'); }
     localStorage.setItem('agz_theme', colorTheme);
   }, [colorTheme, resellerProfile]);

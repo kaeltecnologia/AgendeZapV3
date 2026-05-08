@@ -71,23 +71,23 @@ const IndicacoesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </div>
 
       {/* How it works */}
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border border-purple-100 p-5">
-        <h3 className="font-black text-sm text-purple-700 mb-3">Como funciona</h3>
+      <div className="bg-orange-50 rounded-2xl border border-orange-100 p-5">
+        <h3 className="font-black text-sm text-orange-600 mb-3">Como funciona</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          <div className="bg-white/70 rounded-xl p-4">
+          <div className="bg-white rounded-xl p-4">
             <p className="text-2xl mb-1">🔗</p>
-            <p className="font-black text-purple-700">1. Compartilhe seu link</p>
-            <p className="text-purple-500 mt-1">Envie para colegas, parceiros e amigos que têm negócio</p>
+            <p className="font-black text-slate-700">1. Compartilhe seu link</p>
+            <p className="text-slate-400 mt-1">Envie para colegas, parceiros e amigos que têm negócio</p>
           </div>
-          <div className="bg-white/70 rounded-xl p-4">
+          <div className="bg-white rounded-xl p-4">
             <p className="text-2xl mb-1">💸</p>
-            <p className="font-black text-purple-700">2. Ganhe 20% de desconto</p>
-            <p className="text-purple-500 mt-1">Para cada indicação que contratar um plano, enquanto mantiver ativa</p>
+            <p className="font-black text-slate-700">2. Ganhe 20% de desconto</p>
+            <p className="text-slate-400 mt-1">Para cada indicação que contratar um plano, enquanto mantiver ativa</p>
           </div>
-          <div className="bg-white/70 rounded-xl p-4">
+          <div className="bg-white rounded-xl p-4">
             <p className="text-2xl mb-1">🤑</p>
-            <p className="font-black text-purple-700">3. Bônus PIX (5+ indicações)</p>
-            <p className="text-purple-500 mt-1">Receba 10% do valor de cada assinatura dos indicados via PIX todo mês</p>
+            <p className="font-black text-slate-700">3. Bônus PIX (5+ indicações)</p>
+            <p className="text-slate-400 mt-1">Receba 10% do valor de cada assinatura dos indicados via PIX todo mês</p>
           </div>
         </div>
       </div>
@@ -97,13 +97,13 @@ const IndicacoesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <div className="bg-white rounded-2xl border border-slate-100 p-5">
           <h3 className="font-black text-sm text-black mb-3">Seu link exclusivo</h3>
           <div className="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
-            <code className="text-sm font-mono text-purple-600 truncate flex-1">
+            <code className="text-sm font-mono text-slate-600 truncate flex-1">
               https://www.agendezap.com/?ref={slug}
             </code>
             <button
               onClick={handleCopy}
               className={`shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                copied ? 'bg-green-600 text-white' : 'bg-purple-600 text-white hover:bg-purple-700'
+                copied ? 'bg-green-600 text-white' : 'bg-orange-500 text-white hover:bg-orange-600'
               }`}
             >
               {copied ? 'Copiado!' : 'Copiar Link'}
@@ -118,22 +118,22 @@ const IndicacoesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl border border-slate-100 p-4 text-center">
-          <p className="text-3xl font-black text-purple-600">{totalReferrals}</p>
+          <p className="text-3xl font-black text-orange-500">{totalReferrals}</p>
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mt-1">Total Indicações</p>
         </div>
-        <div className="bg-white rounded-2xl border border-green-100 p-4 text-center">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
           <p className="text-3xl font-black text-green-600">{activeCount}</p>
-          <p className="text-[9px] font-black text-green-500 uppercase tracking-wider mt-1">Ativas (Contrataram)</p>
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mt-1">Ativas (Contrataram)</p>
         </div>
-        <div className="bg-white rounded-2xl border border-purple-100 p-4 text-center">
-          <p className="text-3xl font-black text-purple-600">{d.discountPercent}%</p>
-          <p className="text-[9px] font-black text-purple-400 uppercase tracking-wider mt-1">Seu Desconto</p>
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
+          <p className="text-3xl font-black text-orange-500">{d.discountPercent}%</p>
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mt-1">Seu Desconto</p>
         </div>
-        <div className="bg-white rounded-2xl border border-indigo-100 p-4 text-center">
-          <p className="text-2xl font-black text-indigo-600">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
+          <p className="text-2xl font-black text-orange-500">
             {d.pixBonus > 0 ? `R$${fmtBRL(d.pixBonus)}` : '--'}
           </p>
-          <p className="text-[9px] font-black text-indigo-400 uppercase tracking-wider mt-1">Bônus PIX/mês</p>
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mt-1">Bônus PIX/mês</p>
         </div>
       </div>
 
@@ -142,11 +142,11 @@ const IndicacoesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <div className="bg-white rounded-2xl border border-slate-100 p-5">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-black text-slate-600">Progresso para Bônus PIX</p>
-            <p className="text-xs font-black text-purple-600">{activeCount}/5 indicações ativas</p>
+            <p className="text-xs font-black text-orange-500">{activeCount}/5 indicações ativas</p>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
             <div
-              className="bg-gradient-to-r from-purple-500 to-indigo-500 h-full rounded-full transition-all duration-500"
+              className="bg-orange-500 h-full rounded-full transition-all duration-500"
               style={{ width: `${Math.min((activeCount / 5) * 100, 100)}%` }}
             />
           </div>

@@ -388,8 +388,8 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         const cls = st === 'ativo' ? 'bg-green-50 text-green-700' : st === 'pendente' ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700';
                         return <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${cls}`}>{planName}</span>;
                       })()}
-                      {avisoName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700">Aviso</span>}
-                      {lembreteName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">Lembrete</span>}
+                      {avisoName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600">Aviso</span>}
+                      {lembreteName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Lembrete</span>}
                       {reativacaoName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">Reativação</span>}
                       {hasRecurring && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Recorrente</span>}
                     </div>
@@ -540,42 +540,46 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <div className="bg-white rounded-[40px] w-full max-w-2xl animate-scaleUp overflow-hidden">
 
               {/* ── Header ── */}
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8">
-                <div className="flex items-start justify-between mb-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center text-2xl font-black text-white shadow-lg shadow-orange-900/30">{initials}</div>
-                    <div>
-                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">{editingCustomer.name}</h2>
-                      <p className="text-orange-400 font-bold text-sm mt-0.5">{editingCustomer.phone}</p>
-                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                        {editingCustomer.email && <span className="text-slate-400 text-[11px] font-bold">{editingCustomer.email}</span>}
-                        {birthDisplay && <span className="text-slate-400 text-[11px] font-bold">🎂 {birthDisplay}</span>}
+              <div style={{ borderBottom: '1px solid #E2E8F0' }}>
+                {/* Orange accent top bar */}
+                <div style={{ height: 3, background: 'var(--color-primary)' }} />
+                <div className="p-5 sm:p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-xl font-black text-orange-500 shrink-0">{initials}</div>
+                      <div>
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight">{editingCustomer.name}</h2>
+                        <p className="text-orange-500 font-semibold text-sm mt-0.5">{editingCustomer.phone}</p>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {editingCustomer.email && <span className="text-slate-400 text-xs">{editingCustomer.email}</span>}
+                          {birthDisplay && <span className="text-slate-400 text-xs">🎂 {birthDisplay}</span>}
+                        </div>
                       </div>
                     </div>
+                    <button onClick={() => setEditingCustomer(null)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors shrink-0 text-base">✕</button>
                   </div>
-                  <button onClick={() => setEditingCustomer(null)} className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-black transition-all text-lg">✕</button>
-                </div>
-                {/* Stats row */}
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: 'Atendimentos', value: customerStats?.count ?? 0 },
-                    { label: 'Total gasto', value: customerStats ? `R$ ${customerStats.totalSpent.toFixed(0)}` : 'R$ 0' },
-                    { label: 'Última visita', value: customerStats?.lastDate ? customerStats.lastDate.split('-').reverse().join('/') : '—' },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-white/10 rounded-2xl px-4 py-3 text-center">
-                      <p className="text-white font-black text-lg leading-none">{value}</p>
-                      <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-1">{label}</p>
-                    </div>
-                  ))}
+                  {/* Stats row */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Atendimentos', value: customerStats?.count ?? 0 },
+                      { label: 'Total gasto', value: customerStats ? `R$ ${customerStats.totalSpent.toFixed(0)}` : 'R$ 0' },
+                      { label: 'Última visita', value: customerStats?.lastDate ? customerStats.lastDate.split('-').reverse().join('/') : '—' },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="bg-slate-50 rounded-xl px-3 py-2.5 text-center">
+                        <p className="text-slate-800 font-bold text-base leading-none">{value}</p>
+                        <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider mt-1">{label}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               {/* ── Tab bar ── */}
-              <div className="flex border-b-2 border-slate-100 bg-slate-50">
+              <div className="flex border-b border-slate-100">
                 {(['perfil', 'config'] as const).map(t => (
                   <button key={t} onClick={() => setProfileTab(t)}
-                    className={`flex-1 py-4 font-black text-xs uppercase tracking-widest transition-all ${profileTab === t ? 'border-b-2 border-orange-500 text-orange-500 bg-white' : 'text-slate-400 hover:text-slate-600'}`}>
-                    {t === 'perfil' ? '👤 Perfil' : '⚙️ Configurações'}
+                    className={`flex-1 py-3 font-semibold text-xs transition-all ${profileTab === t ? 'border-b-2 border-orange-500 text-orange-500' : 'text-slate-400 hover:text-slate-600'}`}>
+                    {t === 'perfil' ? 'Perfil' : 'Configurações'}
                   </button>
                 ))}
               </div>

@@ -1079,7 +1079,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                             : isPaused ? 'IA pausada — clique para reativar' : 'IA ativa — clique para pausar'}
                           className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 ${
                             isHumanTakeover
-                              ? 'bg-yellow-50 text-yellow-600 border-2 border-yellow-300 hover:bg-yellow-100'
+                              ? 'bg-orange-50 text-orange-600 border-2 border-orange-200 hover:bg-orange-100'
                               : isPaused
                               ? 'bg-red-50 text-red-500 border-2 border-red-200 hover:bg-red-100'
                               : 'bg-green-50 text-green-600 border-2 border-green-200 hover:bg-green-100'
@@ -1096,13 +1096,13 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                   {(() => {
                     const cust = findCustomerByPhone(selectedConv.phone);
                     return cust && customerData[cust.id]?.waitlistAlert ? (
-                      <div className="mx-4 mt-2 mb-1 flex items-center gap-3 bg-yellow-50 border-2 border-yellow-200 rounded-2xl px-4 py-2.5">
+                      <div className="mx-4 mt-2 mb-1 flex items-center gap-3 bg-orange-50 border-2 border-orange-200 rounded-2xl px-4 py-2.5">
                         <span className="text-lg">⚠️</span>
-                        <p className="text-[11px] font-black text-yellow-800 flex-1 uppercase tracking-wide">Lista de espera — agendar manualmente se abrir horário</p>
+                        <p className="text-[11px] font-black text-orange-700 flex-1 uppercase tracking-wide">Lista de espera — agendar manualmente se abrir horário</p>
                         <button
                           onClick={() => clearWaitlistAlert(selectedConv.phone)}
                           title="Marcar como resolvido"
-                          className="text-[10px] font-black text-yellow-600 hover:text-yellow-900 bg-yellow-100 hover:bg-yellow-200 px-3 py-1 rounded-xl transition-all uppercase tracking-widest"
+                          className="text-[10px] font-black text-orange-600 hover:text-orange-800 bg-orange-100 hover:bg-orange-200 px-3 py-1 rounded-xl transition-all uppercase tracking-widest"
                         >
                           Resolver
                         </button>

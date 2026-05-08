@@ -289,14 +289,14 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
 
           {/* Instagram Story */}
           {igConnected ? (
-            <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${chIg ? 'border-purple-400 bg-purple-50' : 'border-slate-100'}`}>
-              <input type="checkbox" checked={chIg} onChange={e => setChIg(e.target.checked)} className="w-4 h-4 accent-purple-500" />
+            <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${chIg ? 'border-orange-400 bg-orange-50' : 'border-slate-100'}`}>
+              <input type="checkbox" checked={chIg} onChange={e => setChIg(e.target.checked)} className="w-4 h-4 accent-orange-500" />
               <span className="text-lg">📸</span>
               <div className="flex-1">
                 <p className="text-xs font-black text-slate-700">Story Instagram</p>
                 <p className="text-[10px] text-slate-400">Publica como Story no @{igUsername}</p>
               </div>
-              <span className="text-[9px] font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">@{igUsername}</span>
+              <span className="text-[9px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">@{igUsername}</span>
             </label>
           ) : (
             <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-slate-100 opacity-50">

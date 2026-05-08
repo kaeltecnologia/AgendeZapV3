@@ -371,7 +371,7 @@ const MarketingView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 </span>
                 <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all ${i === topDayIdx ? 'bg-orange-500' : 'bg-slate-800'}`}
+                    className={`h-full rounded-full transition-all ${i === topDayIdx ? 'bg-orange-500' : 'bg-slate-300'}`}
                     style={{ width: `${Math.round(d.total / maxDayCount * 100)}%` }}
                   />
                 </div>

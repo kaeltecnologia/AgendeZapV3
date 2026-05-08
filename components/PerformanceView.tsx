@@ -186,7 +186,7 @@ const PerformanceView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               {profStats.map((p, i) => (
                 <div key={p.id} className="flex items-center gap-4">
                   <span className="w-6 text-center text-sm font-black text-slate-400">{i + 1}°</span>
-                  <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xs font-black shrink-0">
+                  <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center text-xs font-black shrink-0">
                     {p.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -199,7 +199,7 @@ const PerformanceView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-slate-900 rounded-full"
+                        <div className="h-full bg-orange-500 rounded-full"
                           style={{ width: `${maxFinished > 0 ? (p.finished / maxFinished * 100) : 0}%` }} />
                       </div>
                       {p.cancelled > 0 && (

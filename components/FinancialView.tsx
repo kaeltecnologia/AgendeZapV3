@@ -694,7 +694,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
             <div className="space-y-3">
               {professionals.map(p => (
                 <div key={p.id} className="flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xs font-black shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center text-xs font-black shrink-0">
                     {p.name.charAt(0).toUpperCase()}
                   </div>
                   <span className="flex-1 text-sm font-bold text-black">{p.name}</span>

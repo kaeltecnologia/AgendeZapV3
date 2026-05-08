@@ -49,7 +49,7 @@ export default function OtimizacaoView({ tenantId }: Props) {
           <h1 className="text-2xl font-black text-black tracking-tight">IA Otimização</h1>
           <p className="text-xs font-bold text-slate-400 mt-0.5">Desempenho da IA e otimizações aplicadas pelo suporte</p>
         </div>
-        <span className="bg-violet-100 text-violet-700 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+        <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
           GPT-4.1 Mini
         </span>
       </div>
