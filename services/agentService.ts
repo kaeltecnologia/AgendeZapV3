@@ -487,7 +487,8 @@ async function callBrain(
   phone?: string,
   isAudio?: boolean,
   vacationCtx?: string,
-  settings?: any
+  settings?: any,
+  tenantSlug?: string
 ): Promise<BrainOutput | null> {
 
   // Compute todayISO locally (Brasília UTC-3)
@@ -570,13 +571,16 @@ async function callBrain(
     ? `\n⚡ ATENÇÃO: Sua última mensagem foi uma PERGUNTA. A mensagem atual do cliente É A RESPOSTA. Extraia a informação diretamente — NÃO repita a pergunta.\n`
     : '';
 
+  const _bookingLinkHint = tenantSlug
+    ? `\n  Inclua o link de agendamento online: ${typeof window !== 'undefined' ? window.location.origin : 'https://agendezap.com'}/agendar/${tenantSlug} 🔗`
+    : '';
   const greetSection = shouldGreet
     ? `\n🌅 PRIMEIRA SAUDAÇÃO DO DIA:
-• Cumprimente BREVEMENTE com "${brasiliaGreeting}!" e "${tenantName}" no início da resposta.
+• Cumprimente BREVEMENTE com "${brasiliaGreeting}!" e "${tenantName}" no início da resposta.${_bookingLinkHint}
 • Se o cliente JÁ informou dados (serviço, profissional, dia, horário) nesta mensagem → cumprimente em UMA frase curta e JÁ PROCESSE tudo que ele informou, avançando o fluxo normalmente.
   ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Vou verificar a agenda do [prof] pra [dia]! Qual procedimento você gostaria?"
-• Se o cliente NÃO informou nada além de saudação → cumprimente e pergunte "Como posso te ajudar?"
-  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Como posso te ajudar?"\n`
+• Se o cliente NÃO informou nada além de saudação → cumprimente, sugira o link de agendamento online se disponível, e pergunte "Como posso te ajudar?"
+  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊${tenantSlug ? ` Você também pode agendar pelo link online: ${typeof window !== 'undefined' ? window.location.origin : 'https://agendezap.com'}/agendar/${tenantSlug} 🔗` : ''} Como posso te ajudar?"\n`
     : '';
 
   const groupSection = groupCtx
@@ -691,6 +695,7 @@ async function callBrain(
 • Mapeie expressões coloquiais para o serviço da lista que mais se encaixa (ex: "cabelo", "cabeça", "aparar" → serviço de corte; "barba" → serviço de barba; "sobrancelha" → serviço de sobrancelha)
 • Se identificar claramente UM serviço → preencha serviceId e siga para data/horário sem perguntar novamente
 • Se o termo for ambíguo entre dois serviços → pergunte qual dos dois o cliente quer
+• EXCEÇÃO IMPORTANTE: se o serviço identificado contiver "infantil" (ou "criança", "kids") no nome MAS o cliente NÃO mencionou infantil/criança/filho/filha, confirme antes: "Vai ser para uma criança?" — NÃO prossiga direto para horário
 • Se o serviço pedido não existir na lista → diga "Não oferecemos esse serviço. Posso te ajudar com outro?"
 ⛔ NUNCA liste todos os serviços da seção SERVIÇOS quando perguntar qual o cliente quer — pergunte APENAS: "Qual procedimento você gostaria?" sem enumerar a lista
 ⛔ NUNCA atribua um serviço informal a um serviço que não está na lista SERVIÇOS acima
@@ -997,7 +1002,18 @@ function matchServiceByKeywords(
     }
   }
 
-  return bestHits >= 1 ? best : null;
+  if (bestHits < 1 || !best) return null;
+
+  // Guard: don't auto-select child-specific services unless user mentioned child
+  const _bestNormName = norm(best.name);
+  const _CHILD_WORDS = ['infantil', 'crianca', 'filho', 'filha', 'kid', 'bebe', 'menino', 'menina'];
+  const _isChildSvc = _CHILD_WORDS.some(w => _bestNormName.includes(w));
+  const _userMentionedChild = _CHILD_WORDS.some(w => normText.includes(w));
+  if (_isChildSvc && !_userMentionedChild) {
+    return null; // Let AI ask if it's for a child
+  }
+
+  return best;
 }
 
 // =====================================================================
@@ -2778,7 +2794,7 @@ async function _handleMessage(
     session.history, session.data, prefetchedSlots, customPrompt || undefined,
     shouldGreet, brasiliaGreeting, groupBookingCtx || undefined,
     tenantNicho, tenantId, phone, options?.isAudio,
-    _fullCtx || undefined, settings
+    _fullCtx || undefined, settings, tenant.slug
   );
 
   if (!brain) {

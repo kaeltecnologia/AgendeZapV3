@@ -18,6 +18,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const EVO_URL = Deno.env.get('EVOLUTION_API_URL') || 'https://evolution-api-agendezap-evolution-api.xzftjp.easypanel.host';
 const EVO_KEY = Deno.env.get('EVOLUTION_API_KEY') || '429683C4C977415CAAFCCE10F7D57E11';
+const APP_URL = Deno.env.get('APP_URL') || 'https://agendezap.com';
 const EVO_HEADERS = { 'Content-Type': 'application/json', 'apikey': EVO_KEY };
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -343,7 +344,7 @@ async function logAIUsage(params: {
 
 // ── Nicho configs (inline for edge function) ────────────────────────
 const NICHO_CFG: Record<string, { intro: string; tom: string; emojis: string; regras: string[] }> = {
-  'Barbearia': { intro: 'Imite exatamente o estilo de um atendente humano brasileiro de barbearia — informal, caloroso, direto.', tom: '• Tom: brasileiro informal — "meu querido", "luquinha", "beleza", "fechou"', emojis: '(👍 😊 ✂️ 💈)', regras: [] },
+  'Barbearia': { intro: 'Imite exatamente o estilo de um atendente humano brasileiro de barbearia — informal, caloroso, direto.', tom: '• Tom: brasileiro informal — "meu querido", "beleza", "fechou", "na boa"', emojis: '(👍 😊 ✂️ 💈)', regras: [] },
   'Salão de Beleza': { intro: 'Imite o estilo de uma atendente de salão de beleza — acolhedora, carinhosa, feminina e direta.', tom: '• Tom: acolhedor, carinhoso — "querida", "linda", "flor", "amor"', emojis: '(💇 😊 ✨ 💅)', regras: ['Sempre perguntar se quer tratamento junto com o corte (hidratação, botox, progressiva)'] },
   'Manicure/Pedicure': { intro: 'Imite o estilo de uma manicure brasileira — delicada, carinhosa e direta.', tom: '• Tom: delicado, feminino — "linda", "querida", "flor"', emojis: '(💅 😊 ✨ 💗)', regras: ['Oferecer combo mãos + pés quando cliente pede apenas um'] },
   'Estética Corporal': { intro: 'Imite o estilo de uma esteticista corporal — profissional, acolhedora e técnica.', tom: '• Tom: profissional e acolhedor — "querida", "vamos cuidar de você"', emojis: '(✨ 😊 💆 💪)', regras: ['Perguntar sobre o objetivo: relaxamento, redução de medidas, drenagem, tonificação'] },
@@ -599,6 +600,7 @@ Quando o cliente usa termo informal que mapeia para um serviço, preencha extrac
 - ALISAMENTO: "progressiva", "alisar", "botox capilar"
 - ESCOVA: "escova", "modelar o cabelo"
 Regra: se identifica claramente UM serviço, assuma-o. NÃO peça confirmação, prossiga para data/horário.
+EXCEÇÃO IMPORTANTE: Se o serviço identificado contiver "infantil" (ou "criança", "kids") no nome MAS o cliente NÃO mencionou infantil/criança/filho/filha, confirme antes: "Vai ser para uma criança?" — NÃO prossiga direto para horário.
 MULTI-SERVIÇO: O sistema AUTOMATICAMENTE detecta TODOS os serviços mencionados pelo cliente (ex: "barba, cortar o cabelo, produtinho, sobrancelha" = 4 serviços). O CONTEXTO ATUAL já terá o combo calculado com duração e preço totais. Apenas CONFIRME todos os serviços listados — NUNCA ignore nenhum serviço que o cliente pediu. Se o CONTEXTO diz "Serviço: X + Y + Z", use EXATAMENTE isso.
 
 ## Horários Coloquiais
@@ -1150,9 +1152,18 @@ function matchAllServices(
       return snA.length - snB.length; // shorter name = more specific
     })[0];
     if (best) {
-      matched.push(best);
-      usedIds.add(best.id);
-      categories.delete(cat);
+      // Guard: don't auto-select child-specific services unless user mentioned child
+      const _bestNorm = svcNorm(best.name);
+      const _CHILD_W = ['infantil', 'crianca', 'filho', 'filha', 'kid', 'bebe', 'menino', 'menina'];
+      const _isChildSvc = _CHILD_W.some(w => _bestNorm.includes(w));
+      const _userMentionedChild = _CHILD_W.some(w => normText.includes(w));
+      if (!_isChildSvc || _userMentionedChild) {
+        matched.push(best);
+        usedIds.add(best.id);
+        categories.delete(cat);
+      } else {
+        console.log(`[matchAllSvcs] Skipped child-specific service "${best.name}" — user didn't mention child`);
+      }
     }
   }
 
@@ -1584,15 +1595,17 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     session = { data: knownName ? { clientName: knownName } : {}, history: [] };
 
     // ── Welcome message ──────────────────────────────────────────────────
+    const _bookingLink = tenant.slug ? `${APP_URL}/agendar/${tenant.slug}` : null;
+    const _bookingHint = _bookingLink ? `\n\n🔗 Prefere agendar pelo link online?\n${_bookingLink}` : '';
     if (!existing) {
       // Brand-new lead
-      const _welcomeMsg = `Olá! 👋 Bem-vindo(a) a *${tenantName}*!\n\nNosso atendimento é automatizado e funciona 24/7 🕐\n\nComo posso te ajudar? 😊`;
+      const _welcomeMsg = `Olá! 👋 Bem-vindo(a) a *${tenantName}*!${_bookingHint}\n\nComo posso te ajudar? 😊`;
       await sendMsg(instanceName, phone, _welcomeMsg, tenantId);
       console.log(`[welcome] First-contact welcome sent → ${phone.slice(-4)}`);
       session.data.greetedAt = getBrasiliaGreeting().dateStr;
     } else {
       // Returning lead — new session
-      const _welcomeBack = `Olá! 👋 Bem-vindo(a) novamente a *${tenantName}*!\n\nNosso atendimento é automatizado e funciona 24/7 🕐\n\nComo posso te ajudar? 😊`;
+      const _welcomeBack = `Olá! 👋 Bem-vindo(a) novamente a *${tenantName}*!${_bookingHint}\n\nComo posso te ajudar? 😊`;
       await sendMsg(instanceName, phone, _welcomeBack, tenantId);
       console.log(`[welcome] Returning-lead welcome sent → ${phone.slice(-4)}`);
       session.data.greetedAt = getBrasiliaGreeting().dateStr;
@@ -3648,7 +3661,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   if (repeatCount >= 2) {
     // AI is repeating itself for the 3rd time — stop the loop
     console.log(`[Agent] LOOP DETECTED: reply similar to ${repeatCount} of last 3 bot msgs. Stopping loop.`);
-    brain.reply = 'Percebi que não estamos nos entendendo 😅 Pode me explicar de outra forma o que precisa? Se preferir, pode ligar ou visitar a loja!';
+    const _loopBookingHint = tenant.slug ? ` Ou agende pelo link: ${APP_URL}/agendar/${tenant.slug}` : '';
+    brain.reply = `Percebi que não estamos nos entendendo 😅 Pode me explicar de outra forma o que precisa?${_loopBookingHint}`;
     // Clear problematic session state to break the cycle
     session.data._suggestedTime = undefined;
     session.data.availableSlots = undefined;
@@ -3662,7 +3676,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   if (_recentBotTs.length > 3 && repeatCount >= 1) {
     console.log(`[Agent] RATE LIMIT: ${_recentBotTs.length} bot msgs in 2min + repeating. Stopping.`);
-    brain.reply = 'Parece que estamos dando voltas! 😅 Quando puder, me conta direitinho o que precisa que eu te ajudo. Se preferir, pode chamar no balcão!';
+    const _rateBookingHint = tenant.slug ? ` Ou se preferir, agende direto pelo link: ${APP_URL}/agendar/${tenant.slug} 🔗` : '';
+    brain.reply = `Parece que estamos dando voltas! 😅 Quando puder, me conta direitinho o que precisa que eu te ajudo.${_rateBookingHint}`;
     session.data._suggestedTime = undefined;
     session.data.availableSlots = undefined;
   }
