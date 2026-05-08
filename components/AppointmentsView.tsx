@@ -1911,6 +1911,64 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 )}
               </div>
 
+              {/* ── Quick Status Buttons ── */}
+              {ia.status !== AppointmentStatus.FINISHED && (
+                <div style={{ padding: '0 20px 12px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {/* Confirmado */}
+                  {ia.status !== AppointmentStatus.CONFIRMED && ia.status !== AppointmentStatus.CANCELLED && (
+                    <button
+                      onClick={async () => {
+                        await db.updateAppointmentStatus(ia.id, AppointmentStatus.CONFIRMED, {});
+                        await refreshData();
+                        setInfoAppt(prev => prev?.id === ia.id ? { ...prev, status: AppointmentStatus.CONFIRMED } : prev);
+                      }}
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', background: '#DBEAFE', fontSize: 12, fontWeight: 800, color: '#1D4ED8', cursor: 'pointer' }}
+                    >
+                      ✓ Confirmado
+                    </button>
+                  )}
+                  {/* Faltou */}
+                  {ia.status !== AppointmentStatus.NO_SHOW && ia.status !== AppointmentStatus.CANCELLED && (
+                    <button
+                      onClick={async () => {
+                        await db.updateAppointmentStatus(ia.id, AppointmentStatus.NO_SHOW, {});
+                        await refreshData();
+                        setInfoAppt(prev => prev?.id === ia.id ? { ...prev, status: AppointmentStatus.NO_SHOW } : prev);
+                      }}
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', background: '#FEE2E2', fontSize: 12, fontWeight: 800, color: '#DC2626', cursor: 'pointer' }}
+                    >
+                      Faltou
+                    </button>
+                  )}
+                  {/* Cancelado */}
+                  {ia.status !== AppointmentStatus.CANCELLED && (
+                    <button
+                      onClick={async () => {
+                        await db.updateAppointmentStatus(ia.id, AppointmentStatus.CANCELLED, {});
+                        await refreshData();
+                        setInfoAppt(null);
+                      }}
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: '1.5px solid #E2E8F0', background: '#F8FAFC', fontSize: 12, fontWeight: 800, color: '#64748B', cursor: 'pointer' }}
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                  {/* Reativar (only for CANCELLED) */}
+                  {ia.status === AppointmentStatus.CANCELLED && (
+                    <button
+                      onClick={async () => {
+                        await db.updateAppointmentStatus(ia.id, AppointmentStatus.PENDING, {});
+                        await refreshData();
+                        setInfoAppt(prev => prev?.id === ia.id ? { ...prev, status: AppointmentStatus.PENDING } : prev);
+                      }}
+                      style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', background: '#FEF3C7', fontSize: 12, fontWeight: 800, color: '#92400E', cursor: 'pointer' }}
+                    >
+                      ↺ Reativar
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Actions */}
               {ia.status !== AppointmentStatus.CANCELLED && ia.status !== AppointmentStatus.FINISHED && (
                 <div style={{ padding: '0 20px 20px', display: 'flex', gap: 8 }}>
