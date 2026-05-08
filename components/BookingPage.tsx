@@ -362,15 +362,28 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
       const dateLabel = formatDatePT(selectedDate);
       const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
 
-      // Confirmation to customer
+      // Confirmation to customer — emojis vary by niche
+      const _nicho = tenant?.nicho || '';
+      const _FEMININOS = [
+        'Clínica de Estética Facial', 'Harmonização Facial', 'Lash Designer',
+        'Nail Designer / Esmalteria', 'Salão de Beleza Feminino',
+        'Micropigmentação de Sobrancelhas', 'Designer de Sobrancelhas',
+        'Depilação a Laser', 'Depilação com Cera', 'Studio de Maquiagem',
+        'Extensão de Cabelo', 'Consultoria de Imagem / Personal Stylist',
+      ];
+      const _isFem = _FEMININOS.includes(_nicho);
+      const _isBarbearia = _nicho === 'Barbearia';
+      const _brandEmoji  = _isFem ? '💖' : _isBarbearia ? '💈' : '✨';
+      const _svcEmoji    = _isFem ? '💅🏻' : _isBarbearia ? '✂️' : '🛎️';
+      const _closingEmoji = _isFem ? '🫶🏻' : '😊';
       await evolutionService.sendMessage(instanceName, phone,
         `Agendamento Confirmado!\n\n` +
-        `💖 *${tenant.name}*\n\n` +
+        `${_brandEmoji} *${tenant.name}*\n\n` +
         `📅 *Dia:* ${dateLabel}\n` +
         `⏰ *Horário:* ${selectedTime}\n` +
-        `💅🏻 *Serviço:* ${selectedService.name.toUpperCase()}\n` +
+        `${_svcEmoji} *Serviço:* ${selectedService.name.toUpperCase()}\n` +
         `👤 *Profissional:* ${selectedBarber.name}\n\n` +
-        `_Em caso de imprevisto entre em contato. Aguardamos você! 🫶🏻_`
+        `_Em caso de imprevisto entre em contato. Aguardamos você! ${_closingEmoji}_`
       );
 
       // Individual appointment notifications are disabled.

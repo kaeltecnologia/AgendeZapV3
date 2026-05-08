@@ -1938,6 +1938,7 @@ class DatabaseService {
       if (updates.paymentMethod !== undefined) patch.payment_method = updates.paymentMethod;
       if (updates.notes !== undefined)         patch.notes          = updates.notes;
       if (updates.closedAt !== undefined)      patch.closed_at      = updates.closedAt;
+      if (updates.finalAmount !== undefined)   patch.final_amount   = updates.finalAmount;
       const { error } = await supabase.from('comandas').update(patch).eq('id', id);
       if (error) throw new Error(error.message);
     } catch (err) {

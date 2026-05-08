@@ -500,6 +500,7 @@ export interface Comanda {
   createdAt: string;
   closedAt?: string;
   number?: number;  // sequential comanda number per tenant (#001, #002…)
+  finalAmount?: number; // valor ajustado após estorno (sobrepõe total dos itens)
 }
 
 export interface SupportMessage {

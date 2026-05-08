@@ -62,6 +62,13 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
   // ── Detail modal ──────────────────────────────────────────────────
   const [detailComanda, setDetailComanda] = useState<Comanda | null>(null);
 
+  // ── Estorno modal ─────────────────────────────────────────────────
+  const [estornoComanda, setEstornoComanda] = useState<Comanda | null>(null);
+  const [estornoValor, setEstornoValor] = useState('');
+  const [estornoPagamento, setEstornoPagamento] = useState<PaymentMethod>(PaymentMethod.PIX);
+  const [estornoObs, setEstornoObs] = useState('');
+  const [estornoSaving, setEstornoSaving] = useState(false);
+
   const load = useCallback(async () => {
     try {
       const [c, pros, custs, svcs, prods, settings, nfeCfg] = await Promise.all([
@@ -251,6 +258,33 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
       const rate = commissionMap[profId] ?? 0;
       return acc + itemTotal(item) * (1 - rate / 100);
     }, 0);
+
+  // ── Estorno handler ───────────────────────────────────────────────
+  const handleEstorno = async () => {
+    if (!estornoComanda) return;
+    setEstornoSaving(true);
+    try {
+      const newAmount = estornoValor !== '' ? parseFloat(estornoValor.replace(',', '.')) : undefined;
+      await db.updateComanda(estornoComanda.id, {
+        paymentMethod: estornoPagamento,
+        notes: estornoObs || estornoComanda.notes,
+        ...(newAmount !== undefined && !isNaN(newAmount) ? { finalAmount: newAmount } : {}),
+      });
+      await db.updateAppointmentStatus(estornoComanda.appointment_id, AppointmentStatus.FINISHED, {
+        paymentMethod: estornoPagamento,
+        amountPaid: newAmount !== undefined && !isNaN(newAmount) ? newAmount : comandaTotal(estornoComanda),
+      });
+      setEstornoComanda(null);
+      setEstornoValor('');
+      setEstornoObs('');
+      load();
+    } finally {
+      setEstornoSaving(false);
+    }
+  };
+
+  // Total efetivo: usa finalAmount se ajustado, senão calcula dos itens
+  const effectiveTotal = (c: Comanda) => c.finalAmount ?? comandaTotal(c);
 
   const open = comandas
     .filter(c => c.status === 'open')
@@ -504,14 +538,32 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                       <td className="px-6 py-4">
                         <span className="text-[10px] font-black text-slate-400 uppercase">{c.paymentMethod ?? '—'}</span>
                       </td>
-                      <td className="px-6 py-4 text-right text-sm font-black text-black">{fmt(comandaTotal(c))}</td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => setDetailComanda(c)}
-                          className="text-[10px] font-black text-slate-400 uppercase hover:text-orange-500 transition-all"
-                        >
-                          Ver
-                        </button>
+                        <span className="text-sm font-black text-black">{fmt(effectiveTotal(c))}</span>
+                        {c.finalAmount !== undefined && (
+                          <span className="block text-[9px] font-black text-amber-500 uppercase tracking-widest">ajustado</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            onClick={() => setDetailComanda(c)}
+                            className="text-[10px] font-black text-slate-400 uppercase hover:text-orange-500 transition-all"
+                          >
+                            Ver
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEstornoComanda(c);
+                              setEstornoPagamento(c.paymentMethod ?? PaymentMethod.PIX);
+                              setEstornoValor(c.finalAmount !== undefined ? String(c.finalAmount) : String(comandaTotal(c).toFixed(2)));
+                              setEstornoObs(c.notes ?? '');
+                            }}
+                            className="text-[10px] font-black text-red-400 uppercase hover:text-red-600 transition-all"
+                          >
+                            Estornar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -840,8 +892,95 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                 <span className="text-[10px] font-black text-slate-400 uppercase">
                   {detailComanda.paymentMethod ?? '—'}
                 </span>
-                <span className="text-xl font-black text-black">{fmt(comandaTotal(detailComanda))}</span>
+                <div className="text-right">
+                  <span className="text-xl font-black text-black">{fmt(effectiveTotal(detailComanda))}</span>
+                  {detailComanda.finalAmount !== undefined && (
+                    <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">
+                      Original: {fmt(comandaTotal(detailComanda))} · Ajustado
+                    </p>
+                  )}
+                </div>
               </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Estorno / Ajuste ────────────────────────────────────── */}
+      {estornoComanda && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[40px] w-full max-w-md max-h-[90vh] overflow-y-auto p-8 space-y-5 animate-scaleUp border-4 border-red-400">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-black uppercase tracking-tight">Estorno / Ajuste</h2>
+                <p className="text-xs font-bold text-slate-400 mt-0.5">
+                  {custName(estornoComanda.customer_id)} · {profName(estornoComanda.professional_id)}
+                </p>
+              </div>
+              <button onClick={() => setEstornoComanda(null)} className="text-slate-400 hover:text-black font-black text-lg">✕</button>
+            </div>
+
+            {/* Total original */}
+            <div className="bg-slate-50 rounded-2xl px-5 py-3 flex justify-between items-center">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total original dos itens</span>
+              <span className="text-sm font-black text-slate-500">{fmt(comandaTotal(estornoComanda))}</span>
+            </div>
+
+            {/* Novo valor */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Novo Valor (R$)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={estornoValor}
+                onChange={e => setEstornoValor(e.target.value)}
+                placeholder="Ex: 80,00"
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-lg outline-none focus:border-red-400 transition-all"
+              />
+            </div>
+
+            {/* Forma de pagamento */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Forma de Pagamento</label>
+              <select
+                value={estornoPagamento}
+                onChange={e => setEstornoPagamento(e.target.value as PaymentMethod)}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black"
+              >
+                {Object.values(PaymentMethod).map(pm => <option key={pm} value={pm}>{pm}</option>)}
+              </select>
+            </div>
+
+            {/* Observações */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Observações</label>
+              <textarea
+                value={estornoObs}
+                onChange={e => setEstornoObs(e.target.value)}
+                placeholder="Ex: desconto concedido, erro de cobrança, pagamento parcial..."
+                rows={3}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-red-400 transition-all resize-none"
+              />
+            </div>
+
+            {/* Preview novo valor */}
+            {estornoValor !== '' && !isNaN(parseFloat(estornoValor)) && (
+              <div className="bg-red-50 border-2 border-red-100 rounded-2xl px-6 py-4 text-center">
+                <p className="text-[9px] font-black text-red-400 uppercase mb-1">Novo Total</p>
+                <p className="text-3xl font-black text-red-600">{fmt(parseFloat(estornoValor.replace(',', '.')))}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setEstornoComanda(null)} className="flex-1 py-3 text-slate-400 font-black text-xs uppercase">Cancelar</button>
+              <button
+                onClick={handleEstorno}
+                disabled={estornoSaving}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-xs uppercase disabled:opacity-50 hover:bg-red-600 transition-all"
+              >
+                {estornoSaving ? 'Salvando...' : '✅ Confirmar Estorno'}
+              </button>
+            </div>
           </div>
         </div>
       )}

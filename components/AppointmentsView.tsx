@@ -718,6 +718,13 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   // appointment info panel (week view click)
   const [infoAppt, setInfoAppt] = useState<Appointment | null>(null);
 
+  // ── Estorno / Ajuste de atendimento finalizado ─────────────────────
+  const [estornoAppt, setEstornoAppt] = useState<Appointment | null>(null);
+  const [estornoValor, setEstornoValor] = useState('');
+  const [estornoPagamento, setEstornoPagamento] = useState<PaymentMethod>(PaymentMethod.PIX);
+  const [estornoObs, setEstornoObs] = useState('');
+  const [estornoSaving, setEstornoSaving] = useState(false);
+
   // delete confirmation
   const [deleteApptId, setDeleteApptId] = useState<string | null>(null);
   const [deletingAppt, setDeletingAppt] = useState(false);
@@ -997,6 +1004,38 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       console.error('Erro ao excluir agendamento:', e);
     } finally {
       setDeletingAppt(false);
+    }
+  };
+
+  const handleApptEstorno = async () => {
+    if (!estornoAppt) return;
+    setEstornoSaving(true);
+    try {
+      const newAmount = estornoValor !== '' ? parseFloat(estornoValor.replace(',', '.')) : estornoAppt.amountPaid;
+      const safeAmount = (newAmount !== undefined && !isNaN(newAmount as number)) ? newAmount : estornoAppt.amountPaid;
+      await db.updateAppointmentStatus(estornoAppt.id, AppointmentStatus.FINISHED, {
+        paymentMethod: estornoPagamento,
+        amountPaid: safeAmount,
+        extraNote: estornoObs || estornoAppt.extraNote,
+      });
+      // Also update the related comanda if it exists
+      try {
+        const comandas = await db.getComandas(tenantId);
+        const related = comandas.find(c => c.appointment_id === estornoAppt.id && c.status === 'closed');
+        if (related) {
+          await db.updateComanda(related.id, {
+            paymentMethod: estornoPagamento,
+            notes: estornoObs || related.notes,
+            ...(safeAmount !== undefined ? { finalAmount: safeAmount as number } : {}),
+          });
+        }
+      } catch {}
+      setEstornoAppt(null);
+      setEstornoValor('');
+      setEstornoObs('');
+      refreshData();
+    } finally {
+      setEstornoSaving(false);
     }
   };
 
@@ -1834,18 +1873,37 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
                 {/* Payment info (if finished) */}
                 {ia.status === AppointmentStatus.FINISHED && ia.amountPaid != null && (
-                  <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <p style={{ fontSize: 9, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>Pago</p>
-                      <p style={{ fontSize: 15, fontWeight: 800, color: '#15803d', margin: 0 }}>R$ {ia.amountPaid.toFixed(2)}</p>
+                  <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <p style={{ fontSize: 9, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>Pago</p>
+                        <p style={{ fontSize: 15, fontWeight: 800, color: '#15803d', margin: 0 }}>R$ {ia.amountPaid.toFixed(2)}</p>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {ia.paymentMethod && (
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#16a34a', background: '#dcfce7', borderRadius: 99, padding: '4px 10px' }}>{ia.paymentMethod}</span>
+                        )}
+                        <button
+                          onClick={() => {
+                            setInfoAppt(null);
+                            setEstornoAppt(ia);
+                            setEstornoPagamento(ia.paymentMethod ?? PaymentMethod.PIX);
+                            setEstornoValor(ia.amountPaid != null ? ia.amountPaid.toFixed(2) : '');
+                            setEstornoObs(ia.extraNote ?? '');
+                          }}
+                          style={{ fontSize: 10, fontWeight: 800, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 99, padding: '3px 10px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                        >
+                          Estornar
+                        </button>
+                      </div>
                     </div>
-                    {ia.paymentMethod && (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#16a34a', background: '#dcfce7', borderRadius: 99, padding: '4px 10px' }}>{ia.paymentMethod}</span>
+                    {ia.extraNote && (
+                      <p style={{ fontSize: 11, color: '#166534', marginTop: 6, marginBottom: 0 }}>📝 {ia.extraNote}</p>
                     )}
                   </div>
                 )}
 
-                {ia.extraNote && (
+                {ia.extraNote && !(ia.status === AppointmentStatus.FINISHED && ia.amountPaid != null) && (
                   <div style={{ background: '#FFFBEB', borderRadius: 10, padding: '10px 12px' }}>
                     <p style={{ fontSize: 9, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>Observação</p>
                     <p style={{ fontSize: 12, color: '#78350f', margin: 0 }}>{ia.extraNote}</p>
@@ -2389,6 +2447,90 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           </div>
         </div>
       )}
+
+      {/* ── Modal: Estorno / Ajuste de Atendimento Finalizado ─────────── */}
+      {estornoAppt && (() => {
+        const eaCust = customers.find(c => c.id === estornoAppt.customer_id);
+        const eaProf = professionals.find(p => p.id === estornoAppt.professional_id);
+        return (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[40px] w-full max-w-md max-h-[90vh] overflow-y-auto p-8 space-y-5 animate-scaleUp border-4 border-red-400">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-black text-black uppercase tracking-tight">Estorno / Ajuste</h2>
+                  <p className="text-xs font-bold text-slate-400 mt-0.5">
+                    {eaCust?.name ?? '—'} · {eaProf?.name ?? '—'}
+                  </p>
+                </div>
+                <button onClick={() => setEstornoAppt(null)} className="text-slate-400 hover:text-black font-black text-lg">✕</button>
+              </div>
+
+              {/* Valor original */}
+              <div className="bg-slate-50 rounded-2xl px-5 py-3 flex justify-between items-center">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor registrado</span>
+                <span className="text-sm font-black text-slate-500">
+                  {estornoAppt.amountPaid != null ? `R$ ${estornoAppt.amountPaid.toFixed(2)}` : '—'}
+                </span>
+              </div>
+
+              {/* Novo valor */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Novo Valor (R$)</label>
+                <input
+                  type="number" min={0} step="0.01"
+                  value={estornoValor}
+                  onChange={e => setEstornoValor(e.target.value)}
+                  placeholder="Ex: 80.00"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-lg outline-none focus:border-red-400 transition-all"
+                />
+              </div>
+
+              {/* Forma de pagamento */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Forma de Pagamento</label>
+                <select
+                  value={estornoPagamento}
+                  onChange={e => setEstornoPagamento(e.target.value as PaymentMethod)}
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black"
+                >
+                  {Object.values(PaymentMethod).map(pm => <option key={pm} value={pm}>{pm}</option>)}
+                </select>
+              </div>
+
+              {/* Observações */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Observações</label>
+                <textarea
+                  value={estornoObs}
+                  onChange={e => setEstornoObs(e.target.value)}
+                  placeholder="Ex: desconto concedido, erro de cobrança..."
+                  rows={3}
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-red-400 transition-all resize-none"
+                />
+              </div>
+
+              {/* Preview */}
+              {estornoValor !== '' && !isNaN(parseFloat(estornoValor)) && (
+                <div className="bg-red-50 border-2 border-red-100 rounded-2xl px-6 py-4 text-center">
+                  <p className="text-[9px] font-black text-red-400 uppercase mb-1">Novo Total</p>
+                  <p className="text-3xl font-black text-red-600">R$ {parseFloat(estornoValor.replace(',', '.')).toFixed(2)}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={() => setEstornoAppt(null)} className="flex-1 py-3 text-slate-400 font-black text-xs uppercase">Cancelar</button>
+                <button
+                  onClick={handleApptEstorno}
+                  disabled={estornoSaving}
+                  className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-xs uppercase disabled:opacity-50 hover:bg-red-600 transition-all"
+                >
+                  {estornoSaving ? 'Salvando...' : '✅ Confirmar Estorno'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
