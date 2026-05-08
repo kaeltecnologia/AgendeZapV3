@@ -591,8 +591,14 @@ async function callBrain(
   // Intro line (after tenant name)
   const introLinha = cfg.introLinha;
 
-  // Tom line inside FORMATO OBRIGATÓRIO
-  const tomLine = cfg.tomFormatado;
+  // ── Modo de conversa (gênero) — sobrepõe tom do nicho ─────────────
+  const agentGender: string = settings?.agentGender || 'neutro';
+  const genderTomOverride: Record<string, string> = {
+    feminino:  '• Tom: feminino e acolhedor — "linda", "querida", "flor", "amor" — natural e caloroso',
+    masculino: '• Tom: masculino e direto — "cara", "mano", "irmão", "beleza" — casual e descontraído',
+    neutro:    '• Tom: neutro e profissional — use "cliente", "você" — sem termos gendrizados',
+  };
+  const tomLine = genderTomOverride[agentGender] ?? cfg.tomFormatado;
 
   // Emojis hint
   const emojisHint = cfg.emojisHint;

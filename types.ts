@@ -305,6 +305,7 @@ export interface TenantSettings {
   aiProfessionalActive?: boolean;       // Assessor do Profissional toggle
   systemPrompt?: string;                // AI agent system prompt
   agentName?: string;                   // AI agent personality name
+  agentGender?: 'neutro' | 'masculino' | 'feminino'; // Modo de conversa do agente
   openaiApiKey?: string;                // OpenAI API key (uses gpt-4.1-mini when set)
   msgBufferSecs?: number;               // message buffer window in seconds (default 20)
   trialStartDate?: string | null;       // ISO datetime — set at first registration; null = paid account

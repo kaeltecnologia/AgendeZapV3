@@ -32,6 +32,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [aiProfessionalActive, setAiProfessionalActive] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPT);
   const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME);
+  const [agentGender, setAgentGender] = useState<'neutro' | 'masculino' | 'feminino'>('neutro');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [msgBufferSecs, setMsgBufferSecs] = useState(20);
   const [loadingSettings, setLoadingSettings] = useState(true);
@@ -45,6 +46,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       setAiProfessionalActive(!!settings.aiProfessionalActive);
       setSystemPrompt(settings.systemPrompt || DEFAULT_PROMPT);
       setAgentName(settings.agentName || DEFAULT_AGENT_NAME);
+      setAgentGender((settings.agentGender as 'neutro' | 'masculino' | 'feminino') || 'neutro');
       setOpenaiApiKey(settings.openaiApiKey || '');
       setMsgBufferSecs(settings.msgBufferSecs ?? 20);
       setLoadingSettings(false);
@@ -70,7 +72,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
 
   const handleSavePrompt = async () => {
     setSavingPrompt(true);
-    await db.updateSettings(tenantId, { systemPrompt, agentName, openaiApiKey, msgBufferSecs });
+    await db.updateSettings(tenantId, { systemPrompt, agentName, agentGender, openaiApiKey, msgBufferSecs });
     setSavingPrompt(false);
   };
 
@@ -196,6 +198,27 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
           <div className="space-y-3">
             <label className="text-[10px] font-black text-black uppercase tracking-[0.2em] ml-2">Personalidade do Atendente</label>
             <input value={agentName} onChange={e => setAgentName(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] outline-none font-black text-sm uppercase tracking-tight focus:border-orange-500 transition-all" />
+          </div>
+
+          {/* ─── Modo de Conversa ─── */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-black uppercase tracking-[0.2em] ml-2">Modo de Conversa do Agente</label>
+            <div className="grid grid-cols-3 gap-3">
+              {([
+                { value: 'feminino',  emoji: '👩', label: 'Feminino',  desc: '"linda", "querida", "flor"' },
+                { value: 'neutro',    emoji: '🧑', label: 'Neutro',    desc: '"cliente", "você", inclusivo' },
+                { value: 'masculino', emoji: '👨', label: 'Masculino', desc: '"cara", "mano", "irmão"' },
+              ] as { value: 'feminino'|'neutro'|'masculino'; emoji: string; label: string; desc: string }[]).map(opt => (
+                <button key={opt.value} type="button"
+                  onClick={() => setAgentGender(opt.value)}
+                  className={`flex flex-col items-center gap-1.5 p-4 rounded-[20px] border-2 transition-all ${agentGender === opt.value ? 'border-orange-500 bg-orange-50' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}
+                >
+                  <span className="text-2xl">{opt.emoji}</span>
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${agentGender === opt.value ? 'text-orange-600' : 'text-slate-600'}`}>{opt.label}</span>
+                  <span className="text-[9px] font-bold text-slate-400 text-center leading-tight">{opt.desc}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-3">
