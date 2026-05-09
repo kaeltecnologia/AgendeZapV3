@@ -732,7 +732,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   // edit appointment (reschedule)
   const [editAppt, setEditAppt] = useState<Appointment | null>(null);
   const [editProfId, setEditProfId] = useState('');
-  const [editSvcId, setEditSvcId] = useState('');
+  const [editSvcIds, setEditSvcIds] = useState<string[]>([]);
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
   const [editSlots, setEditSlots] = useState<string[]>([]);
@@ -760,8 +760,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     ]);
     setServices(svcs);
     setProfessionals(pros);
-    setCustomers(custs);
     setBreaks(loadedBreaks);
+
+    // Se há agendamentos com customer_id não encontrado na lista cacheada,
+    // força reload fresco (acontece quando a IA cria novo cliente via webhook
+    // e o cache de customers (TTL 2min) ainda não expirou).
+    const custIdSet = new Set(custs.map(c => c.id));
+    const hasUnresolved = apps.some(a => a.customer_id && !custIdSet.has(a.customer_id));
+    const finalCusts = hasUnresolved ? await db.getCustomers(tenantId, { fresh: true }) : custs;
+    setCustomers(finalCusts);
 
     let data = apps.filter(a => {
       if (!a.startTime) return false;
@@ -1045,20 +1052,21 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     const mm = String(d.getMinutes()).padStart(2, '0');
     setEditAppt(a);
     setEditProfId(a.professional_id);
-    setEditSvcId(a.service_id);
+    setEditSvcIds(a.serviceIds?.length ? a.serviceIds : (a.service_id ? parseServiceIds(a.service_id) : []));
     setEditDate(a.startTime.split('T')[0]);
     setEditTime(`${hh}:${mm}`);
     setEditSlots([]);
     setEditError('');
   };
 
-  // Fetch available slots for the edit modal (called when prof+date change)
-  const loadEditSlots = useCallback(async (pId: string, date: string, sId: string) => {
+  // Fetch available slots for the edit modal (called when prof+date+services change)
+  const loadEditSlots = useCallback(async (pId: string, date: string, sIds: string[]) => {
     if (!pId || !date) { setEditSlots([]); return; }
     setEditSlotsLoading(true);
     try {
-      const svc = services.find(s => s.id === sId);
-      const dur = svc?.durationMinutes || 30;
+      const dur = sIds.length > 0
+        ? services.filter(s => sIds.includes(s.id)).reduce((sum, s) => sum + s.durationMinutes, 0) || 30
+        : 30;
       const settings = await db.getSettings(tenantId);
       const dateObj = new Date(date + 'T12:00:00');
       const dayIndex = dateObj.getDay();
@@ -1127,8 +1135,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   }, [tenantId, services, appointments, editAppt]);
 
   useEffect(() => {
-    if (editAppt) loadEditSlots(editProfId, editDate, editSvcId);
-  }, [editProfId, editDate, editSvcId, editAppt, loadEditSlots]);
+    if (editAppt) loadEditSlots(editProfId, editDate, editSvcIds);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editProfId, editDate, editSvcIds.join(','), editAppt, loadEditSlots]);
 
   // Load available slots for the NEW booking modal
   const loadBookingSlots = useCallback(async (pId: string, date: string, durOverride: number) => {
@@ -1223,17 +1232,48 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   }, [profId, manualDate, totalDuration, showBookingModal]);
 
   const handleSaveEdit = async () => {
-    if (!editAppt || !editProfId || !editSvcId || !editDate || !editTime) {
+    if (!editAppt || !editProfId || editSvcIds.length === 0 || !editDate || !editTime) {
       setEditError('Preencha todos os campos.'); return;
     }
-    const svc = services.find(s => s.id === editSvcId);
-    if (!svc) return;
+    const editSelectedSvcs = services.filter(s => editSvcIds.includes(s.id));
+    const totalEditDuration = editSelectedSvcs.reduce((sum, s) => sum + s.durationMinutes, 0);
+    if (totalEditDuration === 0) return;
     const startTimeStr = `${editDate}T${editTime}:00`;
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(startTimeStr)) { setEditError('Data ou hora inválida.'); return; }
+
+    // Break check — skip only if time was selected from the slot picker (already validated)
+    if (!editSlots.includes(editTime)) {
+      const settings = await db.getSettings(tenantId);
+      const breaksData: BreakPeriod[] = settings.breaks || [];
+      const startTime = new Date(startTimeStr);
+      const endTime = new Date(startTime.getTime() + totalEditDuration * 60000);
+      const dayIndex = startTime.getDay();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const endLabel = `${pad(endTime.getHours())}:${pad(endTime.getMinutes())}`;
+      for (const brk of breaksData) {
+        if (brk.professionalId && brk.professionalId !== editProfId) continue;
+        if ((brk as any).type === 'vacation') {
+          const vacStart = brk.date || '';
+          const vacEnd = (brk as any).vacationEndDate || brk.date || '';
+          if (vacStart && editDate >= vacStart && editDate <= vacEnd) {
+            setEditError(`${brk.label || 'Profissional de férias'} (até ${vacEnd}).`);
+            return;
+          }
+          continue;
+        }
+        const matchDate = !brk.date || brk.date === editDate;
+        const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
+        if (matchDate && matchDay && editTime < brk.endTime && endLabel > brk.startTime) {
+          setEditError(`Período de intervalo: ${brk.label} (${brk.startTime}–${brk.endTime}).`);
+          return;
+        }
+      }
+    }
+
     setSavingEdit(true);
     setEditError('');
     try {
-      await db.updateAppointmentSchedule(editAppt.id, editProfId, editSvcId, startTimeStr, svc.durationMinutes);
+      await db.updateAppointmentSchedule(editAppt.id, editProfId, editSvcIds, startTimeStr, totalEditDuration);
       setEditAppt(null);
       refreshData();
     } catch (e: any) {
@@ -2024,20 +2064,42 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                     ))}
                   </select>
                 </div>
-                {/* Service */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviço</label>
-                  <select
-                    value={editSvcId}
-                    onChange={e => { setEditSvcId(e.target.value); setEditTime(''); }}
-                    className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold text-black dark:text-white outline-none focus:border-orange-500 transition-colors"
-                  >
-                    <option value="">Selecione...</option>
-                    {services.filter(s => s.active).map(s => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.durationMinutes}min)</option>
-                    ))}
-                  </select>
-                </div>
+                {/* Services — multi-select */}
+                {(() => {
+                  const editSelectedSvcs = services.filter(s => editSvcIds.includes(s.id));
+                  const editTotalDur = editSelectedSvcs.reduce((sum, s) => sum + s.durationMinutes, 0);
+                  const editTotalPrice = editSelectedSvcs.reduce((sum, s) => sum + s.price, 0);
+                  return (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviço(s)</label>
+                      <div className="bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-3 max-h-44 overflow-y-auto space-y-1">
+                        {services.filter(s => s.active).map(s => (
+                          <label key={s.id} className="flex items-center gap-3 cursor-pointer hover:bg-white dark:hover:bg-slate-700 rounded-xl px-3 py-2 transition-all">
+                            <input
+                              type="checkbox"
+                              checked={editSvcIds.includes(s.id)}
+                              onChange={() => {
+                                setEditSvcIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]);
+                                setEditTime('');
+                              }}
+                              className="w-4 h-4 accent-orange-500"
+                            />
+                            <span className="text-xs font-bold text-black dark:text-white">{s.name}</span>
+                            <span className="text-[10px] font-bold text-slate-400 ml-auto">{s.durationMinutes}min · R${s.price.toFixed(2)}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {editSvcIds.length > 0 && (
+                        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl px-4 py-2 flex items-center justify-between">
+                          <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">
+                            {editSelectedSvcs.map(s => s.name).join(' + ')}
+                          </span>
+                          <span className="text-xs font-black text-orange-600">{editTotalDur}min · R${editTotalPrice.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* Date */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data</label>

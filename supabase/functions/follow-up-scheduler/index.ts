@@ -256,10 +256,19 @@ async function saveFollowUpField(tenantId: string, _rawFollowUp: Record<string, 
 
 // ── Customer mode helpers ─────────────────────────────────────────────
 
-function getCustModeId(customerData: Record<string, any>, custId: string, type: 'aviso' | 'lembrete' | 'reativacao'): string {
+/**
+ * Returns the mode ID for a customer.
+ * Falls back to the first active mode if the customer has no specific assignment
+ * (new customers default to 'standard' which may not match any real mode UUID).
+ */
+function getCustModeId(customerData: Record<string, any>, custId: string, type: 'aviso' | 'lembrete' | 'reativacao', modes: any[]): string {
   const cd = customerData[custId] || {};
   const key = `${type}ModeId`;
-  return cd[key] || 'standard';
+  const stored = cd[key];
+  // If customer has a specific mode assigned (and it's not the legacy 'standard' sentinel), use it
+  if (stored && stored !== 'standard') return stored;
+  // Fallback: apply first active mode so customers without explicit assignment are covered
+  return modes.find((m: any) => m.active)?.id || stored || 'standard';
 }
 
 // ── Main handler ──────────────────────────────────────────────────────
@@ -325,9 +334,9 @@ Deno.serve(async (_req) => {
           id: c.id,
           name: c.nome || 'Sem Nome',
           phone: c.telefone || '',
-          avisoModeId: getCustModeId(settings.customerData, c.id, 'aviso'),
-          lembreteModeId: getCustModeId(settings.customerData, c.id, 'lembrete'),
-          reativacaoModeId: getCustModeId(settings.customerData, c.id, 'reativacao'),
+          avisoModeId: getCustModeId(settings.customerData, c.id, 'aviso', settings.avisoModes),
+          lembreteModeId: getCustModeId(settings.customerData, c.id, 'lembrete', settings.lembreteModes),
+          reativacaoModeId: getCustModeId(settings.customerData, c.id, 'reativacao', settings.reativacaoModes),
         }));
         const services = (svcsResult.data || []).map((s: any) => ({
           id: s.id, name: s.nome || '',

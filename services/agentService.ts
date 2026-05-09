@@ -85,6 +85,8 @@ interface SessionData {
     professionalName: string;
     googlePlaceId?: string;
   };
+  // Name capture flow: set when booking is ready but client name is unknown
+  _pendingNameForBooking?: boolean;
 }
 
 interface Session {

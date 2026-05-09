@@ -99,7 +99,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
       const cust = findCust(appt.customer_id);
       if (!cust?.phone) continue;
 
-      const mode = avisoModes.find(m => m.id === cust.avisoModeId && m.active);
+      const mode = avisoModes.find(m => m.id === cust.avisoModeId && m.active)
+        ?? avisoModes.find(m => m.active); // fallback: first active mode (covers 'standard' default)
       if (!mode) continue;
 
       // Compute the send date: apptDate minus daysBefore days
@@ -187,7 +188,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
       const cust = findCust(appt.customer_id);
       if (!cust?.phone) continue;
 
-      const mode = lembreteModes.find(m => m.id === cust.lembreteModeId && m.active);
+      const mode = lembreteModes.find(m => m.id === cust.lembreteModeId && m.active)
+        ?? lembreteModes.find(m => m.active); // fallback: first active mode
       if (!mode) continue;
 
       const sentKey = `lembrete::${appt.id}`;
@@ -260,7 +262,8 @@ export async function runFollowUp(tenant: any): Promise<void> {
       const cust = findCust(custId);
       if (!cust?.phone) continue;
 
-      const mode = reativacaoModes.find(m => m.id === cust.reativacaoModeId && m.active);
+      const mode = reativacaoModes.find(m => m.id === cust.reativacaoModeId && m.active)
+        ?? reativacaoModes.find(m => m.active); // fallback: first active mode
       if (!mode) continue;
 
       const sentKey = `reativacao::${custId}::${lastAppt.id}`;

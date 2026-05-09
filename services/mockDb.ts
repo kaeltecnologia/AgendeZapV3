@@ -467,7 +467,7 @@ class DatabaseService {
   async updateAppointmentSchedule(
     id: string,
     professionalId: string,
-    serviceId: string,
+    serviceIds: string[],
     startTime: string | Date,
     durationMinutes: number
   ): Promise<void> {
@@ -486,7 +486,7 @@ class DatabaseService {
     }
     const { error } = await supabase.from('appointments').update({
       professional_id: professionalId,
-      service_id: serviceId,
+      service_id: encodeServiceIds(serviceIds),
       inicio,
       fim,
     }).eq('id', id);
