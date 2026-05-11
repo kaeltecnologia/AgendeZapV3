@@ -350,7 +350,7 @@ class DatabaseService {
           startTime: a.inicio,
           durationMinutes: duration,
           status: a.status as AppointmentStatus,
-          source: a.origem as BookingSource,
+          source: (a.origem as BookingSource) || BookingSource.MANUAL,
           paymentMethod: a.payment_method as PaymentMethod,
           amountPaid: Number(a.amount_paid || 0),
           isPlan: a.is_plan ?? false
