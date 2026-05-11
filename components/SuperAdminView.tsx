@@ -3153,6 +3153,23 @@ const MSG_FORM = (nome: string) =>
 const MSG_CHECKOUT = (nome: string) =>
   `Olá, ${nome}! Me chamo Matheus Moura, faço parte da equipe de suporte do AgendeZap. Vi que você tem interesse no AgendeZap mas não finalizou o pagamento, estou para entender a melhor forma para te ter como cliente! 😊\n\nPosso te ajudar com alguma dúvida ou oferecer alguma condição especial?`;
 
+const BATCH_SIZE = 3;
+const BATCH_INTERVAL_MS = 15 * 60 * 1000; // 15 min base
+const BATCH_OSCILLATION_MS = 3 * 60 * 1000; // ±3 min
+const INTRA_BATCH_DELAY_MS = 4000; // 4s entre mensagens no mesmo lote
+
+function randomInterval() {
+  const osc = Math.floor(Math.random() * BATCH_OSCILLATION_MS * 2) - BATCH_OSCILLATION_MS;
+  return BATCH_INTERVAL_MS + osc; // 12–18 min
+}
+
+function fmtCountdown(ms: number) {
+  if (ms <= 0) return '0s';
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return m > 0 ? `${m}min ${s}s` : `${s}s`;
+}
+
 const RecuperacaoSubTab: React.FC = () => {
   const [leads, setLeads] = useState<PendingLead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3160,6 +3177,10 @@ const RecuperacaoSubTab: React.FC = () => {
   const [sent, setSent] = useState<Record<string, boolean>>({});
   const [bulkSending, setBulkSending] = useState(false);
   const [centralInstance, setCentralInstance] = useState('central_AgendeZap');
+  const [batchLog, setBatchLog] = useState<{ batchIdx: number; total: number; status: string }[]>([]);
+  const [nextBatchIn, setNextBatchIn] = useState<number | null>(null);
+  const [currentBatch, setCurrentBatch] = useState<number | null>(null);
+  const abortRef = React.useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -3191,35 +3212,74 @@ const RecuperacaoSubTab: React.FC = () => {
     })();
   }, []);
 
-  const sendOne = async (lead: PendingLead) => {
-    if (!lead.phone || sending[lead.id]) return;
+  const sendOne = async (lead: PendingLead, instance: string) => {
     setSending(p => ({ ...p, [lead.id]: true }));
     try {
       const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
-      await evolutionService.sendMessage(centralInstance, lead.phone.replace(/\D/g, ''), msg);
+      await evolutionService.sendMessage(instance, lead.phone.replace(/\D/g, ''), msg);
       setSent(p => ({ ...p, [lead.id]: true }));
+      return true;
     } catch (e) {
       console.error('[Recuperacao] Erro ao enviar:', e);
+      return false;
     } finally {
       setSending(p => ({ ...p, [lead.id]: false }));
     }
   };
 
-  const sendAll = async () => {
+  const stopBulk = () => { abortRef.current = true; };
+
+  const sendBatched = async () => {
     if (bulkSending) return;
+    abortRef.current = false;
     setBulkSending(true);
-    for (const lead of leads) {
-      if (!sent[lead.id]) {
-        await sendOne(lead);
-        await new Promise(r => setTimeout(r, 3500));
+    setBatchLog([]);
+    setNextBatchIn(null);
+
+    const unsent = leads.filter(l => !sent[l.id]);
+    const batches: PendingLead[][] = [];
+    for (let i = 0; i < unsent.length; i += BATCH_SIZE) batches.push(unsent.slice(i, i + BATCH_SIZE));
+
+    for (let bi = 0; bi < batches.length; bi++) {
+      if (abortRef.current) break;
+      const batch = batches[bi];
+      setCurrentBatch(bi);
+
+      let ok = 0;
+      for (const lead of batch) {
+        if (abortRef.current) break;
+        const success = await sendOne(lead, centralInstance);
+        if (success) ok++;
+        if (batch.indexOf(lead) < batch.length - 1) {
+          await new Promise(r => setTimeout(r, INTRA_BATCH_DELAY_MS));
+        }
+      }
+
+      setBatchLog(prev => [...prev, { batchIdx: bi + 1, total: batch.length, status: `${ok}/${batch.length} enviados` }]);
+
+      if (bi < batches.length - 1 && !abortRef.current) {
+        const wait = randomInterval();
+        const until = Date.now() + wait;
+        setNextBatchIn(wait);
+        await new Promise<void>(resolve => {
+          const tick = setInterval(() => {
+            const rem = until - Date.now();
+            if (rem <= 0 || abortRef.current) { clearInterval(tick); setNextBatchIn(null); resolve(); }
+            else setNextBatchIn(rem);
+          }, 1000);
+        });
       }
     }
+
+    setCurrentBatch(null);
+    setNextBatchIn(null);
     setBulkSending(false);
   };
 
   const unsentCount = leads.filter(l => !sent[l.id]).length;
   const formCount = leads.filter(l => l.type === 'form').length;
   const checkoutCount = leads.filter(l => l.type === 'checkout').length;
+  const totalBatches = Math.ceil(unsentCount / BATCH_SIZE);
 
   return (
     <div className="space-y-4">
@@ -3227,20 +3287,60 @@ const RecuperacaoSubTab: React.FC = () => {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-1">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            {leads.length} leads pendentes — <span className="text-blue-500">📝 {formCount} só preencheram o formulário</span> · <span className="text-orange-500">🛒 {checkoutCount} abandonaram o checkout</span>
+            {leads.length} leads pendentes — <span className="text-blue-500">📝 {formCount} formulário</span> · <span className="text-orange-500">🛒 {checkoutCount} checkout abandonado</span>
           </p>
           <p className="text-[10px] text-slate-400 font-bold">
-            Formulário → mensagem de boas-vindas · Checkout → mensagem de recuperação (Matheus Moura)
+            Lotes de {BATCH_SIZE} contatos · intervalo 12–18 min (aleatório) · 4s entre mensagens
           </p>
         </div>
-        <button
-          onClick={sendAll}
-          disabled={bulkSending || unsentCount === 0}
-          className="px-6 py-3 bg-green-500 text-white text-xs font-black uppercase rounded-2xl hover:bg-green-600 transition-all disabled:opacity-50 shrink-0"
-        >
-          {bulkSending ? '⏳ Enviando...' : `📲 Disparar para todos (${unsentCount})`}
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          {bulkSending && (
+            <button onClick={stopBulk}
+              className="px-4 py-3 bg-red-500 text-white text-xs font-black uppercase rounded-2xl hover:bg-red-600 transition-all">
+              ⏹ Parar
+            </button>
+          )}
+          <button onClick={sendBatched} disabled={bulkSending || unsentCount === 0}
+            className="px-6 py-3 bg-green-500 text-white text-xs font-black uppercase rounded-2xl hover:bg-green-600 transition-all disabled:opacity-50 shrink-0">
+            {bulkSending ? '⏳ Disparando...' : `📲 Iniciar campanha (${unsentCount} leads · ${totalBatches} lotes)`}
+          </button>
+        </div>
       </div>
+
+      {/* Progress bar */}
+      {bulkSending && (
+        <div className="bg-slate-900 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-black text-white uppercase tracking-widest">
+              {currentBatch !== null ? `⏳ Enviando lote ${currentBatch + 1} de ${totalBatches}` : 'Processando...'}
+            </p>
+            {nextBatchIn !== null && (
+              <span className="text-orange-400 font-black text-xs tabular-nums">
+                Próximo lote em {fmtCountdown(nextBatchIn)}
+              </span>
+            )}
+          </div>
+          <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div className="h-full bg-green-400 rounded-full transition-all"
+              style={{ width: `${Math.round((leads.filter(l => sent[l.id]).length / leads.length) * 100)}%` }} />
+          </div>
+          <p className="text-[10px] text-slate-400">{leads.filter(l => sent[l.id]).length} de {leads.length} enviados</p>
+        </div>
+      )}
+
+      {/* Batch log */}
+      {batchLog.length > 0 && (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-1.5">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Histórico de Lotes</p>
+          {batchLog.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 text-[11px]">
+              <span className="w-5 h-5 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-black text-[9px]">✓</span>
+              <span className="text-slate-600 font-bold">Lote {b.batchIdx}</span>
+              <span className="text-slate-400">{b.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Message previews */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3262,41 +3362,45 @@ const RecuperacaoSubTab: React.FC = () => {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b-2 border-slate-100">
+                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Lote</th>
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Nome</th>
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Telefone</th>
-                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Email</th>
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Tipo</th>
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Data</th>
                 <th className="p-4" />
               </tr>
             </thead>
             <tbody>
-              {leads.map(lead => (
-                <tr key={lead.id} className={`border-b border-slate-50 transition-colors ${sent[lead.id] ? 'bg-green-50' : 'hover:bg-slate-50'}`}>
-                  <td className="p-4 font-bold text-black">{lead.nome}</td>
-                  <td className="p-4 text-slate-600 font-mono">{lead.phone}</td>
-                  <td className="p-4 text-slate-500">{lead.email}</td>
-                  <td className="p-4">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${lead.type === 'checkout' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {lead.type === 'checkout' ? '🛒 Checkout' : '📝 Formulário'}
-                    </span>
-                  </td>
-                  <td className="p-4 text-slate-400 font-bold">{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</td>
-                  <td className="p-4 text-right">
-                    {sent[lead.id] ? (
-                      <span className="text-green-600 font-black text-[10px]">✓ Enviado</span>
-                    ) : (
-                      <button
-                        onClick={() => sendOne(lead)}
-                        disabled={!!sending[lead.id]}
-                        className="px-4 py-2 bg-green-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-600 transition-all disabled:opacity-50"
-                      >
-                        {sending[lead.id] ? '...' : '📲 Enviar'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {leads.map((lead, idx) => {
+                const batchNum = Math.floor(idx / BATCH_SIZE) + 1;
+                return (
+                  <tr key={lead.id} className={`border-b border-slate-50 transition-colors ${sent[lead.id] ? 'bg-green-50' : sending[lead.id] ? 'bg-yellow-50' : 'hover:bg-slate-50'}`}>
+                    <td className="p-4">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black">{batchNum}</span>
+                    </td>
+                    <td className="p-4 font-bold text-black">{lead.nome}</td>
+                    <td className="p-4 text-slate-600 font-mono">{lead.phone}</td>
+                    <td className="p-4">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${lead.type === 'checkout' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {lead.type === 'checkout' ? '🛒 Checkout' : '📝 Formulário'}
+                      </span>
+                    </td>
+                    <td className="p-4 text-slate-400 font-bold">{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</td>
+                    <td className="p-4 text-right">
+                      {sent[lead.id] ? (
+                        <span className="text-green-600 font-black text-[10px]">✓ Enviado</span>
+                      ) : sending[lead.id] ? (
+                        <span className="text-yellow-500 font-black text-[10px]">⏳ Enviando...</span>
+                      ) : (
+                        <button onClick={() => sendOne(lead, centralInstance)} disabled={bulkSending}
+                          className="px-4 py-2 bg-green-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-600 transition-all disabled:opacity-40">
+                          📲 Enviar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {leads.length === 0 && (
                 <tr><td colSpan={6} className="p-8 text-center text-slate-400 font-bold">🎉 Nenhum lead pendente encontrado.</td></tr>
               )}
