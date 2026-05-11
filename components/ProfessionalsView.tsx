@@ -44,6 +44,13 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [intervalMode, setIntervalMode] = useState<'recurring' | 'specific'>('recurring');
   const [editingIntervalId, setEditingIntervalId] = useState<string | null>(null);
 
+  const [ausenciaPro, setAusenciaPro] = useState<Professional | null>(null);
+  const [ausenciaDate, setAusenciaDate] = useState('');
+  const [ausenciaStart, setAusenciaStart] = useState('');
+  const [ausenciaEnd, setAusenciaEnd] = useState('');
+  const [ausenciaMotivo, setAusenciaMotivo] = useState('');
+  const [editingAusenciaId, setEditingAusenciaId] = useState<string | null>(null);
+
   const [deleteProId, setDeleteProId] = useState<string | null>(null);
   const [deletingPro, setDeletingPro] = useState(false);
 
@@ -305,7 +312,64 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const toggleIntervalDay = (d: number) =>
     setIntervalDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
-  const getIntervalsInfo = (pro: Professional) => breaks.filter(b => b.type === 'break' && b.professionalId === pro.id);
+  const getIntervalsInfo = (pro: Professional) => breaks.filter(b => b.type === 'break' && b.professionalId === pro.id && !b.label?.startsWith('[ausencia]'));
+  const getAusenciasInfo = (pro: Professional) => breaks.filter(b => b.type === 'break' && b.professionalId === pro.id && (b.label?.startsWith('[ausencia]') ?? false));
+
+  const openAusencia = (pro: Professional, existingId?: string) => {
+    if (existingId) {
+      const existing = breaks.find(b => b.id === existingId);
+      if (existing) {
+        setAusenciaDate(existing.date || '');
+        setAusenciaStart(existing.startTime);
+        setAusenciaEnd(existing.endTime);
+        setAusenciaMotivo(existing.label?.replace('[ausencia] ', '') || '');
+        setEditingAusenciaId(existingId);
+      }
+    } else {
+      const today = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const roundedMin = today.getMinutes() < 30 ? 30 : 0;
+      const roundedH = today.getMinutes() < 30 ? today.getHours() : today.getHours() + 1;
+      const startStr = `${pad(roundedH % 24)}:${pad(roundedMin)}`;
+      const endH = roundedMin === 30 ? roundedH + 1 : roundedH;
+      const endStr = `${pad(endH % 24)}:${pad(roundedMin === 30 ? 0 : 30)}`;
+      setAusenciaDate(todayStr);
+      setAusenciaStart(startStr);
+      setAusenciaEnd(endStr);
+      setAusenciaMotivo('');
+      setEditingAusenciaId(null);
+    }
+    setAusenciaPro(pro);
+  };
+
+  const saveAusencia = async () => {
+    if (!ausenciaPro) return;
+    if (!ausenciaDate) { alert('Informe a data da ausência.'); return; }
+    if (!ausenciaMotivo.trim()) { alert('Informe o motivo da ausência.'); return; }
+    setSaving(true);
+    try {
+      const withoutOld = editingAusenciaId ? breaks.filter(b => b.id !== editingAusenciaId) : breaks;
+      const newBreak: BreakPeriod = {
+        id: genId(), type: 'break',
+        label: `[ausencia] ${ausenciaMotivo.trim()}`,
+        professionalId: ausenciaPro.id,
+        date: ausenciaDate, dayOfWeek: null,
+        startTime: ausenciaStart, endTime: ausenciaEnd,
+      };
+      await db.saveBreaks(tenantId, [...withoutOld, newBreak]);
+      await load();
+      setAusenciaPro(null);
+    } finally { setSaving(false); }
+  };
+
+  const removeAusencia = async (id: string) => {
+    setSaving(true);
+    try {
+      await db.saveBreaks(tenantId, breaks.filter(b => b.id !== id));
+      await load();
+    } finally { setSaving(false); }
+  };
 
   const applyPreset = (period: string) => {
     setPresetPeriod(period);
@@ -379,6 +443,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
           const lunch = getLunchInfo(p);
           const vac = getVacInfo(p);
           const intervals = getIntervalsInfo(p);
+          const ausencias = getAusenciasInfo(p);
           return (
             <div key={p.id} className="bg-white p-5 sm:p-6 md:p-8 rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 relative group hover:border-orange-500 transition-all">
               <div className="flex items-center space-x-5 mb-6 cursor-pointer" onClick={() => { setSelectedProForReport(p); setReportTab('appointments'); }}>
@@ -423,6 +488,20 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                     </button>
                   </div>
                 ))}
+                {ausencias.map(a => (
+                  <div key={a.id} className="flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-3 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">🚨</span>
+                      <div>
+                        <span className="text-[10px] font-black text-red-700">{a.startTime}–{a.endTime} · {a.date}</span>
+                        <p className="text-[9px] text-red-500 font-bold leading-none mt-0.5">{a.label?.replace('[ausencia] ', '')}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => openAusencia(p, a.id)} className="text-red-300 hover:text-red-600 text-[9px] font-black">
+                      Editar
+                    </button>
+                  </div>
+                ))}
               </div>
               <div className="border-t-2 border-slate-50 pt-4 space-y-2">
                 <div className="flex gap-2">
@@ -436,6 +515,9 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                     🌴 Férias
                   </button>
                 </div>
+                <button onClick={() => openAusencia(p)} className="w-full flex items-center justify-center gap-1.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                  🚨 Ausência Pontual
+                </button>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); }}
@@ -623,6 +705,61 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
               <button onClick={() => setIntervalPro(null)} className="flex-1 py-3 font-black text-slate-400 uppercase text-xs" disabled={saving}>Cancelar</button>
               <button onClick={saveInterval} disabled={saving} className="flex-1 py-3 bg-slate-700 text-white rounded-2xl font-black uppercase text-xs hover:bg-slate-800 transition-all disabled:opacity-40">
                 {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── AUSÊNCIA PONTUAL MODAL ───────────────────────────────────── */}
+      {ausenciaPro && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[40px] w-full max-w-sm p-8 space-y-6 animate-scaleUp border-4 border-red-500 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🚨</span>
+              <div>
+                <h2 className="text-xl font-black text-black uppercase">{editingAusenciaId ? 'Editar Ausência' : 'Ausência Pontual'}</h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{ausenciaPro.name}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 font-bold leading-relaxed">
+              Bloqueia o profissional em um período específico de uma vez. O agente IA e o link web não oferecem esses horários.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Data</label>
+                <input type="date" value={ausenciaDate} onChange={e => setAusenciaDate(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black outline-none focus:border-red-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">De</label>
+                  <input type="time" value={ausenciaStart} onChange={e => setAusenciaStart(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-red-400" />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Até</label>
+                  <input type="time" value={ausenciaEnd} onChange={e => setAusenciaEnd(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-center outline-none focus:border-red-400" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Motivo</label>
+                <input type="text" value={ausenciaMotivo} onChange={e => setAusenciaMotivo(e.target.value)}
+                  placeholder="Ex: Consulta médica, Banco, Emergência..."
+                  className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-red-400" />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              {editingAusenciaId && (
+                <button onClick={async () => { await removeAusencia(editingAusenciaId); setAusenciaPro(null); }} disabled={saving}
+                  className="px-4 py-3 bg-red-50 text-red-500 rounded-2xl font-black text-[9px] uppercase hover:bg-red-100 transition-all">
+                  Remover
+                </button>
+              )}
+              <button onClick={() => setAusenciaPro(null)} className="flex-1 py-3 font-black text-slate-400 uppercase text-xs" disabled={saving}>Cancelar</button>
+              <button onClick={saveAusencia} disabled={saving} className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black uppercase text-xs hover:bg-red-600 transition-all disabled:opacity-40">
+                {saving ? 'Salvando...' : 'Confirmar'}
               </button>
             </div>
           </div>
