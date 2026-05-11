@@ -3192,7 +3192,7 @@ const RecuperacaoSubTab: React.FC = () => {
             .eq('status', 'PAGAMENTO PENDENTE').order('created_at', { ascending: false }),
           supabase.from('tenant_settings').select('tenant_id, follow_up'),
         ]);
-        setCentralInstance(globalCfg['central_instance'] || 'central_AgendeZap');
+        setCentralInstance(globalCfg['central_instance'] || '');
         const settingsMap: Record<string, any> = {};
         (settingsRes.data || []).forEach((s: any) => { settingsMap[s.tenant_id] = s.follow_up || {}; });
         setLeads((tenantsRes.data || [])
@@ -3227,9 +3227,16 @@ const RecuperacaoSubTab: React.FC = () => {
     setErrors(p => { const n = { ...p }; delete n[lead.id]; return n; });
     try {
       const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
-      const result = await evolutionService.sendMessage(instance, fmtPhone(lead.phone), msg);
+      const phone = fmtPhone(lead.phone);
+      const result = await evolutionService.sendMessage(instance, phone, msg);
       if (result?.success === false) {
-        setErrors(p => ({ ...p, [lead.id]: result.error || 'Erro desconhecido' }));
+        // Detect "number not on WhatsApp" specifically
+        const errStr = JSON.stringify(result.error || '');
+        if (errStr.includes('exists') || errStr.includes('not registered') || result.error?.includes('400')) {
+          setErrors(p => ({ ...p, [lead.id]: '❌ Número não encontrado no WhatsApp' }));
+        } else {
+          setErrors(p => ({ ...p, [lead.id]: result.error || 'Erro desconhecido' }));
+        }
         return false;
       }
       setSent(p => ({ ...p, [lead.id]: true }));
