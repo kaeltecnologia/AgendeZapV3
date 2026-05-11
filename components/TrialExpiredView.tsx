@@ -8,15 +8,28 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJ
 
 const PLANS: PlanId[] = ['START', 'PROFISSIONAL', 'ELITE'];
 
-type Cycle = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
+type Cycle = 'MONTHLY' | 'SEMIANNUALLY' | 'YEARLY';
 type Step = 'info' | 'plan' | 'procount' | 'cycle' | 'cpf' | 'payment' | 'loading' | 'waiting';
 
-const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; discount: number; tag?: string }[] = [
-  { id: 'MONTHLY',      label: 'Mensal',      months: 1,  discount: 0 },
-  { id: 'QUARTERLY',    label: 'Trimestral',  months: 3,  discount: 0.10, tag: '10% OFF' },
-  { id: 'SEMIANNUALLY', label: 'Semestral',   months: 6,  discount: 0.15, tag: '15% OFF' },
-  { id: 'YEARLY',       label: 'Anual',       months: 12, discount: 0.25, tag: '25% OFF' },
+const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; tag?: string }[] = [
+  { id: 'MONTHLY',      label: 'Mensal',    months: 1  },
+  { id: 'SEMIANNUALLY', label: 'Semestral', months: 6,  tag: '🔥 Popular' },
+  { id: 'YEARLY',       label: 'Anual',     months: 12, tag: '💰 Melhor Valor' },
 ];
+
+// Exact billing total per plan per cycle (= what Asaas charges each billing period)
+const PLAN_CYCLE_TOTALS: Record<string, Partial<Record<string, number>>> = {
+  START:        { SEMIANNUALLY: 197.40, YEARLY: 334.80  },
+  PROFISSIONAL: { SEMIANNUALLY: 437.40, YEARLY: 754.80  },
+  ELITE:        { SEMIANNUALLY: 749.40, YEARLY: 1258.80 },
+};
+
+// Monthly equivalent displayed inside each cycle card
+const PLAN_CYCLE_MONTHLY: Record<string, Partial<Record<string, number>>> = {
+  START:        { SEMIANNUALLY: 32.90,  YEARLY: 27.90  },
+  PROFISSIONAL: { SEMIANNUALLY: 72.90,  YEARLY: 62.90  },
+  ELITE:        { SEMIANNUALLY: 124.90, YEARLY: 104.90 },
+};
 
 const COMO_CONHECEU_OPTIONS = [
   { id: 'Instagram', label: 'Instagram', emoji: '📸' },
@@ -27,10 +40,6 @@ const COMO_CONHECEU_OPTIONS = [
   { id: 'WhatsApp', label: 'WhatsApp', emoji: '💬' },
   { id: 'Outro', label: 'Outro', emoji: '💡' },
 ];
-
-function calcCyclePrice(monthlyPrice: number, months: number, discount: number) {
-  return Math.round(monthlyPrice * months * (1 - discount) * 100) / 100;
-}
 
 function fmt(v: number) {
   return v.toFixed(2).replace('.', ',');
@@ -239,7 +248,9 @@ const TrialExpiredView: React.FC<{
 
   const planCfg = selectedPlan ? PLAN_CONFIGS[selectedPlan] : null;
   const cycleCfg = CYCLE_OPTIONS.find(c => c.id === selectedCycle)!;
-  const cycleTotal = planCfg ? calcCyclePrice(planCfg.price, cycleCfg.months, cycleCfg.discount) : 0;
+  const cycleTotal = selectedPlan
+    ? (PLAN_CYCLE_TOTALS[selectedPlan]?.[selectedCycle] ?? planCfg?.price ?? 0)
+    : 0;
 
   // Header text per step
   const headerIcon = step === 'waiting' ? '⏳' : step === 'loading' ? '⏳' : step === 'info' ? '👋' : mode === 'pending_payment' ? '🚀' : '🔒';
@@ -440,20 +451,21 @@ const TrialExpiredView: React.FC<{
         {step === 'cycle' && planCfg && (() => {
           const extraPros = selectedPlan === 'START' ? Math.max(0, proCount - 1) : 0;
           const addonMonthly = extraPros * (PLAN_CONFIGS.START.additionalProfessionalPrice || 19.90);
-          const effectiveMonthly = planCfg.price + addonMonthly;
           return (
           <div className="space-y-6">
             {extraPros > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-2xl p-3 text-center">
-                <p className="text-xs font-bold text-green-700">Start com {proCount} profissionais — R$ {fmt(effectiveMonthly)}/mês</p>
+                <p className="text-xs font-bold text-green-700">
+                  +R$ {fmt(addonMonthly)}/mês pelo profissional adicional (cobrado separado)
+                </p>
               </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
               {CYCLE_OPTIONS.map(opt => {
-                const total = calcCyclePrice(effectiveMonthly, opt.months, opt.discount);
-                const monthlyEquiv = total / opt.months;
-                const saving = opt.discount > 0
-                  ? effectiveMonthly * opt.months - total
+                const total = PLAN_CYCLE_TOTALS[selectedPlan!]?.[opt.id] ?? planCfg.price;
+                const monthlyEquiv = PLAN_CYCLE_MONTHLY[selectedPlan!]?.[opt.id] ?? planCfg.price;
+                const saving = opt.id !== 'MONTHLY'
+                  ? Math.round((planCfg.price * opt.months - total) * 100) / 100
                   : 0;
 
                 return (
@@ -464,17 +476,22 @@ const TrialExpiredView: React.FC<{
                     style={{ background: '#fff', border: '2px solid #f1f5f9' }}
                   >
                     {opt.tag && (
-                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider" style={{ color: '#fff' }}>
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-[9px] font-black px-3 py-1 rounded-full tracking-wide" style={{ color: '#fff' }}>
                         {opt.tag}
                       </span>
                     )}
                     <p className="text-sm font-black uppercase" style={{ color: '#000' }}>{opt.label}</p>
                     <div>
-                      <span className="text-2xl font-black" style={{ color: '#000' }}>R$ {fmt(total)}</span>
-                      {opt.months > 1 && (
-                        <p className="text-[10px] font-bold mt-1" style={{ color: '#94a3b8' }}>
-                          = R$ {fmt(monthlyEquiv)}/mes
-                        </p>
+                      {opt.id === 'MONTHLY' ? (
+                        <span className="text-2xl font-black" style={{ color: '#000' }}>R$ {fmt(total)}<span className="text-[11px] font-bold" style={{ color: '#94a3b8' }}>/mês</span></span>
+                      ) : (
+                        <>
+                          <p className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>{opt.months}x de</p>
+                          <span className="text-2xl font-black" style={{ color: '#000' }}>R$ {fmt(monthlyEquiv)}</span>
+                          <p className="text-[10px] font-bold mt-0.5" style={{ color: '#94a3b8' }}>
+                            total R$ {fmt(total)}
+                          </p>
+                        </>
                       )}
                     </div>
                     {saving > 0 && (

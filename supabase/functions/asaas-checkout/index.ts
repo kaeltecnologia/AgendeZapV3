@@ -44,18 +44,26 @@ const PLAN_NAMES: Record<string, string> = {
   ELITE: 'AgendeZap Elite',
 };
 
-// Cycle config: Asaas cycle name, multiplier (months), discount
-const CYCLE_CONFIG: Record<string, { asaasCycle: string; months: number; discount: number; label: string }> = {
-  MONTHLY:      { asaasCycle: 'MONTHLY',      months: 1,  discount: 0,    label: 'Mensal' },
-  QUARTERLY:    { asaasCycle: 'QUARTERLY',    months: 3,  discount: 0.10, label: 'Trimestral' },
-  SEMIANNUALLY: { asaasCycle: 'SEMIANNUALLY', months: 6,  discount: 0.15, label: 'Semestral' },
-  YEARLY:       { asaasCycle: 'YEARLY',       months: 12, discount: 0.25, label: 'Anual' },
+// Exact billing totals per plan per cycle (Asaas charges this amount per billing period)
+const PLAN_CYCLE_TOTALS: Record<string, Partial<Record<string, number>>> = {
+  START:        { SEMIANNUALLY: 197.40, YEARLY: 334.80  },
+  PROFISSIONAL: { SEMIANNUALLY: 437.40, YEARLY: 754.80  },
+  ELITE:        { SEMIANNUALLY: 749.40, YEARLY: 1258.80 },
 };
 
-function calcCycleValue(monthlyPrice: number, cycle: string): number {
-  const cfg = CYCLE_CONFIG[cycle] || CYCLE_CONFIG.MONTHLY;
-  const total = monthlyPrice * cfg.months * (1 - cfg.discount);
-  return Math.round(total * 100) / 100;
+// Cycle config: Asaas cycle name, months (for reference), label
+const CYCLE_CONFIG: Record<string, { asaasCycle: string; months: number; label: string }> = {
+  MONTHLY:      { asaasCycle: 'MONTHLY',      months: 1,  label: 'Mensal'    },
+  SEMIANNUALLY: { asaasCycle: 'SEMIANNUALLY', months: 6,  label: 'Semestral' },
+  YEARLY:       { asaasCycle: 'YEARLY',       months: 12, label: 'Anual'     },
+};
+
+/** Returns the total amount Asaas should charge for the given plan + cycle. */
+function calcCycleValue(planId: string, cycle: string): number {
+  const exact = PLAN_CYCLE_TOTALS[planId]?.[cycle];
+  if (exact !== undefined) return exact;
+  // Fallback to monthly price (e.g. for MONTHLY cycle)
+  return PLAN_PRICES[planId] || 39.90;
 }
 
 /**
@@ -265,11 +273,11 @@ Deno.serve(async (req) => {
       return json({ error: `Invalid planId: ${planId}` }, 400);
     }
     if (!CYCLE_CONFIG[cycle]) {
-      return json({ error: `Invalid cycle: ${cycle}. Use MONTHLY, QUARTERLY, SEMIANNUALLY, or YEARLY` }, 400);
+      return json({ error: `Invalid cycle: ${cycle}. Use MONTHLY, SEMIANNUALLY, or YEARLY` }, 400);
     }
 
     const cycleCfg = CYCLE_CONFIG[cycle];
-    const cycleValue = calcCycleValue(PLAN_PRICES[planId], cycle);
+    const cycleValue = calcCycleValue(planId, cycle);
 
     // ── Detect upgrade ──────────────────────────────────────────────────
     const oldSubId = fup._asaasSubscriptionId || null;
@@ -479,11 +487,11 @@ Deno.serve(async (req) => {
       { onConflict: 'tenant_id' }
     );
 
-    // Also update tenant plan optimistically
+    // Also update tenant plan optimistically (use monthly base price regardless of cycle)
     const totalExtra = updatedFup._extraProfessionals || 0;
     await supabase.from('tenants').update({
       plan: planId,
-      mensalidade: cycleValue + (totalExtra * ADDON_PRICE),
+      mensalidade: PLAN_PRICES[planId] + (totalExtra * ADDON_PRICE),
     }).eq('id', tenantId);
 
     console.log(`[asaas] Checkout complete for tenant ${tenantId}: plan=${planId}, sub=${subscriptionId}, extraPros=${totalExtra}`);

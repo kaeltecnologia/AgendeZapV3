@@ -32,19 +32,28 @@ const ALL_FEATURES: FeatureKey[] = [
   'disparo', 'socialMidia', 'caixaAvancado', 'relatoriosAvancados', 'assistenteAdmin',
 ];
 
-type Cycle = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
+type Cycle = 'MONTHLY' | 'SEMIANNUALLY' | 'YEARLY';
 type Step = 'compare' | 'cpf' | 'cycle' | 'payment' | 'loading' | 'waiting';
 
-const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; discount: number; tag?: string }[] = [
-  { id: 'MONTHLY',      label: 'Mensal',     months: 1,  discount: 0 },
-  { id: 'QUARTERLY',    label: 'Trimestral', months: 3,  discount: 0.10, tag: '10% OFF' },
-  { id: 'SEMIANNUALLY', label: 'Semestral',  months: 6,  discount: 0.15, tag: '15% OFF' },
-  { id: 'YEARLY',       label: 'Anual',      months: 12, discount: 0.25, tag: '25% OFF' },
+const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; tag?: string }[] = [
+  { id: 'MONTHLY',      label: 'Mensal',    months: 1  },
+  { id: 'SEMIANNUALLY', label: 'Semestral', months: 6,  tag: '🔥 Popular' },
+  { id: 'YEARLY',       label: 'Anual',     months: 12, tag: '💰 Melhor Valor' },
 ];
 
-function calcCyclePrice(monthlyPrice: number, months: number, discount: number) {
-  return Math.round(monthlyPrice * months * (1 - discount) * 100) / 100;
-}
+// Exact billing total per plan per cycle
+const PLAN_CYCLE_TOTALS: Record<string, Partial<Record<string, number>>> = {
+  START:        { SEMIANNUALLY: 197.40, YEARLY: 334.80  },
+  PROFISSIONAL: { SEMIANNUALLY: 437.40, YEARLY: 754.80  },
+  ELITE:        { SEMIANNUALLY: 749.40, YEARLY: 1258.80 },
+};
+
+// Monthly equivalent price per plan per cycle (for display)
+const PLAN_CYCLE_MONTHLY: Record<string, Partial<Record<string, number>>> = {
+  START:        { SEMIANNUALLY: 32.90,  YEARLY: 27.90  },
+  PROFISSIONAL: { SEMIANNUALLY: 72.90,  YEARLY: 62.90  },
+  ELITE:        { SEMIANNUALLY: 124.90, YEARLY: 104.90 },
+};
 
 function fmt(v: number) { return v.toFixed(2).replace('.', ','); }
 
@@ -239,7 +248,7 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
                 {selectedConfig.emoji} {selectedConfig.name} — {CYCLE_OPTIONS.find(c => c.id === selectedCycle)?.label}
                 {isUpgrade && upgradeDiscount > 0
                   ? ` — 1a cobrança: R$${fmt(firstMonthValue)}`
-                  : ` — R$${fmt(calcCyclePrice(selectedConfig.price, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.months, CYCLE_OPTIONS.find(c => c.id === selectedCycle)!.discount))}`
+                  : ` — R$${fmt(PLAN_CYCLE_TOTALS[selectedPlan]?.[selectedCycle] ?? selectedConfig.price)}`
                 }
               </p>
             </>
@@ -349,6 +358,7 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
                 : `Assinar ${selectedConfig.name} — R$${fmt(selectedConfig.price)}/mês`
               }
             </button>
+            <p className="text-center text-[9px] text-slate-300 font-bold">Semestral a R$${fmt(PLAN_CYCLE_MONTHLY[selectedPlan]?.SEMIANNUALLY ?? selectedConfig.price)}/mês · Anual a R$${fmt(PLAN_CYCLE_MONTHLY[selectedPlan]?.YEARLY ?? selectedConfig.price)}/mês</p>
             <button onClick={onClose} className="w-full py-1 font-bold text-slate-400 text-[10px] hover:text-slate-600 transition-all">
               Fechar
             </button>
@@ -381,36 +391,39 @@ const PlanUpgradeModal: React.FC<Props> = ({ feature, tenantPlan, tenantId, onCl
         {/* ── STEP: Cycle ── */}
         {step === 'cycle' && (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {CYCLE_OPTIONS.map(opt => {
-                const total = calcCyclePrice(selectedConfig.price, opt.months, opt.discount);
-                const perMonth = total / opt.months;
+                const total = PLAN_CYCLE_TOTALS[selectedPlan]?.[opt.id] ?? selectedConfig.price;
+                const perMonth = PLAN_CYCLE_MONTHLY[selectedPlan]?.[opt.id] ?? selectedConfig.price;
                 const isSelected = selectedCycle === opt.id;
                 return (
                   <button
                     key={opt.id}
                     onClick={() => setSelectedCycle(opt.id)}
-                    className={`p-3 rounded-2xl border-2 text-left transition-all ${
+                    className={`p-3 rounded-2xl border-2 text-left transition-all relative ${
                       isSelected
                         ? 'border-orange-500 bg-orange-50 shadow-md'
                         : 'border-slate-100 bg-slate-50 hover:border-slate-200'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <p className={`text-[10px] font-black uppercase tracking-wide ${isSelected ? 'text-orange-600' : 'text-slate-600'}`}>
-                        {opt.label}
-                      </p>
-                      {opt.tag && (
-                        <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">
-                          {opt.tag}
-                        </span>
-                      )}
-                    </div>
-                    <p className={`text-sm font-black ${isSelected ? 'text-orange-600' : 'text-black'}`}>
-                      R${fmt(total)}
+                    {opt.tag && (
+                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[7px] font-black px-1.5 py-0.5 rounded-full bg-orange-500 text-white whitespace-nowrap">
+                        {opt.tag}
+                      </span>
+                    )}
+                    <p className={`text-[10px] font-black uppercase tracking-wide mb-1 ${isSelected ? 'text-orange-600' : 'text-slate-600'}`}>
+                      {opt.label}
                     </p>
-                    {opt.months > 1 && (
-                      <p className="text-[9px] text-slate-400 font-bold">= R${fmt(perMonth)}/mês</p>
+                    {opt.id === 'MONTHLY' ? (
+                      <p className={`text-sm font-black ${isSelected ? 'text-orange-600' : 'text-black'}`}>
+                        R${fmt(total)}<span className="text-[8px] font-bold text-slate-400">/mês</span>
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-[8px] text-slate-400 font-bold">{opt.months}x de</p>
+                        <p className={`text-sm font-black ${isSelected ? 'text-orange-600' : 'text-black'}`}>R${fmt(perMonth)}</p>
+                        <p className="text-[8px] text-slate-400 font-bold">total R${fmt(total)}</p>
+                      </>
                     )}
                   </button>
                 );
