@@ -3145,13 +3145,16 @@ const LeadsTab: React.FC = () => {
 
 // ── Recuperação de Leads Pendentes ────────────────────────────────────────────
 
-type PendingLead = { id: string; nome: string; phone: string; email: string; createdAt: string; type: 'form' | 'checkout' };
+type PendingLead = { id: string; nome: string; phone: string; email: string; createdAt: string; type: 'form' | 'checkout' | 'site'; nicho?: string; city?: string };
 
 const MSG_FORM = (nome: string) =>
   `Olá, ${nome}! Aqui é o Matheus Moura, da equipe de suporte do AgendeZap! 😊\n\nVi que você se cadastrou na nossa plataforma e entrei em contato para entender melhor o que você precisa e tirar qualquer dúvida antes de começar.\n\nPode me contar um pouco sobre o seu negócio? Assim consigo te ajudar da melhor forma possível!`;
 
 const MSG_CHECKOUT = (nome: string) =>
   `Olá, ${nome}! Me chamo Matheus Moura, faço parte da equipe de suporte do AgendeZap. Vi que você tem interesse no AgendeZap mas não finalizou o pagamento, estou para entender a melhor forma para te ter como cliente! 😊\n\nPosso te ajudar com alguma dúvida ou oferecer alguma condição especial?`;
+
+const MSG_SITE = (nome: string, nicho?: string) =>
+  `Olá, ${nome}! Aqui é o Matheus Moura, da equipe do AgendeZap! 😊\n\nVi que você demonstrou interesse no nosso sistema${nicho ? ` para ${nicho}` : ''} e quero entender melhor como posso te ajudar.\n\nO AgendeZap automatiza seus agendamentos pelo WhatsApp com IA — seus clientes agendam 24h sem você precisar responder nada. Posso te mostrar como funciona?`;
 
 const BATCH_SIZE = 3;
 const BATCH_INTERVAL_MS = 15 * 60 * 1000; // 15 min base
@@ -3186,16 +3189,20 @@ const RecuperacaoSubTab: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const [globalCfg, tenantsRes, settingsRes] = await Promise.all([
+        const [globalCfg, tenantsRes, settingsRes, mktRes] = await Promise.all([
           db.getGlobalConfig(),
           supabase.from('tenants').select('id, nome, phone, email, created_at')
             .eq('status', 'PAGAMENTO PENDENTE').order('created_at', { ascending: false }),
           supabase.from('tenant_settings').select('tenant_id, follow_up'),
+          supabase.from('marketplace_leads').select('id, name, phone, city, nicho_interest, created_at')
+            .order('created_at', { ascending: false }),
         ]);
         setCentralInstance(globalCfg['central_instance'] || '');
+
         const settingsMap: Record<string, any> = {};
         (settingsRes.data || []).forEach((s: any) => { settingsMap[s.tenant_id] = s.follow_up || {}; });
-        setLeads((tenantsRes.data || [])
+
+        const tenantLeads: PendingLead[] = (tenantsRes.data || [])
           .filter((t: any) => !!t.phone)
           .map((t: any) => ({
             id: t.id,
@@ -3204,7 +3211,22 @@ const RecuperacaoSubTab: React.FC = () => {
             email: t.email || '',
             createdAt: t.created_at,
             type: settingsMap[t.id]?._asaasSubscriptionId ? 'checkout' : 'form',
-          } as PendingLead)));
+          } as PendingLead));
+
+        const siteLeads: PendingLead[] = (mktRes.data || [])
+          .filter((m: any) => !!m.phone)
+          .map((m: any) => ({
+            id: `site_${m.id}`,
+            nome: m.name || '(sem nome)',
+            phone: m.phone,
+            email: '',
+            createdAt: m.created_at,
+            type: 'site' as const,
+            nicho: m.nicho_interest || undefined,
+            city: m.city || undefined,
+          }));
+
+        setLeads([...tenantLeads, ...siteLeads]);
       } catch (e) {
         console.error('[Recuperacao]', e);
       } finally {
@@ -3226,7 +3248,7 @@ const RecuperacaoSubTab: React.FC = () => {
     setSending(p => ({ ...p, [lead.id]: true }));
     setErrors(p => { const n = { ...p }; delete n[lead.id]; return n; });
     try {
-      const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
+      const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : lead.type === 'site' ? MSG_SITE(lead.nome, lead.nicho) : MSG_FORM(lead.nome);
       const phone = fmtPhone(lead.phone);
       const result = await evolutionService.sendMessage(instance, phone, msg);
       if (result?.success === false) {
@@ -3301,6 +3323,7 @@ const RecuperacaoSubTab: React.FC = () => {
   const unsentCount = leads.filter(l => !sent[l.id]).length;
   const formCount = leads.filter(l => l.type === 'form').length;
   const checkoutCount = leads.filter(l => l.type === 'checkout').length;
+  const siteCount = leads.filter(l => l.type === 'site').length;
   const totalBatches = Math.ceil(unsentCount / BATCH_SIZE);
 
   return (
@@ -3323,7 +3346,7 @@ const RecuperacaoSubTab: React.FC = () => {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-1">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            {leads.length} leads pendentes — <span className="text-blue-500">📝 {formCount} formulário</span> · <span className="text-orange-500">🛒 {checkoutCount} checkout abandonado</span>
+            {leads.length} leads pendentes — <span className="text-blue-500">📝 {formCount} cadastro</span> · <span className="text-orange-500">🛒 {checkoutCount} checkout</span> · <span className="text-purple-500">🌐 {siteCount} site</span>
           </p>
           <p className="text-[10px] text-slate-400 font-bold">
             Lotes de {BATCH_SIZE} contatos · intervalo 12–18 min (aleatório) · 4s entre mensagens
@@ -3402,6 +3425,7 @@ const RecuperacaoSubTab: React.FC = () => {
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Nome</th>
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Telefone</th>
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Tipo</th>
+                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Nicho / Cidade</th>
                 <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Data</th>
                 <th className="p-4" />
               </tr>
@@ -3417,9 +3441,17 @@ const RecuperacaoSubTab: React.FC = () => {
                     <td className="p-4 font-bold text-black">{lead.nome}</td>
                     <td className="p-4 text-slate-600 font-mono">{lead.phone}</td>
                     <td className="p-4">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${lead.type === 'checkout' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {lead.type === 'checkout' ? '🛒 Checkout' : '📝 Formulário'}
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                        lead.type === 'checkout' ? 'bg-orange-100 text-orange-700'
+                        : lead.type === 'site' ? 'bg-purple-100 text-purple-700'
+                        : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {lead.type === 'checkout' ? '🛒 Checkout' : lead.type === 'site' ? '🌐 Site' : '📝 Cadastro'}
                       </span>
+                    </td>
+                    <td className="p-4 text-slate-500 text-[11px]">
+                      {lead.nicho && <span className="font-bold">{lead.nicho}</span>}
+                      {lead.city && <span className="text-slate-400"> · {lead.city}</span>}
                     </td>
                     <td className="p-4 text-slate-400 font-bold">{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</td>
                     <td className="p-4 text-right">
@@ -3446,7 +3478,7 @@ const RecuperacaoSubTab: React.FC = () => {
                 );
               })}
               {leads.length === 0 && (
-                <tr><td colSpan={6} className="p-8 text-center text-slate-400 font-bold">🎉 Nenhum lead pendente encontrado.</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-slate-400 font-bold">🎉 Nenhum lead pendente encontrado.</td></tr>
               )}
             </tbody>
           </table>
@@ -3991,7 +4023,7 @@ const SitePainelView: React.FC = () => {
     if (sent[lead.id] || sending[lead.id]) return;
     setSending(s => ({ ...s, [lead.id]: true }));
     try {
-      const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
+      const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : lead.type === 'site' ? MSG_SITE(lead.nome, lead.nicho) : MSG_FORM(lead.nome);
       await evolutionService.sendMessage(centralInstance, lead.phone.replace(/\D/g, ''), msg);
       setSent(s => ({ ...s, [lead.id]: true }));
     } catch (e) {
