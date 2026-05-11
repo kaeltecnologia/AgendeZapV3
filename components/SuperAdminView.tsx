@@ -3899,11 +3899,17 @@ const SitePainelView: React.FC = () => {
   const [sent, setSent] = useState<Record<string, boolean>>({});
   const [bulkSending, setBulkSending] = useState(false);
   const [centralInstance, setCentralInstance] = useState('central_AgendeZap');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(() => loadData(true), 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent = false) => {
+    if (silent) setRefreshing(true); else setLoading(true);
     try {
       const [globalCfg, tenantsRes, settingsRes, mktRes] = await Promise.all([
         db.getGlobalConfig(),
@@ -3972,8 +3978,12 @@ const SitePainelView: React.FC = () => {
         if (m) m.cadastros++;
       });
       setChartData(months.map(m => ({ month: m.label, cadastros: m.cadastros })));
+      setLastUpdated(new Date());
+    } catch (e) {
+      console.error('[SitePainel] loadData error:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -4015,6 +4025,27 @@ const SitePainelView: React.FC = () => {
 
   return (
     <div className="space-y-5">
+
+      {/* Auto-refresh status bar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${refreshing ? 'bg-orange-400 animate-pulse' : 'bg-green-400'}`} />
+          <span className="text-[10px] font-bold text-slate-400">
+            {refreshing ? 'Atualizando...' : lastUpdated
+              ? `Atualizado às ${lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+              : 'Carregado'}
+          </span>
+          <span className="text-[9px] text-slate-300 font-medium">· auto-refresh 30s</span>
+        </div>
+        <button
+          onClick={() => loadData()}
+          disabled={loading || refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-xl transition-all disabled:opacity-40"
+        >
+          <span className={loading || refreshing ? 'animate-spin' : ''}>↻</span>
+          Atualizar
+        </button>
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-3">
