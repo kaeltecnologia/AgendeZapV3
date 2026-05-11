@@ -3175,8 +3175,9 @@ const RecuperacaoSubTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState<Record<string, boolean>>({});
   const [sent, setSent] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [bulkSending, setBulkSending] = useState(false);
-  const [centralInstance, setCentralInstance] = useState('central_AgendeZap');
+  const [centralInstance, setCentralInstance] = useState('');
   const [batchLog, setBatchLog] = useState<{ batchIdx: number; total: number; status: string }[]>([]);
   const [nextBatchIn, setNextBatchIn] = useState<number | null>(null);
   const [currentBatch, setCurrentBatch] = useState<number | null>(null);
@@ -3213,14 +3214,23 @@ const RecuperacaoSubTab: React.FC = () => {
   }, []);
 
   const sendOne = async (lead: PendingLead, instance: string) => {
+    if (!instance) {
+      setErrors(p => ({ ...p, [lead.id]: 'Instância não carregada' }));
+      return false;
+    }
     setSending(p => ({ ...p, [lead.id]: true }));
+    setErrors(p => { const n = { ...p }; delete n[lead.id]; return n; });
     try {
       const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
-      await evolutionService.sendMessage(instance, lead.phone.replace(/\D/g, ''), msg);
+      const result = await evolutionService.sendMessage(instance, lead.phone.replace(/\D/g, ''), msg);
+      if (result?.success === false) {
+        setErrors(p => ({ ...p, [lead.id]: result.error || 'Erro desconhecido' }));
+        return false;
+      }
       setSent(p => ({ ...p, [lead.id]: true }));
       return true;
-    } catch (e) {
-      console.error('[Recuperacao] Erro ao enviar:', e);
+    } catch (e: any) {
+      setErrors(p => ({ ...p, [lead.id]: e?.message || 'Erro na requisição' }));
       return false;
     } finally {
       setSending(p => ({ ...p, [lead.id]: false }));
@@ -3283,6 +3293,20 @@ const RecuperacaoSubTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {/* Instância config */}
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-3">
+        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest shrink-0">Instância WhatsApp</span>
+        <input
+          value={centralInstance}
+          onChange={e => setCentralInstance(e.target.value)}
+          placeholder="central_AgendeZap"
+          className="flex-1 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono text-slate-700 bg-white outline-none focus:border-orange-400"
+        />
+        {!centralInstance && (
+          <span className="text-[10px] text-red-500 font-bold shrink-0">⚠ obrigatório</span>
+        )}
+      </div>
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-1">
@@ -3391,8 +3415,16 @@ const RecuperacaoSubTab: React.FC = () => {
                         <span className="text-green-600 font-black text-[10px]">✓ Enviado</span>
                       ) : sending[lead.id] ? (
                         <span className="text-yellow-500 font-black text-[10px]">⏳ Enviando...</span>
+                      ) : errors[lead.id] ? (
+                        <div className="text-right">
+                          <p className="text-red-500 font-black text-[10px] max-w-[160px]">✕ {errors[lead.id]}</p>
+                          <button onClick={() => sendOne(lead, centralInstance)} disabled={bulkSending}
+                            className="mt-1 px-3 py-1 bg-red-100 text-red-600 text-[9px] font-black uppercase rounded-lg hover:bg-red-200 transition-all">
+                            Tentar novamente
+                          </button>
+                        </div>
                       ) : (
-                        <button onClick={() => sendOne(lead, centralInstance)} disabled={bulkSending}
+                        <button onClick={() => sendOne(lead, centralInstance)} disabled={bulkSending || !centralInstance}
                           className="px-4 py-2 bg-green-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-600 transition-all disabled:opacity-40">
                           📲 Enviar
                         </button>
