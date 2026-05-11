@@ -3213,6 +3213,11 @@ const RecuperacaoSubTab: React.FC = () => {
     })();
   }, []);
 
+  const fmtPhone = (raw: string) => {
+    const digits = raw.replace(/\D/g, '');
+    return digits.startsWith('55') ? digits : '55' + digits;
+  };
+
   const sendOne = async (lead: PendingLead, instance: string) => {
     if (!instance) {
       setErrors(p => ({ ...p, [lead.id]: 'Instância não carregada' }));
@@ -3222,7 +3227,7 @@ const RecuperacaoSubTab: React.FC = () => {
     setErrors(p => { const n = { ...p }; delete n[lead.id]; return n; });
     try {
       const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
-      const result = await evolutionService.sendMessage(instance, lead.phone.replace(/\D/g, ''), msg);
+      const result = await evolutionService.sendMessage(instance, fmtPhone(lead.phone), msg);
       if (result?.success === false) {
         setErrors(p => ({ ...p, [lead.id]: result.error || 'Erro desconhecido' }));
         return false;
