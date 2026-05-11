@@ -153,7 +153,9 @@ export const evolutionService = {
   },
 
   async sendToWhatsApp(instanceName: string, to: string, text: string): Promise<SendMessageResponse> {
-    const cleanNumber = to.replace(/\D/g, '');
+    let cleanNumber = to.replace(/\D/g, '');
+    // Always ensure Brazil country code (55) is present
+    if (cleanNumber && !cleanNumber.startsWith('55')) cleanNumber = '55' + cleanNumber;
     if (!instanceName) return { success: false, error: "Instância não definida" };
     try {
       const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
