@@ -910,8 +910,8 @@ Deno.serve(async (_req) => {
           }
         }
 
-        // ── 11. CUSTOMER REFERRAL PITCH (após atendimento finalizado) ─────
-        {
+        // ── 11. CUSTOMER REFERRAL PITCH (após atendimento finalizado) — DESATIVADO ─────
+        if (false) {
           // Find FINISHED appointments in the last 24h
           const since24h = new Date(nowMs - 24 * 60 * 60 * 1000);
           const sinceStr = localDateStr(since24h);
