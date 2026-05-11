@@ -902,6 +902,21 @@ const App: React.FC = () => {
           aiActive: false,
         });
 
+        // Dispara mensagem de boas-vindas pelo WhatsApp da central (non-blocking)
+        if (phone) {
+          (async () => {
+            try {
+              const globalCfg = await db.getGlobalConfig();
+              const centralInstance = globalCfg['central_instance'] || 'central_AgendeZap';
+              const cleanPhone = phone.replace(/\D/g, '');
+              const msg = `Olá, ${storeName}! 👋\n\nAqui é o Matheus Moura, da equipe de suporte do AgendeZap!\n\nVi que você acabou de criar sua conta — seja muito bem-vindo! 🎉\n\nEstou aqui para te ajudar a dar os primeiros passos e garantir que você aproveite tudo que o AgendeZap pode oferecer.\n\nQualquer dúvida é só chamar! 😊`;
+              await evolutionService.sendMessage(centralInstance, cleanPhone, msg);
+            } catch (e) {
+              console.error('[AgendeZap] Falha ao enviar boas-vindas WhatsApp:', e);
+            }
+          })();
+        }
+
         setTenantId(newTenant.id);
         setTenantSlug(newTenant.slug);
         setTenantName(newTenant.name);

@@ -148,6 +148,34 @@ Deno.serve(async (req) => {
           status: 'PAGAMENTO PENDENTE',
         }).eq('id', tenantId);
 
+        // Enviar mensagem de recuperação pelo WhatsApp da central
+        try {
+          const { data: tenantRow } = await supabase
+            .from('tenants').select('nome, phone').eq('id', tenantId).single();
+          if (tenantRow?.phone) {
+            const evolutionUrl = Deno.env.get('EVOLUTION_API_URL') || 'https://evolution-api-agendezap-evolution-api.xzftjp.easypanel.host';
+            const evolutionKey = Deno.env.get('EVOLUTION_API_KEY') || '429683C4C977415CAAFCCE10F7D57E11';
+            const { data: cfgRow } = await supabase
+              .from('global_settings').select('value').eq('key', 'central_instance').maybeSingle();
+            const centralInstance = cfgRow?.value || 'central_AgendeZap';
+            const cleanPhone = (tenantRow.phone as string).replace(/\D/g, '');
+            const nome = tenantRow.nome ? `, ${tenantRow.nome}` : '';
+            const msg = `Olá${nome}! Me chamo Matheus Moura, faço parte da equipe de suporte do AgendeZap. Vi que você tem interesse no AgendeZap mas não finalizou o pagamento, estou para entender a melhor forma para te ter como cliente! 😊\n\nPosso te ajudar com alguma dúvida ou oferecer alguma condição especial?`;
+            await fetch(`${evolutionUrl}/message/sendText/${centralInstance}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'apikey': evolutionKey },
+              body: JSON.stringify({
+                number: cleanPhone,
+                text: msg,
+                options: { delay: 1200, presence: 'composing', linkPreview: false },
+              }),
+            });
+            console.log(`[asaas-webhook] 📲 Mensagem de recuperação enviada para ${cleanPhone.slice(-4)}`);
+          }
+        } catch (e) {
+          console.error('[asaas-webhook] Falha ao enviar WhatsApp de recuperação:', e);
+        }
+
         console.log(`[asaas-webhook] ⚠️ Tenant ${tenantId} PAYMENT OVERDUE`);
         break;
       }

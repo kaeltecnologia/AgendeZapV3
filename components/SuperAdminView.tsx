@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { db } from '../services/mockDb';
+import { supabase } from '../services/supabase';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { TenantStatus, Tenant, SupportMessage, ConversationLog, AffiliateLinkStats } from '../types';
 import { runWeeklyOptimization, OptimizationResult, runAllTenantsOptimization, AllTenantsResult, EvolutionSnapshot, loadEvolutionHistory } from '../services/optimizerService';
@@ -3110,11 +3111,12 @@ const AffiliatesSubTab: React.FC = () => {
 // ── Leads & Indicações Tab ────────────────────────────────────────────────────
 
 const LeadsTab: React.FC = () => {
-  const [subTab, setSubTab] = useState<'leads' | 'indicacoes' | 'afiliados' | 'convites'>('leads');
+  const [subTab, setSubTab] = useState<'leads' | 'recuperacao' | 'indicacoes' | 'afiliados' | 'convites'>('recuperacao');
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-1 w-fit flex-wrap">
         {([
+          { key: 'recuperacao' as const, label: '🚀 Recuperação' },
           { key: 'leads' as const, label: 'Leads Marketplace' },
           { key: 'indicacoes' as const, label: 'Indicacoes' },
           { key: 'afiliados' as const, label: 'Afiliados' },
@@ -3126,10 +3128,176 @@ const LeadsTab: React.FC = () => {
             }`}>{t.label}</button>
         ))}
       </div>
+      {subTab === 'recuperacao' && <RecuperacaoSubTab />}
       {subTab === 'leads' && <LeadsSubTab />}
       {subTab === 'indicacoes' && <ReferralsSubTab />}
       {subTab === 'afiliados' && <AffiliatesSubTab />}
       {subTab === 'convites' && <InvitesSubTab />}
+    </div>
+  );
+};
+
+// ── Recuperação de Leads Pendentes ────────────────────────────────────────────
+
+type PendingLead = { id: string; nome: string; phone: string; email: string; createdAt: string; type: 'form' | 'checkout' };
+
+const MSG_FORM = (nome: string) =>
+  `Olá, ${nome}! 👋\n\nAqui é o Matheus Moura, da equipe de suporte do AgendeZap!\n\nVi que você acabou de criar sua conta — seja muito bem-vindo! 🎉\n\nEstou aqui para te ajudar a dar os primeiros passos e tirar qualquer dúvida. Qualquer coisa é só chamar! 😊`;
+
+const MSG_CHECKOUT = (nome: string) =>
+  `Olá, ${nome}! Me chamo Matheus Moura, faço parte da equipe de suporte do AgendeZap. Vi que você tem interesse no AgendeZap mas não finalizou o pagamento, estou para entender a melhor forma para te ter como cliente! 😊\n\nPosso te ajudar com alguma dúvida ou oferecer alguma condição especial?`;
+
+const RecuperacaoSubTab: React.FC = () => {
+  const [leads, setLeads] = useState<PendingLead[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState<Record<string, boolean>>({});
+  const [sent, setSent] = useState<Record<string, boolean>>({});
+  const [bulkSending, setBulkSending] = useState(false);
+  const [centralInstance, setCentralInstance] = useState('central_AgendeZap');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [globalCfg, tenantsRes, settingsRes] = await Promise.all([
+          db.getGlobalConfig(),
+          supabase.from('tenants').select('id, nome, phone, email, created_at')
+            .eq('status', 'PAGAMENTO PENDENTE').order('created_at', { ascending: false }),
+          supabase.from('tenant_settings').select('tenant_id, follow_up'),
+        ]);
+        setCentralInstance(globalCfg['central_instance'] || 'central_AgendeZap');
+        const settingsMap: Record<string, any> = {};
+        (settingsRes.data || []).forEach((s: any) => { settingsMap[s.tenant_id] = s.follow_up || {}; });
+        setLeads((tenantsRes.data || [])
+          .filter((t: any) => !!t.phone)
+          .map((t: any) => ({
+            id: t.id,
+            nome: t.nome || '(sem nome)',
+            phone: t.phone,
+            email: t.email || '',
+            createdAt: t.created_at,
+            type: settingsMap[t.id]?._asaasSubscriptionId ? 'checkout' : 'form',
+          } as PendingLead)));
+      } catch (e) {
+        console.error('[Recuperacao]', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const sendOne = async (lead: PendingLead) => {
+    if (!lead.phone || sending[lead.id]) return;
+    setSending(p => ({ ...p, [lead.id]: true }));
+    try {
+      const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
+      await evolutionService.sendMessage(centralInstance, lead.phone.replace(/\D/g, ''), msg);
+      setSent(p => ({ ...p, [lead.id]: true }));
+    } catch (e) {
+      console.error('[Recuperacao] Erro ao enviar:', e);
+    } finally {
+      setSending(p => ({ ...p, [lead.id]: false }));
+    }
+  };
+
+  const sendAll = async () => {
+    if (bulkSending) return;
+    setBulkSending(true);
+    for (const lead of leads) {
+      if (!sent[lead.id]) {
+        await sendOne(lead);
+        await new Promise(r => setTimeout(r, 3500));
+      }
+    }
+    setBulkSending(false);
+  };
+
+  const unsentCount = leads.filter(l => !sent[l.id]).length;
+  const formCount = leads.filter(l => l.type === 'form').length;
+  const checkoutCount = leads.filter(l => l.type === 'checkout').length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-1">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            {leads.length} leads pendentes — <span className="text-blue-500">📝 {formCount} só preencheram o formulário</span> · <span className="text-orange-500">🛒 {checkoutCount} abandonaram o checkout</span>
+          </p>
+          <p className="text-[10px] text-slate-400 font-bold">
+            Formulário → mensagem de boas-vindas · Checkout → mensagem de recuperação (Matheus Moura)
+          </p>
+        </div>
+        <button
+          onClick={sendAll}
+          disabled={bulkSending || unsentCount === 0}
+          className="px-6 py-3 bg-green-500 text-white text-xs font-black uppercase rounded-2xl hover:bg-green-600 transition-all disabled:opacity-50 shrink-0"
+        >
+          {bulkSending ? '⏳ Enviando...' : `📲 Disparar para todos (${unsentCount})`}
+        </button>
+      </div>
+
+      {/* Message previews */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-4 space-y-1">
+          <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">📝 Mensagem — Formulário</p>
+          <p className="text-[11px] text-slate-600 font-medium whitespace-pre-line leading-relaxed">{MSG_FORM('[Nome]')}</p>
+        </div>
+        <div className="bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 space-y-1">
+          <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">🛒 Mensagem — Checkout Abandonado</p>
+          <p className="text-[11px] text-slate-600 font-medium whitespace-pre-line leading-relaxed">{MSG_CHECKOUT('[Nome]')}</p>
+        </div>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <p className="text-sm text-slate-400 font-bold">Carregando leads pendentes...</p>
+      ) : (
+        <div className="bg-white rounded-3xl border-2 border-slate-100 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b-2 border-slate-100">
+                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Nome</th>
+                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Telefone</th>
+                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Email</th>
+                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Tipo</th>
+                <th className="p-4 text-left font-black text-slate-500 uppercase tracking-wider">Data</th>
+                <th className="p-4" />
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map(lead => (
+                <tr key={lead.id} className={`border-b border-slate-50 transition-colors ${sent[lead.id] ? 'bg-green-50' : 'hover:bg-slate-50'}`}>
+                  <td className="p-4 font-bold text-black">{lead.nome}</td>
+                  <td className="p-4 text-slate-600 font-mono">{lead.phone}</td>
+                  <td className="p-4 text-slate-500">{lead.email}</td>
+                  <td className="p-4">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${lead.type === 'checkout' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {lead.type === 'checkout' ? '🛒 Checkout' : '📝 Formulário'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-slate-400 font-bold">{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</td>
+                  <td className="p-4 text-right">
+                    {sent[lead.id] ? (
+                      <span className="text-green-600 font-black text-[10px]">✓ Enviado</span>
+                    ) : (
+                      <button
+                        onClick={() => sendOne(lead)}
+                        disabled={!!sending[lead.id]}
+                        className="px-4 py-2 bg-green-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-600 transition-all disabled:opacity-50"
+                      >
+                        {sending[lead.id] ? '...' : '📲 Enviar'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {leads.length === 0 && (
+                <tr><td colSpan={6} className="p-8 text-center text-slate-400 font-bold">🎉 Nenhum lead pendente encontrado.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
