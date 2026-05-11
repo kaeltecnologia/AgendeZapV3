@@ -503,6 +503,28 @@ const App: React.FC = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showInstallTutorial, setShowInstallTutorial] = useState(false);
   const [relatoriosOpen, setRelatoriosOpen] = useState(false);
+  const [sistemaSectionOpen, setSistemaSectionOpen] = useState(false);
+
+  // Global keyboard shortcuts (Alt+key) — active on any screen
+  useEffect(() => {
+    const NAV_SHORTCUTS: Record<string, View> = {
+      a: View.AGENDAMENTOS,
+      c: View.CLIENTES,
+      f: View.FINANCEIRO,
+      m: View.MARKETING,
+      e: View.PROFISSIONAIS,
+      d: View.DASHBOARD,
+    };
+    const handler = (ev: KeyboardEvent) => {
+      if (!ev.altKey) return;
+      const tag = (ev.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const target = NAV_SHORTCUTS[ev.key.toLowerCase()];
+      if (target) { ev.preventDefault(); setCurrentView(target); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
   const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
@@ -1230,12 +1252,35 @@ const App: React.FC = () => {
                 <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'site'} onClick={navTo(() => setSuperAdminTab('site'))} icon={<IconMarketing />} label="Site" />
               </div>
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
-                {!sidebarCollapsed && <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Sistema</p>}
-                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'logs'} onClick={navTo(() => setSuperAdminTab('logs'))} icon={<IconTerminal />} label="Logs" />
-                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
-                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
-                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'config'} onClick={navTo(() => setSuperAdminTab('config'))} icon={<IconSettings />} label="Configurações" />
-                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'testes'} onClick={navTo(() => setSuperAdminTab('testes'))} icon={<IconTerminal />} label="Testes" />
+                {sidebarCollapsed ? (
+                  <>
+                    <NavItem collapsed={true} active={['logs','sql','ia','config','testes'].includes(superAdminTab)} onClick={() => setSistemaSectionOpen(v => !v)} icon={<IconTerminal />} label="Sistema" />
+                    {sistemaSectionOpen && <>
+                      <NavItem collapsed={true} active={superAdminTab === 'logs'} onClick={navTo(() => setSuperAdminTab('logs'))} icon={<IconTerminal />} label="Logs" />
+                      <NavItem collapsed={true} active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
+                      <NavItem collapsed={true} active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
+                      <NavItem collapsed={true} active={superAdminTab === 'config'} onClick={navTo(() => setSuperAdminTab('config'))} icon={<IconSettings />} label="Configurações" />
+                      <NavItem collapsed={true} active={superAdminTab === 'testes'} onClick={navTo(() => setSuperAdminTab('testes'))} icon={<IconTerminal />} label="Testes" />
+                    </>}
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => setSistemaSectionOpen(v => !v)}
+                      className="w-full flex items-center px-4 py-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-all">
+                      <span className="font-black text-[8px] uppercase tracking-[0.2em] flex-1 text-left">Sistema</span>
+                      <span className={`text-[9px] font-black transition-transform duration-200 ${sistemaSectionOpen ? 'rotate-90' : ''}`}>▶</span>
+                    </button>
+                    {sistemaSectionOpen && (
+                      <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
+                        <NavItem collapsed={false} active={superAdminTab === 'logs'} onClick={navTo(() => setSuperAdminTab('logs'))} icon={<IconTerminal />} label="Logs" />
+                        <NavItem collapsed={false} active={superAdminTab === 'sql'} onClick={navTo(() => setSuperAdminTab('sql'))} icon={<IconSettings />} label="Banco SQL" />
+                        <NavItem collapsed={false} active={superAdminTab === 'ia'} onClick={navTo(() => setSuperAdminTab('ia'))} icon={<IconTerminal />} label="IA / Tokens" />
+                        <NavItem collapsed={false} active={superAdminTab === 'config'} onClick={navTo(() => setSuperAdminTab('config'))} icon={<IconSettings />} label="Configurações" />
+                        <NavItem collapsed={false} active={superAdminTab === 'testes'} onClick={navTo(() => setSuperAdminTab('testes'))} icon={<IconTerminal />} label="Testes" />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </>
           ) : (
@@ -1286,28 +1331,11 @@ const App: React.FC = () => {
                 {resellerAllows('financeiro') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />}
                 {resellerAllows('notasFiscais') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />}
                 {resellerAllows('folhaPagamento') && <NavItem collapsed={sidebarCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />}
-                {/* Relatórios */}
-                {resellerAllows('relatorios') && (sidebarCollapsed ? (
-                  <NavItem collapsed={true} active={currentView === View.MARKETING || currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.MARKETING, 'relatorios'))} icon={<IconMarketing />} label="Relatórios" />
-                ) : (
-                  <>
-                    <button
-                      onClick={() => setRelatoriosOpen(v => !v)}
-                      style={(currentView === View.MARKETING || currentView === View.PERFORMANCE) ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 4px 12px var(--accent-glow-strong)' } : undefined}
-                      className={`w-full flex items-center px-4 py-3 rounded-xl transition-all group ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white shadow-none' : 'text-slate-500 hover:bg-slate-100'}`}
-                    >
-                      <span className={`text-xl mr-3 ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-400 group-hover:text-black'}`}><IconMarketing /></span>
-                      <span className={`font-black text-[10px] uppercase tracking-widest flex-1 text-left ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : ''}`}>Relatórios</span>
-                      <span className={`text-[9px] font-black transition-transform duration-200 ${relatoriosOpen ? 'rotate-90' : ''} ${currentView === View.MARKETING || currentView === View.PERFORMANCE ? 'text-white' : 'text-slate-300'}`}>▶</span>
-                    </button>
-                    {relatoriosOpen && (
-                      <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-4">
-                        <NavItem collapsed={false} active={currentView === View.MARKETING} onClick={navTo(() => handleGatedNav(View.MARKETING, 'relatorios'))} icon={<IconMarketing />} label="Marketing" />
-                        <NavItem collapsed={false} active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
-                      </div>
-                    )}
-                  </>
-                ))}
+                {/* Relatórios — sempre visíveis */}
+                {resellerAllows('relatorios') && <>
+                  <NavItem collapsed={sidebarCollapsed} active={currentView === View.MARKETING} onClick={navTo(() => handleGatedNav(View.MARKETING, 'relatorios'))} icon={<IconMarketing />} label="Marketing" />
+                  <NavItem collapsed={sidebarCollapsed} active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
+                </>}
               </div>
 
               {/* ── Base ── */}
@@ -1635,8 +1663,29 @@ const App: React.FC = () => {
 
       {isAuthenticated && role === 'TENANT' && tenantId && (
         <>
-          {/* Floating Tutorials button */}
-          <div className="fixed bottom-24 right-6 z-50">
+          {/* Floating Tutorials button + shortcut hints */}
+          <div className="fixed bottom-24 right-6 z-50 group/tut flex flex-col items-end gap-2">
+            {/* Shortcut tooltip — visible on hover */}
+            <div className="pointer-events-none opacity-0 group-hover/tut:opacity-100 group-hover/tut:pointer-events-auto transition-all duration-200 translate-y-1 group-hover/tut:translate-y-0">
+              <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-3 w-48 mb-1">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Atalhos de Teclado</p>
+                <div className="space-y-1.5">
+                  {[
+                    { key: 'D', label: 'Dashboard' },
+                    { key: 'A', label: 'Agenda' },
+                    { key: 'C', label: 'Clientes' },
+                    { key: 'F', label: 'Financeiro' },
+                    { key: 'M', label: 'Marketing' },
+                    { key: 'E', label: 'Equipe' },
+                  ].map(s => (
+                    <div key={s.key} className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-300">{s.label}</span>
+                      <kbd className="inline-flex items-center justify-center px-1.5 h-5 bg-slate-700 rounded text-[10px] font-black text-slate-200 tracking-tight">Alt+{s.key}</kbd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
             <button
               onClick={() => setShowTutorials(true)}
               title="Tutoriais"

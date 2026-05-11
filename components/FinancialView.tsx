@@ -244,10 +244,10 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       {/* Tabs */}
       <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 overflow-x-auto w-full sm:w-fit">
         {([
-          { key: 'visao', label: 'Visão', labelFull: 'Visão Financeira', gated: false },
-          { key: 'profissionais', label: 'Profissionais', labelFull: 'Profissionais', gated: false },
-          { key: 'caixa', label: 'Caixa', labelFull: 'Caixa', gated: !hasCaixa },
-          { key: 'config', label: 'Config', labelFull: 'Configurações', gated: !hasCaixa },
+          { key: 'visao', label: 'Resumo', labelFull: 'Resumo Geral', gated: false },
+          { key: 'caixa', label: 'Caixa', labelFull: 'Caixa Diária', gated: !hasCaixa },
+          { key: 'profissionais', label: 'Profissionais', labelFull: 'Por Profissional', gated: false },
+          { key: 'config', label: 'Taxas', labelFull: 'Taxas & Metas', gated: !hasCaixa },
         ] as const).map(t => (
           <button
             key={t.key}

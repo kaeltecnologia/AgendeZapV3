@@ -44,6 +44,9 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [intervalMode, setIntervalMode] = useState<'recurring' | 'specific'>('recurring');
   const [editingIntervalId, setEditingIntervalId] = useState<string | null>(null);
 
+  const [expandedProId, setExpandedProId] = useState<string | null>(null);
+  const [expandedProTab, setExpandedProTab] = useState<'horarios' | 'desempenho'>('horarios');
+
   const [ausenciaPro, setAusenciaPro] = useState<Professional | null>(null);
   const [ausenciaDate, setAusenciaDate] = useState('');
   const [ausenciaStart, setAusenciaStart] = useState('');
@@ -503,39 +506,84 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                   </div>
                 ))}
               </div>
-              <div className="border-t-2 border-slate-50 pt-4 space-y-2">
-                <div className="flex gap-2">
-                  <button onClick={() => openLunch(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
-                    🍽️ Almoço
-                  </button>
-                  <button onClick={() => openInterval(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
-                    ⏸️ Intervalo
-                  </button>
-                  <button onClick={() => openVacation(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
-                    🌴 Férias
-                  </button>
+              {/* ── Painel com abas por profissional ── */}
+              <div className="border-t-2 border-slate-50 pt-4 space-y-3">
+                {/* Tab selector */}
+                <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                  {(['horarios', 'desempenho'] as const).map(t => (
+                    <button key={t} onClick={() => { setExpandedProId(p.id); setExpandedProTab(t); }}
+                      className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${expandedProId === p.id && expandedProTab === t ? 'bg-white text-black shadow-sm' : 'text-slate-400 hover:text-black'}`}>
+                      {t === 'horarios' ? '🕒 Horários' : '📊 Desempenho'}
+                    </button>
+                  ))}
                 </div>
-                <button onClick={() => openAusencia(p)} className="w-full flex items-center justify-center gap-1.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
-                  🚨 Ausência Pontual
-                </button>
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); }}
-                      className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
-                      📝 Editar
+
+                {/* Tab: Horários */}
+                {(expandedProId !== p.id || expandedProTab === 'horarios') && (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <button onClick={() => openLunch(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                        🍽️ Almoço
+                      </button>
+                      <button onClick={() => openInterval(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                        ⏸️ Intervalo
+                      </button>
+                      <button onClick={() => openVacation(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                        🌴 Férias
+                      </button>
+                    </div>
+                    <button onClick={() => openAusencia(p)} className="w-full flex items-center justify-center gap-1.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                      🚨 Ausência Pontual
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); setDeleteProId(p.id); }}
-                      title="Excluir profissional"
-                      className="text-red-400 hover:text-red-600 transition-colors">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                      </svg>
-                    </button>
+                    <div className="flex justify-between items-center pt-1">
+                      <div className="flex items-center gap-3">
+                        <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); }}
+                          className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
+                          📝 Editar
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeleteProId(p.id); }}
+                          title="Excluir profissional"
+                          className="text-red-400 hover:text-red-600 transition-colors">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <button onClick={() => { setSelectedProForReport(p); setReportTab('appointments'); }} className="text-[10px] font-black text-orange-500 uppercase tracking-widest hover:tracking-wider transition-all">
-                    Ver Desempenho →
-                  </button>
-                </div>
+                )}
+
+                {/* Tab: Desempenho inline */}
+                {expandedProId === p.id && expandedProTab === 'desempenho' && (() => {
+                  const now = new Date();
+                  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                  const proAppts = allAppointments.filter(a => a.professional_id === p.id && new Date(a.startTime) >= monthStart);
+                  const finished = proAppts.filter(a => a.status === AppointmentStatus.FINISHED);
+                  const revenue = finished.reduce((s, a) => s + (a.amountPaid || 0), 0);
+                  const pending = proAppts.filter(a => a.status === AppointmentStatus.PENDING || a.status === AppointmentStatus.CONFIRMED).length;
+                  return (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-slate-50 rounded-xl p-3 text-center">
+                          <p className="text-xl font-black text-black">{proAppts.length}</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Agendamentos</p>
+                        </div>
+                        <div className="bg-green-50 rounded-xl p-3 text-center">
+                          <p className="text-xl font-black text-green-700">R${revenue.toFixed(0)}</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Receita</p>
+                        </div>
+                        <div className="bg-orange-50 rounded-xl p-3 text-center">
+                          <p className="text-xl font-black text-orange-700">{pending}</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Pendentes</p>
+                        </div>
+                      </div>
+                      <button onClick={() => { setSelectedProForReport(p); setReportTab('appointments'); }}
+                        className="w-full py-2 bg-black text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-orange-500 transition-all">
+                        Ver Relatório Completo →
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           );

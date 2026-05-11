@@ -42,12 +42,28 @@ const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?
         </div>
       </div>
 
-      {/* Tab switcher */}
-      <div className="flex gap-2 bg-slate-50 p-1.5 rounded-2xl w-fit border border-slate-100">
-        <TabBtn active={tab === 'whatsapp'} onClick={() => setTab('whatsapp')} icon="📱" label="WhatsApp" />
-        <TabBtn active={tab === 'agente'}   onClick={() => setTab('agente')}   icon="🤖" label="Agente IA" />
-        <TabBtn active={tab === 'instagram'} onClick={() => setTab('instagram')} icon="📸" label="Instagram" />
-        <TabBtn active={tab === 'linkweb'}  onClick={() => setTab('linkweb')}  icon="🔗" label="Link Web" />
+      {/* Tab switcher — dois grupos */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Grupo: Integrações */}
+        <div className="flex flex-col gap-1">
+          {!false && <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Integrações</p>}
+          <div className="flex gap-1.5 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+            <TabBtn active={tab === 'whatsapp'} onClick={() => setTab('whatsapp')} icon="📱" label="WhatsApp" />
+            <TabBtn active={tab === 'agente'}   onClick={() => setTab('agente')}   icon="🤖" label="Agente IA" />
+            <TabBtn active={tab === 'instagram'} onClick={() => setTab('instagram')} icon="📸" label="Instagram" />
+          </div>
+        </div>
+        {/* Divisor */}
+        <div className="hidden sm:flex flex-col items-center self-end pb-2">
+          <div className="w-px h-8 bg-slate-200" />
+        </div>
+        {/* Grupo: Aparência */}
+        <div className="flex flex-col gap-1">
+          <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Aparência</p>
+          <div className="flex gap-1.5 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+            <TabBtn active={tab === 'linkweb'} onClick={() => setTab('linkweb')} icon="🎨" label="Link de Agendamento" />
+          </div>
+        </div>
       </div>
 
       {/* Content */}

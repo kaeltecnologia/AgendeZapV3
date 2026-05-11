@@ -108,6 +108,15 @@ const AnimatedNumber: React.FC<{ value: number; prefix?: string; suffix?: string
 };
 
 
+const SHORTCUTS: { key: string; label: string; view: string }[] = [
+  { key: 'D', label: 'Dashboard', view: 'DASHBOARD' },
+  { key: 'A', label: 'Agenda', view: 'AGENDAMENTOS' },
+  { key: 'C', label: 'Clientes', view: 'CLIENTES' },
+  { key: 'F', label: 'Financeiro', view: 'FINANCEIRO' },
+  { key: 'M', label: 'Marketing', view: 'MARKETING' },
+  { key: 'E', label: 'Equipe', view: 'PROFISSIONAIS' },
+];
+
 const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: (view: string) => void }> = ({ tenantId, tenantName, onNavigate }) => {
   const accent = useAccent();
   const isPink = accent.includes('ec4899') || accent.includes('pink');

@@ -188,16 +188,20 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
 
       {/* Tabs */}
       <div className="flex bg-slate-100 p-1 sm:p-2 rounded-[30px] shadow-sm overflow-x-auto">
-        {(Object.entries(TAB_CONFIG) as [ModeTab, typeof TAB_CONFIG[ModeTab]][]).map(([key, c]) => (
-          <Tab key={key} active={activeTab === key} onClick={() => {
-            if (key === 'reativacao' && !hasFeature(tenantPlan, 'reativacao')) {
+        {(Object.entries(TAB_CONFIG) as [ModeTab, typeof TAB_CONFIG[ModeTab]][]).map(([key, c]) => {
+          const tabModes = key === 'aviso' ? avisoModes : key === 'lembrete' ? lembreteModes : reativacaoModes;
+          const activeCount = tabModes.filter(m => m.active).length;
+          return (
+            <Tab key={key} active={activeTab === key} count={activeCount} onClick={() => {
+              if (key === 'reativacao' && !hasFeature(tenantPlan, 'reativacao')) {
+                setActiveTab(key);
+                onUpgrade?.('reativacao');
+                return;
+              }
               setActiveTab(key);
-              onUpgrade?.('reativacao');
-              return;
-            }
-            setActiveTab(key);
-          }} label={c.label} icon={c.icon} />
-        ))}
+            }} label={c.label} icon={c.icon} />
+          );
+        })}
         <Tab key="avaliacao" active={activeTab === 'avaliacao'} onClick={() => {
           if (!hasFeature(tenantPlan, 'reativacao')) {
             setActiveTab('avaliacao');
@@ -554,10 +558,15 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
   );
 };
 
-const Tab = ({ active, onClick, label, icon }: any) => (
-  <button onClick={onClick} className={`flex-1 py-4 px-4 rounded-[24px] flex items-center justify-center space-x-2 transition-all ${active ? 'bg-white text-black shadow-xl font-black scale-105 z-10' : 'text-slate-400 font-bold hover:text-black'}`}>
+const Tab = ({ active, onClick, label, icon, count }: any) => (
+  <button onClick={onClick} className={`flex-1 py-4 px-4 rounded-[24px] flex items-center justify-center gap-2 transition-all ${active ? 'bg-white text-black shadow-xl font-black scale-105 z-10' : 'text-slate-400 font-bold hover:text-black'}`}>
     <span className="text-lg">{icon}</span>
     <span className="text-[9px] uppercase tracking-widest hidden sm:block">{label}</span>
+    {count > 0 && (
+      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none ${active ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+        {count}
+      </span>
+    )}
   </button>
 );
 
