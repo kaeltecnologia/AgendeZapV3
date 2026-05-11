@@ -18,6 +18,7 @@ import CampaignsStatusView from './CampaignsStatusView';
 import CentralPollingManager from './CentralPollingManager';
 import TestRunnerPanel from './TestRunnerPanel';
 import { MarketplaceLead, CashbackBalance } from '../types';
+import { SiteContent, SITE_DEFAULTS } from '../config/siteConfig';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ interface AdminLog {
   detail: string;
 }
 
-type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'testes';
+type Tab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'testes' | 'site';
 
 const STATUS_COLORS: Record<string, string> = {
   [TenantStatus.ACTIVE]: '#22c55e',
@@ -2128,6 +2129,11 @@ END $$;`.trim();
         <TestRunnerPanel tenants={tenants} />
       )}
 
+      {/* ══════════════════════ SITE ══════════════════════ */}
+      {tab === 'site' && (
+        <SiteTab />
+      )}
+
       {/* ══════════════════════ MODALS ══════════════════════ */}
 
       {/* New tenant modal */}
@@ -3142,7 +3148,7 @@ const LeadsTab: React.FC = () => {
 type PendingLead = { id: string; nome: string; phone: string; email: string; createdAt: string; type: 'form' | 'checkout' };
 
 const MSG_FORM = (nome: string) =>
-  `Olá, ${nome}! 👋\n\nAqui é o Matheus Moura, da equipe de suporte do AgendeZap!\n\nVi que você acabou de criar sua conta — seja muito bem-vindo! 🎉\n\nEstou aqui para te ajudar a dar os primeiros passos e tirar qualquer dúvida. Qualquer coisa é só chamar! 😊`;
+  `Olá, ${nome}! Aqui é o Matheus Moura, da equipe de suporte do AgendeZap! 😊\n\nVi que você se cadastrou na nossa plataforma e entrei em contato para entender melhor o que você precisa e tirar qualquer dúvida antes de começar.\n\nPode me contar um pouco sobre o seu negócio? Assim consigo te ajudar da melhor forma possível!`;
 
 const MSG_CHECKOUT = (nome: string) =>
   `Olá, ${nome}! Me chamo Matheus Moura, faço parte da equipe de suporte do AgendeZap. Vi que você tem interesse no AgendeZap mas não finalizou o pagamento, estou para entender a melhor forma para te ter como cliente! 😊\n\nPosso te ajudar com alguma dúvida ou oferecer alguma condição especial?`;
@@ -3716,6 +3722,529 @@ const WhiteLabelAdminTab: React.FC = () => {
           </table>
         </div>
       )}
+    </div>
+  );
+};
+
+// ── Site Admin ───────────────────────────────────────────────────────────────
+
+const SiteField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="space-y-1">
+    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1 block">{label}</label>
+    {children}
+  </div>
+);
+
+interface SiteLead {
+  id: string; nome: string; phone: string; email: string;
+  createdAt: string; type: 'form' | 'checkout';
+}
+
+const SitePainelView: React.FC = () => {
+  const [leads, setLeads] = useState<SiteLead[]>([]);
+  const [kpis, setKpis] = useState({ total: 0, active: 0, formOnly: 0, checkout: 0 });
+  const [chartData, setChartData] = useState<{ month: string; cadastros: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'checkout' | 'form' | 'all'>('checkout');
+  const [sending, setSending] = useState<Record<string, boolean>>({});
+  const [sent, setSent] = useState<Record<string, boolean>>({});
+  const [bulkSending, setBulkSending] = useState(false);
+  const [centralInstance, setCentralInstance] = useState('central_AgendeZap');
+
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [globalCfg, tenantsRes, settingsRes] = await Promise.all([
+        db.getGlobalConfig(),
+        supabase.from('tenants').select('id, nome, phone, email, created_at, status').order('created_at', { ascending: false }),
+        supabase.from('tenant_settings').select('tenant_id, follow_up'),
+      ]);
+
+      setCentralInstance(globalCfg['central_instance'] || 'central_AgendeZap');
+
+      const settingsMap: Record<string, any> = {};
+      (settingsRes.data || []).forEach((s: any) => { settingsMap[s.tenant_id] = s.follow_up || {}; });
+
+      const all = tenantsRes.data || [];
+      const pending = all.filter((t: any) => t.status === 'PAGAMENTO PENDENTE');
+
+      setKpis({
+        total: all.length,
+        active: all.filter((t: any) => t.status === 'ATIVA').length,
+        formOnly: pending.filter((t: any) => !settingsMap[t.id]?._asaasSubscriptionId).length,
+        checkout: pending.filter((t: any) => !!settingsMap[t.id]?._asaasSubscriptionId).length,
+      });
+
+      setLeads(
+        pending.filter((t: any) => !!t.phone).map((t: any): SiteLead => ({
+          id: t.id,
+          nome: t.nome || '(sem nome)',
+          phone: t.phone,
+          email: t.email || '',
+          createdAt: t.created_at,
+          type: settingsMap[t.id]?._asaasSubscriptionId ? 'checkout' : 'form',
+        }))
+      );
+
+      // chart: last 6 months
+      const months: { key: string; label: string; cadastros: number }[] = [];
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({
+          key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+          label: d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+          cadastros: 0,
+        });
+      }
+      all.forEach((t: any) => {
+        const key = (t.created_at || '').slice(0, 7);
+        const m = months.find(x => x.key === key);
+        if (m) m.cadastros++;
+      });
+      setChartData(months.map(m => ({ month: m.label, cadastros: m.cadastros })));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendWA = async (lead: SiteLead) => {
+    if (sent[lead.id] || sending[lead.id]) return;
+    setSending(s => ({ ...s, [lead.id]: true }));
+    try {
+      const msg = lead.type === 'checkout' ? MSG_CHECKOUT(lead.nome) : MSG_FORM(lead.nome);
+      await evolutionService.sendMessage(centralInstance, lead.phone.replace(/\D/g, ''), msg);
+      setSent(s => ({ ...s, [lead.id]: true }));
+    } catch (e) {
+      console.error('[SitePanel] WhatsApp error:', e);
+    } finally {
+      setSending(s => ({ ...s, [lead.id]: false }));
+    }
+  };
+
+  const sendBulk = async () => {
+    const targets = filtered.filter(l => !sent[l.id]);
+    if (!targets.length || bulkSending) return;
+    setBulkSending(true);
+    for (const lead of targets) {
+      await sendWA(lead);
+      await new Promise(r => setTimeout(r, 3500));
+    }
+    setBulkSending(false);
+  };
+
+  const filtered = leads.filter(l =>
+    filter === 'all' ? true : l.type === filter
+  );
+  const convRate = kpis.total > 0 ? ((kpis.active / kpis.total) * 100).toFixed(1) : '0';
+
+  if (loading) return <div className="p-12 text-center text-slate-400 font-bold text-sm">Carregando painel...</div>;
+
+  return (
+    <div className="space-y-5">
+
+      {/* KPIs */}
+      <div className="grid grid-cols-5 gap-3">
+        {([
+          { label: 'Total Cadastros', value: kpis.total, col: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200' },
+          { label: 'Clientes Ativos', value: kpis.active, col: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
+          { label: 'Taxa de Conversão', value: `${convRate}%`, col: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
+          { label: 'Só Formulário', value: kpis.formOnly, col: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+          { label: 'Checkout Abandonado', value: kpis.checkout, col: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+        ] as any[]).map((k, i) => (
+          <div key={i} className={`${k.bg} border ${k.border} rounded-2xl p-4`}>
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 leading-tight">{k.label}</p>
+            <p className={`text-3xl font-black ${k.col} mt-1.5`}>{k.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Chart */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5">
+        <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-4">Cadastros por Mês</p>
+        <ResponsiveContainer width="100%" height={140}>
+          <BarChart data={chartData} barSize={36}>
+            <XAxis dataKey="month" tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis hide allowDecimals={false} />
+            <Tooltip
+              contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, fontSize: 12, fontWeight: 700 }}
+              formatter={(v: any) => [v, 'cadastros']}
+            />
+            <Bar dataKey="cadastros" fill="#f97316" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Leads table */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            {([
+              { key: 'checkout' as const, label: '🛒 Checkout Abandonado', count: kpis.checkout },
+              { key: 'form' as const, label: '📝 Só Formulário', count: kpis.formOnly },
+              { key: 'all' as const, label: 'Todos', count: leads.length },
+            ]).map(t => (
+              <button key={t.key} onClick={() => setFilter(t.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  filter === t.key ? 'bg-black text-white' : 'bg-slate-100 text-slate-500 hover:text-black'
+                }`}>
+                {t.label}
+                <span className={`inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black ${
+                  filter === t.key ? 'bg-white text-black' : 'bg-slate-300 text-slate-600'
+                }`}>{t.count}</span>
+              </button>
+            ))}
+            <button onClick={loadData} className="ml-1 text-[10px] text-slate-400 hover:text-black font-bold">↻</button>
+          </div>
+          {filtered.filter(l => !sent[l.id]).length > 0 && (
+            <button onClick={sendBulk} disabled={bulkSending}
+              className="px-4 py-2 bg-green-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-green-700 disabled:opacity-50 transition-all">
+              {bulkSending ? 'Enviando...' : `📲 Disparar para ${filtered.filter(l => !sent[l.id]).length}`}
+            </button>
+          )}
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 font-bold text-sm">Nenhum lead nesta categoria</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  {['Nome', 'WhatsApp', 'Email', 'Cadastro', 'Tipo', 'Ação'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-[9px] font-black uppercase tracking-widest text-slate-400">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(lead => (
+                  <tr key={lead.id} className={`border-b border-slate-50 transition-colors ${sent[lead.id] ? 'bg-green-50' : 'hover:bg-slate-50'}`}>
+                    <td className="px-4 py-3 font-bold text-slate-800 text-sm">{lead.nome}</td>
+                    <td className="px-4 py-3 text-xs font-mono text-slate-600">{lead.phone}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{lead.email || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-slate-400">{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide ${
+                        lead.type === 'checkout' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {lead.type === 'checkout' ? '🛒 Checkout' : '📝 Formulário'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {sent[lead.id] ? (
+                        <span className="text-[10px] font-black text-green-600">✓ Enviado</span>
+                      ) : (
+                        <button onClick={() => sendWA(lead)} disabled={sending[lead.id]}
+                          className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-black rounded-lg hover:bg-green-700 disabled:opacity-50 transition-all">
+                          {sending[lead.id] ? '...' : '📲 WA'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── Site Content Editor ───────────────────────────────────────────────────────
+
+const SiteConteudoView: React.FC = () => {
+  const [content, setContent] = useState<SiteContent>(SITE_DEFAULTS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [section, setSection] = useState<'geral' | 'hero' | 'recursos' | 'numeros' | 'planos' | 'form'>('geral');
+
+  useEffect(() => {
+    (async () => {
+      const cfg = await db.getGlobalConfig();
+      const raw = cfg['site_content'];
+      if (raw) {
+        try { setContent(c => ({ ...c, ...JSON.parse(raw) })); } catch {}
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await db.saveGlobalConfig({ site_content: JSON.stringify(content) });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally { setSaving(false); }
+  };
+
+  const upd = <K extends keyof SiteContent>(key: K, value: SiteContent[K]) =>
+    setContent(c => ({ ...c, [key]: value }));
+
+  if (loading) return <div className="p-8 text-center text-slate-400 font-bold text-sm">Carregando conteúdo do site...</div>;
+
+  const sections = [
+    { key: 'geral' as const, label: '⚙️ Geral' },
+    { key: 'hero' as const, label: '🦸 Hero' },
+    { key: 'recursos' as const, label: '🧩 Recursos' },
+    { key: 'numeros' as const, label: '📊 Números' },
+    { key: 'planos' as const, label: '💳 Planos' },
+    { key: 'form' as const, label: '📝 Formulário' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-black uppercase tracking-tight">Editor do Site</h2>
+          <p className="text-xs text-slate-400 font-semibold mt-1">Controle todo o conteúdo da landing page pública</p>
+        </div>
+        <button
+          onClick={save}
+          disabled={saving}
+          className={`px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${
+            saved ? 'bg-green-500 text-white' : 'bg-black text-white hover:bg-orange-500'
+          } disabled:opacity-50`}
+        >
+          {saved ? '✓ Salvo!' : saving ? 'Salvando...' : 'Salvar Alterações'}
+        </button>
+      </div>
+
+      {/* Section tabs */}
+      <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-1 flex-wrap">
+        {sections.map(t => (
+          <button key={t.key} onClick={() => setSection(t.key)}
+            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+              section === t.key ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'
+            }`}>{t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+
+        {/* ── GERAL ── */}
+        {section === 'geral' && <>
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Configurações Gerais</p>
+          <SiteField label="Nome da marca">
+            <input value={content.brandName} onChange={e => upd('brandName', e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+          </SiteField>
+          <SiteField label="Cor primária">
+            <div className="flex items-center gap-3">
+              <input type="color" value={content.primaryColor} onChange={e => upd('primaryColor', e.target.value)}
+                className="w-12 h-12 rounded-xl border border-slate-200 cursor-pointer p-1" />
+              <input value={content.primaryColor} onChange={e => upd('primaryColor', e.target.value)}
+                className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold font-mono" />
+            </div>
+          </SiteField>
+          <SiteField label="Texto do botão na navbar">
+            <input value={content.navCta} onChange={e => upd('navCta', e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+          </SiteField>
+          <SiteField label="Texto do footer">
+            <input value={content.footerText} onChange={e => upd('footerText', e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm" />
+          </SiteField>
+        </>}
+
+        {/* ── HERO ── */}
+        {section === 'hero' && <>
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Seção Hero (topo da página)</p>
+          <SiteField label="Título principal">
+            <textarea value={content.heroTitle} onChange={e => upd('heroTitle', e.target.value)} rows={2}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold resize-none" />
+          </SiteField>
+          <SiteField label="Descrição / subtítulo">
+            <textarea value={content.heroSubtitle} onChange={e => upd('heroSubtitle', e.target.value)} rows={3}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm resize-none" />
+          </SiteField>
+          <div className="grid grid-cols-2 gap-4">
+            <SiteField label="Texto do botão CTA">
+              <input value={content.heroCta} onChange={e => upd('heroCta', e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+            </SiteField>
+            <SiteField label="Selos de confiança (separados por vírgula)">
+              <input
+                value={content.heroTrustBadges.join(', ')}
+                onChange={e => upd('heroTrustBadges', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm"
+                placeholder="Sem complicação, Sem contrato, Garantia de 7 dias"
+              />
+            </SiteField>
+          </div>
+        </>}
+
+        {/* ── RECURSOS ── */}
+        {section === 'recursos' && <>
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Seção de Recursos</p>
+          <div className="grid grid-cols-2 gap-4">
+            <SiteField label="Título da seção">
+              <input value={content.featuresTitle} onChange={e => upd('featuresTitle', e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+            </SiteField>
+            <SiteField label="Subtítulo">
+              <input value={content.featuresSubtitle} onChange={e => upd('featuresSubtitle', e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm" />
+            </SiteField>
+          </div>
+          <div className="space-y-3">
+            {content.features.map((f, i) => (
+              <div key={i} className="bg-slate-50 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Card {i + 1}</span>
+                  {content.features.length > 1 && (
+                    <button onClick={() => upd('features', content.features.filter((_, j) => j !== i))}
+                      className="ml-auto text-[10px] text-red-400 hover:text-red-600 font-bold">Remover</button>
+                  )}
+                </div>
+                <div className="grid grid-cols-5 gap-3">
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Emoji</label>
+                    <input value={f.icon} maxLength={4}
+                      onChange={e => upd('features', content.features.map((x, j) => j === i ? { ...x, icon: e.target.value } : x))}
+                      className="w-full px-2 py-2 rounded-lg border border-slate-200 text-center text-xl" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Título</label>
+                    <input value={f.title}
+                      onChange={e => upd('features', content.features.map((x, j) => j === i ? { ...x, title: e.target.value } : x))}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Descrição</label>
+                    <input value={f.desc}
+                      onChange={e => upd('features', content.features.map((x, j) => j === i ? { ...x, desc: e.target.value } : x))}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            {content.features.length < 6 && (
+              <button
+                onClick={() => upd('features', [...content.features, { icon: '⭐', title: 'Novo recurso', desc: 'Descrição do recurso aqui.' }])}
+                className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:border-orange-300 hover:text-orange-500 transition-colors"
+              >+ Adicionar card</button>
+            )}
+          </div>
+        </>}
+
+        {/* ── NÚMEROS ── */}
+        {section === 'numeros' && <>
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Prova Social — Números em destaque</p>
+          <div className="space-y-3">
+            {content.stats.map((s, i) => (
+              <div key={i} className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl">
+                <SiteField label={`Valor ${i + 1} (ex: 500+)`}>
+                  <input value={s.value}
+                    onChange={e => upd('stats', content.stats.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-black" />
+                </SiteField>
+                <SiteField label="Rótulo">
+                  <input value={s.label}
+                    onChange={e => upd('stats', content.stats.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm" />
+                </SiteField>
+              </div>
+            ))}
+          </div>
+        </>}
+
+        {/* ── PLANOS ── */}
+        {section === 'planos' && <>
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Seção de Planos</p>
+          <div className="grid grid-cols-3 gap-4">
+            <SiteField label="Título da seção">
+              <input value={content.pricingTitle} onChange={e => upd('pricingTitle', e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+            </SiteField>
+            <SiteField label="Preço base em destaque (ex: 39,90)">
+              <input value={content.pricingBasePrice} onChange={e => upd('pricingBasePrice', e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-black" />
+            </SiteField>
+            <SiteField label="Subtítulo">
+              <input value={content.pricingSubtitle} onChange={e => upd('pricingSubtitle', e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm" />
+            </SiteField>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            {content.plans.map((p, i) => (
+              <div key={i} className={`bg-slate-50 rounded-xl p-4 space-y-3 ${p.highlight ? 'ring-2 ring-orange-400' : ''}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Plano {i + 1}</span>
+                  <label className="flex items-center gap-1 text-[10px] font-bold cursor-pointer">
+                    <input type="checkbox" checked={p.highlight}
+                      onChange={e => upd('plans', content.plans.map((x, j) => j === i ? { ...x, highlight: e.target.checked } : x))} />
+                    <span className="text-orange-500">Destaque</span>
+                  </label>
+                </div>
+                <SiteField label="Nome do plano">
+                  <input value={p.name}
+                    onChange={e => upd('plans', content.plans.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-black" />
+                </SiteField>
+                <SiteField label="Preço (ex: 39,90)">
+                  <input value={p.price}
+                    onChange={e => upd('plans', content.plans.map((x, j) => j === i ? { ...x, price: e.target.value } : x))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                </SiteField>
+                <SiteField label="Benefícios (separados por vírgula)">
+                  <textarea value={p.features.join(', ')} rows={3}
+                    onChange={e => upd('plans', content.plans.map((x, j) => j === i ? { ...x, features: e.target.value.split(',').map(s => s.trim()).filter(Boolean) } : x))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs resize-none" />
+                </SiteField>
+              </div>
+            ))}
+          </div>
+        </>}
+
+        {/* ── FORMULÁRIO ── */}
+        {section === 'form' && <>
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Seção de Cadastro</p>
+          <SiteField label="Título do formulário">
+            <input value={content.formTitle} onChange={e => upd('formTitle', e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+          </SiteField>
+          <SiteField label="Subtítulo">
+            <input value={content.formSubtitle} onChange={e => upd('formSubtitle', e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm" />
+          </SiteField>
+          <SiteField label="Selos de confiança (separados por vírgula)">
+            <input
+              value={content.formTrustBadges.join(', ')}
+              onChange={e => upd('formTrustBadges', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm"
+              placeholder="Pagamento seguro, Sem contrato, Reembolso em até 7 dias"
+            />
+          </SiteField>
+        </>}
+
+      </div>
+    </div>
+  );
+};
+
+const SiteTab: React.FC = () => {
+  const [view, setView] = useState<'painel' | 'conteudo'>('painel');
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-1 w-fit">
+        <button onClick={() => setView('painel')}
+          className={`px-5 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${view === 'painel' ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}>
+          📊 Painel
+        </button>
+        <button onClick={() => setView('conteudo')}
+          className={`px-5 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${view === 'conteudo' ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}>
+          ✏️ Conteúdo do Site
+        </button>
+      </div>
+      {view === 'painel' && <SitePainelView />}
+      {view === 'conteudo' && <SiteConteudoView />}
     </div>
   );
 };

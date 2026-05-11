@@ -1,4 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { supabase } from '../services/supabase';
+import { SiteContent, SITE_DEFAULTS } from '../config/siteConfig';
 
 interface Props {
   referralName?: string;
@@ -14,7 +16,25 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [site, setSite] = useState<SiteContent>(SITE_DEFAULTS);
   const formRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('global_settings')
+          .select('value')
+          .eq('key', 'site_content')
+          .maybeSingle();
+        if (data?.value) {
+          setSite(s => ({ ...s, ...JSON.parse(data.value) }));
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const color = site.primaryColor || '#f97316';
 
   const scrollToForm = () => {
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,12 +62,12 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       {/* ── NAVBAR ────────────────────────────────────────────── */}
       <nav style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(255,255,255,0.97)', borderBottom: '1px solid #e5e5e5', backdropFilter: 'blur(8px)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 22, fontWeight: 900, fontStyle: 'italic', letterSpacing: '-0.5px', color: '#111' }}>AgendeZap</span>
+          <span style={{ fontSize: 22, fontWeight: 900, fontStyle: 'italic', letterSpacing: '-0.5px', color: '#111' }}>{site.brandName}</span>
           <button
             onClick={scrollToForm}
-            style={{ padding: '10px 24px', background: '#f97316', color: '#fff', fontWeight: 700, borderRadius: 999, fontSize: 14, border: 'none', cursor: 'pointer', boxShadow: '0 4px 14px rgba(249,115,22,0.3)' }}
+            style={{ padding: '10px 24px', background: color, color: '#fff', fontWeight: 700, borderRadius: 999, fontSize: 14, border: 'none', cursor: 'pointer', boxShadow: `0 4px 14px ${color}55` }}
           >
-            Criar Conta
+            {site.navCta}
           </button>
         </div>
       </nav>
@@ -74,19 +94,19 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
           {/* Left — Text */}
           <div style={{ flex: '1 1 480px', minWidth: 300 }}>
             <h2 style={{ fontSize: 'clamp(32px, 5vw, 52px)', fontWeight: 900, color: '#111111', lineHeight: 1.08, letterSpacing: '-1px', margin: '0 0 24px' }}>
-              Sistema de agendamento pelo WhatsApp para seu negócio
+              {site.heroTitle}
             </h2>
             <p style={{ fontSize: 18, color: '#555555', lineHeight: 1.7, margin: '0 0 32px', maxWidth: 500 }}>
-              AgendeZap: sistema completo para barbearias, salões de beleza, manicures, cabeleireiros e esteticistas. Agenda inteligente com IA, relatórios financeiros em tempo real e controle total do seu negócio.
+              {site.heroSubtitle}
             </p>
             <button
               onClick={scrollToForm}
-              style={{ padding: '16px 36px', background: '#f97316', color: '#fff', fontWeight: 900, borderRadius: 999, fontSize: 16, border: 'none', cursor: 'pointer', boxShadow: '0 8px 24px rgba(249,115,22,0.35)', letterSpacing: '0.5px', textTransform: 'uppercase' as const }}
+              style={{ padding: '16px 36px', background: color, color: '#fff', fontWeight: 900, borderRadius: 999, fontSize: 16, border: 'none', cursor: 'pointer', boxShadow: `0 8px 24px ${color}55`, letterSpacing: '0.5px', textTransform: 'uppercase' as const }}
             >
-              Começar Agora
+              {site.heroCta}
             </button>
             <div style={{ display: 'flex', gap: 24, marginTop: 20, flexWrap: 'wrap' as const }}>
-              {['Sem complicação', 'Sem contrato', 'Garantia de 7 dias'].map((t, i) => (
+              {site.heroTrustBadges.map((t, i) => (
                 <span key={i} style={{ fontSize: 14, color: '#666', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ color: '#22c55e', fontWeight: 700 }}>&#10003;</span> {t}
                 </span>
@@ -102,7 +122,7 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
                   <span style={{ color: '#16a34a', fontSize: 18 }}>&#9993;</span>
                 </div>
                 <div>
-                  <p style={{ fontSize: 10, fontWeight: 800, color: '#16a34a', textTransform: 'uppercase' as const, letterSpacing: 1.5, margin: 0 }}>IA AgendeZap</p>
+                  <p style={{ fontSize: 10, fontWeight: 800, color: '#16a34a', textTransform: 'uppercase' as const, letterSpacing: 1.5, margin: 0 }}>IA {site.brandName}</p>
                   <p style={{ fontSize: 14, fontWeight: 700, color: '#222', margin: '2px 0 0' }}>Agendamento confirmado para Maria às 14:00!</p>
                 </div>
               </div>
@@ -128,19 +148,14 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       <section style={{ padding: '80px 24px', background: '#f8f8f8' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <h3 style={{ fontSize: 'clamp(26px, 4vw, 40px)', fontWeight: 900, color: '#111', textAlign: 'center', margin: '0 0 12px' }}>
-            Tudo que seu negócio precisa
+            {site.featuresTitle}
           </h3>
           <p style={{ fontSize: 16, color: '#777', textAlign: 'center', margin: '0 auto 48px', maxWidth: 500 }}>
-            O sistema completo para transformar seu negócio com inteligência artificial
+            {site.featuresSubtitle}
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20 }}>
-            {[
-              { icon: '🤖', title: 'Agendamento com IA', desc: 'Seus clientes agendam pelo WhatsApp com IA. 24h por dia, sem precisar atender.' },
-              { icon: '📊', title: 'Dashboard Inteligente', desc: 'Visão geral do seu negócio em tempo real: faturamento, agendamentos e crescimento.' },
-              { icon: '💰', title: 'Gestão Financeira', desc: 'Controle de caixa, comandas, folha de pagamento e notas fiscais integradas.' },
-              { icon: '📱', title: 'Agenda Operacional', desc: 'Visualize todos os agendamentos do dia, filtre por profissional e acompanhe cada atendimento.' },
-            ].map((b, i) => (
+            {site.features.map((b, i) => (
               <div key={i} style={{ background: '#ffffff', borderRadius: 16, padding: 24, border: '1px solid #e5e5e5' }}>
                 <p style={{ fontSize: 32, margin: '0 0 12px' }}>{b.icon}</p>
                 <h4 style={{ fontSize: 18, fontWeight: 900, color: '#111', margin: '0 0 8px' }}>{b.title}</h4>
@@ -153,12 +168,8 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
 
       {/* ── SOCIAL PROOF ─────────────────────────────────────── */}
       <section style={{ padding: '56px 24px', background: '#ffffff', borderTop: '1px solid #eee', borderBottom: '1px solid #eee' }}>
-        <div style={{ maxWidth: 800, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, textAlign: 'center' }}>
-          {[
-            { value: '500+', label: 'Estabelecimentos' },
-            { value: '50.000+', label: 'Agendamentos' },
-            { value: '4.9 ★', label: 'Avaliação Média' },
-          ].map((s, i) => (
+        <div style={{ maxWidth: 800, margin: '0 auto', display: 'grid', gridTemplateColumns: `repeat(${site.stats.length}, 1fr)`, gap: 16, textAlign: 'center' }}>
+          {site.stats.map((s, i) => (
             <div key={i}>
               <p style={{ fontSize: 'clamp(28px, 5vw, 48px)', fontWeight: 900, color: '#111', margin: 0 }}>{s.value}</p>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase' as const, letterSpacing: 2, marginTop: 6 }}>{s.label}</p>
@@ -170,28 +181,24 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       {/* ── PLANOS ───────────────────────────────────────────── */}
       <section style={{ padding: '80px 24px', background: '#f8f8f8' }}>
         <div style={{ maxWidth: 900, margin: '0 auto', textAlign: 'center' }}>
-          <h3 style={{ fontSize: 'clamp(26px, 4vw, 40px)', fontWeight: 900, color: '#111', margin: '0 0 8px' }}>Planos a partir de</h3>
+          <h3 style={{ fontSize: 'clamp(26px, 4vw, 40px)', fontWeight: 900, color: '#111', margin: '0 0 8px' }}>{site.pricingTitle}</h3>
           <p style={{ margin: '0 0 4px' }}>
             <span style={{ fontSize: 20, color: '#999', fontWeight: 700 }}>R$</span>
-            <span style={{ fontSize: 64, fontWeight: 900, color: '#f97316' }}>39</span>
-            <span style={{ fontSize: 20, color: '#999', fontWeight: 700 }}>,90/mês</span>
+            <span style={{ fontSize: 64, fontWeight: 900, color }}>{site.pricingBasePrice.split(',')[0]}</span>
+            <span style={{ fontSize: 20, color: '#999', fontWeight: 700 }}>,{site.pricingBasePrice.split(',')[1] || '90'}/mês</span>
           </p>
-          <p style={{ fontSize: 16, color: '#777', margin: '0 0 40px' }}>Comece com o plano Start e evolua conforme cresce</p>
+          <p style={{ fontSize: 16, color: '#777', margin: '0 0 40px' }}>{site.pricingSubtitle}</p>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, maxWidth: 760, margin: '0 auto' }}>
-            {[
-              { name: 'Start', price: '39,90', features: ['1 profissional', 'IA agendamento', 'WhatsApp integrado'], highlight: false },
-              { name: 'Profissional', price: '89,90', features: ['3 profissionais', 'Relatórios', 'Follow-up automático'], highlight: true },
-              { name: 'Elite', price: '149,90', features: ['Ilimitado', 'Assistente Admin', 'Todas as features'], highlight: false },
-            ].map((p, i) => (
+            {site.plans.map((p, i) => (
               <div key={i} style={{
                 borderRadius: 16, padding: 24,
-                border: p.highlight ? '2px solid #f97316' : '2px solid #e0e0e0',
+                border: p.highlight ? `2px solid ${color}` : '2px solid #e0e0e0',
                 background: '#ffffff',
-                boxShadow: p.highlight ? '0 8px 30px rgba(249,115,22,0.15)' : 'none',
+                boxShadow: p.highlight ? `0 8px 30px ${color}25` : 'none',
                 transform: p.highlight ? 'scale(1.03)' : 'none',
               }}>
-                {p.highlight && <p style={{ fontSize: 9, fontWeight: 900, color: '#f97316', textTransform: 'uppercase' as const, letterSpacing: 2, margin: '0 0 8px' }}>Mais Popular</p>}
+                {p.highlight && <p style={{ fontSize: 9, fontWeight: 900, color, textTransform: 'uppercase' as const, letterSpacing: 2, margin: '0 0 8px' }}>Mais Popular</p>}
                 <p style={{ fontSize: 18, fontWeight: 900, color: '#111', textTransform: 'uppercase' as const, letterSpacing: 1, margin: 0 }}>{p.name}</p>
                 <p style={{ fontSize: 28, fontWeight: 900, color: '#111', margin: '8px 0 16px' }}>R${p.price}<span style={{ fontSize: 13, color: '#999', fontWeight: 600 }}>/mês</span></p>
                 {p.features.map((f, j) => (
@@ -209,9 +216,9 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       <section ref={formRef} style={{ padding: '80px 24px', background: '#ffffff' }}>
         <div style={{ maxWidth: 440, margin: '0 auto' }}>
           <h3 style={{ fontSize: 'clamp(26px, 4vw, 36px)', fontWeight: 900, color: '#111', textAlign: 'center', margin: '0 0 8px' }}>
-            Crie sua conta agora
+            {site.formTitle}
           </h3>
-          <p style={{ fontSize: 16, color: '#777', textAlign: 'center', margin: '0 0 32px' }}>Garantia de reembolso total em até 7 dias</p>
+          <p style={{ fontSize: 16, color: '#777', textAlign: 'center', margin: '0 0 32px' }}>{site.formSubtitle}</p>
 
           <div style={{ background: '#fff', borderRadius: 24, border: '2px solid #e5e5e5', boxShadow: '0 12px 40px rgba(0,0,0,0.08)', padding: 32 }}>
             <form onSubmit={handleSubmit}>
@@ -229,7 +236,7 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
                     onChange={e => f.onChange(e.target.value)}
                     placeholder={f.placeholder}
                     style={{ width: '100%', padding: '14px 16px', borderRadius: 12, background: '#f5f5f5', border: '2px solid #e0e0e0', color: '#111', fontSize: 15, fontWeight: 500, outline: 'none', boxSizing: 'border-box' as const }}
-                    onFocus={e => { e.target.style.borderColor = '#f97316'; e.target.style.background = '#fff'; }}
+                    onFocus={e => { e.target.style.borderColor = color; e.target.style.background = '#fff'; }}
                     onBlur={e => { e.target.style.borderColor = '#e0e0e0'; e.target.style.background = '#f5f5f5'; }}
                   />
                 </div>
@@ -248,9 +255,9 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
                   width: '100%', padding: '16px 0', borderRadius: 999,
                   fontWeight: 900, fontSize: 16, textTransform: 'uppercase' as const, letterSpacing: 1,
                   border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-                  background: loading ? '#fdba74' : '#f97316', color: '#fff',
+                  background: loading ? `${color}99` : color, color: '#fff',
                   opacity: loading ? 0.7 : 1,
-                  boxShadow: '0 8px 24px rgba(249,115,22,0.35)',
+                  boxShadow: `0 8px 24px ${color}55`,
                   marginTop: 8,
                 }}
               >
@@ -259,7 +266,7 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
             </form>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: 16, flexWrap: 'wrap' as const }}>
-              {['Pagamento seguro', 'Sem contrato', 'Reembolso em até 7 dias'].map((t, i) => (
+              {site.formTrustBadges.map((t, i) => (
                 <span key={i} style={{ fontSize: 12, color: '#999', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ color: '#22c55e', fontWeight: 700 }}>&#10003;</span> {t}
                 </span>
@@ -272,7 +279,7 @@ const ReferralLandingPage: React.FC<Props> = ({ referralName, isCustomerReferral
       {/* ── FOOTER ───────────────────────────────────────────── */}
       <footer style={{ padding: '32px 24px', textAlign: 'center', background: '#f8f8f8', borderTop: '1px solid #eee' }}>
         <p style={{ fontSize: 12, fontWeight: 600, color: '#aaa', margin: 0 }}>
-          AgendeZap © 2026 · Gestão de Agendamentos Inteligente
+          {site.footerText}
         </p>
       </footer>
     </div>

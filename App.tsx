@@ -88,7 +88,7 @@ enum View {
 }
 
 type Role = 'TENANT' | 'SUPERADMIN' | 'AFFILIATE' | 'PROFESSIONAL';
-type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'wa_central' | 'testes' | 'whitelabel';
+type SuperAdminTab = 'dashboard' | 'clients' | 'avisos' | 'cobranca' | 'logs' | 'sql' | 'ia' | 'conversas' | 'disparo' | 'prospeccao' | 'suporte' | 'campanhas' | 'config' | 'central' | 'leads' | 'cashback' | 'wa_central' | 'testes' | 'whitelabel' | 'site';
 
 const SESSION_KEY = 'agz_session';
 const PRO_SESSION_KEY = 'agz_pro_session';
@@ -909,7 +909,7 @@ const App: React.FC = () => {
               const globalCfg = await db.getGlobalConfig();
               const centralInstance = globalCfg['central_instance'] || 'central_AgendeZap';
               const cleanPhone = phone.replace(/\D/g, '');
-              const msg = `Olá, ${storeName}! 👋\n\nAqui é o Matheus Moura, da equipe de suporte do AgendeZap!\n\nVi que você acabou de criar sua conta — seja muito bem-vindo! 🎉\n\nEstou aqui para te ajudar a dar os primeiros passos e garantir que você aproveite tudo que o AgendeZap pode oferecer.\n\nQualquer dúvida é só chamar! 😊`;
+              const msg = `Olá, ${storeName}! Aqui é o Matheus Moura, da equipe de suporte do AgendeZap! 😊\n\nVi que você se cadastrou na nossa plataforma e entrei em contato para entender melhor o que você precisa e tirar qualquer dúvida antes de começar.\n\nPode me contar um pouco sobre o seu negócio? Assim consigo te ajudar da melhor forma possível!`;
               await evolutionService.sendMessage(centralInstance, cleanPhone, msg);
             } catch (e) {
               console.error('[AgendeZap] Falha ao enviar boas-vindas WhatsApp:', e);
@@ -1227,6 +1227,7 @@ const App: React.FC = () => {
                 <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'leads'} onClick={navTo(() => setSuperAdminTab('leads'))} icon={<IconUsers />} label="Leads" />
                 <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'cashback'} onClick={navTo(() => setSuperAdminTab('cashback'))} icon={<IconFinance />} label="Cashback" />
                 <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'whitelabel'} onClick={navTo(() => setSuperAdminTab('whitelabel'))} icon={<IconSettings />} label="White-label" />
+                <NavItem collapsed={sidebarCollapsed} active={superAdminTab === 'site'} onClick={navTo(() => setSuperAdminTab('site'))} icon={<IconMarketing />} label="Site" />
               </div>
               <div className="pt-4 border-t border-slate-100 mt-2 space-y-1">
                 {!sidebarCollapsed && <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Sistema</p>}
