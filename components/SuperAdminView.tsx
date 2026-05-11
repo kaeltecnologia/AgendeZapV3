@@ -3737,15 +3737,16 @@ const SiteField: React.FC<{ label: string; children: React.ReactNode }> = ({ lab
 
 interface SiteLead {
   id: string; nome: string; phone: string; email: string;
-  createdAt: string; type: 'form' | 'checkout';
+  createdAt: string; type: 'form' | 'checkout' | 'marketplace';
+  city?: string; nicho?: string;
 }
 
 const SitePainelView: React.FC = () => {
   const [leads, setLeads] = useState<SiteLead[]>([]);
-  const [kpis, setKpis] = useState({ total: 0, active: 0, formOnly: 0, checkout: 0 });
+  const [kpis, setKpis] = useState({ total: 0, active: 0, formOnly: 0, checkout: 0, marketplace: 0 });
   const [chartData, setChartData] = useState<{ month: string; cadastros: number }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'checkout' | 'form' | 'all'>('checkout');
+  const [filter, setFilter] = useState<'checkout' | 'form' | 'marketplace' | 'all'>('checkout');
   const [sending, setSending] = useState<Record<string, boolean>>({});
   const [sent, setSent] = useState<Record<string, boolean>>({});
   const [bulkSending, setBulkSending] = useState(false);
@@ -3756,10 +3757,11 @@ const SitePainelView: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [globalCfg, tenantsRes, settingsRes] = await Promise.all([
+      const [globalCfg, tenantsRes, settingsRes, mktRes] = await Promise.all([
         db.getGlobalConfig(),
         supabase.from('tenants').select('id, nome, phone, email, created_at, status').order('created_at', { ascending: false }),
         supabase.from('tenant_settings').select('tenant_id, follow_up'),
+        supabase.from('marketplace_leads').select('id, name, phone, city, nicho_interest, created_at').order('created_at', { ascending: false }),
       ]);
 
       setCentralInstance(globalCfg['central_instance'] || 'central_AgendeZap');
@@ -3769,26 +3771,43 @@ const SitePainelView: React.FC = () => {
 
       const all = tenantsRes.data || [];
       const pending = all.filter((t: any) => t.status === 'PAGAMENTO PENDENTE');
+      const mktLeads = mktRes.data || [];
 
       setKpis({
         total: all.length,
         active: all.filter((t: any) => t.status === 'ATIVA').length,
         formOnly: pending.filter((t: any) => !settingsMap[t.id]?._asaasSubscriptionId).length,
         checkout: pending.filter((t: any) => !!settingsMap[t.id]?._asaasSubscriptionId).length,
+        marketplace: mktLeads.length,
       });
 
-      setLeads(
-        pending.filter((t: any) => !!t.phone).map((t: any): SiteLead => ({
+      const tenantLeads: SiteLead[] = pending
+        .filter((t: any) => !!t.phone)
+        .map((t: any): SiteLead => ({
           id: t.id,
           nome: t.nome || '(sem nome)',
           phone: t.phone,
           email: t.email || '',
           createdAt: t.created_at,
           type: settingsMap[t.id]?._asaasSubscriptionId ? 'checkout' : 'form',
-        }))
-      );
+        }));
 
-      // chart: last 6 months
+      const marketplaceLeads: SiteLead[] = mktLeads
+        .filter((m: any) => !!m.phone)
+        .map((m: any): SiteLead => ({
+          id: `mkt_${m.id}`,
+          nome: m.name || '(sem nome)',
+          phone: m.phone,
+          email: '',
+          createdAt: m.created_at,
+          type: 'marketplace',
+          city: m.city || undefined,
+          nicho: m.nicho_interest || undefined,
+        }));
+
+      setLeads([...tenantLeads, ...marketplaceLeads]);
+
+      // chart: last 6 months (tenants only)
       const months: { key: string; label: string; cadastros: number }[] = [];
       const now = new Date();
       for (let i = 5; i >= 0; i--) {
@@ -3835,29 +3854,44 @@ const SitePainelView: React.FC = () => {
     setBulkSending(false);
   };
 
-  const filtered = leads.filter(l =>
-    filter === 'all' ? true : l.type === filter
-  );
+  const filtered = leads.filter(l => filter === 'all' ? true : l.type === filter);
   const convRate = kpis.total > 0 ? ((kpis.active / kpis.total) * 100).toFixed(1) : '0';
 
   if (loading) return <div className="p-12 text-center text-slate-400 font-bold text-sm">Carregando painel...</div>;
+
+  const typeBadge = (type: SiteLead['type']) => {
+    if (type === 'checkout') return { cls: 'bg-red-100 text-red-700', label: '🛒 Checkout' };
+    if (type === 'marketplace') return { cls: 'bg-purple-100 text-purple-700', label: '📋 Formulário' };
+    return { cls: 'bg-amber-100 text-amber-700', label: '📝 Cadastro' };
+  };
 
   return (
     <div className="space-y-5">
 
       {/* KPIs */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {([
           { label: 'Total Cadastros', value: kpis.total, col: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200' },
           { label: 'Clientes Ativos', value: kpis.active, col: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
           { label: 'Taxa de Conversão', value: `${convRate}%`, col: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-          { label: 'Só Formulário', value: kpis.formOnly, col: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-          { label: 'Checkout Abandonado', value: kpis.checkout, col: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
         ] as any[]).map((k, i) => (
           <div key={i} className={`${k.bg} border ${k.border} rounded-2xl p-4`}>
             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 leading-tight">{k.label}</p>
             <p className={`text-3xl font-black ${k.col} mt-1.5`}>{k.value}</p>
           </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {([
+          { label: 'Formulários Site', value: kpis.marketplace, col: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', key: 'marketplace' as const },
+          { label: 'Cadastro Pendente', value: kpis.formOnly, col: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', key: 'form' as const },
+          { label: 'Checkout Abandonado', value: kpis.checkout, col: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', key: 'checkout' as const },
+        ] as any[]).map((k, i) => (
+          <button key={i} onClick={() => setFilter(k.key)}
+            className={`${k.bg} border-2 rounded-2xl p-4 text-left transition-all ${filter === k.key ? `${k.border} shadow-md scale-[1.02]` : 'border-transparent opacity-80 hover:opacity-100'}`}>
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 leading-tight">{k.label}</p>
+            <p className={`text-3xl font-black ${k.col} mt-1.5`}>{k.value}</p>
+          </button>
         ))}
       </div>
 
@@ -3880,10 +3914,11 @@ const SitePainelView: React.FC = () => {
       {/* Leads table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {([
               { key: 'checkout' as const, label: '🛒 Checkout Abandonado', count: kpis.checkout },
-              { key: 'form' as const, label: '📝 Só Formulário', count: kpis.formOnly },
+              { key: 'marketplace' as const, label: '📋 Formulários Site', count: kpis.marketplace },
+              { key: 'form' as const, label: '📝 Cadastro Pendente', count: kpis.formOnly },
               { key: 'all' as const, label: 'Todos', count: leads.length },
             ]).map(t => (
               <button key={t.key} onClick={() => setFilter(t.key)}
@@ -3913,37 +3948,40 @@ const SitePainelView: React.FC = () => {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Nome', 'WhatsApp', 'Email', 'Cadastro', 'Tipo', 'Ação'].map(h => (
+                  {['Nome', 'WhatsApp', 'Email', 'Nicho', 'Cidade', 'Data', 'Tipo', 'Ação'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[9px] font-black uppercase tracking-widest text-slate-400">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(lead => (
-                  <tr key={lead.id} className={`border-b border-slate-50 transition-colors ${sent[lead.id] ? 'bg-green-50' : 'hover:bg-slate-50'}`}>
-                    <td className="px-4 py-3 font-bold text-slate-800 text-sm">{lead.nome}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-slate-600">{lead.phone}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{lead.email || '—'}</td>
-                    <td className="px-4 py-3 text-xs text-slate-400">{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide ${
-                        lead.type === 'checkout' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {lead.type === 'checkout' ? '🛒 Checkout' : '📝 Formulário'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {sent[lead.id] ? (
-                        <span className="text-[10px] font-black text-green-600">✓ Enviado</span>
-                      ) : (
-                        <button onClick={() => sendWA(lead)} disabled={sending[lead.id]}
-                          className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-black rounded-lg hover:bg-green-700 disabled:opacity-50 transition-all">
-                          {sending[lead.id] ? '...' : '📲 WA'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map(lead => {
+                  const badge = typeBadge(lead.type);
+                  return (
+                    <tr key={lead.id} className={`border-b border-slate-50 transition-colors ${sent[lead.id] ? 'bg-green-50' : 'hover:bg-slate-50'}`}>
+                      <td className="px-4 py-3 font-bold text-slate-800 text-sm">{lead.nome}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-slate-600">{lead.phone}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{lead.email || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{lead.nicho || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{lead.city || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-400">{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {sent[lead.id] ? (
+                          <span className="text-[10px] font-black text-green-600">✓ Enviado</span>
+                        ) : (
+                          <button onClick={() => sendWA(lead)} disabled={sending[lead.id]}
+                            className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-black rounded-lg hover:bg-green-700 disabled:opacity-50 transition-all">
+                            {sending[lead.id] ? '...' : '📲 WA'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
