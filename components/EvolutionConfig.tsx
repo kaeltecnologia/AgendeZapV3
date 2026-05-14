@@ -32,25 +32,29 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
 
   const refreshInstanceInfo = useCallback(async () => {
     try {
-      // Prioriza o slug passado via props (que vem do login/registro)
+      // Sempre busca o tenant direto do DB para pegar o evolution_instance customizado
+      const tenant = await db.getTenant(tenantId, { fresh: true });
+      if (tenant) {
+        const name = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+        setInstanceName(name);
+        return name;
+      }
+
+      // Fallback: gera a partir do slug da prop (quando DB não retorna)
       if (tenantSlug) {
         const name = evolutionService.getInstanceName(tenantSlug);
         setInstanceName(name);
         return name;
       }
 
-      const tenants = await db.getAllTenants();
-      const tenant = tenants.find(t => t.id === tenantId || t.slug === tenantId);
-      
-      if (tenant) {
-        const name = evolutionService.getInstanceName(tenant.slug);
-        setInstanceName(name);
-        return name;
-      }
-      
       return '';
     } catch (e) {
       console.error("Erro ao identificar estabelecimento:", e);
+      if (tenantSlug) {
+        const name = evolutionService.getInstanceName(tenantSlug);
+        setInstanceName(name);
+        return name;
+      }
       return '';
     }
   }, [tenantId, tenantSlug]);

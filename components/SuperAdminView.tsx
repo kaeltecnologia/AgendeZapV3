@@ -127,6 +127,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [stats, setStats] = useState<GlobalStats | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // New tenant modal
   const [showNew, setShowNew] = useState(false);
@@ -269,11 +270,21 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [s, t] = await Promise.all([db.getGlobalStats(), db.getAllTenants()]);
       setStats(s as GlobalStats);
       setTenants([...t].reverse());
-    } catch (e) { console.error(e); }
+      if (t.length === 0) {
+        // Diagnóstico: verifica se é erro Supabase ou tabela vazia
+        const { error } = await supabase.from('tenants').select('id').limit(1);
+        if (error) {
+          setLoadError(`Erro Supabase ao ler tabela tenants: ${error.message} (código: ${error.code})`);
+        } else {
+          setLoadError('A query retornou vazia. Verifique se as políticas RLS da tabela "tenants" permitem leitura anônima, ou se há dados cadastrados.');
+        }
+      }
+    } catch (e) { console.error(e); setLoadError(String(e)); }
     finally { setLoading(false); }
   }, []);
 
@@ -760,7 +771,38 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='ai_usage_logs' AND policyname='service_role_all') THEN
     CREATE POLICY "service_role_all" ON ai_usage_logs FOR ALL TO service_role USING (true);
   END IF;
-END $$;`.trim();
+END $$;
+
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║  POLÍTICAS RLS — execute se clientes sumirem do superadmin  ║
+-- ╚══════════════════════════════════════════════════════════════╝
+ALTER TABLE IF EXISTS tenants           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS customers         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS appointments      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS professionals     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS services          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS tenant_settings   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS expenses          ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon_tenants_select" ON tenants;
+CREATE POLICY "anon_tenants_select" ON tenants FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS "anon_tenants_insert" ON tenants;
+CREATE POLICY "anon_tenants_insert" ON tenants FOR INSERT TO anon WITH CHECK (true);
+DROP POLICY IF EXISTS "anon_tenants_update" ON tenants;
+CREATE POLICY "anon_tenants_update" ON tenants FOR UPDATE TO anon USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_customers_all" ON customers;
+CREATE POLICY "anon_customers_all" ON customers FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "anon_appointments_all" ON appointments;
+CREATE POLICY "anon_appointments_all" ON appointments FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "anon_professionals_all" ON professionals;
+CREATE POLICY "anon_professionals_all" ON professionals FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "anon_services_all" ON services;
+CREATE POLICY "anon_services_all" ON services FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "anon_tenant_settings_all" ON tenant_settings;
+CREATE POLICY "anon_tenant_settings_all" ON tenant_settings FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "anon_expenses_all" ON expenses;
+CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH CHECK (true);`.trim();
 
   if (loading || !stats) {
     return (
@@ -787,6 +829,18 @@ END $$;`.trim();
           </button>
         )}
       </div>
+
+      {/* ── Banner de erro de carregamento ── */}
+      {loadError && tenants.length === 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 flex items-start gap-3">
+          <span className="text-red-500 text-lg mt-0.5">⚠️</span>
+          <div className="flex-1">
+            <p className="text-red-700 font-black text-xs uppercase tracking-widest mb-1">Clientes não carregados</p>
+            <p className="text-red-600 text-xs">{loadError}</p>
+          </div>
+          <button onClick={load} className="text-xs font-black text-red-500 underline whitespace-nowrap">Recarregar</button>
+        </div>
+      )}
 
       {/* ══════════════════════ DASHBOARD ══════════════════════ */}
       {tab === 'dashboard' && (
@@ -914,7 +968,19 @@ END $$;`.trim();
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filteredTenants.length === 0 ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-slate-300 font-black uppercase text-xs">Nenhum cliente encontrado</td></tr>
+                    <tr><td colSpan={10} className="py-8 px-5">
+                      {loadError ? (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-left">
+                          <p className="text-red-700 font-black text-xs uppercase tracking-widest mb-2">⚠️ Erro ao carregar clientes</p>
+                          <p className="text-red-600 text-xs font-medium mb-3">{loadError}</p>
+                          <p className="text-slate-500 text-xs mb-3">Execute o script abaixo no <strong>SQL Editor do Supabase</strong> para corrigir as políticas RLS:</p>
+                          <code className="block bg-slate-900 text-green-400 text-[10px] p-3 rounded-xl whitespace-pre-wrap font-mono mb-3">{`ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS "anon_tenants_select" ON tenants;\nCREATE POLICY "anon_tenants_select" ON tenants FOR SELECT TO anon USING (true);\nDROP POLICY IF EXISTS "anon_tenants_update" ON tenants;\nCREATE POLICY "anon_tenants_update" ON tenants FOR UPDATE TO anon USING (true) WITH CHECK (true);`}</code>
+                          <button onClick={load} className="bg-orange-500 text-white px-4 py-2 rounded-xl font-black text-xs">Tentar novamente</button>
+                        </div>
+                      ) : (
+                        <p className="text-center text-slate-300 font-black uppercase text-xs">Nenhum cliente encontrado</p>
+                      )}
+                    </td></tr>
                   ) : filteredTenants.map(t => (
                     <tr key={t.id} className="hover:bg-orange-50/40 transition-colors">
                       <td className="px-5 py-4">

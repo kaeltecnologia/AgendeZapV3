@@ -356,7 +356,7 @@ function WeekCalendar({
                     const r = parseInt(color.slice(1, 3), 16);
                     const g = parseInt(color.slice(3, 5), 16);
                     const b = parseInt(color.slice(5, 7), 16);
-                    const bgAlpha = isCancelled ? 0.04 : isFinished ? 0.07 : 0.11;
+                    const bgAlpha = isCancelled ? 0.05 : isFinished ? 0.10 : 0.18;
                     const bgColor = `rgba(${r},${g},${b},${bgAlpha})`;
                     const borderColor = isCancelled ? '#CBD5E1' : color;
 
@@ -412,12 +412,15 @@ function WeekCalendar({
         <div style={{ padding: '8px 16px', borderTop: '1px solid #E2E8F0', display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
           {professionals
             .filter(p => !filterProfId || p.id === filterProfId)
-            .map((p, i) => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: PROF_COLORS[i % PROF_COLORS.length] }} />
-                <span style={{ fontSize: 11, fontWeight: 500, color: '#475569' }}>{p.name}</span>
-              </div>
-            ))}
+            .map(p => {
+              const idx = professionals.findIndex(pr => pr.id === p.id);
+              return (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: PROF_COLORS[idx >= 0 ? idx % PROF_COLORS.length : 0] }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: '#475569' }}>{p.name}</span>
+                </div>
+              );
+            })}
         </div>
       )}
     </div>
@@ -672,7 +675,7 @@ function DayCalendar({
                   const r = parseInt(color.slice(1, 3), 16);
                   const g = parseInt(color.slice(3, 5), 16);
                   const b = parseInt(color.slice(5, 7), 16);
-                  const bgAlpha = isCancelled ? 0.04 : isFinished ? 0.07 : 0.11;
+                  const bgAlpha = isCancelled ? 0.05 : isFinished ? 0.10 : 0.18;
                   const bgColor = `rgba(${r},${g},${b},${bgAlpha})`;
                   const borderColor = isCancelled ? '#CBD5E1' : color;
 
@@ -831,6 +834,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   const [showDayPicker, setShowDayPicker] = useState(false);
   const dayPickerRef = useRef<HTMLDivElement>(null);
+  const pendingSlotTimeRef = useRef(''); // stores time clicked on calendar slot before slots load
   const [calApptDays, setCalApptDays] = useState<Set<string>>(new Set());
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -1051,6 +1055,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   };
 
   const openBookingModalWithSlot = (date: string, time: string, profId?: string) => {
+    pendingSlotTimeRef.current = time; // will auto-select after slots load
     setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setSvcIds([]);
     setManualDate(date); setManualTime(time);
     setProfId(profId ?? '');
@@ -1381,6 +1386,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         cursor += INTERVAL;
       }
       setBookingSlots(slots);
+      // Restore pre-clicked time if it's available in the loaded slots
+      const pending = pendingSlotTimeRef.current;
+      if (pending) {
+        pendingSlotTimeRef.current = '';
+        if (slots.includes(pending)) setManualTime(pending);
+      }
     } catch (e) {
       console.error('loadBookingSlots error:', e);
       setBookingSlots([]);
