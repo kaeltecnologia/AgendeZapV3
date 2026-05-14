@@ -228,7 +228,12 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         const dateObj = new Date(selectedDate + 'T12:00:00');
         const dayIndex = dateObj.getDay();
         const dayConfig = settings.operatingHours?.[dayIndex];
-        if (dayConfig && dayConfig.active === false) { setSlots([]); return; }
+        if (!dayConfig || dayConfig.active === false) { setSlots([]); return; }
+
+        // Parse configured operating window
+        const parseHM = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+        const opStart = dayConfig.startTime ? parseHM(dayConfig.startTime) : 6 * 60;
+        const opEnd   = dayConfig.endTime   ? parseHM(dayConfig.endTime)   : 24 * 60;
 
         const { data: appts } = await supabase
           .from('appointments')
@@ -244,8 +249,8 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         const duration = selectedService.durationMinutes;
         const breaks: any[] = settings.breaks || [];
         const result: string[] = [];
-        let cursor = 6 * 60; // 06:00
-        const endCursor = 24 * 60; // 00:00 (meia-noite)
+        let cursor = opStart;
+        const endCursor = opEnd;
 
         while (cursor + duration <= endCursor) {
           const h = Math.floor(cursor / 60);
