@@ -1059,6 +1059,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setShowBookingModal(true);
   };
 
+  // Services available for the currently selected professional (empty serviceIds = all services)
+  const bookingProf = professionals.find(p => p.id === profId);
+  const availableServices = bookingProf?.serviceIds?.length
+    ? services.filter(s => bookingProf.serviceIds!.includes(s.id))
+    : services;
+
   // Compute total duration from selected services
   const selectedServices = services.filter(s => svcIds.includes(s.id));
   const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMinutes, 0);
@@ -2490,14 +2496,21 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 </div>
               )}
 
-              <ModalSelect label="Profissional" value={profId} onChange={setProfId} placeholder="Selecionar Profissional">
+              <ModalSelect label="Profissional" value={profId} onChange={v => {
+                setProfId(v);
+                // Clear selected services that the new professional doesn't perform
+                const newProf = professionals.find(p => p.id === v);
+                if (newProf?.serviceIds?.length) {
+                  setSvcIds(prev => prev.filter(id => newProf.serviceIds!.includes(id)));
+                }
+              }} placeholder="Selecionar Profissional">
                 {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </ModalSelect>
               {/* Multi-service selection with checkboxes */}
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Serviço(s)</label>
                 <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 max-h-48 overflow-y-auto space-y-2">
-                  {services.map(s => (
+                  {availableServices.map(s => (
                     <label key={s.id} className="flex items-center gap-3 cursor-pointer hover:bg-white rounded-xl px-3 py-2 transition-all">
                       <input
                         type="checkbox"

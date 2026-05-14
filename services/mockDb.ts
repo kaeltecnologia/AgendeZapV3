@@ -1112,6 +1112,8 @@ class DatabaseService {
           bookingTheme: fu._bookingTheme ?? null,
           comoConheceu: fu._comoConheceu ?? null,
           subscriptionConfig: fu._subscriptionConfig ?? null,
+          professionalOrder: fu._professionalOrder ?? [],
+          breakColor: fu._breakColor ?? '#f97316',
         };
         _cache.set(ck, result, TTL_LONG);
         return result;
@@ -1195,6 +1197,8 @@ class DatabaseService {
         _bookingTheme: newS.bookingTheme !== undefined ? newS.bookingTheme : (curr.bookingTheme ?? null),
         _comoConheceu: newS.comoConheceu !== undefined ? newS.comoConheceu : (curr.comoConheceu ?? null),
         _subscriptionConfig: newS.subscriptionConfig !== undefined ? newS.subscriptionConfig : (curr.subscriptionConfig ?? null),
+        _professionalOrder: newS.professionalOrder ?? curr.professionalOrder ?? [],
+        _breakColor: newS.breakColor ?? curr.breakColor ?? '#f97316',
       };
 
       // Always include operating_hours to prevent data loss on upsert (uses current value as fallback)
