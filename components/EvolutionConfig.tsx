@@ -69,20 +69,55 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       }
 
       if (forceReset) {
-        // Use logout (not delete) — just clears the WhatsApp session without
-        // destroying the instance. Deleting + recreating triggers WhatsApp
-        // anti-spam and causes "impossível conectar" errors on the phone.
+        // ── Force reset: logout → wait until 'close' → restart → get QR ──────
         addLog('INFO', `Encerrando sessão WhatsApp de ${name}...`);
-        await evolutionService.logoutInstance(name);
-        // Wait longer: Evolution API takes a few seconds to flip state after logout
-        await new Promise(r => setTimeout(r, 5000));
-        addLog('INFO', 'Sessão encerrada. Gerando novo QR Code...');
+        const loggedOut = await evolutionService.logoutInstance(name);
+        if (!loggedOut) {
+          addLog('INFO', 'Aviso: logout retornou falha — pode já estar desconectado. Continuando...');
+        }
+
+        // Poll until status leaves 'open' (confirms logout took effect)
+        addLog('INFO', 'Aguardando confirmação de desconexão...');
+        for (let i = 0; i < 12; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const st = await evolutionService.checkStatus(name);
+          if (st !== 'open') { addLog('INFO', `Desconectado (estado: ${st}). Iniciando nova sessão...`); break; }
+          if (i === 11) addLog('INFO', 'Timeout aguardando desconexão — forçando mesmo assim...');
+        }
+
+        // Restart to initialize fresh connection (session was cleared → generates QR)
+        await evolutionService.restartInstance(name);
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Retry connect up to 5× until QR appears
+        addLog('INFO', 'Solicitando QR Code...');
+        let qrResult: any = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          qrResult = await evolutionService.createAndFetchQr(name, false);
+          if (qrResult.qrcode || qrResult.message === 'Conectado.') break;
+          if (attempt < 4) {
+            addLog('INFO', `QR ainda não disponível, aguardando... (${attempt + 1}/5)`);
+            await new Promise(r => setTimeout(r, 2500));
+          }
+        }
+
+        if (qrResult?.qrcode) {
+          evolutionService.enableWebhook(name, WEBHOOK_URL).catch(() => {});
+          setQrCode(qrResult.qrcode);
+          setInstanceStatus('connecting');
+          addLog('SUCCESS', 'QR Code gerado! Abra o WhatsApp e escaneie agora.');
+        } else if (qrResult?.message === 'Conectado.') {
+          setInstanceStatus('open');
+          addLog('INFO', 'Instância reconectou automaticamente.');
+        } else {
+          setError('Não foi possível gerar QR Code. Tente novamente.');
+          addLog('ERROR', 'QR Code não disponível após várias tentativas.');
+        }
+        return; // handled above — skip generic flow below
       }
 
       addLog('INFO', `Conectando instância: ${name}`);
-      // forceQr=true when forceReset so we bypass the 'open' early-return
-      // (instance may still briefly report 'open' right after logout)
-      const result = await evolutionService.createAndFetchQr(name, forceReset);
+      const result = await evolutionService.createAndFetchQr(name, false);
 
       if (result.status === 'success') {
         // Register the Edge Function webhook so messages are processed 24/7,
