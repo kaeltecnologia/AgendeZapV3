@@ -251,13 +251,16 @@ export const evolutionService = {
   //   1. If instance already exists → restart it to clear old WA session → get QR
   //   2. If instance does not exist → create it → get QR
   //   3. If already open → return success immediately
-  async createAndFetchQr(instanceName: string): Promise<any> {
+  async createAndFetchQr(instanceName: string, forceQr = false): Promise<any> {
     if (!instanceName) return { status: 'error', message: 'Nome da instância inválido.' };
     try {
       // ── Step 1: check current connection state first (fast path)
-      const currentStatus = await this.checkStatus(instanceName);
-      if (currentStatus === 'open') {
-        return { status: 'success', qrcode: null, message: 'Conectado.' };
+      // Skip when forceQr=true (e.g. after logout, instance may still report 'open' briefly)
+      if (!forceQr) {
+        const currentStatus = await this.checkStatus(instanceName);
+        if (currentStatus === 'open') {
+          return { status: 'success', qrcode: null, message: 'Conectado.' };
+        }
       }
 
       // ── Step 2: check existence

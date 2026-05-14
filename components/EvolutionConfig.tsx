@@ -74,11 +74,15 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
         // anti-spam and causes "impossível conectar" errors on the phone.
         addLog('INFO', `Encerrando sessão WhatsApp de ${name}...`);
         await evolutionService.logoutInstance(name);
-        await new Promise(r => setTimeout(r, 3000));
+        // Wait longer: Evolution API takes a few seconds to flip state after logout
+        await new Promise(r => setTimeout(r, 5000));
+        addLog('INFO', 'Sessão encerrada. Gerando novo QR Code...');
       }
 
       addLog('INFO', `Conectando instância: ${name}`);
-      const result = await evolutionService.createAndFetchQr(name);
+      // forceQr=true when forceReset so we bypass the 'open' early-return
+      // (instance may still briefly report 'open' right after logout)
+      const result = await evolutionService.createAndFetchQr(name, forceReset);
 
       if (result.status === 'success') {
         // Register the Edge Function webhook so messages are processed 24/7,
