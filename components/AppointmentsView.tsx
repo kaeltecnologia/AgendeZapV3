@@ -461,9 +461,11 @@ function DayCalendar({
   // Fixed column width (px) ensures header and body column borders are always pixel-perfect.
   const headerRef = useRef<HTMLDivElement>(null);
   const bodyRef   = useRef<HTMLDivElement>(null);
-  const COL_W = 130; // px per professional column
-  const gridW = 57 + cols * COL_W; // 56px time-label + 1px border + cols × COL_W
-  const colTemplate = `56px repeat(${cols}, ${COL_W}px)`;
+  // Columns fill available width (1fr) but never shrink below 100px each.
+  // Both header and body use the same minWidth so their 1fr resolves identically.
+  const MIN_COL_W = 100; // px minimum per column
+  const minGridW = 57 + cols * MIN_COL_W;
+  const colTemplate = `56px repeat(${cols}, minmax(${MIN_COL_W}px, 1fr))`;
 
   const onBodyScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (headerRef.current) headerRef.current.scrollLeft = (e.currentTarget as HTMLDivElement).scrollLeft;
@@ -478,7 +480,7 @@ function DayCalendar({
 
       {/* ── Professional header (hidden scrollbar, synced via JS) ── */}
       <div ref={headerRef} style={{ overflowX: 'hidden', borderBottom: '1px solid #E2E8F0' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: colTemplate, width: gridW }}>
+        <div style={{ display: 'grid', gridTemplateColumns: colTemplate, minWidth: minGridW, width: '100%' }}>
           {/* Time-label spacer */}
           <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
           {visibleProfs.map((p, i) => {
@@ -537,7 +539,7 @@ function DayCalendar({
 
       {/* ── Time grid (scrollable: X + Y) ── */}
       <div ref={bodyRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 560 }} onScroll={onBodyScroll}>
-        <div style={{ display: 'grid', gridTemplateColumns: colTemplate, width: gridW, height: totalHeight, position: 'relative' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: colTemplate, minWidth: minGridW, width: '100%', height: totalHeight, position: 'relative' }}>
 
           {/* Time labels — sticky left so they don't scroll away horizontally */}
           <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC', position: 'sticky', left: 0, zIndex: 2, height: totalHeight }}>
