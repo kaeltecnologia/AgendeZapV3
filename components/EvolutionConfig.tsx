@@ -71,8 +71,9 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       if (forceReset) {
         // ── Force reset: logout → wait until 'close' → restart → get QR ──────
         addLog('INFO', `Encerrando sessão WhatsApp de ${name}...`);
-        const loggedOut = await evolutionService.logoutInstance(name);
-        if (!loggedOut) {
+        const logoutRes = await evolutionService.logoutInstance(name);
+        addLog('INFO', `Logout → HTTP ${logoutRes.status ?? '?'} | ${JSON.stringify(logoutRes.body).slice(0, 80)}`);
+        if (!logoutRes.ok) {
           addLog('INFO', 'Aviso: logout retornou falha — pode já estar desconectado. Continuando...');
         }
 
@@ -153,13 +154,25 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       const name = await refreshInstanceInfo();
       if (!name) throw new Error('Instância não identificada.');
       addLog('INFO', `Desconectando WhatsApp de ${name}...`);
-      const ok = await evolutionService.logoutInstance(name);
-      if (ok) {
+      const res = await evolutionService.logoutInstance(name);
+      addLog('INFO', `Logout → HTTP ${res.status ?? '?'} | ${JSON.stringify(res.body).slice(0, 120)}`);
+      if (res.ok) {
         setInstanceStatus('close');
         setQrCode(null);
         addLog('SUCCESS', 'WhatsApp desconectado com sucesso.');
       } else {
-        addLog('ERROR', 'Falha ao desconectar. Tente novamente.');
+        // Fallback: delete instance entirely (more aggressive but reliable)
+        addLog('INFO', 'Logout falhou — tentando via delete de instância...');
+        const del = await evolutionService.deleteInstance(name);
+        addLog('INFO', `Delete → ${del ? 'OK' : 'falhou'}`);
+        if (del) {
+          setInstanceStatus('close');
+          setQrCode(null);
+          addLog('SUCCESS', 'Instância deletada. Use "Solicitar QR Code" para reconectar.');
+        } else {
+          setError(`Falha HTTP ${res.status}: ${JSON.stringify(res.body).slice(0, 80)}`);
+          addLog('ERROR', `Não foi possível desconectar. Status: ${res.status}`);
+        }
       }
     } catch (e: any) {
       addLog('ERROR', e.message || 'Erro ao desconectar.');

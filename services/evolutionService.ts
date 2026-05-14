@@ -184,16 +184,17 @@ export const evolutionService = {
     return this.sendToWhatsApp(instanceName, recipient, text);
   },
 
-  async logoutInstance(instanceName: string): Promise<boolean> {
-    if (!instanceName) return false;
+  async logoutInstance(instanceName: string): Promise<{ ok: boolean; status?: number; body?: any }> {
+    if (!instanceName) return { ok: false, body: 'instanceName vazio' };
     try {
       const response = await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
         method: 'DELETE',
         headers
       });
-      return response.ok;
-    } catch (e) {
-      return false;
+      const body = await response.json().catch(() => null);
+      return { ok: response.ok, status: response.status, body };
+    } catch (e: any) {
+      return { ok: false, body: e?.message || 'network error' };
     }
   },
 
