@@ -458,36 +458,41 @@ function DayCalendar({
 
   return (
     <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-      {/* Professional header row */}
-      <div className="grid" style={{ gridTemplateColumns: `56px repeat(${cols}, 1fr)`, borderBottom: '1px solid #E2E8F0' }}>
-        <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
-        {visibleProfs.map((p, i) => {
-          const profIdx = professionals.findIndex(pr => pr.id === p.id);
-          const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
-          const profDayCount = dayAppts.filter(a => a.professional_id === p.id).length;
-          return (
-            <div key={p.id} style={{
-              padding: '10px 8px',
-              textAlign: 'center',
-              borderRight: i < cols - 1 ? '1px solid #E2E8F0' : 'none',
-              background: '#ffffff',
-            }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 4px' }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{p.name.charAt(0).toUpperCase()}</span>
-              </div>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#1E293B', margin: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '100%' }}>{p.name}</p>
-              {profDayCount > 0 && (
-                <div style={{ margin: '3px auto 0', width: 'fit-content', borderRadius: 99, fontSize: 9, fontWeight: 700, padding: '2px 6px', background: '#FEF3C7', color: '#92400E' }}>
-                  {profDayCount}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {/* Single scroll container — handles vertical + horizontal (mobile).
+          Header is sticky so columns always share the same grid context → borders align perfectly. */}
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 640 }}>
+        {/* Inner wrapper enforces minimum column width so mobile can scroll horizontally */}
+        <div style={{ minWidth: `${56 + cols * 110}px` }}>
 
-      {/* Scrollable time grid */}
-      <div style={{ overflowY: 'auto', maxHeight: 560 }}>
+        {/* Sticky professional header */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'grid', gridTemplateColumns: `56px repeat(${cols}, 1fr)`, borderBottom: '1px solid #E2E8F0', background: '#ffffff' }}>
+          <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
+          {visibleProfs.map((p, i) => {
+            const profIdx = professionals.findIndex(pr => pr.id === p.id);
+            const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
+            const profDayCount = dayAppts.filter(a => a.professional_id === p.id).length;
+            return (
+              <div key={p.id} style={{
+                padding: '10px 8px',
+                textAlign: 'center',
+                borderRight: i < cols - 1 ? '1px solid #E2E8F0' : 'none',
+                background: '#ffffff',
+              }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 4px' }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{p.name.charAt(0).toUpperCase()}</span>
+                </div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#1E293B', margin: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '100%' }}>{p.name}</p>
+                {profDayCount > 0 && (
+                  <div style={{ margin: '3px auto 0', width: 'fit-content', borderRadius: 99, fontSize: 9, fontWeight: 700, padding: '2px 6px', background: '#FEF3C7', color: '#92400E' }}>
+                    {profDayCount}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Time grid — same grid template as header, no separate scroll container */}
         <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: `56px repeat(${cols}, 1fr)`, height: totalHeight }}>
           {/* Time labels */}
           <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC', position: 'relative', height: totalHeight }}>
@@ -610,7 +615,8 @@ function DayCalendar({
             );
           })}
         </div>
-      </div>
+        </div>{/* /minWidth wrapper */}
+      </div>{/* /scroll container */}
     </div>
   );
 }
