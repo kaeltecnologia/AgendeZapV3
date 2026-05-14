@@ -432,6 +432,7 @@ export interface Professional {
   loginPin?: string;        // PIN de 4 dígitos para acesso ao portal profissional
   loginPhone?: string;      // Telefone de login (padrão = phone)
   photoBase64?: string;     // Foto de perfil em base64
+  disableAI?: boolean;      // true = IA nunca agenda com este profissional (somente manual)
 }
 
 export interface Service {

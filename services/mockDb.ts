@@ -527,6 +527,7 @@ class DatabaseService {
         specialty: p.especialidade || '',
         active: p.ativo ?? true,
         role: profMeta[p.id]?.role || 'colab',
+        disableAI: profMeta[p.id]?.disableAI || false,
         serviceIds: p.service_ids || [],
         loginPin: p.login_pin || '',
         loginPhone: p.login_phone || '',
@@ -571,11 +572,13 @@ class DatabaseService {
         const { error } = await supabase.from('professionals').update(payload).eq('id', id);
         if (error) throw error;
       }
-      // Role is stored in settings JSONB (no schema change needed)
-      if (pro.role !== undefined) {
+      // role + disableAI stored in settings JSONB (no schema change needed)
+      if (pro.role !== undefined || pro.disableAI !== undefined) {
         const s = await this.getSettings(tenantId);
         const meta = { ...(s.professionalMeta || {}) };
-        meta[id] = { ...(meta[id] || {}), role: pro.role };
+        meta[id] = { ...(meta[id] || {}) };
+        if (pro.role !== undefined) meta[id].role = pro.role;
+        if (pro.disableAI !== undefined) meta[id].disableAI = pro.disableAI;
         await this.updateSettings(tenantId, { professionalMeta: meta });
       }
       _cache.invalidate(`getProfessionals:${tenantId}`);

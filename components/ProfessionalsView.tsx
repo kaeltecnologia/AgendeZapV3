@@ -75,6 +75,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [proServiceIds, setProServiceIds] = useState<string[]>([]);
   const [loginPin, setLoginPin] = useState('');
   const [proPhoto, setProPhoto] = useState<string>('');
+  const [proDisableAI, setProDisableAI] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -116,7 +117,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     setSaving(true);
     try {
       const newPro = await db.addProfessional({ tenant_id: tenantId, name, phone, specialty, active: true });
-      await db.updateProfessional(tenantId, newPro.id, { role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
+      await db.updateProfessional(tenantId, newPro.id, { role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
       await load();
       setShowModal(false);
       resetForm();
@@ -158,7 +159,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     if (!editingPro || !name || !phone) return;
     setSaving(true);
     try {
-      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
+      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
       await load();
       setEditingPro(null);
       resetForm();
@@ -167,7 +168,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     } finally { setSaving(false); }
   };
 
-  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setProPhoto(''); };
+  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setProPhoto(''); setProDisableAI(false); };
 
   const handleDeletePro = async () => {
     if (!deleteProId) return;
@@ -482,9 +483,16 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                 <div>
                   <h3 className="text-lg font-black text-black leading-tight">{p.name}</h3>
                   <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{p.specialty || 'Profissional'}</p>
-                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${p.role === 'admin' ? 'bg-black text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {p.role === 'admin' ? '👑 Admin' : '💈 Colab'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${p.role === 'admin' ? 'bg-black text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      {p.role === 'admin' ? '👑 Admin' : '💈 Colab'}
+                    </span>
+                    {p.disableAI && (
+                      <span className="text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest bg-purple-100 text-purple-600">
+                        🔒 Manual
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="space-y-1.5 mb-5">
@@ -560,7 +568,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                     </button>
                     <div className="flex justify-between items-center pt-1">
                       <div className="flex items-center gap-3">
-                        <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); }}
+                        <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProDisableAI(p.disableAI || false); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); }}
                           className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
                           📝 Editar
                         </button>
@@ -1049,6 +1057,28 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                     👑 Admin
                   </button>
                 </div>
+              </div>
+
+              {/* Agendamento manual */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Agendamento via IA</label>
+                <button
+                  type="button"
+                  onClick={() => setProDisableAI(v => !v)}
+                  className={`w-full flex items-center justify-between px-5 py-3.5 rounded-2xl border-2 transition-all ${proDisableAI ? 'bg-purple-50 border-purple-200' : 'bg-slate-50 border-slate-100 hover:border-slate-300'}`}
+                >
+                  <div className="text-left">
+                    <p className={`text-xs font-black uppercase tracking-widest ${proDisableAI ? 'text-purple-700' : 'text-slate-600'}`}>
+                      {proDisableAI ? '🔒 Somente agendamento manual' : '🤖 IA pode agendar'}
+                    </p>
+                    <p className="text-[9px] text-slate-400 mt-0.5 normal-case font-medium">
+                      {proDisableAI ? 'A IA não vai oferecer horários com este profissional' : 'A IA agenda normalmente com este profissional'}
+                    </p>
+                  </div>
+                  <div className={`w-10 h-6 rounded-full transition-all flex items-center px-1 ${proDisableAI ? 'bg-purple-500' : 'bg-slate-200'}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-all ${proDisableAI ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </div>
+                </button>
               </div>
 
               {/* Serviços que realiza */}

@@ -1423,7 +1423,7 @@ async function _handleMessage(
       const todayBr = `${nowBr.getUTCFullYear()}-${padZ(nowBr.getUTCMonth() + 1)}-${padZ(nowBr.getUTCDate())}`;
 
       let slots: string[] = [];
-      let chosenProf = professionals.find(p => p.id === profIdKnown && p.active);
+      let chosenProf = professionals.find(p => p.id === profIdKnown && p.active && !p.disableAI);
 
       // Try same professional first (unless client explicitly wants any)
       if (!wantsAnyProf && chosenProf) {
@@ -1433,7 +1433,7 @@ async function _handleMessage(
 
       // Fallback: find any professional with available slots
       if (slots.length === 0) {
-        for (const p of professionals.filter(pp => pp.active)) {
+        for (const p of professionals.filter(pp => pp.active && !pp.disableAI)) {
           const raw = await getAvailableSlots(tenantId, p.id, todayBr, svcDuration, settings);
           const filtered = prefRange ? raw.filter(s => s >= prefRange.from && s <= prefRange.to) : raw;
           if (filtered.length > 0) {
@@ -1648,7 +1648,7 @@ async function _handleMessage(
     }
   }
 
-  const activeProfessionals = professionals.filter((p: any) => p.active).map((p: any) => ({ ...p, name: (p.name || '').trim() }));
+  const activeProfessionals = professionals.filter((p: any) => p.active && !p.disableAI).map((p: any) => ({ ...p, name: (p.name || '').trim() }));
   const activeServices = services.filter((s: any) => s.active);
 
   // Key hierarchy: tenant's own key → shared global key (SuperAdmin) → Gemini
