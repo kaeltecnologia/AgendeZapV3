@@ -140,8 +140,8 @@ function generateId(): string {
 
 // ── Visual Week Calendar ──────────────────────────────────────────────────────
 const PROF_COLORS = ['#f97316', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#ef4444'];
-const HOUR_START = 8;
-const HOUR_END = 20;
+const HOUR_START = 6;
+const HOUR_END = 24;
 const HOUR_PX = 96; // px per hour
 
 /** Compute side-by-side column layout for overlapping appointments (Google Calendar style) */
@@ -1109,11 +1109,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       const dateObj = new Date(date + 'T12:00:00');
       const dayIndex = dateObj.getDay();
       const dayConfig = settings.operatingHours?.[dayIndex];
-      if (!dayConfig?.active) { setEditSlots([]); return; }
-
-      const [startRange, endRange] = dayConfig.range.split('-');
-      const [sh, sm] = startRange.split(':').map(Number);
-      const [eh, em] = endRange.split(':').map(Number);
+      if (dayConfig && dayConfig.active === false) { setEditSlots([]); return; }
 
       // Use appointments from already-loaded state (fast, no extra fetch)
       const dayAppts = appointments.filter(a => {
@@ -1127,9 +1123,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       const pad = (n: number) => String(n).padStart(2, '0');
       const INTERVAL = 30;
       const slots: string[] = [];
-      let cursor = sh * 60 + sm;
-      const endCursor = eh * 60 + em;
-      const loopLimit = dayConfig.acceptLastSlot ? endCursor : endCursor - dur;
+      let cursor = 6 * 60; // 06:00
+      const endCursor = 24 * 60; // 00:00 meia-noite
+      const loopLimit = endCursor - dur;
 
       while (cursor <= loopLimit) {
         const h = Math.floor(cursor / 60);
@@ -1188,7 +1184,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       const dateObj = new Date(date + 'T12:00:00');
       const dayIndex = dateObj.getDay();
       const dayConfig = settings.operatingHours?.[dayIndex];
-      if (!dayConfig?.active) { setBookingSlots([]); return; }
+      if (dayConfig && dayConfig.active === false) { setBookingSlots([]); return; }
 
       // Fetch appointments from DB for this professional/date (no state filter issues)
       const { data: dbAppts } = await supabase
@@ -1197,25 +1193,14 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         .neq('status', 'CANCELLED').neq('status', 'cancelado')
         .gte('inicio', `${date}T00:00:00`).lte('inicio', `${date}T23:59:59`);
 
-      // If day is inactive per settings but already has appointments, allow booking
-      // (admin override — e.g., Sunday closed by default but shop is actually working)
-      const hasExistingAppts = (dbAppts || []).length > 0;
-      if (!dayConfig?.active && !hasExistingAppts) { setBookingSlots([]); return; }
-
-      // Use stored range or fall back to 08:00-20:00 for override days
-      const effectiveRange = dayConfig?.range || '08:00-20:00';
-      const [startRange, endRange] = effectiveRange.split('-');
-      const [sh, sm] = startRange.split(':').map(Number);
-      const [eh, em] = endRange.split(':').map(Number);
-
       const breaks: BreakPeriod[] = settings.breaks || [];
       const pad = (n: number) => String(n).padStart(2, '0');
       const INTERVAL = 30;
       const BUFFER = 11 * 60 * 1000;
       const slots: string[] = [];
-      let cursor = sh * 60 + sm;
-      const endCursor = eh * 60 + em;
-      const loopLimit = dayConfig?.acceptLastSlot ? endCursor : endCursor - dur;
+      let cursor = 6 * 60; // 06:00
+      const endCursor = 24 * 60; // 00:00 meia-noite
+      const loopLimit = endCursor - dur;
 
       while (cursor <= loopLimit) {
         const h = Math.floor(cursor / 60);
