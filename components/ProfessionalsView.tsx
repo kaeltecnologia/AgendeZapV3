@@ -18,7 +18,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [pros, setPros] = useState<Professional[]>([]);
   const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
-  const [allServices, setAllServices] = useState<{ id: string; name: string }[]>([]);
+  const [allServices, setAllServices] = useState<{ id: string; name: string; category?: string }[]>([]);
   const [breaks, setBreaks] = useState<BreakPeriod[]>([]);
   const [reportTab, setReportTab] = useState<'appointments' | 'expenses'>('appointments');
 
@@ -56,6 +56,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
 
   const [deleteProId, setDeleteProId] = useState<string | null>(null);
   const [deletingPro, setDeletingPro] = useState(false);
+  const [proSearch, setProSearch] = useState('');
 
   // Upsell popup state
   const [showUpsell, setShowUpsell] = useState(false);
@@ -89,7 +90,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
       setAllAppointments(a);
       setAllExpenses(e);
       setBreaks(s);
-      setAllServices(svc.map(s => ({ id: s.id, name: s.name })));
+      setAllServices(svc.map(s => ({ id: s.id, name: s.name, category: s.category })));
       // Load extra professionals from settings
       const fup = (settings as any).follow_up || {};
       setExtraPros(fup._extraProfessionals || 0);
@@ -417,12 +418,15 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
 
   const getLunchInfo = (pro: Professional) => breaks.find(b => b.type === 'lunch' && b.professionalId === pro.id);
   const getVacInfo = (pro: Professional) => breaks.find(b => b.type === 'vacation' && b.professionalId === pro.id);
+  const filteredPros = proSearch.trim()
+    ? pros.filter(p => p.name.toLowerCase().includes(proSearch.toLowerCase()))
+    : pros;
   const toggleLunchDay = (d: number) =>
     setLunchDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
   return (
     <>
-    <div className="space-y-10 animate-fadeIn">
+    <div className="space-y-6 animate-fadeIn">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h1 className="text-xl sm:text-3xl font-black text-black uppercase tracking-tight">Equipe de Profissionais</h1>
@@ -441,8 +445,27 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
         </button>
       </div>
 
+      {/* Barra de pesquisa */}
+      {pros.length > 0 && (
+        <div className="relative">
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            type="text"
+            placeholder="Buscar profissional por nome..."
+            value={proSearch}
+            onChange={e => setProSearch(e.target.value)}
+            className="w-full sm:w-80 pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none text-sm focus:border-orange-400 transition-colors"
+          />
+          {proSearch && (
+            <button onClick={() => setProSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {pros.map((p) => {
+        {filteredPros.map((p) => {
           const lunch = getLunchInfo(p);
           const vac = getVacInfo(p);
           const intervals = getIntervalsInfo(p);
@@ -1029,23 +1052,58 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
               </div>
 
               {/* Serviços que realiza */}
-              {allServices.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Serviços que realiza <span className="normal-case font-bold text-slate-300">(vazio = todos)</span></label>
-                  <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
-                    {allServices.map(s => {
-                      const checked = proServiceIds.includes(s.id);
-                      return (
-                        <button key={s.id} type="button"
-                          onClick={() => setProServiceIds(prev => checked ? prev.filter(id => id !== s.id) : [...prev, s.id])}
-                          className={`py-2 px-3 rounded-xl font-bold text-xs text-left border-2 transition-all ${checked ? 'bg-orange-50 border-orange-400 text-orange-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-300'}`}>
-                          {checked ? '✓ ' : ''}{s.name}
-                        </button>
-                      );
-                    })}
+              {allServices.length > 0 && (() => {
+                const cats = Array.from(new Set(allServices.map(s => s.category || ''))).sort((a, b) => {
+                  if (!a) return 1; if (!b) return -1;
+                  return a.localeCompare(b, 'pt-BR');
+                });
+                return (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">
+                      Serviços que realiza <span className="normal-case font-bold text-slate-300">(vazio = todos)</span>
+                    </label>
+                    <div className="space-y-3 max-h-52 overflow-y-auto pr-1">
+                      {cats.map(cat => {
+                        const catSvcs = allServices.filter(s => (s.category || '') === cat);
+                        const allChecked = catSvcs.every(s => proServiceIds.includes(s.id));
+                        const someChecked = catSvcs.some(s => proServiceIds.includes(s.id));
+                        return (
+                          <div key={cat || '__none__'}>
+                            <div className="flex items-center justify-between mb-1.5 px-1">
+                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                {cat || 'Sem Categoria'}
+                              </span>
+                              <button type="button"
+                                onClick={() => {
+                                  const ids = catSvcs.map(s => s.id);
+                                  setProServiceIds(prev => allChecked
+                                    ? prev.filter(id => !ids.includes(id))
+                                    : [...new Set([...prev, ...ids])]
+                                  );
+                                }}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${allChecked ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : someChecked ? 'bg-orange-50 text-orange-400 hover:bg-orange-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
+                                {allChecked ? 'Desmarcar todos' : 'Selecionar todos'}
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {catSvcs.map(s => {
+                                const checked = proServiceIds.includes(s.id);
+                                return (
+                                  <button key={s.id} type="button"
+                                    onClick={() => setProServiceIds(prev => checked ? prev.filter(id => id !== s.id) : [...prev, s.id])}
+                                    className={`py-2 px-3 rounded-xl font-bold text-xs text-left border-2 transition-all ${checked ? 'bg-orange-50 border-orange-400 text-orange-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-300'}`}>
+                                    {checked ? '✓ ' : ''}{s.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Acesso portal do profissional */}
               <div className="space-y-3 border-t-2 border-slate-100 pt-4">

@@ -440,6 +440,7 @@ export interface Service {
   price: number;
   durationMinutes: number;
   active: boolean;
+  category?: string;
 }
 
 export interface Customer {

@@ -624,7 +624,8 @@ class DatabaseService {
         name: s.nome || 'Sem Nome',
         price: Number(s.preco || 0),
         durationMinutes: s.duracao_minutos || 30,
-        active: s.ativo ?? true
+        active: s.ativo ?? true,
+        ...(s.category ? { category: s.category } : {})
       }));
       _cache.set(ck, result, TTL_MED);
       return result;
@@ -636,13 +637,14 @@ class DatabaseService {
 
   async addService(svc: any) {
     try {
-      const payload = {
+      const payload: any = {
         tenant_id: svc.tenant_id,
         nome: svc.name,
         preco: svc.price,
         duracao_minutos: svc.durationMinutes,
         ativo: svc.ativo ?? true
       };
+      if (svc.category !== undefined) payload.category = svc.category || null;
       const { data, error } = await supabase.from('services').insert(payload).select().single();
       if (error) throw error;
       _cache.invalidate(`getServices:${svc.tenant_id}`);
@@ -652,7 +654,8 @@ class DatabaseService {
         name: data.nome,
         price: Number(data.preco),
         durationMinutes: data.duracao_minutos,
-        active: data.ativo
+        active: data.ativo,
+        category: data.category || undefined
       };
     } catch (e) {
       console.error("Supabase Service Insert Error:", e);
@@ -662,12 +665,14 @@ class DatabaseService {
 
   async updateService(id: string, svc: Partial<Service>) {
     try {
-      const { error } = await supabase.from('services').update({
+      const upd: any = {
         nome: svc.name,
         preco: svc.price,
         duracao_minutos: svc.durationMinutes,
         ativo: svc.active
-      }).eq('id', id);
+      };
+      if (svc.category !== undefined) upd.category = svc.category || null;
+      const { error } = await supabase.from('services').update(upd).eq('id', id);
       if (error) throw error;
       _cache.invalidate('getServices:');
     } catch (e) {
