@@ -1666,37 +1666,40 @@ const App: React.FC = () => {
       {isAuthenticated && role === 'TENANT' && tenantId && (
         <>
           {/* Floating Tutorials button + shortcut hints */}
-          <div className="fixed bottom-24 right-6 z-50 group/tut flex flex-col items-end gap-2">
-            {/* Shortcut tooltip — visible on hover, desktop only */}
-            <div className="hidden md:block pointer-events-none opacity-0 group-hover/tut:opacity-100 group-hover/tut:pointer-events-auto transition-all duration-200 translate-y-1 group-hover/tut:translate-y-0">
-              <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-3 w-48 mb-1">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Atalhos de Teclado</p>
-                <div className="space-y-1.5">
-                  {[
-                    { key: 'D', label: 'Dashboard' },
-                    { key: 'A', label: 'Agenda' },
-                    { key: 'C', label: 'Clientes' },
-                    { key: 'F', label: 'Financeiro' },
-                    { key: 'M', label: 'Marketing' },
-                    { key: 'E', label: 'Equipe' },
-                  ].map(s => (
-                    <div key={s.key} className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-300">{s.label}</span>
-                      <kbd className="inline-flex items-center justify-center px-1.5 h-5 bg-slate-700 rounded text-[10px] font-black text-slate-200 tracking-tight">Alt+{s.key}</kbd>
-                    </div>
-                  ))}
+          <div className="fixed bottom-24 right-6 z-50">
+            {/* Tooltip only shows on button hover via group placed on the button */}
+            <div className="group/tut relative">
+              <button
+                onClick={() => setShowTutorials(true)}
+                title="Tutoriais"
+                className="w-14 h-14 bg-slate-800 rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:shadow-2xl transition-all cursor-pointer"
+              >
+                <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              </button>
+              {/* Shortcut tooltip — only appears when hovering the button itself, desktop only */}
+              <div className="hidden md:block absolute bottom-full right-0 mb-2 pointer-events-none opacity-0 group-hover/tut:opacity-100 transition-opacity duration-150 delay-300">
+                <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-3 w-48">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Atalhos de Teclado</p>
+                  <div className="space-y-1.5">
+                    {[
+                      { key: 'D', label: 'Dashboard' },
+                      { key: 'A', label: 'Agenda' },
+                      { key: 'C', label: 'Clientes' },
+                      { key: 'F', label: 'Financeiro' },
+                      { key: 'M', label: 'Marketing' },
+                      { key: 'E', label: 'Equipe' },
+                    ].map(s => (
+                      <div key={s.key} className="flex items-center justify-between">
+                        <span className="text-[11px] text-slate-300">{s.label}</span>
+                        <kbd className="inline-flex items-center justify-center px-1.5 h-5 bg-slate-700 rounded text-[10px] font-black text-slate-200 tracking-tight">Alt+{s.key}</kbd>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setShowTutorials(true)}
-              title="Tutoriais"
-              className="w-14 h-14 bg-slate-800 rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:shadow-2xl transition-all cursor-pointer"
-            >
-              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-            </button>
           </div>
           <TutorialsPanel open={showTutorials} onClose={() => setShowTutorials(false)} />
           {!resellerProfile && <SupportChat tenantId={tenantId} tenantName={tenantName} />}

@@ -1,49 +1,48 @@
 import React, { useEffect, useState } from 'react';
 
-const VERSION_KEY = 'agz_whats_new_seen_v6';
+const VERSION_KEY = 'agz_whats_new_seen_v7';
 
 const updates = [
   {
-    icon: '⌨️',
-    title: 'Atalhos de Teclado',
-    desc: 'Navegue pelo sistema sem tirar as mãos do teclado! Use Alt+A (Agenda), Alt+C (Clientes), Alt+F (Financeiro), Alt+M (Marketing) e Alt+E (Equipe) em qualquer tela.',
+    icon: '🔗',
+    title: 'Link de agendamento na boas-vindas',
+    desc: 'O agente IA agora envia o link de agendamento online logo na primeira mensagem de boas-vindas para todos os clientes.',
     highlight: true,
   },
   {
-    icon: '💰',
-    title: 'Financeiro Reorganizado',
-    desc: 'As abas do financeiro foram reordenadas para um fluxo mais natural: Resumo Geral → Caixa Diária → Por Profissional → Taxas & Metas.',
+    icon: '🤖',
+    title: 'IA desativável por profissional',
+    desc: 'Agora você pode marcar profissionais como "Manual" — o agente IA não oferece horários para esses profissionais, apenas agendamento humano.',
     highlight: false,
   },
   {
-    icon: '🔌',
-    title: 'Conexões em Grupos',
-    desc: 'A tela de Conexões agora separa visualmente as integrações (WhatsApp, IA, Instagram) da aparência (Link de Agendamento), ficando muito mais organizada.',
+    icon: '🕐',
+    title: 'Horários respeitam janela configurada',
+    desc: 'Corrigido: o link de agendamento agora mostra apenas os horários dentro da janela de funcionamento configurada, sem extrapolações.',
     highlight: false,
   },
   {
-    icon: '🔔',
-    title: 'Follow-Up com Contadores',
-    desc: 'Cada aba do Follow-Up agora mostra um badge com a quantidade de modos ativos — Aviso, Lembrete e Reativação de forma clara e rápida.',
+    icon: '📅',
+    title: 'Linhas do calendário sempre alinhadas',
+    desc: 'As linhas horizontais do calendário de agendamentos agora são renderizadas em camada única, garantindo alinhamento perfeito entre todas as colunas.',
     highlight: false,
   },
   {
-    icon: '👥',
-    title: 'Painel de Desempenho por Profissional',
-    desc: 'Cada card de profissional agora tem um painel expansível com abas de Horários e Desempenho — veja agendamentos, faturamento e pendências do mês direto na lista.',
+    icon: '📦',
+    title: 'Estoque com tipo de item',
+    desc: 'Cada item do estoque agora tem um tipo: Insumo (uso interno) ou Venda (produto vendável). Facilita o controle e os relatórios.',
     highlight: false,
   },
   {
-    icon: '🚨',
-    title: 'Ausência Pontual',
-    desc: 'Crie ausências inesperadas para profissionais com data, horário e motivo. A IA respeita automaticamente e não oferece esses horários para clientes.',
+    icon: '💬',
+    title: 'Notificação de suporte em tempo real',
+    desc: 'Quando o suporte responder você, um badge pulsante e uma notificação toast aparecem automaticamente — sem precisar ficar verificando.',
     highlight: false,
   },
 ];
 
 const WhatsNew: React.FC = () => {
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState(0);
 
   useEffect(() => {
     if (!localStorage.getItem(VERSION_KEY)) {
@@ -71,7 +70,6 @@ const WhatsNew: React.FC = () => {
       >
         {/* ── Header ── */}
         <div className="relative px-7 pt-8 pb-5 overflow-hidden flex-shrink-0">
-          {/* Background glow */}
           <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full opacity-10 pointer-events-none"
             style={{ background: 'radial-gradient(circle, #f97316, transparent)' }} />
           <div className="absolute -bottom-6 -left-6 w-32 h-32 rounded-full opacity-10 pointer-events-none"
@@ -84,11 +82,11 @@ const WhatsNew: React.FC = () => {
                   🎉 Versão Nova
                 </span>
                 <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">
-                  v4.33
+                  v4.41
                 </span>
               </div>
               <h2 className="text-[26px] font-black text-slate-900 leading-tight">
-                Ficou ainda<br />melhor! 🚀
+                Novidades de<br />hoje! 🚀
               </h2>
               <p className="text-xs text-slate-400 mt-1.5 font-medium">
                 {updates.length} melhorias chegaram pro seu sistema
@@ -130,19 +128,8 @@ const WhatsNew: React.FC = () => {
           ))}
         </div>
 
-        {/* ── Shortcut hint bar ── */}
-        <div className="mx-5 mt-3 mb-2 bg-slate-900 rounded-2xl px-4 py-3 flex items-center gap-3 flex-shrink-0">
-          <span className="text-xl">⌨️</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-black text-white uppercase tracking-widest">Dica rápida</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              Passe o mouse no botão <span className="text-white font-bold">▶ Tutoriais</span> para ver todos os atalhos disponíveis
-            </p>
-          </div>
-        </div>
-
         {/* ── Footer ── */}
-        <div className="px-5 pb-7 pt-3 flex-shrink-0">
+        <div className="px-5 pb-7 pt-4 flex-shrink-0">
           <button
             onClick={dismiss}
             className="w-full py-4 rounded-2xl font-black text-[13px] uppercase tracking-widest text-white transition-all hover:scale-[1.01] active:scale-[0.99]"
