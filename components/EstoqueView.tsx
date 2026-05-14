@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { db } from '../services/mockDb';
 import { InventoryItem } from '../types';
 
@@ -26,6 +27,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [newCost, setNewCost] = useState(0);
   const [newSalePrice, setNewSalePrice] = useState(0);
   const [newMinStock, setNewMinStock] = useState(0);
+  const [newItemType, setNewItemType] = useState<'insumo' | 'venda'>('insumo');
 
   // Stock entry modal (add quantity)
   const [entryItem, setEntryItem] = useState<InventoryItem | null>(null);
@@ -39,6 +41,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [editUnit, setEditUnit] = useState('');
   const [editMinStock, setEditMinStock] = useState(0);
   const [editSalePrice, setEditSalePrice] = useState(0);
+  const [editItemType, setEditItemType] = useState<'insumo' | 'venda'>('insumo');
 
   // Filter
   const [search, setSearch] = useState('');
@@ -61,6 +64,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const resetAddForm = () => {
     setNewName(''); setNewCategory('Higiene'); setNewQty(0);
     setNewUnit('unidades'); setNewCost(0); setNewSalePrice(0); setNewMinStock(0);
+    setNewItemType('insumo');
   };
 
   const handleAdd = async () => {
@@ -75,6 +79,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         purchaseCost: newCost,
         salePrice: newSalePrice > 0 ? newSalePrice : undefined,
         minStock: newMinStock,
+        itemType: newItemType,
       });
       await load();
       setShowAddForm(false);
@@ -107,6 +112,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       await db.updateInventoryItem(tenantId, editItem.id, {
         name: editName, category: editCategory, unit: editUnit, minStock: editMinStock,
         salePrice: editSalePrice > 0 ? editSalePrice : undefined,
+        itemType: editItemType,
       });
       await load();
       setEditItem(null);
@@ -126,6 +132,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setEditUnit(item.unit);
     setEditMinStock(item.minStock || 0);
     setEditSalePrice(item.salePrice ?? 0);
+    setEditItemType(item.itemType || 'insumo');
   };
 
   const openEntry = (item: InventoryItem) => {
@@ -175,20 +182,6 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <SummaryCard label="Alertas de Estoque" value={String(lowStock.length)} icon="⚠️" warn={lowStock.length > 0} />
       </div>
 
-      {/* Low-stock alerts */}
-      {lowStock.length > 0 && (
-        <div className="bg-amber-50 border-2 border-amber-100 rounded-2xl p-5">
-          <p className="text-xs font-black text-amber-700 uppercase tracking-widest mb-3">⚠️ Estoque Baixo</p>
-          <div className="flex flex-wrap gap-2">
-            {lowStock.map(i => (
-              <span key={i.id} className="text-[10px] font-black bg-amber-100 text-amber-800 px-3 py-1 rounded-xl uppercase">
-                {i.name} — {i.quantity} {i.unit}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Add form */}
       {showAddForm && (
         <div className="bg-white rounded-3xl border-2 border-orange-100 p-8 space-y-5 animate-fadeIn">
@@ -210,6 +203,17 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
                 {UNITS.map(u => <option key={u}>{u}</option>)}
               </select>
+            </div>
+            <div className="col-span-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipo de uso</label>
+              <div className="flex gap-2">
+                {(['insumo', 'venda'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => setNewItemType(t)}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${newItemType === t ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    {t === 'insumo' ? 'Insumo (uso interno)' : 'Para venda'}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Qtd. inicial</label>
@@ -257,7 +261,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <table className="w-full">
           <thead className="bg-slate-50">
             <tr>
-              {['Produto', 'Categoria', 'Quantidade', 'Custo Unit.', 'Preço Venda', 'Valor Total', 'Ações'].map(h => (
+              {['Produto', 'Categoria', 'Tipo', 'Quantidade', 'Custo Unit.', 'Preço Venda', 'Valor Total', 'Ações'].map(h => (
                 <th key={h} className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
               ))}
             </tr>
@@ -265,20 +269,25 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           <tbody className="divide-y divide-slate-50">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-slate-300 font-black uppercase text-xs">
+                <td colSpan={8} className="text-center py-12 text-slate-300 font-black uppercase text-xs">
                   Nenhum produto cadastrado
                 </td>
               </tr>
             ) : filtered.map(item => {
               const isLow = !!(item.minStock && item.quantity <= item.minStock);
               return (
-                <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${isLow ? 'bg-amber-50/40' : ''}`}>
+                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-5 py-4">
                     <p className="font-black text-sm text-black">{item.name}</p>
                     {isLow && <span className="text-[8px] font-black text-amber-600 uppercase">⚠️ Estoque baixo</span>}
                   </td>
                   <td className="px-5 py-4">
                     <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-lg uppercase">{item.category || '—'}</span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className={`text-[9px] font-black px-2 py-1 rounded-lg uppercase ${item.itemType === 'venda' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-500'}`}>
+                      {item.itemType === 'venda' ? 'Venda' : 'Insumo'}
+                    </span>
                   </td>
                   <td className="px-5 py-4">
                     <span className={`font-black text-sm ${isLow ? 'text-amber-600' : 'text-black'}`}>
@@ -321,8 +330,8 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       </div>
 
       {/* ── STOCK ENTRY MODAL ──────────────────────────────────────── */}
-      {entryItem && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      {entryItem && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] w-full max-w-sm p-10 space-y-6 animate-scaleUp border-4 border-black">
             <div>
               <h2 className="text-xl font-black text-black uppercase">Entrada de Estoque</h2>
@@ -352,12 +361,13 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── EDIT MODAL ─────────────────────────────────────────────── */}
-      {editItem && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      {editItem && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] w-full max-w-sm p-10 space-y-6 animate-scaleUp border-4 border-black">
             <h2 className="text-xl font-black text-black uppercase">Editar Produto</h2>
             <div className="space-y-4">
@@ -372,6 +382,17 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500">
                 {UNITS.map(u => <option key={u}>{u}</option>)}
               </select>
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipo de uso</label>
+                <div className="flex gap-2">
+                  {(['insumo', 'venda'] as const).map(t => (
+                    <button key={t} type="button" onClick={() => setEditItemType(t)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${editItemType === t ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                      {t === 'insumo' ? 'Insumo' : 'Para venda'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Qtd. mínima para alerta</label>
                 <input type="number" min={0} value={editMinStock} onChange={e => setEditMinStock(Number(e.target.value))}
@@ -390,7 +411,8 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -537,7 +537,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
           <div className="flex justify-center items-start min-h-full p-4 sm:p-6 pt-6 pb-10">
-            <div className="bg-white rounded-[40px] w-full max-w-2xl animate-scaleUp overflow-hidden">
+            <div className="bg-white rounded-[40px] w-full max-w-2xl animate-scaleUp flex flex-col max-h-[90vh]">
 
               {/* ── Header ── */}
               <div style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -584,7 +584,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 ))}
               </div>
 
-              <div className="p-6 sm:p-8 space-y-6 max-h-[60vh] overflow-y-auto">
+              <div className="p-6 sm:p-8 space-y-6 flex-1 overflow-y-auto">
 
               {/* ══ PERFIL TAB ══════════════════════════════════════ */}
               {profileTab === 'perfil' && (

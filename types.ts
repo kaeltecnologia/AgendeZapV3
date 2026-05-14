@@ -111,6 +111,7 @@ export interface InventoryItem {
   purchaseCost: number;  // cost per unit at last purchase
   salePrice?: number;    // sale price to client (used in comandas)
   minStock?: number;     // low-stock alert threshold
+  itemType?: 'insumo' | 'venda'; // internal use or for sale
   lastUpdated: string;   // ISO datetime
 }
 
