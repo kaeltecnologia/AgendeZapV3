@@ -156,22 +156,29 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       addLog('INFO', `Desconectando WhatsApp de ${name}...`);
       const res = await evolutionService.logoutInstance(name);
       addLog('INFO', `Logout → HTTP ${res.status ?? '?'} | ${JSON.stringify(res.body).slice(0, 120)}`);
-      if (res.ok) {
+
+      // HTTP 500 = Evolution API internal error — usually means the WA session is
+      // already broken/corrupted on the server side (socket closed, connection lost).
+      // Treat as disconnected and update local state.
+      const sessionBroken = res.status === 500;
+
+      if (res.ok || sessionBroken) {
         setInstanceStatus('close');
         setQrCode(null);
-        addLog('SUCCESS', 'WhatsApp desconectado com sucesso.');
+        addLog('SUCCESS', sessionBroken
+          ? 'Sessão já estava encerrada no servidor. Estado local atualizado.'
+          : 'WhatsApp desconectado com sucesso.');
       } else {
-        // Fallback: delete instance entirely (more aggressive but reliable)
-        addLog('INFO', 'Logout falhou — tentando via delete de instância...');
-        const del = await evolutionService.deleteInstance(name);
-        addLog('INFO', `Delete → ${del ? 'OK' : 'falhou'}`);
-        if (del) {
+        // Other failures: try restart to clear internal state
+        addLog('INFO', `Logout falhou (HTTP ${res.status}) — tentando restart...`);
+        const restarted = await evolutionService.restartInstance(name);
+        if (restarted) {
           setInstanceStatus('close');
           setQrCode(null);
-          addLog('SUCCESS', 'Instância deletada. Use "Solicitar QR Code" para reconectar.');
+          addLog('SUCCESS', 'Instância reiniciada. Use "Solicitar QR Code" para reconectar.');
         } else {
-          setError(`Falha HTTP ${res.status}: ${JSON.stringify(res.body).slice(0, 80)}`);
-          addLog('ERROR', `Não foi possível desconectar. Status: ${res.status}`);
+          setError(`Evolution API retornou HTTP ${res.status}. Tente "Reiniciar Instância".`);
+          addLog('ERROR', `Não foi possível desconectar. Body: ${JSON.stringify(res.body).slice(0, 80)}`);
         }
       }
     } catch (e: any) {
