@@ -1508,7 +1508,7 @@ class DatabaseService {
       ]);
 
       const now = new Date();
-      const weeksAhead = 4;
+      const weeksAhead = 8;
       let created = 0;
 
       const pad = (n: number) => String(n).padStart(2, '0');
@@ -1516,10 +1516,10 @@ class DatabaseService {
         `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
       for (const customer of customers) {
-        // Only generate for customers with active plans
-        if (customer.planStatus !== 'ativo') continue;
-
         const entries: RecurringEntry[] = customer.recurringEntries || [];
+        const hasLegacy = !!(customer.recurringSchedule?.enabled && customer.recurringSchedule?.slots?.length);
+        // Generate for any customer with active recurring entries (no plan subscription required)
+        if (!entries.some(e => e.active) && !hasLegacy) continue;
 
         // ── New path: RecurringEntry[] ──────────────────────────────
         if (entries.length > 0) {

@@ -1096,6 +1096,97 @@ Deno.serve(async (_req) => {
           console.error(`[Sub] Error ${tenant.nome}:`, e.message);
         }
 
+        // ── 5b. RECURRING APPOINTMENTS GENERATOR ─────────────────────────
+        try {
+          const EPOCH_MS = new Date('2024-01-01T03:00:00Z').getTime();
+          const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+          const recurWeeksAhead = 8;
+          let recurCreated = 0;
+
+          function absWeek(d: Date): number {
+            return Math.floor((d.getTime() - EPOCH_MS) / WEEK_MS);
+          }
+
+          function isEntryActiveForWeek(entry: any, targetAbsWeek: number): boolean {
+            const offset = entry.weekOffset ?? 0;
+            const adj = targetAbsWeek - offset;
+            if (adj < 0) return false;
+            switch (entry.frequency) {
+              case 'weekly':      return true;
+              case 'biweekly':    return adj % 2 === 0;
+              case 'triweekly':   return adj % 3 === 0;
+              case 'alternating': return adj % 2 === 0;
+              default:            return false;
+            }
+          }
+
+          for (const c of (custsResult.data || [])) {
+            const cData = settings.customerData[c.id] || {};
+            const recurEntries: any[] = cData.recurringEntries || [];
+            if (!recurEntries.some((e: any) => e.active)) continue;
+
+            for (const entry of recurEntries) {
+              if (!entry.active || !entry.professionalId || !entry.serviceId) continue;
+              const svcRaw = (svcsResult.data || []).find((s: any) => s.id === entry.serviceId && s.ativo !== false);
+              if (!svcRaw) continue;
+              const duration = svcRaw.duracao_minutos || 30;
+
+              if (!entry.repeat) {
+                // One-time: next upcoming occurrence of dayOfWeek
+                const target = new Date(now);
+                const daysUntil = ((entry.dayOfWeek - target.getUTCDay()) + 7) % 7 || 7;
+                target.setUTCDate(target.getUTCDate() + daysUntil);
+                const [h, m] = entry.time.split(':').map(Number);
+                target.setUTCHours(h, m, 0, 0);
+                if (target <= now) continue;
+                const recurDateStr = localDateStr(target);
+                const recurExists = allAppts.some((a: any) =>
+                  a.customer_id === c.id &&
+                  (a.startTime || '')?.slice(0, 10) === recurDateStr &&
+                  (a.startTime || '')?.slice(11, 16) === entry.time &&
+                  a.status !== 'CANCELLED' && a.status !== 'cancelado'
+                );
+                if (recurExists) continue;
+                await supabase.from('appointments').insert({
+                  tenant_id: tenantId, customer_id: c.id,
+                  professional_id: entry.professionalId, service_id: entry.serviceId,
+                  inicio: `${recurDateStr}T${entry.time}:00`,
+                  duracao_minutos: duration, status: 'CONFIRMED', source: 'PLAN', is_plan: true,
+                });
+                recurCreated++;
+              } else {
+                for (let week = 0; week < recurWeeksAhead; week++) {
+                  const target = new Date(now);
+                  const daysUntil = ((entry.dayOfWeek - target.getUTCDay()) + 7) % 7;
+                  target.setUTCDate(target.getUTCDate() + daysUntil + week * 7);
+                  const [h, m] = entry.time.split(':').map(Number);
+                  target.setUTCHours(h, m, 0, 0);
+                  if (target <= now) continue;
+                  if (!isEntryActiveForWeek(entry, absWeek(target))) continue;
+                  const recurDateStr = localDateStr(target);
+                  const recurExists = allAppts.some((a: any) =>
+                    a.customer_id === c.id &&
+                    (a.startTime || '')?.slice(0, 10) === recurDateStr &&
+                    (a.startTime || '')?.slice(11, 16) === entry.time &&
+                    a.status !== 'CANCELLED' && a.status !== 'cancelado'
+                  );
+                  if (recurExists) continue;
+                  await supabase.from('appointments').insert({
+                    tenant_id: tenantId, customer_id: c.id,
+                    professional_id: entry.professionalId, service_id: entry.serviceId,
+                    inicio: `${recurDateStr}T${entry.time}:00`,
+                    duracao_minutos: duration, status: 'CONFIRMED', source: 'PLAN', is_plan: true,
+                  });
+                  recurCreated++;
+                }
+              }
+            }
+          }
+          if (recurCreated > 0) console.log(`[Recurring] ${recurCreated} appts created for ${tenant.nome}`);
+        } catch (e: any) {
+          console.error(`[Recurring] Error ${tenant.nome}:`, e.message);
+        }
+
         processed++;
       } catch (e: any) {
         errors.push(`${tenant.nome || tenantId}: ${e.message}`);

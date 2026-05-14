@@ -21,9 +21,12 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [expandedImg, setExpandedImg] = useState('');
+  const [showToast, setShowToast] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevUnreadRef = useRef(-1); // -1 = not yet initialized
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const unreadCount = messages.filter(m => m.sender === 'support' && !m.read).length;
 
@@ -32,12 +35,27 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
     setMessages(msgs);
   }, [tenantId]);
 
-  // Poll every 60s (skip when tab hidden)
+  // Poll every 30s (skip when tab hidden)
   useEffect(() => {
     load();
-    intervalRef.current = setInterval(() => { if (!document.hidden) load(); }, 60_000);
+    intervalRef.current = setInterval(() => { if (!document.hidden) load(); }, 30_000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [load]);
+
+  // Show toast when new support message arrives while panel is closed
+  useEffect(() => {
+    if (prevUnreadRef.current === -1) {
+      // First load — just save baseline, no toast
+      prevUnreadRef.current = unreadCount;
+      return;
+    }
+    if (!open && unreadCount > prevUnreadRef.current) {
+      setShowToast(true);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setShowToast(false), 6000);
+    }
+    prevUnreadRef.current = unreadCount;
+  }, [unreadCount, open]);
 
   // When opened: mark support messages as read + scroll to bottom
   useEffect(() => {
@@ -120,17 +138,34 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
 
   return (
     <>
+      {/* Toast notification — new support message */}
+      {showToast && (
+        <div className="fixed bottom-24 right-6 z-[60] bg-black text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 max-w-[260px] animate-fadeIn">
+          <span className="text-lg shrink-0">💬</span>
+          <div className="flex-1">
+            <p className="font-black text-[11px] uppercase tracking-widest">Nova mensagem do suporte</p>
+            <p className="text-[10px] text-white/60 mt-0.5">Clique no ícone abaixo para ver</p>
+          </div>
+          <button onClick={() => setShowToast(false)} className="text-white/40 hover:text-white/80 shrink-0 text-sm leading-none">✕</button>
+        </div>
+      )}
+
       {/* Floating button */}
       <div className="fixed bottom-6 right-6 z-50">
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center z-10">
-            {unreadCount}
-          </span>
+          <>
+            {/* Pulsing ring */}
+            <span className="absolute inset-0 rounded-full bg-orange-400 animate-ping opacity-60 pointer-events-none" />
+            {/* Badge count */}
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center z-10">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          </>
         )}
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => { setOpen(true); setShowToast(false); }}
           title="Suporte AgendeZap"
-          className="w-14 h-14 bg-orange-500 rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-all"
+          className="relative w-14 h-14 bg-orange-500 rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-all"
         >
           {/* Headset icon */}
           <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
