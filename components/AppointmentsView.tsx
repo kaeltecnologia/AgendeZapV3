@@ -456,16 +456,25 @@ function DayCalendar({
 
   const dayAppts = appointments.filter(a => a.startTime?.startsWith(dateStr));
 
+  // Scroll-sync refs — header scrolls in tandem with body (horizontal only).
+  // Fixed column width (px) ensures header and body column borders are always pixel-perfect.
+  const headerRef = useRef<HTMLDivElement>(null);
+  const bodyRef   = useRef<HTMLDivElement>(null);
+  const COL_W = 130; // px per professional column
+  const gridW = 57 + cols * COL_W; // 56px time-label + 1px border + cols × COL_W
+  const colTemplate = `56px repeat(${cols}, ${COL_W}px)`;
+
+  const onBodyScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (headerRef.current) headerRef.current.scrollLeft = (e.currentTarget as HTMLDivElement).scrollLeft;
+  };
+
   return (
     <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-      {/* Single scroll container — handles vertical + horizontal (mobile).
-          Header is sticky so columns always share the same grid context → borders align perfectly. */}
-      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 640 }}>
-        {/* Inner wrapper enforces minimum column width so mobile can scroll horizontally */}
-        <div style={{ minWidth: `${56 + cols * 110}px` }}>
 
-        {/* Sticky professional header */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'grid', gridTemplateColumns: `56px repeat(${cols}, 1fr)`, borderBottom: '1px solid #E2E8F0', background: '#ffffff' }}>
+      {/* ── Professional header (hidden scrollbar, synced via JS) ── */}
+      <div ref={headerRef} style={{ overflowX: 'hidden', borderBottom: '1px solid #E2E8F0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: colTemplate, width: gridW }}>
+          {/* Time-label spacer */}
           <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
           {visibleProfs.map((p, i) => {
             const profIdx = professionals.findIndex(pr => pr.id === p.id);
@@ -491,34 +500,19 @@ function DayCalendar({
             );
           })}
         </div>
+      </div>
 
-        {/* Time grid — same grid template as header, no separate scroll container */}
-        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: `56px repeat(${cols}, 1fr)`, height: totalHeight }}>
-          {/* Time labels */}
-          <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC', position: 'relative', height: totalHeight }}>
+      {/* ── Time grid (scrollable: X + Y) ── */}
+      <div ref={bodyRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 560 }} onScroll={onBodyScroll}>
+        <div style={{ display: 'grid', gridTemplateColumns: colTemplate, width: gridW, height: totalHeight, position: 'relative' }}>
+
+          {/* Time labels — sticky left so they don't scroll away horizontally */}
+          <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC', position: 'sticky', left: 0, zIndex: 2, height: totalHeight }}>
             {hours.map(h => (
               <div key={h} style={{ position: 'absolute', width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', paddingRight: 8, paddingTop: 4, top: `${(h - HOUR_START) * HOUR_PX}px`, height: `${HOUR_PX}px` }}>
                 <span style={{ fontSize: 10, fontWeight: 600, color: '#94A3B8', fontVariantNumeric: 'tabular-nums' }}>{String(h).padStart(2, '0')}:00</span>
               </div>
             ))}
-          </div>
-
-          {/* Single horizontal lines overlay — spans ALL columns for guaranteed alignment */}
-          <div style={{
-            position: 'absolute', left: 57, right: 0, top: 0, height: totalHeight,
-            pointerEvents: 'none', zIndex: 0,
-            backgroundColor: isToday ? '#FFFBF7' : 'transparent',
-            backgroundImage: [
-              `repeating-linear-gradient(180deg, #E2E8F0 0px, #E2E8F0 1px, transparent 1px, transparent ${HOUR_PX}px)`,
-              `repeating-linear-gradient(180deg, transparent ${HOUR_PX / 2 - 1}px, #EAEFF5 ${HOUR_PX / 2 - 1}px, #EAEFF5 ${HOUR_PX / 2}px, transparent ${HOUR_PX / 2}px, transparent ${HOUR_PX}px)`,
-            ].join(', '),
-          }}>
-            {nowPx !== null && (
-              <div style={{ position: 'absolute', width: '100%', zIndex: 5, display: 'flex', alignItems: 'center', top: `${nowPx}px` }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', marginLeft: -4, flexShrink: 0 }} />
-                <div style={{ flex: 1, height: 1.5, background: '#f97316' }} />
-              </div>
-            )}
           </div>
 
           {/* Professional columns */}
@@ -544,12 +538,21 @@ function DayCalendar({
                 style={{
                   position: 'relative',
                   borderRight: colIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
-                  background: isToday ? '#FFFBF7' : 'transparent',
+                  background: isToday ? '#FFFBF7' : '#ffffff',
                   height: totalHeight,
                   cursor: 'pointer',
-                  zIndex: 1,
                 }}>
 
+                {/* Horizontal hour lines */}
+                {hours.map(h => (
+                  <div key={h} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: '#E2E8F0', pointerEvents: 'none' }} />
+                ))}
+                {/* Half-hour lines */}
+                {hours.map(h => (
+                  <div key={`${h}h`} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, height: 1, background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)', pointerEvents: 'none' }} />
+                ))}
+
+                {/* Appointment blocks */}
                 {profAppts.map(a => {
                   const startDt = new Date(a.startTime);
                   const startH = startDt.getHours();
@@ -614,9 +617,16 @@ function DayCalendar({
               </div>
             );
           })}
+
+          {/* Current-time indicator — spans all professional columns */}
+          {nowPx !== null && (
+            <div style={{ position: 'absolute', left: 57, right: 0, top: `${nowPx}px`, zIndex: 5, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', marginLeft: -4, flexShrink: 0 }} />
+              <div style={{ flex: 1, height: 1.5, background: '#f97316' }} />
+            </div>
+          )}
         </div>
-        </div>{/* /minWidth wrapper */}
-      </div>{/* /scroll container */}
+      </div>
     </div>
   );
 }
