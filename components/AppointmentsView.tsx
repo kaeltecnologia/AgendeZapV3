@@ -498,6 +498,24 @@ function DayCalendar({
             ))}
           </div>
 
+          {/* Single horizontal lines overlay — spans ALL columns for guaranteed alignment */}
+          <div style={{
+            position: 'absolute', left: 57, right: 0, top: 0, height: totalHeight,
+            pointerEvents: 'none', zIndex: 0,
+            backgroundColor: isToday ? '#FFFBF7' : 'transparent',
+            backgroundImage: [
+              `repeating-linear-gradient(180deg, #E2E8F0 0px, #E2E8F0 1px, transparent 1px, transparent ${HOUR_PX}px)`,
+              `repeating-linear-gradient(180deg, transparent ${HOUR_PX / 2 - 1}px, #EAEFF5 ${HOUR_PX / 2 - 1}px, #EAEFF5 ${HOUR_PX / 2}px, transparent ${HOUR_PX / 2}px, transparent ${HOUR_PX}px)`,
+            ].join(', '),
+          }}>
+            {nowPx !== null && (
+              <div style={{ position: 'absolute', width: '100%', zIndex: 5, display: 'flex', alignItems: 'center', top: `${nowPx}px` }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', marginLeft: -4, flexShrink: 0 }} />
+                <div style={{ flex: 1, height: 1.5, background: '#f97316' }} />
+              </div>
+            )}
+          </div>
+
           {/* Professional columns */}
           {visibleProfs.map((p, colIdx) => {
             const globalProfIdx = professionals.findIndex(pr => pr.id === p.id);
@@ -521,23 +539,11 @@ function DayCalendar({
                 style={{
                   position: 'relative',
                   borderRight: colIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
-                  background: isToday ? '#FFFBF7' : '#ffffff',
+                  background: isToday ? '#FFFBF7' : 'transparent',
                   height: totalHeight,
                   cursor: 'pointer',
+                  zIndex: 1,
                 }}>
-                {hours.map(h => (
-                  <div key={h} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: '#E2E8F0' }} />
-                ))}
-                {hours.map(h => (
-                  <div key={`${h}h`} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, height: 1, background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)' }} />
-                ))}
-
-                {nowPx !== null && (
-                  <div style={{ position: 'absolute', width: '100%', zIndex: 10, display: 'flex', alignItems: 'center', top: `${nowPx}px` }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', marginLeft: -4, flexShrink: 0 }} />
-                    <div style={{ flex: 1, height: 1.5, background: '#f97316' }} />
-                  </div>
-                )}
 
                 {profAppts.map(a => {
                   const startDt = new Date(a.startTime);
