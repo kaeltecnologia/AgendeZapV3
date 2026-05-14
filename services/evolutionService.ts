@@ -267,9 +267,14 @@ export const evolutionService = {
       const exists = await this.instanceExists(instanceName);
 
       if (exists) {
-        // Instance exists but is disconnected → restart to get a fresh QR code
-        await this.restartInstance(instanceName);
-        await this.sleep(2000);
+        if (!forceQr) {
+          // Normal reconnect: restart restores saved WA session → gets QR if disconnected
+          await this.restartInstance(instanceName);
+          await this.sleep(2000);
+        }
+        // forceQr=true (after logout): skip restart — restart would re-connect the saved
+        // WA credentials from disk, defeating the logout. Just call /connect directly
+        // which will generate a fresh QR since the session was cleared.
       } else {
         // Instance doesn't exist → create it
         const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
@@ -300,7 +305,9 @@ export const evolutionService = {
       }
 
       const data = await connectResponse.json();
-      if (data.instance?.state === 'open' || data.state === 'open') {
+      // When forcing a new QR, ignore 'open' state — the connect endpoint may
+      // transiently report open right after logout before the session fully closes.
+      if (!forceQr && (data.instance?.state === 'open' || data.state === 'open')) {
         return { status: 'success', qrcode: null, message: 'Conectado.' };
       }
 
