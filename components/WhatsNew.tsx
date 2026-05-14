@@ -1,42 +1,42 @@
 import React, { useEffect, useState } from 'react';
 
-const VERSION_KEY = 'agz_whats_new_seen_v7';
+const VERSION_KEY = 'agz_whats_new_seen_v8';
 
 const updates = [
   {
-    icon: '🔗',
-    title: 'Link de agendamento na boas-vindas',
-    desc: 'O agente IA agora envia o link de agendamento online logo na primeira mensagem de boas-vindas para todos os clientes.',
+    icon: '👤',
+    title: 'Portal do profissional com abas',
+    desc: 'O portal agora tem duas abas: Agenda (agendamentos do profissional) e Meu Desempenho (dashboard pessoal com KPIs, gráfico e serviços mais realizados).',
     highlight: true,
   },
   {
-    icon: '🤖',
-    title: 'IA desativável por profissional',
-    desc: 'Agora você pode marcar profissionais como "Manual" — o agente IA não oferece horários para esses profissionais, apenas agendamento humano.',
+    icon: '📊',
+    title: 'Dashboard pessoal do profissional',
+    desc: 'Cada profissional vê seus próprios números: atendimentos do dia, receita do mês, comissão, meta com barra de progresso e gráfico dos últimos 7 dias.',
+    highlight: true,
+  },
+  {
+    icon: '🔐',
+    title: 'Permissões do portal por profissional',
+    desc: 'Em Equipe, o admin configura individualmente o que cada profissional pode fazer no portal: criar agendamentos, ver receita e acessar o Meu Desempenho.',
     highlight: false,
   },
   {
-    icon: '🕐',
-    title: 'Horários respeitam janela configurada',
-    desc: 'Corrigido: o link de agendamento agora mostra apenas os horários dentro da janela de funcionamento configurada, sem extrapolações.',
+    icon: '↕️',
+    title: 'Reordenar profissionais na agenda',
+    desc: 'Arraste e solte as colunas da agenda para reorganizar a ordem dos profissionais. A ordem é salva automaticamente.',
     highlight: false,
   },
   {
-    icon: '📅',
-    title: 'Linhas do calendário sempre alinhadas',
-    desc: 'As linhas horizontais do calendário de agendamentos agora são renderizadas em camada única, garantindo alinhamento perfeito entre todas as colunas.',
+    icon: '☕',
+    title: 'Intervalos visíveis na agenda',
+    desc: 'Horários de almoço e intervalos agora aparecem como blocos coloridos na agenda. A cor é configurável em Configurações Gerais.',
     highlight: false,
   },
   {
-    icon: '📦',
-    title: 'Estoque com tipo de item',
-    desc: 'Cada item do estoque agora tem um tipo: Insumo (uso interno) ou Venda (produto vendável). Facilita o controle e os relatórios.',
-    highlight: false,
-  },
-  {
-    icon: '💬',
-    title: 'Notificação de suporte em tempo real',
-    desc: 'Quando o suporte responder você, um badge pulsante e uma notificação toast aparecem automaticamente — sem precisar ficar verificando.',
+    icon: '🔍',
+    title: 'Pesquisa de serviços',
+    desc: 'Nova caixa de busca em Serviços para encontrar qualquer serviço pelo nome, independente da categoria.',
     highlight: false,
   },
 ];
@@ -82,7 +82,7 @@ const WhatsNew: React.FC = () => {
                   🎉 Versão Nova
                 </span>
                 <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">
-                  v4.41
+                  v4.48
                 </span>
               </div>
               <h2 className="text-[26px] font-black text-slate-900 leading-tight">
