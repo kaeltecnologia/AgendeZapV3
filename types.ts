@@ -265,6 +265,7 @@ export interface TenantSettings {
   plans?: Plan[];                       // monthly plans (stored in JSONB)
   planUsage?: Record<string, number>;   // { "customerId::YYYY-MM": count }
   professionalOrder?: string[];          // ordered list of professional IDs for calendar columns
+  breakColor?: string;                   // hex color for break/interval blocks in calendar (default #f97316)
   professionalMeta?: Record<string, {   // per-professional role (stored in JSONB)
     role: 'admin' | 'colab';
     commissionRate?: number;             // commission percentage, e.g. 40 = 40%

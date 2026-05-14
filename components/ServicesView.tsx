@@ -14,6 +14,9 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Pesquisa por nome
+  const [searchTerm, setSearchTerm] = useState('');
+
   // Modal de categoria (criar/renomear)
   const [catModal, setCatModal] = useState<{ show: boolean; oldName: string }>({ show: false, oldName: '' });
   const [catName, setCatName] = useState('');
@@ -153,38 +156,78 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         </div>
       </div>
 
-      {/* Categorias */}
-      {categories.map(cat => (
-        <CategorySection
-          key={cat}
-          name={cat}
-          services={servicesByCategory(cat)}
-          allCategories={categories}
-          onEdit={openEdit}
-          onAdd={() => openNew(cat)}
-          onRename={() => { setCatName(cat); setCatModal({ show: true, oldName: cat }); }}
-          onDelete={() => handleDeleteCategory(cat)}
+      {/* Barra de pesquisa */}
+      <div className="relative">
+        <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          placeholder="Pesquisar serviço pelo nome..."
+          className="w-full pl-10 pr-10 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm font-semibold text-slate-700 placeholder-slate-300 outline-none focus:border-orange-400 transition-colors shadow-sm"
         />
-      ))}
+        {searchTerm && (
+          <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 font-black text-sm transition-colors">✕</button>
+        )}
+      </div>
 
-      {/* Sem Categoria */}
-      {(uncategorized.length > 0 || categories.length === 0) && (
-        <CategorySection
-          key="__none__"
-          name=""
-          services={uncategorized}
-          allCategories={categories}
-          onEdit={openEdit}
-          onAdd={() => openNew()}
-          onRename={undefined}
-          onDelete={undefined}
-        />
-      )}
+      {/* Resultado de pesquisa — lista plana */}
+      {searchTerm.trim() ? (() => {
+        const q = searchTerm.trim().toLowerCase();
+        const matched = services.filter(s => s.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+        if (matched.length === 0) return (
+          <div className="py-12 text-center text-slate-300 font-semibold text-sm">Nenhum serviço encontrado para "{searchTerm}"</div>
+        );
+        return (
+          <CategorySection
+            key="__search__"
+            name={`${matched.length} resultado${matched.length !== 1 ? 's' : ''}`}
+            services={matched}
+            allCategories={categories}
+            onEdit={openEdit}
+            onAdd={() => openNew()}
+            onRename={undefined}
+            onDelete={undefined}
+          />
+        );
+      })() : (
+        <>
+          {/* Categorias */}
+          {categories.map(cat => (
+            <CategorySection
+              key={cat}
+              name={cat}
+              services={servicesByCategory(cat)}
+              allCategories={categories}
+              onEdit={openEdit}
+              onAdd={() => openNew(cat)}
+              onRename={() => { setCatName(cat); setCatModal({ show: true, oldName: cat }); }}
+              onDelete={() => handleDeleteCategory(cat)}
+            />
+          ))}
 
-      {services.length === 0 && (
-        <div className="py-20 text-center text-slate-300 font-semibold text-sm">
-          Nenhum serviço cadastrado. Crie uma categoria e adicione serviços.
-        </div>
+          {/* Sem Categoria */}
+          {(uncategorized.length > 0 || categories.length === 0) && (
+            <CategorySection
+              key="__none__"
+              name=""
+              services={uncategorized}
+              allCategories={categories}
+              onEdit={openEdit}
+              onAdd={() => openNew()}
+              onRename={undefined}
+              onDelete={undefined}
+            />
+          )}
+
+          {services.length === 0 && (
+            <div className="py-20 text-center text-slate-300 font-semibold text-sm">
+              Nenhum serviço cadastrado. Crie uma categoria e adicione serviços.
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Modal: Serviço ── */}

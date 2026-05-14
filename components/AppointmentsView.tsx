@@ -425,7 +425,7 @@ function WeekCalendar({
 }
 
 function DayCalendar({
-  date, appointments, customers, professionals, services, filterProfId, onApptClick, onSlotClick, onReorder,
+  date, appointments, customers, professionals, services, filterProfId, breaks = [], breakColor = '#f97316', onApptClick, onSlotClick, onReorder,
 }: {
   date: Date;
   appointments: Appointment[];
@@ -433,6 +433,8 @@ function DayCalendar({
   professionals: Professional[];
   services: Service[];
   filterProfId: string;
+  breaks?: BreakPeriod[];
+  breakColor?: string;
   onApptClick: (a: Appointment) => void;
   onSlotClick: (date: string, time: string, profId?: string) => void;
   onReorder?: (newOrder: string[]) => void;
@@ -586,6 +588,71 @@ function DayCalendar({
                 {hours.map(h => (
                   <div key={`${h}h`} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, height: 1, background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)', pointerEvents: 'none' }} />
                 ))}
+
+                {/* Break / interval blocks */}
+                {breaks.filter(b => {
+                  // Holiday: specific date, all profs
+                  if (b.type === 'holiday') return b.date === dateStr;
+                  // Professional match (null/absent = all profs)
+                  if (b.professionalId && b.professionalId !== p.id) return false;
+                  // Specific one-time date
+                  if (b.date) return b.date === dateStr;
+                  // Recurring weekly
+                  if (b.dayOfWeek !== null && b.dayOfWeek !== undefined) return b.dayOfWeek === date.getDay();
+                  // Every day
+                  return true;
+                }).map(b => {
+                  const parseHM = (t: string) => { const [hh, mm] = t.split(':').map(Number); return hh * 60 + (mm || 0); };
+                  const startMins = parseHM(b.startTime);
+                  const endMins   = parseHM(b.endTime);
+                  const isAllDay  = startMins === 0 && endMins >= 23 * 60 + 55;
+
+                  const r = parseInt(breakColor.slice(1, 3), 16) || 249;
+                  const g = parseInt(breakColor.slice(3, 5), 16) || 115;
+                  const bv = parseInt(breakColor.slice(5, 7), 16) || 22;
+
+                  if (isAllDay) {
+                    return (
+                      <div key={b.id} style={{
+                        position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none',
+                        background: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.07) 0px, rgba(${r},${g},${bv},0.07) 8px, transparent 8px, transparent 16px)`,
+                        borderLeft: `3px solid rgba(${r},${g},${bv},0.5)`,
+                      }}>
+                        <span style={{ position: 'sticky', top: 4, display: 'block', fontSize: 9, fontWeight: 800, color: breakColor, textTransform: 'uppercase', padding: '2px 6px', letterSpacing: '0.05em' }}>{b.label}</span>
+                      </div>
+                    );
+                  }
+
+                  // Clamp to visible hours
+                  const visStartMins = Math.max(startMins, HOUR_START * 60);
+                  const visEndMins   = Math.min(endMins, HOUR_END * 60);
+                  if (visEndMins <= visStartMins) return null;
+
+                  const topPx    = ((visStartMins - HOUR_START * 60) / 60) * HOUR_PX;
+                  const heightPx = Math.max(18, ((visEndMins - visStartMins) / 60) * HOUR_PX);
+
+                  const fmt = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+
+                  return (
+                    <div key={b.id} style={{
+                      position: 'absolute', left: 2, right: 2,
+                      top: `${topPx}px`, height: `${heightPx}px`,
+                      zIndex: 2, borderRadius: 6, pointerEvents: 'none',
+                      backgroundColor: `rgba(${r},${g},${bv},0.12)`,
+                      borderLeft: `3px solid ${breakColor}`,
+                      backgroundImage: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.06) 0px, rgba(${r},${g},${bv},0.06) 4px, transparent 4px, transparent 8px)`,
+                    }}>
+                      {heightPx >= 22 && (
+                        <div style={{ padding: '2px 5px', overflow: 'hidden' }}>
+                          <p style={{ fontSize: 9, fontWeight: 800, color: breakColor, textTransform: 'uppercase', margin: 0, letterSpacing: '0.05em', lineHeight: 1.3 }}>{b.label}</p>
+                          {heightPx >= 34 && (
+                            <p style={{ fontSize: 8, fontWeight: 600, color: breakColor, opacity: 0.75, margin: 0, lineHeight: 1.2 }}>{fmt(startMins)}–{fmt(endMins)}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
                 {/* Appointment blocks */}
                 {profAppts.map(a => {
@@ -836,6 +903,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [brkStart, setBrkStart] = useState('12:00');
   const [brkEnd, setBrkEnd] = useState('13:00');
 
+  // ── Break color (persisted in tenant_settings) ─────────────────────────
+  const [breakColor, setBreakColor] = useState<string>('#f97316');
+
   // ── Professional column order (persisted in tenant_settings) ──────────
   const [profOrder, setProfOrder] = useState<string[]>([]);
 
@@ -856,6 +926,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setServices(svcs);
     setProfessionals(pros);
     if (sett.professionalOrder?.length) setProfOrder(sett.professionalOrder);
+    if (sett.breakColor) setBreakColor(sett.breakColor);
     setBreaks(loadedBreaks);
 
     // Se há agendamentos com customer_id não encontrado na lista cacheada,
@@ -1547,6 +1618,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           }
           services={services}
           filterProfId={filterProfId}
+          breaks={breaks}
+          breakColor={breakColor}
           onApptClick={(a) => setInfoAppt(a)}
           onSlotClick={openBookingModalWithSlot}
           onReorder={handleProfReorder}
@@ -1641,14 +1714,20 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
           {/* Break Periods */}
           <div className="bg-white p-6 rounded-[30px] border-2 border-slate-100 shadow-lg space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-2">
               <h3 className="font-black text-black text-xs uppercase tracking-widest">Intervalos</h3>
-              <button
-                onClick={openBreakModal}
-                className="text-[9px] font-black uppercase px-3 py-1.5 rounded-xl border-2 border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white transition-all"
-              >
-                + Gerar
-              </button>
+              <div className="flex items-center gap-2 ml-auto">
+                {/* Break color picker */}
+                <label title="Cor dos intervalos na agenda" style={{ cursor: 'pointer', width: 22, height: 22, borderRadius: '50%', background: breakColor, border: '2px solid #e2e8f0', display: 'inline-block', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
+                  <input type="color" value={breakColor} onChange={e => setBreakColor(e.target.value)} onBlur={e => db.updateSettings(tenantId, { breakColor: e.target.value })} style={{ opacity: 0, position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+                </label>
+                <button
+                  onClick={openBreakModal}
+                  className="text-[9px] font-black uppercase px-3 py-1.5 rounded-xl border-2 border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white transition-all"
+                >
+                  + Gerar
+                </button>
+              </div>
             </div>
             {breaks.filter(b => b.type !== 'holiday').length === 0 ? (
               <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest text-center py-4">Nenhum intervalo cadastrado</p>
