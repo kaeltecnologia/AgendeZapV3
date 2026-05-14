@@ -230,10 +230,11 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         const dayConfig = settings.operatingHours?.[dayIndex];
         if (!dayConfig || dayConfig.active === false) { setSlots([]); return; }
 
-        // Parse configured operating window
+        // Parse configured operating window from "HH:mm-HH:mm" range
         const parseHM = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
-        const opStart = dayConfig.startTime ? parseHM(dayConfig.startTime) : 6 * 60;
-        const opEnd   = dayConfig.endTime   ? parseHM(dayConfig.endTime)   : 24 * 60;
+        const [rangeStart, rangeEnd] = (dayConfig.range || '06:00-24:00').split('-');
+        const opStart = parseHM(rangeStart);
+        const opEnd   = parseHM(rangeEnd);
 
         const { data: appts } = await supabase
           .from('appointments')
