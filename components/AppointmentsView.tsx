@@ -483,11 +483,13 @@ function DayCalendar({
   return (
     <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
 
-      {/* ── Professional header (hidden scrollbar, synced via JS) ── */}
-      <div ref={headerRef} style={{ overflowX: 'hidden', borderBottom: '1px solid #E2E8F0' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: colTemplate, minWidth: minGridW, width: '100%' }}>
-          {/* Time-label spacer */}
-          <div style={{ borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
+      {/* ── Professional header ── */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0' }}>
+        {/* Fixed 56px spacer — never scrolls, mirrors sticky time-label in body */}
+        <div style={{ width: 56, flexShrink: 0, borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }} />
+        {/* Scrollable professional names — synced with body via JS */}
+        <div ref={headerRef} style={{ flex: 1, overflowX: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(${MIN_COL_W}px, 1fr))`, minWidth: cols * MIN_COL_W }}>
           {visibleProfs.map((p, i) => {
             const profIdx = professionals.findIndex(pr => pr.id === p.id);
             const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
@@ -539,6 +541,7 @@ function DayCalendar({
               </div>
             );
           })}
+        </div>
         </div>
       </div>
 
