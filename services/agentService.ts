@@ -573,16 +573,16 @@ async function callBrain(
     ? `\n⚡ ATENÇÃO: Sua última mensagem foi uma PERGUNTA. A mensagem atual do cliente É A RESPOSTA. Extraia a informação diretamente — NÃO repita a pergunta.\n`
     : '';
 
-  const _bookingLinkHint = tenantSlug
-    ? `\n  Inclua o link de agendamento online: ${typeof window !== 'undefined' ? window.location.origin : 'https://agendezap.com'}/agendar/${tenantSlug} 🔗`
+  const _bookingLink = tenantSlug
+    ? `${typeof window !== 'undefined' ? window.location.origin : 'https://agendezap.com'}/agendar/${tenantSlug}`
     : '';
   const greetSection = shouldGreet
     ? `\n🌅 PRIMEIRA SAUDAÇÃO DO DIA:
-• Cumprimente BREVEMENTE com "${brasiliaGreeting}!" e "${tenantName}" no início da resposta.${_bookingLinkHint}
-• Se o cliente JÁ informou dados (serviço, profissional, dia, horário) nesta mensagem → cumprimente em UMA frase curta e JÁ PROCESSE tudo que ele informou, avançando o fluxo normalmente.
-  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊 Vou verificar a agenda do [prof] pra [dia]! Qual procedimento você gostaria?"
-• Se o cliente NÃO informou nada além de saudação → cumprimente, sugira o link de agendamento online se disponível, e pergunte "Como posso te ajudar?"
-  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊${tenantSlug ? ` Você também pode agendar pelo link online: ${typeof window !== 'undefined' ? window.location.origin : 'https://agendezap.com'}/agendar/${tenantSlug} 🔗` : ''} Como posso te ajudar?"\n`
+• Cumprimente com "${brasiliaGreeting}!" e apresente "${tenantName}".${_bookingLink ? `\n• OBRIGATÓRIO: inclua o link de agendamento na saudação: ${_bookingLink} 🔗` : ''}
+• Se o cliente JÁ informou dados (serviço, profissional, dia, horário) → cumprimente em UMA frase e JÁ PROCESSE tudo, avançando o fluxo.
+  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊${_bookingLink ? `\n\nVocê pode agendar também pelo link: ${_bookingLink} 🔗` : ''}\n\nVou verificar a agenda do [prof] pra [dia]!"
+• Se o cliente NÃO informou nada além de saudação → cumprimente, inclua o link e pergunte "Como posso te ajudar?"
+  ✅ Exemplo: "${brasiliaGreeting}! Seja bem-vindo ao ${tenantName} 😊${_bookingLink ? `\n\nVocê pode agendar pelo nosso link online:\n${_bookingLink} 🔗` : ''}\n\nComo posso te ajudar?"\n`
     : '';
 
   const groupSection = groupCtx
