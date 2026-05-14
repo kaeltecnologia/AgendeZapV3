@@ -425,7 +425,7 @@ function WeekCalendar({
 }
 
 function DayCalendar({
-  date, appointments, customers, professionals, services, filterProfId, onApptClick, onSlotClick,
+  date, appointments, customers, professionals, services, filterProfId, onApptClick, onSlotClick, onReorder,
 }: {
   date: Date;
   appointments: Appointment[];
@@ -435,6 +435,7 @@ function DayCalendar({
   filterProfId: string;
   onApptClick: (a: Appointment) => void;
   onSlotClick: (date: string, time: string, profId?: string) => void;
+  onReorder?: (newOrder: string[]) => void;
 }) {
   const todayStr = localDateStr();
   const dateStr = localDateStr(date);
@@ -468,6 +469,10 @@ function DayCalendar({
     if (headerRef.current) headerRef.current.scrollLeft = (e.currentTarget as HTMLDivElement).scrollLeft;
   };
 
+  // ── Drag-to-reorder state ──────────────────────────────────────────────
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   return (
     <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
 
@@ -480,13 +485,41 @@ function DayCalendar({
             const profIdx = professionals.findIndex(pr => pr.id === p.id);
             const color = PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0];
             const profDayCount = dayAppts.filter(a => a.professional_id === p.id).length;
+            const isDragging  = dragIdx === i;
+            const isDropTarget = hoverIdx === i && dragIdx !== null && dragIdx !== i;
             return (
-              <div key={p.id} style={{
-                padding: '10px 8px',
-                textAlign: 'center',
-                borderRight: i < cols - 1 ? '1px solid #E2E8F0' : 'none',
-                background: '#ffffff',
-              }}>
+              <div
+                key={p.id}
+                draggable={!!onReorder}
+                onDragStart={() => { setDragIdx(i); setHoverIdx(null); }}
+                onDragOver={e => { e.preventDefault(); if (dragIdx !== null && dragIdx !== i) setHoverIdx(i); }}
+                onDragLeave={() => setHoverIdx(null)}
+                onDrop={e => {
+                  e.preventDefault();
+                  if (dragIdx === null || dragIdx === i || !onReorder) return;
+                  const reordered = [...visibleProfs];
+                  const [moved] = reordered.splice(dragIdx, 1);
+                  reordered.splice(i, 0, moved);
+                  setDragIdx(null);
+                  setHoverIdx(null);
+                  onReorder(reordered.map(pr => pr.id));
+                }}
+                onDragEnd={() => { setDragIdx(null); setHoverIdx(null); }}
+                style={{
+                  padding: '10px 8px',
+                  textAlign: 'center',
+                  borderRight: i < cols - 1 ? '1px solid #E2E8F0' : 'none',
+                  background: isDropTarget ? '#FFF7ED' : '#ffffff',
+                  cursor: onReorder ? 'grab' : 'default',
+                  opacity: isDragging ? 0.45 : 1,
+                  transition: 'background 0.15s, opacity 0.15s',
+                  outline: isDropTarget ? '2px solid #f97316' : 'none',
+                  outlineOffset: -2,
+                  userSelect: 'none',
+                }}>
+                {onReorder && (
+                  <div style={{ fontSize: 9, color: '#CBD5E1', letterSpacing: 2, marginBottom: 2, lineHeight: 1 }}>⠿⠿</div>
+                )}
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 4px' }}>
                   <span style={{ fontSize: 13, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{p.name.charAt(0).toUpperCase()}</span>
                 </div>
@@ -801,16 +834,26 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [brkStart, setBrkStart] = useState('12:00');
   const [brkEnd, setBrkEnd] = useState('13:00');
 
+  // ── Professional column order (persisted in tenant_settings) ──────────
+  const [profOrder, setProfOrder] = useState<string[]>([]);
+
+  const handleProfReorder = useCallback(async (newOrder: string[]) => {
+    setProfOrder(newOrder);
+    await db.updateSettings(tenantId, { professionalOrder: newOrder });
+  }, [tenantId]);
+
   const refreshData = useCallback(async () => {
-    const [apps, svcs, pros, custs, loadedBreaks] = await Promise.all([
+    const [apps, svcs, pros, custs, loadedBreaks, sett] = await Promise.all([
       db.getAppointments(tenantId),
       db.getServices(tenantId),
       db.getProfessionals(tenantId),
       db.getCustomers(tenantId),
-      db.getBreaks(tenantId)
+      db.getBreaks(tenantId),
+      db.getSettings(tenantId),
     ]);
     setServices(svcs);
     setProfessionals(pros);
+    if (sett.professionalOrder?.length) setProfOrder(sett.professionalOrder);
     setBreaks(loadedBreaks);
 
     // Se há agendamentos com customer_id não encontrado na lista cacheada,
@@ -1488,11 +1531,23 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           date={dayDate}
           appointments={appointments}
           customers={customers}
-          professionals={professionals}
+          professionals={
+            profOrder.length
+              ? [...professionals].sort((a, b) => {
+                  const ia = profOrder.indexOf(a.id);
+                  const ib = profOrder.indexOf(b.id);
+                  if (ia === -1 && ib === -1) return 0;
+                  if (ia === -1) return 1;
+                  if (ib === -1) return -1;
+                  return ia - ib;
+                })
+              : professionals
+          }
           services={services}
           filterProfId={filterProfId}
           onApptClick={(a) => setInfoAppt(a)}
           onSlotClick={openBookingModalWithSlot}
+          onReorder={handleProfReorder}
         />
       )}
 
