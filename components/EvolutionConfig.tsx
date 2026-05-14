@@ -145,6 +145,29 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
     }
   }, [loading, tenantId, addLog, refreshInstanceInfo]);
 
+  const handleDisconnect = useCallback(async () => {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const name = await refreshInstanceInfo();
+      if (!name) throw new Error('Instância não identificada.');
+      addLog('INFO', `Desconectando WhatsApp de ${name}...`);
+      const ok = await evolutionService.logoutInstance(name);
+      if (ok) {
+        setInstanceStatus('close');
+        setQrCode(null);
+        addLog('SUCCESS', 'WhatsApp desconectado com sucesso.');
+      } else {
+        addLog('ERROR', 'Falha ao desconectar. Tente novamente.');
+      }
+    } catch (e: any) {
+      addLog('ERROR', e.message || 'Erro ao desconectar.');
+    } finally {
+      setLoading(false);
+    }
+  }, [loading, refreshInstanceInfo, addLog]);
+
   useEffect(() => {
     let mounted = true;
     let lastStatus = '';
@@ -238,6 +261,19 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
               >
                 <span>🔗</span>
                 <span>Ver Link Web de Agendamento</span>
+              </button>
+            )}
+
+            {instanceStatus === 'open' && (
+              <button
+                disabled={loading}
+                onClick={() => { if (confirm('Isso irá desconectar o WhatsApp desta instância. Você precisará escanear o QR Code novamente para reconectar. Continuar?')) handleDisconnect(); }}
+                className="w-full bg-white text-red-400 py-3 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all border-2 border-red-100 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                {loading ? 'AGUARDE...' : 'Desconectar WhatsApp'}
               </button>
             )}
 
