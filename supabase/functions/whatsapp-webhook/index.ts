@@ -601,8 +601,13 @@ Quando o cliente usa termo informal que mapeia para um serviço, preencha extrac
 - COLORAÇÃO: "pintar o cabelo", "colorir", "mechas", "reflexo", "tingir"
 - ALISAMENTO: "progressiva", "alisar", "botox capilar"
 - ESCOVA: "escova", "modelar o cabelo"
+- MANICURE (normal): "manicure", "unhas das mãos normal", "esmalte normal mão", "unhas normais"
+- PEDICURE (normal): "pedicure", "unhas dos pés normal", "esmalte normal pé"
+- MANICURE E PEDICURE (normal): "mão e pé normal", "pé e mão normal", "mãos e pés normal", "unha mão e pé normal", "manicure e pedicure"
+- GEL MÃO E PÉ: "gel mão e pé", "gel pé e mão", "esmaltação gel mão e pé" — SOMENTE quando cliente mencionar "gel" explicitamente
 Regra: se identifica claramente UM serviço, assuma-o. NÃO peça confirmação, prossiga para data/horário.
 EXCEÇÃO IMPORTANTE: Se o serviço identificado contiver "infantil" (ou "criança", "kids") no nome MAS o cliente NÃO mencionou infantil/criança/filho/filha, confirme antes: "Vai ser para uma criança?" — NÃO prossiga direto para horário.
+EXCEÇÃO NORMAL vs GEL: Se a lista de serviços contiver variações do mesmo procedimento (ex: "Manicure" e "Esmaltação em Gel", ou "Manutenção" e "Manutenção e Pé em Gel"), e o cliente NÃO especificou "gel", "normal", "simples" ou "comum", PERGUNTE antes de assumir: "Vai querer normal ou em gel?" — NUNCA assuma gel automaticamente quando o cliente disser apenas "unha", "mão", "pé", "manicure" ou "pedicure" sem mencionar gel.
 MULTI-SERVIÇO: O sistema AUTOMATICAMENTE detecta TODOS os serviços mencionados pelo cliente (ex: "barba, cortar o cabelo, produtinho, sobrancelha" = 4 serviços). O CONTEXTO ATUAL já terá o combo calculado com duração e preço totais. Apenas CONFIRME todos os serviços listados — NUNCA ignore nenhum serviço que o cliente pediu. Se o CONTEXTO diz "Serviço: X + Y + Z", use EXATAMENTE isso.
 
 ## Horários Coloquiais

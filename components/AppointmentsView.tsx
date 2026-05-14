@@ -199,7 +199,7 @@ function useNow() {
 }
 
 function WeekCalendar({
-  days, appointments, customers, professionals, services, filterProfId, onApptClick,
+  days, appointments, customers, professionals, services, filterProfId, onApptClick, onSlotClick,
 }: {
   days: Date[];
   appointments: Appointment[];
@@ -208,6 +208,7 @@ function WeekCalendar({
   services: Service[];
   filterProfId: string;
   onApptClick: (a: Appointment) => void;
+  onSlotClick: (date: string, time: string) => void;
 }) {
   const todayStr = localDateStr();
   const now = useNow();
@@ -292,11 +293,23 @@ function WeekCalendar({
             return (
               <div
                 key={dayIdx}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('[data-appt]')) return;
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  const relY = e.clientY - rect.top;
+                  const totalMins = HOUR_START * 60 + Math.round((relY / HOUR_PX) * 60 / 15) * 15;
+                  const h = Math.floor(totalMins / 60);
+                  const m = totalMins % 60;
+                  if (h >= HOUR_START && h < HOUR_END) {
+                    onSlotClick(dateStr, `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+                  }
+                }}
                 style={{
                   position: 'relative',
                   borderRight: dayIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
                   background: isWeekend && !isToday ? '#FAFAFA' : '#ffffff',
                   height: totalHeight,
+                  cursor: 'pointer',
                 }}
               >
                 {/* Hour grid lines — solid */}
@@ -355,7 +368,8 @@ function WeekCalendar({
                     return (
                       <div
                         key={a.id}
-                        onClick={() => onApptClick(a)}
+                        data-appt="1"
+                        onClick={(e) => { e.stopPropagation(); onApptClick(a); }}
                         style={{
                           position: 'absolute',
                           top: `${topPx}px`, height: `${heightPx}px`,
@@ -411,7 +425,7 @@ function WeekCalendar({
 }
 
 function DayCalendar({
-  date, appointments, customers, professionals, services, filterProfId, onApptClick,
+  date, appointments, customers, professionals, services, filterProfId, onApptClick, onSlotClick,
 }: {
   date: Date;
   appointments: Appointment[];
@@ -420,6 +434,7 @@ function DayCalendar({
   services: Service[];
   filterProfId: string;
   onApptClick: (a: Appointment) => void;
+  onSlotClick: (date: string, time: string, profId?: string) => void;
 }) {
   const todayStr = localDateStr();
   const dateStr = localDateStr(date);
@@ -491,12 +506,25 @@ function DayCalendar({
             const layout = computeApptLayout(profAppts);
 
             return (
-              <div key={p.id} style={{
-                position: 'relative',
-                borderRight: colIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
-                background: isToday ? '#FFFBF7' : '#ffffff',
-                height: totalHeight,
-              }}>
+              <div key={p.id}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('[data-appt]')) return;
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  const relY = e.clientY - rect.top;
+                  const totalMins = HOUR_START * 60 + Math.round((relY / HOUR_PX) * 60 / 15) * 15;
+                  const h = Math.floor(totalMins / 60);
+                  const m = totalMins % 60;
+                  if (h >= HOUR_START && h < HOUR_END) {
+                    onSlotClick(dateStr, `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, p.id);
+                  }
+                }}
+                style={{
+                  position: 'relative',
+                  borderRight: colIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
+                  background: isToday ? '#FFFBF7' : '#ffffff',
+                  height: totalHeight,
+                  cursor: 'pointer',
+                }}>
                 {hours.map(h => (
                   <div key={h} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: '#E2E8F0' }} />
                 ))}
@@ -540,7 +568,8 @@ function DayCalendar({
                   return (
                     <div
                       key={a.id}
-                      onClick={() => onApptClick(a)}
+                      data-appt="1"
+                      onClick={(e) => { e.stopPropagation(); onApptClick(a); }}
                       style={{
                         position: 'absolute',
                         top: `${topPx}px`, height: `${heightPx}px`,
@@ -878,6 +907,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const openBookingModal = () => {
     setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setProfId(''); setSvcIds([]);
     setManualDate(localDateStr()); setManualTime('');
+    setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
+    setBookingSlots([]); setBookingSlotsLoading(false);
+    setShowBookingModal(true);
+  };
+
+  const openBookingModalWithSlot = (date: string, time: string, profId?: string) => {
+    setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setSvcIds([]);
+    setManualDate(date); setManualTime(time);
+    setProfId(profId ?? '');
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
     setBookingSlots([]); setBookingSlotsLoading(false);
     setShowBookingModal(true);
@@ -1447,6 +1485,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           services={services}
           filterProfId={filterProfId}
           onApptClick={(a) => setInfoAppt(a)}
+          onSlotClick={openBookingModalWithSlot}
         />
       )}
 
