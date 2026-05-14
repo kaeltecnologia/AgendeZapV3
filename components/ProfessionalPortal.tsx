@@ -1,4 +1,6 @@
-import React, { Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { db } from '../services/mockDb';
+import ProfDashboard from './ProfDashboard';
 
 const AppointmentsView = lazy(() => import('./AppointmentsView'));
 
@@ -10,9 +12,35 @@ interface ProfessionalPortalProps {
   onLogout: () => void;
 }
 
+type Tab = 'agenda' | 'dashboard';
+
 const ProfessionalPortal: React.FC<ProfessionalPortalProps> = ({
   tenantId, tenantName, professionalId, professionalName, onLogout,
 }) => {
+  const [tab, setTab] = useState<Tab>('agenda');
+  const [canBook, setCanBook] = useState(true);
+  const [canViewRevenue, setCanViewRevenue] = useState(true);
+  const [seeDashboard, setSeeDashboard] = useState(true);
+  const [permLoaded, setPermLoaded] = useState(false);
+
+  useEffect(() => {
+    db.getSettings(tenantId).then(s => {
+      const perms = s.professionalMeta?.[professionalId]?.portalPermissions;
+      if (perms) {
+        setCanBook(perms.canBook !== false);
+        setCanViewRevenue(perms.canViewRevenue !== false);
+        setSeeDashboard(perms.seeDashboard !== false);
+      }
+      setPermLoaded(true);
+    });
+  }, [tenantId, professionalId]);
+
+  if (!permLoaded) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" />
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Header */}
@@ -39,18 +67,49 @@ const ProfessionalPortal: React.FC<ProfessionalPortalProps> = ({
         </button>
       </header>
 
-      {/* Body — filtered appointments for this professional */}
+      {/* Tab bar */}
+      {seeDashboard && (
+        <div className="bg-white border-b-2 border-slate-100 px-4 sm:px-8 flex gap-1 sticky top-[73px] z-40">
+          {([
+            { id: 'agenda',    icon: '📅', label: 'Agenda' },
+            { id: 'dashboard', icon: '📊', label: 'Meu Desempenho' },
+          ] as { id: Tab; icon: string; label: string }[]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-4 py-3 text-[11px] font-black uppercase tracking-widest border-b-2 transition-colors -mb-[2px]
+                ${tab === t.id
+                  ? 'border-orange-500 text-orange-500'
+                  : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Body */}
       <main className="flex-1 overflow-auto">
-        <Suspense fallback={
-          <div className="min-h-[60vh] flex items-center justify-center">
-            <div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" />
-          </div>
-        }>
-          <AppointmentsView
+        {tab === 'agenda' ? (
+          <Suspense fallback={
+            <div className="min-h-[60vh] flex items-center justify-center">
+              <div className="w-10 h-10 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" />
+            </div>
+          }>
+            <AppointmentsView
+              tenantId={tenantId}
+              defaultProfessionalId={professionalId}
+              readOnly={!canBook}
+            />
+          </Suspense>
+        ) : (
+          <ProfDashboard
             tenantId={tenantId}
-            defaultProfessionalId={professionalId}
+            professionalId={professionalId}
+            professionalName={professionalName}
+            canViewRevenue={canViewRevenue}
           />
-        </Suspense>
+        )}
       </main>
     </div>
   );

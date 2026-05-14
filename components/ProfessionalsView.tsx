@@ -77,6 +77,13 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [proPhoto, setProPhoto] = useState<string>('');
   const [proDisableAI, setProDisableAI] = useState(false);
 
+  // Portal permissions
+  const [proCanBook, setProCanBook] = useState(true);
+  const [proCanViewRevenue, setProCanViewRevenue] = useState(true);
+  const [proSeeDashboard, setProSeeDashboard] = useState(true);
+
+  const [loadedSettings, setLoadedSettings] = useState<any>({});
+
   const load = useCallback(async () => {
     try {
       const [p, a, e, s, svc, settings] = await Promise.all([
@@ -92,6 +99,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
       setAllExpenses(e);
       setBreaks(s);
       setAllServices(svc.map(s => ({ id: s.id, name: s.name, category: s.category })));
+      setLoadedSettings(settings);
       // Load extra professionals from settings
       const fup = (settings as any).follow_up || {};
       setExtraPros(fup._extraProfessionals || 0);
@@ -117,7 +125,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     setSaving(true);
     try {
       const newPro = await db.addProfessional({ tenant_id: tenantId, name, phone, specialty, active: true });
-      await db.updateProfessional(tenantId, newPro.id, { role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
+      await db.updateProfessional(tenantId, newPro.id, { role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined, portalPermissions: { canBook: proCanBook, canViewRevenue: proCanViewRevenue, seeDashboard: proSeeDashboard } } as any);
       await load();
       setShowModal(false);
       resetForm();
@@ -159,7 +167,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     if (!editingPro || !name || !phone) return;
     setSaving(true);
     try {
-      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined });
+      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined, portalPermissions: { canBook: proCanBook, canViewRevenue: proCanViewRevenue, seeDashboard: proSeeDashboard } } as any);
       await load();
       setEditingPro(null);
       resetForm();
@@ -168,7 +176,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     } finally { setSaving(false); }
   };
 
-  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setProPhoto(''); setProDisableAI(false); };
+  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setProPhoto(''); setProDisableAI(false); setProCanBook(true); setProCanViewRevenue(true); setProSeeDashboard(true); };
 
   const handleDeletePro = async () => {
     if (!deleteProId) return;
@@ -568,7 +576,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                     </button>
                     <div className="flex justify-between items-center pt-1">
                       <div className="flex items-center gap-3">
-                        <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProDisableAI(p.disableAI || false); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); }}
+                        <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProDisableAI(p.disableAI || false); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); const perms = loadedSettings.professionalMeta?.[p.id]?.portalPermissions || {}; setProCanBook(perms.canBook ?? true); setProCanViewRevenue(perms.canViewRevenue ?? true); setProSeeDashboard(perms.seeDashboard ?? true); }}
                           className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
                           📝 Editar
                         </button>
@@ -1143,6 +1151,28 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                   <input value={loginPin} onChange={e => setLoginPin(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="ex: 1234" maxLength={6}
                     className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm font-mono tracking-[0.4em] focus:border-orange-500" />
                   {loginPin && <p className="text-[10px] text-slate-400 ml-4">Compartilhe com o profissional: WhatsApp {phone} + PIN {loginPin}</p>}
+                </div>
+
+                {/* Permissões do portal */}
+                <div className="space-y-2 pt-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Permissões no portal</label>
+
+                  {[
+                    { key: 'canBook', label: 'Pode criar agendamentos', desc: 'Exibe o botão de novo agendamento no portal', value: proCanBook, set: setProCanBook },
+                    { key: 'canViewRevenue', label: 'Pode ver receita', desc: 'Exibe valores financeiros no Meu Desempenho', value: proCanViewRevenue, set: setProCanViewRevenue },
+                    { key: 'seeDashboard', label: 'Aba Meu Desempenho', desc: 'Exibe a aba de relatórios pessoais no portal', value: proSeeDashboard, set: setProSeeDashboard },
+                  ].map(({ key, label, desc, value, set }) => (
+                    <button key={key} type="button" onClick={() => set((v: boolean) => !v)}
+                      className={`w-full flex items-center justify-between px-5 py-3 rounded-2xl border-2 transition-all ${value ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-100 hover:border-slate-300'}`}>
+                      <div className="text-left">
+                        <p className={`text-xs font-black uppercase tracking-widest ${value ? 'text-orange-700' : 'text-slate-500'}`}>{label}</p>
+                        <p className="text-[9px] text-slate-400 mt-0.5 normal-case font-medium">{desc}</p>
+                      </div>
+                      <div className={`w-10 h-6 rounded-full transition-all flex items-center px-1 ${value ? 'bg-orange-500' : 'bg-slate-200'}`}>
+                        <div className={`w-4 h-4 bg-white rounded-full shadow transition-all ${value ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

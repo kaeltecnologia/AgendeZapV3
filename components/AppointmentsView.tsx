@@ -803,7 +803,7 @@ function NavDayPicker({ selectedDate, apptDays, onSelect }: {
   );
 }
 
-const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string }> = ({ tenantId, onOpenComandas, defaultProfessionalId }) => {
+const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string; readOnly?: boolean }> = ({ tenantId, onOpenComandas, defaultProfessionalId, readOnly = false }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
     id: string; basePrice: number; extraValue?: number; extraNote?: string;
@@ -1544,9 +1544,11 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
               Lista
             </button>
           </div>
-          <button onClick={openBookingModal} className="bg-orange-500 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-colors ml-auto sm:ml-0 whitespace-nowrap">
-            + Novo Horário
-          </button>
+          {!readOnly && (
+            <button onClick={openBookingModal} className="bg-orange-500 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-colors ml-auto sm:ml-0 whitespace-nowrap">
+              + Novo Horário
+            </button>
+          )}
         </div>
       </div>
 
@@ -1621,7 +1623,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           breaks={breaks}
           breakColor={breakColor}
           onApptClick={(a) => setInfoAppt(a)}
-          onSlotClick={openBookingModalWithSlot}
+          onSlotClick={readOnly ? () => {} : openBookingModalWithSlot}
           onReorder={handleProfReorder}
         />
       )}

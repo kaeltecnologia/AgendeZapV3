@@ -270,6 +270,11 @@ export interface TenantSettings {
     role: 'admin' | 'colab';
     commissionRate?: number;             // commission percentage, e.g. 40 = 40%
     monthlyGoal?: number;               // monthly revenue goal in R$
+    portalPermissions?: {
+      canBook?: boolean;         // can create new bookings (default true)
+      canViewRevenue?: boolean;  // can see revenue/financial numbers (default true)
+      seeDashboard?: boolean;    // show "Meu Desempenho" tab (default true)
+    };
   }>;
   customerData?: Record<string, {       // per-customer plan/mode data (stored in JSONB)
     planId?: string | null;
