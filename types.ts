@@ -459,6 +459,10 @@ export interface Customer {
   phone: string;
   email?: string;
   birthDate?: string;
+  cep?: string;
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
   active: boolean;
   followUpPreferences: {
     aviso: boolean;

@@ -428,7 +428,7 @@ function WeekCalendar({
 }
 
 function DayCalendar({
-  date, appointments, customers, professionals, services, filterProfId, breaks = [], breakColor = '#f97316', onApptClick, onSlotClick, onReorder,
+  date, appointments, customers, professionals, services, filterProfId, breaks = [], breakColor = '#f97316', operatingHours, onApptClick, onSlotClick, onReorder,
 }: {
   date: Date;
   appointments: Appointment[];
@@ -438,6 +438,7 @@ function DayCalendar({
   filterProfId: string;
   breaks?: BreakPeriod[];
   breakColor?: string;
+  operatingHours?: Record<number, { active: boolean; range: string }>;
   onApptClick: (a: Appointment) => void;
   onSlotClick: (date: string, time: string, profId?: string) => void;
   onReorder?: (newOrder: string[]) => void;
@@ -474,6 +475,17 @@ function DayCalendar({
 
   const onBodyScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (headerRef.current) headerRef.current.scrollLeft = (e.currentTarget as HTMLDivElement).scrollLeft;
+  };
+
+  // ── Operating hours gray tarja helper ─────────────────────────────────
+  const parseOpHours = (dayIndex: number) => {
+    const cfg = operatingHours?.[dayIndex];
+    if (!cfg || !cfg.active) return { openPx: 0, closePx: totalHeight };
+    const toMins = (s: string) => { const [h, m] = (s || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+    const [openStr, closeStr] = (cfg.range || '00:00-23:59').split('-');
+    const openPx  = Math.max(0, Math.min(totalHeight, ((toMins(openStr)  - HOUR_START * 60) / 60) * HOUR_PX));
+    const closePx = Math.max(0, Math.min(totalHeight, ((toMins(closeStr) - HOUR_START * 60) / 60) * HOUR_PX));
+    return { openPx, closePx };
   };
 
   // ── Drag-to-reorder state ──────────────────────────────────────────────
@@ -594,6 +606,16 @@ function DayCalendar({
                 {hours.map(h => (
                   <div key={`${h}h`} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, height: 1, background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)', pointerEvents: 'none' }} />
                 ))}
+
+                {/* Tarja cinza — horários fora do atendimento */}
+                {(() => {
+                  const { openPx, closePx } = parseOpHours(date.getDay());
+                  const s: React.CSSProperties = { position: 'absolute', left: 0, right: 0, background: 'rgba(148,163,184,0.10)', pointerEvents: 'none', zIndex: 1 };
+                  return <>
+                    {openPx > 0 && <div style={{ ...s, top: 0, height: openPx }} />}
+                    {closePx < totalHeight && <div style={{ ...s, top: closePx, height: totalHeight - closePx }} />}
+                  </>;
+                })()}
 
                 {/* Break / interval blocks */}
                 {breaks.filter(b => {
@@ -912,6 +934,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   // ── Break color (persisted in tenant_settings) ─────────────────────────
   const [breakColor, setBreakColor] = useState<string>('#f97316');
+  const [operatingHours, setOperatingHours] = useState<Record<number, { active: boolean; range: string }>>({});
 
   // ── Professional column order (persisted in tenant_settings) ──────────
   const [profOrder, setProfOrder] = useState<string[]>([]);
@@ -934,6 +957,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setProfessionals(pros);
     if (sett.professionalOrder?.length) setProfOrder(sett.professionalOrder);
     if (sett.breakColor) setBreakColor(sett.breakColor);
+    if (sett.operatingHours) setOperatingHours(sett.operatingHours as Record<number, { active: boolean; range: string }>);
     setBreaks(loadedBreaks);
 
     // Se há agendamentos com customer_id não encontrado na lista cacheada,
@@ -1642,6 +1666,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           filterProfId={filterProfId}
           breaks={breaks}
           breakColor={breakColor}
+          operatingHours={operatingHours}
           onApptClick={(a) => setInfoAppt(a)}
           onSlotClick={readOnly ? () => {} : openBookingModalWithSlot}
           onReorder={handleProfReorder}
@@ -2238,6 +2263,16 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                   </button>
                 </div>
               )}
+
+              {/* Excluir — sempre visível */}
+              <div style={{ padding: '0 20px 16px', display: 'flex', justifyContent: 'center' }}>
+                <button
+                  onClick={() => { setInfoAppt(null); setDeleteApptId(ia.id); }}
+                  style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  🗑 Excluir agendamento
+                </button>
+              </div>
             </div>
           </div>
         );

@@ -48,6 +48,26 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [planBalance, setPlanBalance] = useState<Record<string, { total: number; used: number; remaining: number }>>({});
   const [renewingPlan, setRenewingPlan] = useState(false);
   const [profileTab, setProfileTab] = useState<'perfil' | 'config'>('perfil');
+  const [cepLoading, setCepLoading] = useState(false);
+
+  const lookupCep = async (cep: string) => {
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        setEditingCustomer(prev => prev ? {
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          cidade:   data.localidade  || prev.cidade,
+          estado:   data.uf          || prev.estado,
+        } : prev);
+      }
+    } catch { /* silently fail */ }
+    finally { setCepLoading(false); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -143,6 +163,10 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         phone: editingCustomer.phone,
         email: editingCustomer.email,
         birthDate: editingCustomer.birthDate,
+        cep: editingCustomer.cep,
+        endereco: editingCustomer.endereco,
+        cidade: editingCustomer.cidade,
+        estado: editingCustomer.estado,
         avisoModeId: editingCustomer.avisoModeId,
         lembreteModeId: editingCustomer.lembreteModeId,
         reativacaoModeId: editingCustomer.reativacaoModeId,
@@ -610,6 +634,48 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data de Aniversário</label>
                       <input type="date" value={editingCustomer.birthDate || ''} onChange={e => setEditingCustomer({ ...editingCustomer, birthDate: e.target.value })}
                         className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">CEP</label>
+                      <div className="relative">
+                        <input
+                          value={editingCustomer.cep || ''}
+                          onChange={e => setEditingCustomer({ ...editingCustomer, cep: e.target.value })}
+                          onBlur={e => lookupCep(e.target.value)}
+                          placeholder="00000-000"
+                          maxLength={9}
+                          className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all"
+                        />
+                        {cepLoading && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-400 text-xs font-bold animate-pulse">buscando...</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Endereço</label>
+                      <input
+                        value={editingCustomer.endereco || ''}
+                        onChange={e => setEditingCustomer({ ...editingCustomer, endereco: e.target.value })}
+                        placeholder="Rua, número, complemento"
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cidade</label>
+                      <input
+                        value={editingCustomer.cidade || ''}
+                        onChange={e => setEditingCustomer({ ...editingCustomer, cidade: e.target.value })}
+                        placeholder="São Paulo"
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Estado</label>
+                      <input
+                        value={editingCustomer.estado || ''}
+                        onChange={e => setEditingCustomer({ ...editingCustomer, estado: e.target.value })}
+                        placeholder="SP"
+                        maxLength={2}
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold focus:border-orange-500 transition-all uppercase"
+                      />
                     </div>
                   </div>
 

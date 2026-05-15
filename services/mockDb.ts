@@ -698,6 +698,10 @@ class DatabaseService {
       phone: c.telefone || '',
       email: c.email || undefined,
       birthDate: c.birth_date || undefined,
+      cep: c.cep || undefined,
+      endereco: c.endereco || undefined,
+      cidade: c.cidade || undefined,
+      estado: c.estado || undefined,
       active: true,
       followUpPreferences: { aviso: true, lembrete: true, reativacao: true },
       avisoModeId: cData.avisoModeId || 'standard',
@@ -825,6 +829,10 @@ class DatabaseService {
       if (updates.phone !== undefined) payload.telefone = updates.phone;
       if (updates.email !== undefined) payload.email = updates.email || null;
       if (updates.birthDate !== undefined) payload.birth_date = updates.birthDate || null;
+      if (updates.cep !== undefined) payload.cep = updates.cep || null;
+      if (updates.endereco !== undefined) payload.endereco = updates.endereco || null;
+      if (updates.cidade !== undefined) payload.cidade = updates.cidade || null;
+      if (updates.estado !== undefined) payload.estado = updates.estado || null;
       if (Object.keys(payload).length > 0) {
         const { error } = await supabase.from('customers').update(payload).eq('id', id);
         if (error) throw error;
