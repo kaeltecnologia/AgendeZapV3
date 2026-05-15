@@ -976,9 +976,16 @@ export async function handleProfessionalMessage(
   const text = messageText.trim();
   if (!text) return null;
 
-  // ── Saudações curtas: resposta amigável sem mostrar menu completo ──
+  // ── Regra 1: Identificação pelo telefone — DEVE vir primeiro ────────
+  // null = "não é profissional, delegar ao agente de cliente"
+  // ''  = "é profissional mas não há nada a enviar (dedup/saudação)"
+  const professionals = await db.getProfessionals(tenantId);
+  const prof = professionals.find(p => phonesMatch(p.phone, phone));
+  if (!prof) return null; // não é profissional → tratar como cliente
+
+  // ── Saudações curtas: não responder, mas NÃO delegar ao agente cliente ──
   if (/^(oi|olá|ola|hey|ei|eai|e aí|bom dia|boa tarde|boa noite|salve|tudo bem|tudo bom|td bem|td bom)[\s!.?]*$/i.test(text)) {
-    return null; // ignora saudações — não responde nada para não poluir o chat
+    return ''; // profissional — ignora saudações sem poluir o chat
   }
 
   // ── Dedup: skip if same message already processed in the last 30s ──
@@ -990,14 +997,9 @@ export async function handleProfessionalMessage(
   for (const [k, t] of _profDedup) { if (now - t > _PROF_DEDUP_TTL) _profDedup.delete(k); }
   if (_profDedup.has(dedupKey)) {
     console.log('[ProfAgent] Dedup: skipping duplicate message from', phone);
-    return null;
+    return ''; // profissional — não reenviar, mas não delegar ao agente cliente
   }
   _profDedup.set(dedupKey, now);
-
-  // ── Regra 1: Identificação pelo telefone ──────────────────────────
-  const professionals = await db.getProfessionals(tenantId);
-  const prof = professionals.find(p => phonesMatch(p.phone, phone));
-  if (!prof) return null; // não é profissional → tratar como cliente
 
   const isAdmin = prof.role === 'admin';
   const today = todayISO();
