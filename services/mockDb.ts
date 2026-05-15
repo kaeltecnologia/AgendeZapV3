@@ -16,7 +16,7 @@
  * =====================================================================
  */
 
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured, projectUrl, anonKey } from './supabase';
 import {
   Tenant, Professional, Service, Appointment,
   Customer, AppointmentStatus, PaymentMethod, TenantSettings,
@@ -100,16 +100,24 @@ class DatabaseService {
       this.connectionStatus = 'offline';
       return false;
     }
+    // Use AbortController + raw fetch for reliable cancellation on Android,
+    // where setTimeout-based Promise.race can be throttled indefinitely.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
     try {
-      const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), 5000)
+      const res = await fetch(
+        `${projectUrl}/rest/v1/tenants?select=id&limit=1`,
+        {
+          signal: controller.signal,
+          headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+        }
       );
-      const query = supabase.from('tenants').select('id').limit(1);
-      await Promise.race([query, timeout]);
-      this.connectionStatus = 'online';
-      return true;
-    } catch (err) {
-      console.warn("Supabase Connection Failed:", err);
+      clearTimeout(timer);
+      this.connectionStatus = res.ok ? 'online' : 'offline';
+      return res.ok;
+    } catch {
+      clearTimeout(timer);
+      console.warn('Supabase connection check failed — using offline mode');
       this.connectionStatus = 'offline';
       return false;
     }

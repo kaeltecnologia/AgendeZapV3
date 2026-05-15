@@ -680,6 +680,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
+      // Safety net: force setIsReady(true) after 8s regardless of network hangs.
+      // Critical for Android where setTimeout is throttled in background tabs.
+      let readySet = false;
+      const safetyTimer = setTimeout(() => {
+        if (!readySet) { readySet = true; setIsReady(true); }
+      }, 8000);
+
       // Restore saved session before checking DB
       try {
         // Try professional session first
@@ -697,6 +704,8 @@ const App: React.FC = () => {
             if (s.tenantNicho) setTenantNicho(s.tenantNicho);
             setProfessionalId(s.professionalId || '');
             setProfessionalName(s.professionalName || '');
+            clearTimeout(safetyTimer);
+            readySet = true; setIsReady(true);
             return; // skip admin session
           } else {
             localStorage.removeItem(PRO_SESSION_KEY);
@@ -757,7 +766,8 @@ const App: React.FC = () => {
       // Domain-based reseller detection — must resolve before Login renders
       await detectResellerDomain();
 
-      setIsReady(true);
+      clearTimeout(safetyTimer);
+      if (!readySet) { readySet = true; setIsReady(true); }
     };
     init();
   }, []);
