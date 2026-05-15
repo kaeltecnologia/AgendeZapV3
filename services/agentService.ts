@@ -1178,10 +1178,14 @@ async function _handleMessage(
         // was in progress (client may take time to choose service/date — extend to 4h)
         const FOLLOWUP_MAX_AGE  = 18 * 60 * 60 * 1000; // 18h — for follow-up responses
         const BOOKING_MAX_AGE   =  4 * 60 * 60 * 1000; //  4h — for in-progress bookings
+        const GREETED_MAX_AGE   = 18 * 60 * 60 * 1000; // 18h — prevent re-greeting same day
+        const todayBrStr = getBrasiliaGreeting().dateStr;
+        const hasGreetedToday = (sbSess.data as any)?.greetedAt === todayBrStr;
         if (
           age < SESSION_TIMEOUT_MS ||
           (hasPendingFollowUp && age < FOLLOWUP_MAX_AGE) ||
-          (hasBookingData && age < BOOKING_MAX_AGE)
+          (hasBookingData && age < BOOKING_MAX_AGE) ||
+          (hasGreetedToday && age < GREETED_MAX_AGE)
         ) {
           const restored: Session = {
             tenantId, phone,
@@ -1190,7 +1194,9 @@ async function _handleMessage(
             updatedAt: Date.now(), // refresh so it doesn't expire mid-conversation
           };
           sessions.set(sessionKey(tenantId, phone), restored);
-          console.log(`[Agent] Sessão restaurada do Supabase para ${maskPhone(phone)} (age=${Math.round(age/60000)}min, followUp=${hasPendingFollowUp})`);
+          // Re-populate in-memory greeted cache to prevent re-greeting after app reload
+          if (hasGreetedToday) _greetedToday.set(`${tenantId}::${phone}`, todayBrStr);
+          console.log(`[Agent] Sessão restaurada do Supabase para ${maskPhone(phone)} (age=${Math.round(age/60000)}min, followUp=${hasPendingFollowUp}, greetedToday=${hasGreetedToday})`);
         }
       }
     } catch { /* ignorar */ }
@@ -2493,9 +2499,16 @@ async function _handleMessage(
   }
 
   // ─── TS-level service pre-extraction via keywords ────────────────
-  if (!session.data.serviceId) {
+  // Always attempt to match — allows client to CORRECT a wrong service already in session.
+  {
     const _matchedSvc = matchServiceByKeywords(lowerText, services);
-    if (_matchedSvc) {
+    if (_matchedSvc && _matchedSvc.id !== session.data.serviceId) {
+      if (session.data.serviceId) {
+        // Service being corrected mid-booking — reset time/confirm to avoid stale state
+        session.data.time = undefined;
+        session.data.pendingConfirm = false;
+        console.log('[Agent] TS service correction:', session.data.serviceName, '→', _matchedSvc.name);
+      }
       session.data.serviceId       = _matchedSvc.id;
       session.data.serviceName     = _matchedSvc.name;
       session.data.serviceDuration = _matchedSvc.durationMinutes;
@@ -2838,17 +2851,24 @@ async function _handleMessage(
   if (ext.clientName && !session.data.clientName) {
     session.data.clientName = capitalizeName(ext.clientName.trim());
   }
-  if (ext.serviceId && !session.data.serviceId) {
+  if (ext.serviceId) {
     const svc = activeServices.find((s: any) => s.id === ext.serviceId);
     if (svc) {
       // Guard: verify the client actually mentioned a service keyword in their message
       // Prevents AI from hallucinating a serviceId when the client didn't ask for one
       const _tsMatchCheck = matchServiceByKeywords(lowerText, services);
       if (_tsMatchCheck) {
-        session.data.serviceId = svc.id;
-        session.data.serviceName = svc.name;
-        session.data.serviceDuration = svc.durationMinutes;
-        session.data.servicePrice = svc.price;
+        if (session.data.serviceId !== svc.id) {
+          if (session.data.serviceId) {
+            // Service changed — reset time/confirm
+            session.data.time = undefined;
+            session.data.pendingConfirm = false;
+          }
+          session.data.serviceId = svc.id;
+          session.data.serviceName = svc.name;
+          session.data.serviceDuration = svc.durationMinutes;
+          session.data.servicePrice = svc.price;
+        }
       } else {
         console.log('[Agent] TS guard: blocked AI-hallucinated serviceId — client msg has no service keywords:', lowerText.slice(0, 60));
       }
