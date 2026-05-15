@@ -121,7 +121,53 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { tenantId, planId, billingType, cycle = 'MONTHLY', cpfCnpj, addon, extraProfessionals = 0 } = body;
+    const { tenantId, planId, billingType, cycle = 'MONTHLY', cpfCnpj, addon, extraProfessionals = 0, action } = body;
+
+    // ── ADMIN BILL: cobrança avulsa PIX gerada pelo superadmin para o tenant ──
+    if (action === 'admin_bill') {
+      if (!tenantId) return json({ error: 'tenantId required' }, 400);
+
+      const { data: t } = await supabase
+        .from('tenants').select('nome, email, phone, mensalidade, plan').eq('id', tenantId).single();
+      if (!t) return json({ error: 'Tenant not found' }, 404);
+
+      const { data: s } = await supabase
+        .from('tenant_settings').select('follow_up').eq('tenant_id', tenantId).maybeSingle();
+      const fupAdmin = s?.follow_up || {};
+      let adminAsaasId = fupAdmin._asaasCustomerId || null;
+
+      if (!adminAsaasId) {
+        const c = await asaasFetch('/customers', {
+          method: 'POST',
+          body: JSON.stringify({ name: t.nome, email: t.email, phone: t.phone || undefined, externalReference: tenantId }),
+        });
+        adminAsaasId = c.id;
+        await supabase.from('tenant_settings').upsert(
+          { tenant_id: tenantId, follow_up: { ...fupAdmin, _asaasCustomerId: adminAsaasId } },
+          { onConflict: 'tenant_id' }
+        );
+      }
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dueDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
+      const value = (t.mensalidade && t.mensalidade > 0) ? t.mensalidade : (PLAN_PRICES[t.plan] || 39.90);
+
+      const charge = await asaasFetch('/payments', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer: adminAsaasId,
+          billingType: 'PIX',
+          value,
+          dueDate,
+          description: `AgendeZap — Mensalidade ${PLAN_NAMES[t.plan] || t.plan}`,
+          externalReference: `${tenantId}::ADMIN_BILL::${dueDate}`,
+        }),
+      });
+
+      const invoiceUrl = charge.invoiceUrl || `https://www.asaas.com/i/${charge.id}`;
+      return json({ invoiceUrl, chargeId: charge.id, value, dueDate });
+    }
 
     // ── Validate input ──────────────────────────────────────────────────
     if (!tenantId || !billingType) {

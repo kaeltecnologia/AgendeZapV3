@@ -45,8 +45,10 @@ const DEFAULT_CONFIG: SubscriptionConfig = {
   plans: [],
   daysBeforeWarning: 5,
   gracePeriodDays: 3,
-  warningMessage: 'Olá {nome}! Seu plano {plano} vence em {diasRestantes} dia(s), no dia {vencimento}. O valor é {valor}. Para continuar agendando, efetue o pagamento! 😊',
-  overdueMessage: 'Olá {nome}! Seu plano {plano} está em atraso há {diasAtraso} dia(s). Por favor regularize o pagamento de {valor} para continuar agendando. 💳',
+  pixKey: '',
+  warningMessage: 'Olá {nome}! Seu plano {plano} vence em {diasRestantes} dia(s), no dia {vencimento}. O valor é {valor}.\n\nPague via PIX: *{chavePix}* 💳',
+  dueTodayMessage: 'Olá {nome}! Hoje é o dia de renovar seu plano {plano} — {valor}.\n\nPague via PIX: *{chavePix}* para continuar agendando normalmente! 😊',
+  overdueMessage: 'Olá {nome}! Seu plano {plano} está em atraso há {diasAtraso} dia(s). Regularize o pagamento de {valor} para continuar agendando.\n\nPIX: *{chavePix}* 💳',
   blockedMessage: 'Olá {nome}! Seu plano está com pagamento em atraso. Regularize para voltar a agendar! 💳',
   paymentConfirmedMessage: 'Pagamento confirmado! ✅ Obrigado, {nome}! Seu plano {plano} está ativo até {vencimento}. Pode agendar normalmente!',
 };
@@ -306,6 +308,18 @@ const SubscriptionsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             </div>
           </div>
 
+          {/* Chave PIX */}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Chave PIX do estabelecimento</label>
+            <input
+              value={cfg.pixKey || ''}
+              onChange={e => setCfg(p => ({ ...p, pixKey: e.target.value }))}
+              placeholder="Ex: contato@salao.com, 11999999999, CPF ou CNPJ"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 outline-none focus:border-orange-400"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">Use a variável <strong>{'{chavePix}'}</strong> nas mensagens para incluir esta chave.</p>
+          </div>
+
           {/* Plans */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Planos</p>
@@ -334,11 +348,12 @@ const SubscriptionsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           {/* Messages */}
           <div className="space-y-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mensagens automáticas</p>
-            <p className="text-[11px] text-slate-400">Variáveis: {'{nome}'} {'{plano}'} {'{valor}'} {'{vencimento}'} {'{diasRestantes}'} {'{diasAtraso}'}</p>
+            <p className="text-[11px] text-slate-400">Variáveis: {'{nome}'} {'{plano}'} {'{valor}'} {'{vencimento}'} {'{diasRestantes}'} {'{diasAtraso}'} {'{chavePix}'}</p>
 
             {[
-              { key: 'warningMessage', label: 'Aviso prévio (antes do vencimento)' },
-              { key: 'overdueMessage', label: 'Cobrança (após vencimento)' },
+              { key: 'warningMessage', label: 'Aviso 3 dias antes do vencimento' },
+              { key: 'dueTodayMessage', label: 'Lembrete no dia do vencimento (manhã)' },
+              { key: 'overdueMessage', label: 'Cobrança diária (após vencimento)' },
               { key: 'blockedMessage', label: 'Mensagem de bloqueio (agente/web)' },
               { key: 'paymentConfirmedMessage', label: 'Confirmação de pagamento' },
             ].map(({ key, label }) => (

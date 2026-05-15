@@ -131,8 +131,10 @@ export interface SubscriptionConfig {
   plans: SubscriptionPlan[];
   daysBeforeWarning: number;      // N dias antes do vencimento para enviar aviso
   gracePeriodDays: number;        // N dias após vencimento antes de bloquear
-  warningMessage: string;         // vars: {nome} {plano} {valor} {vencimento} {diasRestantes}
-  overdueMessage: string;         // vars: {nome} {plano} {valor} {diasAtraso}
+  pixKey?: string;                // Chave PIX do estabelecimento — var {chavePix} nos templates
+  warningMessage: string;         // vars: {nome} {plano} {valor} {vencimento} {diasRestantes} {chavePix}
+  dueTodayMessage?: string;       // enviado no dia do vencimento — vars: {nome} {plano} {valor} {vencimento} {chavePix}
+  overdueMessage: string;         // vars: {nome} {plano} {valor} {diasAtraso} {chavePix}
   blockedMessage: string;         // mensagem do agente/web quando bloqueado
   paymentConfirmedMessage: string; // enviado ao cliente após admin confirmar
 }

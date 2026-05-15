@@ -59,6 +59,7 @@ export function interpolateSubMsg(
     vencimento?: string;
     diasRestantes?: string | number;
     diasAtraso?: string | number;
+    chavePix?: string;
   }
 ): string {
   return template
@@ -67,7 +68,8 @@ export function interpolateSubMsg(
     .replace(/\{valor\}/gi, vars.valor || '')
     .replace(/\{vencimento\}/gi, vars.vencimento || '')
     .replace(/\{diasRestantes\}/gi, String(vars.diasRestantes ?? ''))
-    .replace(/\{diasAtraso\}/gi, String(vars.diasAtraso ?? ''));
+    .replace(/\{diasAtraso\}/gi, String(vars.diasAtraso ?? ''))
+    .replace(/\{chavePix\}/gi, vars.chavePix || '');
 }
 
 function fmtDate(iso: string): string {
@@ -95,6 +97,10 @@ export async function runSubscriptionCycle(
 ): Promise<void> {
   const cfg = settings.subscriptionConfig;
   if (!cfg?.enabled || !cfg.plans.length) return;
+
+  // Mensagens de cobrança saem sempre pelo WA da central; fallback para instância do tenant
+  const globalCfg = await db.getGlobalConfig();
+  const centralInstance = globalCfg['central_instance'] || evolutionInstance;
 
   const now = today();
 
@@ -124,6 +130,7 @@ export async function runSubscriptionCycle(
       vencimento: fmtDate(nextDue),
       diasRestantes: Math.max(0, daysUntilDue),
       diasAtraso: Math.max(0, daysOverdue),
+      chavePix: cfg.pixKey || '(chave PIX não cadastrada)',
     };
 
     // ── 1. Atualizar status ─────────────────────────────────────────────────
@@ -147,22 +154,36 @@ export async function runSubscriptionCycle(
     }
 
     // ── 2. Enviar mensagens ─────────────────────────────────────────────────
-    if (!cust.phone || !evolutionInstance) continue;
+    if (!cust.phone || !centralInstance) continue;
 
-    // Aviso prévio: daysBeforeWarning dias antes do vencimento (1x por mês)
-    if (daysUntilDue === cfg.daysBeforeWarning && newStatus === 'active') {
-      const claimKey = `sub_warn_${cust.id}_${nextDue}`;
+    // Aviso 3 dias antes do vencimento (1x por ciclo)
+    if (daysUntilDue === 3 && (newStatus === 'active' || newStatus === null)) {
+      const claimKey = `sub_warn3_${cust.id}_${nextDue}`;
       if (!_sentMemory.has(claimKey)) {
         const claimed = await db.claimMessage(claimKey);
         if (claimed) {
           _sentMemory.add(claimKey);
           const msg = interpolateSubMsg(cfg.warningMessage, vars);
-          await evolutionService.sendMessage(evolutionInstance, cust.phone, msg);
+          await evolutionService.sendMessage(centralInstance, cust.phone, msg);
         }
       }
     }
 
-    // Cobrança diária enquanto pendente
+    // Lembrete no dia do vencimento — manhã (1x no dia)
+    if (daysUntilDue === 0 && (newStatus === 'active' || newStatus === null)) {
+      const claimKey = `sub_due_${cust.id}_${nextDue}`;
+      if (!_sentMemory.has(claimKey)) {
+        const claimed = await db.claimMessage(claimKey);
+        if (claimed) {
+          _sentMemory.add(claimKey);
+          const template = cfg.dueTodayMessage || cfg.warningMessage;
+          const msg = interpolateSubMsg(template, { ...vars, diasRestantes: 0 });
+          await evolutionService.sendMessage(centralInstance, cust.phone, msg);
+        }
+      }
+    }
+
+    // Cobrança diária enquanto pendente/overdue
     if ((newStatus === 'pending' || newStatus === 'overdue') && daysOverdue > 0) {
       const claimKey = `sub_charge_${cust.id}_${now}`;
       if (!_sentMemory.has(claimKey)) {
@@ -170,7 +191,7 @@ export async function runSubscriptionCycle(
         if (claimed) {
           _sentMemory.add(claimKey);
           const msg = interpolateSubMsg(cfg.overdueMessage, vars);
-          await evolutionService.sendMessage(evolutionInstance, cust.phone, msg);
+          await evolutionService.sendMessage(centralInstance, cust.phone, msg);
         }
       }
     }
@@ -207,16 +228,19 @@ export async function confirmSubscriptionPayment(
     subscriptionProofAnalysis: undefined,
   } as any);
 
-  // Enviar confirmação ao cliente
+  // Enviar confirmação ao cliente via WA central
   const cfg = settings.subscriptionConfig;
-  if (cfg?.paymentConfirmedMessage && cust.phone && evolutionInstance) {
+  if (cfg?.paymentConfirmedMessage && cust.phone) {
+    const globalCfg = await db.getGlobalConfig();
+    const sendInstance = globalCfg['central_instance'] || evolutionInstance;
     const msg = interpolateSubMsg(cfg.paymentConfirmedMessage, {
       nome: cust.name,
       plano: plan?.name || '',
       valor: plan ? `R$ ${fmtBRL(plan.value)}` : '',
       vencimento: nextDue ? fmtDate(nextDue) : '',
+      chavePix: cfg.pixKey || '',
     });
-    await evolutionService.sendMessage(evolutionInstance, cust.phone, msg);
+    await evolutionService.sendMessage(sendInstance, cust.phone, msg);
   }
 }
 

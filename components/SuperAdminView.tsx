@@ -19,6 +19,7 @@ import CentralPollingManager from './CentralPollingManager';
 import TestRunnerPanel from './TestRunnerPanel';
 import { MarketplaceLead, CashbackBalance } from '../types';
 import { SiteContent, SITE_DEFAULTS } from '../config/siteConfig';
+import { projectUrl, anonKey } from '../services/supabase';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   // Edit modal
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [saving, setSaving] = useState(false);
+  const [billingLoading, setBillingLoading] = useState<string | null>(null); // tenantId em cobrança
   // Per-tenant feature overrides (null = use plan defaults; array = custom feature set)
   const [editFeatureOverrides, setEditFeatureOverrides] = useState<string[] | null>(null);
   const [editAllFeatures, setEditAllFeatures] = useState(true);
@@ -289,6 +291,36 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleBillTenant = async (t: Tenant) => {
+    if (!t.phone) { alert('Tenant sem telefone cadastrado'); return; }
+    if (!window.confirm(`Gerar cobrança de R$ ${t.monthlyFee.toFixed(2)} para ${t.name}?`)) return;
+    setBillingLoading(t.id);
+    try {
+      const res = await fetch(`${projectUrl}/functions/v1/asaas-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+        body: JSON.stringify({ action: 'admin_bill', tenantId: t.id }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      const cfg = await db.getGlobalConfig();
+      const instance = cfg['central_instance'] || 'central_AgendeZap';
+      const valorStr = (data.value as number).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const msg =
+        `Olá, *${t.name}*! 👋\n\n` +
+        `Sua mensalidade do *AgendeZap* no valor de *R$ ${valorStr}* vence amanhã.\n\n` +
+        `Pague via PIX e continue usando todos os recursos do sistema:\n\n` +
+        `${data.invoiceUrl}`;
+      await evolutionService.sendMessage(instance, t.phone, msg);
+      alert(`✅ Fatura de R$ ${valorStr} enviada para ${t.name}!`);
+    } catch (e: any) {
+      alert('Erro ao gerar cobrança: ' + (e.message || 'Tente novamente'));
+    } finally {
+      setBillingLoading(null);
+    }
+  };
 
   const loadUsage = useCallback(async () => {
     setUsageLoading(true);
@@ -1024,6 +1056,14 @@ CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH 
                           </button>
                           <button onClick={() => setEditingTenant({ ...t })} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase hover:bg-slate-200 transition-all">
                             Editar
+                          </button>
+                          <button
+                            onClick={() => handleBillTenant(t)}
+                            disabled={billingLoading === t.id}
+                            title="Gerar cobrança Asaas + enviar WA"
+                            className="px-3 py-1.5 bg-green-50 text-green-600 rounded-xl font-black text-[9px] uppercase hover:bg-green-100 transition-all disabled:opacity-50"
+                          >
+                            {billingLoading === t.id ? '⏳' : '💰'}
                           </button>
                           <button onClick={async (e) => { e.stopPropagation(); if (window.confirm(`Excluir "${t.name}"? Esta ação não pode ser desfeita.`)) { try { await db.deleteTenant(t.id); saveAdminLog('TENANT_DELETED', t.name); load(); } catch { alert('Erro ao excluir tenant'); } } }} className="px-3 py-1.5 bg-red-50 text-red-500 rounded-xl font-black text-[9px] uppercase hover:bg-red-100 transition-all">
                             ✕
