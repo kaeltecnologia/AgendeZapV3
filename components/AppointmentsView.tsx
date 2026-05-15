@@ -610,7 +610,7 @@ function DayCalendar({
                 {/* Tarja cinza — horários fora do atendimento */}
                 {(() => {
                   const { openPx, closePx } = parseOpHours(date.getDay());
-                  const s: React.CSSProperties = { position: 'absolute', left: 0, right: 0, background: 'rgba(148,163,184,0.10)', pointerEvents: 'none', zIndex: 1 };
+                  const s: React.CSSProperties = { position: 'absolute', left: 0, right: 0, background: 'rgba(100,116,139,0.22)', pointerEvents: 'none', zIndex: 1 };
                   return <>
                     {openPx > 0 && <div style={{ ...s, top: 0, height: openPx }} />}
                     {closePx < totalHeight && <div style={{ ...s, top: closePx, height: totalHeight - closePx }} />}
@@ -2506,8 +2506,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                       )}
                     </div>
                   )}
-                  {/* Show sorted list when empty search but no selection */}
-                  {customerSearch.trim().length === 0 && !customerId && (
+                  {/* Show sorted list when empty search but no selection and not creating new */}
+                  {customerSearch.trim().length === 0 && !customerId && !showNewCustForm && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-xl z-10 max-h-52 overflow-y-auto">
                       {[...customers]
                         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
