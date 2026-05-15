@@ -621,6 +621,13 @@ function DayCalendar({
                 {breaks.filter(b => {
                   // Holiday: specific date, all profs
                   if (b.type === 'holiday') return b.date === dateStr;
+                  // Vacation: range of dates per professional
+                  if (b.type === 'vacation') {
+                    if (b.professionalId && b.professionalId !== p.id) return false;
+                    const vacStart = b.date || '';
+                    const vacEnd = (b as any).vacationEndDate || b.date || '';
+                    return !!vacStart && dateStr >= vacStart && dateStr <= vacEnd;
+                  }
                   // Professional match (null/absent = all profs)
                   if (b.professionalId && b.professionalId !== p.id) return false;
                   // Specific one-time date
@@ -635,9 +642,15 @@ function DayCalendar({
                   const endMins   = parseHM(b.endTime);
                   const isAllDay  = startMins === 0 && endMins >= 23 * 60 + 55;
 
-                  const r = parseInt(breakColor.slice(1, 3), 16) || 249;
-                  const g = parseInt(breakColor.slice(3, 5), 16) || 115;
-                  const bv = parseInt(breakColor.slice(5, 7), 16) || 22;
+                  // Type-based color: vacation=purple, holiday=red, absence=amber, break/lunch=breakColor
+                  const typeColor =
+                    b.type === 'vacation' ? '#7c3aed' :
+                    b.type === 'holiday'  ? '#dc2626' :
+                    (b.label || '').startsWith('[ausencia]') ? '#d97706' :
+                    breakColor;
+                  const r = parseInt(typeColor.slice(1, 3), 16) || 249;
+                  const g = parseInt(typeColor.slice(3, 5), 16) || 115;
+                  const bv = parseInt(typeColor.slice(5, 7), 16) || 22;
 
                   if (isAllDay) {
                     return (
@@ -646,7 +659,7 @@ function DayCalendar({
                         background: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.07) 0px, rgba(${r},${g},${bv},0.07) 8px, transparent 8px, transparent 16px)`,
                         borderLeft: `3px solid rgba(${r},${g},${bv},0.5)`,
                       }}>
-                        <span style={{ position: 'sticky', top: 4, display: 'block', fontSize: 9, fontWeight: 800, color: breakColor, textTransform: 'uppercase', padding: '2px 6px', letterSpacing: '0.05em' }}>{b.label}</span>
+                        <span style={{ position: 'sticky', top: 4, display: 'block', fontSize: 9, fontWeight: 800, color: typeColor, textTransform: 'uppercase', padding: '2px 6px', letterSpacing: '0.05em' }}>{b.label}</span>
                       </div>
                     );
                   }
@@ -667,14 +680,14 @@ function DayCalendar({
                       top: `${topPx}px`, height: `${heightPx}px`,
                       zIndex: 2, borderRadius: 6, pointerEvents: 'none',
                       backgroundColor: `rgba(${r},${g},${bv},0.12)`,
-                      borderLeft: `3px solid ${breakColor}`,
+                      borderLeft: `3px solid ${typeColor}`,
                       backgroundImage: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.06) 0px, rgba(${r},${g},${bv},0.06) 4px, transparent 4px, transparent 8px)`,
                     }}>
                       {heightPx >= 22 && (
                         <div style={{ padding: '2px 5px', overflow: 'hidden' }}>
-                          <p style={{ fontSize: 9, fontWeight: 800, color: breakColor, textTransform: 'uppercase', margin: 0, letterSpacing: '0.05em', lineHeight: 1.3 }}>{b.label}</p>
+                          <p style={{ fontSize: 9, fontWeight: 800, color: typeColor, textTransform: 'uppercase', margin: 0, letterSpacing: '0.05em', lineHeight: 1.3 }}>{b.label}</p>
                           {heightPx >= 34 && (
-                            <p style={{ fontSize: 8, fontWeight: 600, color: breakColor, opacity: 0.75, margin: 0, lineHeight: 1.2 }}>{fmt(startMins)}–{fmt(endMins)}</p>
+                            <p style={{ fontSize: 8, fontWeight: 600, color: typeColor, opacity: 0.75, margin: 0, lineHeight: 1.2 }}>{fmt(startMins)}–{fmt(endMins)}</p>
                           )}
                         </div>
                       )}
@@ -1353,7 +1366,6 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const loadBookingSlots = useCallback(async (pId: string, date: string, durOverride: number) => {
     if (!pId || !date || !durOverride) { setBookingSlots([]); return; }
     setBookingSlotsLoading(true);
-    setManualTime('');
     try {
       const dur = durOverride;
       const settings = await db.getSettings(tenantId);
@@ -1413,11 +1425,11 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         cursor += INTERVAL;
       }
       setBookingSlots(slots);
-      // Restore pre-clicked time if it's available in the loaded slots
+      // Restore pre-clicked time (always — user explicitly clicked this slot)
       const pending = pendingSlotTimeRef.current;
       if (pending) {
         pendingSlotTimeRef.current = '';
-        if (slots.includes(pending)) setManualTime(pending);
+        setManualTime(pending);
       }
     } catch (e) {
       console.error('loadBookingSlots error:', e);
@@ -2475,7 +2487,18 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                         c.phone.includes(customerSearch)
                       ).length === 0 && (
                         <button
-                          onClick={() => { setShowNewCustForm(true); setNewCustName(customerSearch); setCustomerSearch(''); }}
+                          onClick={() => {
+                            setShowNewCustForm(true);
+                            const isPhone = /^\+?[\d\s\-\(\)]{6,}$/.test(customerSearch.trim());
+                            if (isPhone) {
+                              setNewCustPhone(customerSearch.replace(/\D/g, ''));
+                              setNewCustName('');
+                            } else {
+                              setNewCustName(customerSearch);
+                              setNewCustPhone('');
+                            }
+                            setCustomerSearch('');
+                          }}
                           className="w-full flex items-center gap-2 px-4 py-3 hover:bg-orange-50 transition-colors text-left"
                         >
                           <span className="text-xs font-black text-orange-500">+ Cadastrar "{customerSearch}"</span>
