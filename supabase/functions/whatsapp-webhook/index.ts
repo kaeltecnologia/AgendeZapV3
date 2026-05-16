@@ -3314,8 +3314,15 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (prof) { session.data.professionalId = prof.id; session.data.professionalName = prof.name; }
   }
   if (ext.date && !session.data.date) session.data.date = ext.date;
-  if (ext.time && !session.data.time && prefetchedSlots?.length) {
-    if (prefetchedSlots.includes(ext.time)) session.data.time = ext.time;
+  if (ext.time && !session.data.time && /^\d{1,2}:\d{2}$/.test(ext.time)) {
+    // Accept valid HH:MM time regardless of prefetchedSlots.
+    // The booking conflict check (line ~3502) validates real availability against the DB.
+    // Previously rejecting times not in prefetchedSlots caused "agenda cheia" when combo
+    // duration changed the slot window after the user had already chosen a slot.
+    if (prefetchedSlots && !prefetchedSlots.includes(ext.time)) {
+      console.log(`[Agent] TS: accepting explicit time ${ext.time} not in current slots — validating at booking`);
+    }
+    session.data.time = ext.time;
   }
 
   // ── TypeScript guard: block LLM from offering times without service ──────────
@@ -3336,24 +3343,30 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // reply, strip the listing and produce a clean response advancing the flow.
   if (session.data.serviceId && session.data.serviceName) {
     const _replyLower = brain.reply.toLowerCase();
-    // Count how many OTHER service names appear in the reply (besides the selected one)
+    // Build set of service names that are part of the current combo (should not count as "other")
+    const _comboIds: string[] = session.data._comboServiceIds || [];
     const _selectedNorm = session.data.serviceName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const _otherSvcCount = services.filter((s: any) => {
       const sn = (s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return sn !== _selectedNorm && sn.length > 5 && _replyLower.includes(sn);
+      // Exclude: same name, part of combo, or name appears inside the combined serviceName
+      if (sn === _selectedNorm) return false;
+      if (_comboIds.includes(s.id)) return false;
+      if (_selectedNorm.includes(sn)) return false;
+      return sn.length > 5 && _replyLower.includes(sn);
     }).length;
     if (_otherSvcCount >= 2) {
       console.log(`[Agent] Guard: AI listed ${_otherSvcCount} other services while serviceId is set. Stripping.`);
-      // Build clean reply based on what's missing
+      // Build clean reply based on what's missing (check time FIRST)
       const _sn = session.data.serviceName;
       if (!session.data.professionalId && professionals.length > 1) {
         brain.reply = `${_sn}, beleza! Com qual profissional prefere? Temos: ${professionals.map((p: any) => p.name).join(', ')}`;
       } else if (!session.data.date) {
         const _profCtx = session.data.professionalName ? ` com o ${session.data.professionalName}` : '';
         brain.reply = `${_sn}${_profCtx}, beleza! Para qual dia você quer marcar?`;
-      } else {
+      } else if (!session.data.time) {
         brain.reply = `${_sn}, certo! Para qual horário prefere?`;
       }
+      // if time already set, do not override — let the original AI reply flow through
     }
   }
 
