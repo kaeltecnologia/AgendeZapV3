@@ -537,8 +537,15 @@ ${profSelectionSection}
 - "O que tiver", "qualquer horário", "tanto faz" = liste os horários disponíveis e pergunte qual prefere. NÃO pergunte "manhã ou tarde?", apenas liste.
 - "Quero todos" referente a horários = NÃO é "marcar todos", é "ver todos". Liste-os.
 
+## Listagem de Serviços (cliente quer ver opções)
+- "Quais opções", "quais serviços", "quais tratamentos", "o que tem", "o que vocês fazem", "me mostra os serviços", "quais são os serviços" = cliente quer VER o cardápio. LISTE TODOS os serviços numerados SEM usar "Não encontrei". Exemplo:
+"Temos os seguintes serviços:
+1. Corte (30min, R$40)
+2. Barba (20min, R$25)
+Qual você gostaria?"
+
 ## Serviço Não Encontrado
-Se o cliente pedir um serviço que NÃO existe na lista de Serviços, diga que não encontrou e LISTE todos os serviços disponíveis de forma numerada. Exemplo:
+Se o cliente pedir um serviço ESPECÍFICO que NÃO existe na lista de Serviços, diga que não encontrou e LISTE todos os serviços disponíveis de forma numerada. Exemplo:
 "Não encontrei esse serviço, mas temos:
 1. Alongamento (60min, R$80)
 2. Blindagem (45min, R$50)
@@ -556,14 +563,11 @@ Qual desses você gostaria?"
 - NUNCA diga que um dia "não abre" ou "tá fechado". O sistema cuida disso. Apenas extraia a data.
 
 ## Protocolo de Cancelamento
-1. Localizar: "Encontrei seu agendamento: [data/hora/serviço]."
-2. Confirmar: "Confirmo o cancelamento?"
-3. Só então: "cancelled":true
-- "Não vou poder ir" / "não consigo ir" / "não vou chegar a tempo" = intenção implícita -> perguntar: "Quer que eu cancele? Se quiser remarcar, posso ajudar!"
+- Pedido EXPLÍCITO ("cancelar", "cancela", "quero cancelar", "me cancela", "desisti", "tira meu nome", "não vou mais"): retorne "cancelled":true IMEDIATAMENTE — sem pedir confirmação — e pergunte o motivo na mesma mensagem. Exemplo: "✅ Agendamento cancelado! Pode me dizer o motivo? Isso nos ajuda a melhorar 😊"
+- Intenção IMPLÍCITA ("não vou poder ir", "não consigo ir", "não vou chegar a tempo") -> perguntar: "Quer que eu cancele? Se quiser remarcar, posso ajudar!"
 - "Não consigo mudar meu horário" = agenda pessoal não permite (NÃO é recusa de reagendamento) -> tratar como cancelamento implícito.
-- "Tchau" junto com relato de impossibilidade = despedida + cancelamento.
-- Múltiplos agendamentos futuros -> listar todos e perguntar qual cancelar.
-- Linguagem informal ("desisti", "tira meu nome") -> identificar agendamento + confirmar antes de cancelar.
+- "Tchau" junto com relato de impossibilidade = despedida + cancelamento implícito.
+- Múltiplos agendamentos futuros -> listar todos e perguntar qual cancelar antes de cancelar.
 
 ## Protocolo de Reagendamento
 - "Mais cedo" / "mais tarde" = vago -> clarificar: "Mais cedo no mesmo dia ou em outra data?"
@@ -1371,7 +1375,7 @@ async function debouncedRun(tenant: any, phone: string, text: string, settings: 
     await runAgent(tenant, phone, combined || text, settings, pushName);
   } catch (e) {
     console.error('[debouncedRun] runAgent threw unexpectedly:', e);
-    await sendMsg(instanceName, phone, 'Desculpe, tive um problema técnico. Pode repetir? 😅', tenantId).catch(() => {});
+    // silently log — do not send error message to user
   }
 }
 
@@ -1449,14 +1453,16 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       await saveSession(tenantId, phone, preSession.data, preSession.history);
       // Fall through to normal flow with pendingReschedule set
     } else if (isAffirmPCC) {
-      // User confirmed cancellation → cancel the appointment directly
+      // User confirmed cancellation → cancel the appointment and ask reason
       try {
         await supabase.from('appointments').update({ status: 'CANCELLED' }).eq('id', apptId).eq('tenant_id', tenantId);
         notifyWaitlistLeadsInline(tenantId).catch(console.error);
       } catch (eCPCC) { console.error('[Agent] pendingCancelConfirm cancel error:', eCPCC); }
-      const replyPCC = `✅ Agendamento de *${dtLabel}* às *${tmIC}* com *${profName}* cancelado!\n\nSe quiser remarcar quando puder, é só me chamar. 😊`;
+      const replyPCC = `✅ Agendamento de *${dtLabel}* às *${tmIC}* com *${profName}* cancelado!\n\nPode me dizer o motivo? Isso nos ajuda a melhorar! 😊`;
+      preSession.data.pendingCancelConfirm = undefined;
+      preSession.data.pendingCancelReason = true;
       preSession.history.push({ role: 'user', text }, { role: 'bot', text: replyPCC });
-      await clearSession(tenantId, phone);
+      await saveSession(tenantId, phone, preSession.data, preSession.history);
       await sendMsg(instanceName, phone, replyPCC, tenantId);
       return;
     } else if (isDenyPCC) {
@@ -1476,29 +1482,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
-  // Pre-check: user providing cancel reason
+  // Pre-check: user providing cancel reason (appointment already cancelled — just thank and close)
   if (preSession?.data?.pendingCancelReason) {
     await clearSession(tenantId, phone);
-    try {
-      const { data: customer } = await supabase.from('customers').select('id')
-        .eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle();
-      if (customer) {
-        const n = new Date();
-        const nowLocal = `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
-        const { data: appts } = await supabase.from('appointments').select('id, inicio')
-          .eq('tenant_id', tenantId).eq('customer_id', customer.id)
-          .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
-          .gte('inicio', nowLocal).order('inicio', { ascending: true }).limit(1);
-        if (appts && appts.length > 0) {
-          await supabase.from('appointments').update({ status: 'CANCELLED' }).eq('id', appts[0].id);
-          const dateFmt = new Date(appts[0].inicio.substring(0, 10) + 'T12:00:00')
-            .toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
-          await sendMsg(instanceName, phone, `✅ Agendamento de *${dateFmt}* cancelado!\n\nMotivo registrado. Obrigado pelo feedback! 😊`, tenantId);
-          return;
-        }
-      }
-    } catch (e) { console.error('[Agent] cancel-reason error:', e); }
-    await sendMsg(instanceName, phone, `Cancelamento registrado! Obrigado por nos avisar. 😊`, tenantId);
+    await sendMsg(instanceName, phone, `Obrigado pelo feedback! Se quiser reagendar quando puder, é só me chamar. 😊`, tenantId);
     return;
   }
 
@@ -3311,10 +3298,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   if (!brain) {
     console.error(`[Agent] All AI calls failed for ${tenantId}, key prefix: ${apiKey.slice(0, 6)}...`);
-    const fallback = `Desculpe, tive um problema técnico. Pode repetir? 😅`;
-    session.history.push({ role: 'bot', text: fallback });
-    await sendMsg(instanceName, phone, fallback, tenantId);
-    saveSession(tenantId, phone, session.data, session.history).catch(e => console.error('[Agent] saveSession err:', e));
+    // silently fail — do not send error message to user
     return;
   }
 
@@ -3463,8 +3447,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         }
       }
     } catch (e) { console.error('[Agent] cancelled extraction error:', e); }
-    await clearSession(tenantId, phone);
+    // Keep session alive to collect reason
+    session.data.pendingCancelReason = true;
     session.history.push({ role: 'bot', text: brain.reply });
+    await saveSession(tenantId, phone, session.data, session.history);
     await sendSplit(instanceName, phone, brain.reply, tenantId);
     return;
   }
