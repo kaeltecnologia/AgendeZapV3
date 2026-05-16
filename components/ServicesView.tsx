@@ -78,14 +78,8 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     if (!modal.data?.id) return;
     setDeleting(true);
     try {
+      // Soft-delete: marca como inativo (oculta o serviço sem quebrar FK de agendamentos)
       await db.updateService(modal.data.id, { active: false, name: modal.data.name });
-      // Soft-delete: marca como inativo. Para remover de fato:
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_ANON_KEY
-      );
-      await supabase.from('services').delete().eq('id', modal.data.id);
       await loadData();
       setModal({ show: false, data: null });
       setConfirmDelete(false);

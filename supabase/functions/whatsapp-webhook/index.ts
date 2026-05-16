@@ -1553,7 +1553,21 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   const profsRaw = profsRes.data || [];
   // Full list: used for name matching (client can request a prof on vacation → slot-check explains why)
-  const professionals = profsRaw.map((p: any) => ({ id: p.id, name: (p.nome || '').trim(), phone: (p.phone || '').trim(), serviceIds: p.service_ids || [] }));
+  const professionals = profsRaw.map((p: any) => ({
+    id: p.id,
+    name: (p.nome || '').trim(),
+    phone: (p.phone || '').trim(),
+    serviceIds: p.service_ids || [],
+    disableAI: !!(settings.professionalMeta?.[p.id]?.disableAI),
+  }));
+
+  // Bug 2 guard: if message sender is a professional, don't run the client agent
+  const _senderPhoneNorm = phone.replace(/\D/g, '');
+  const _isProfessional = professionals.some(p => p.phone && p.phone.replace(/\D/g, '') === _senderPhoneNorm);
+  if (_isProfessional) {
+    console.log(`[runAgent] Sender ${phone} is a professional — skipping client agent`);
+    return;
+  }
 
   // Use Brasília time for "today" (UTC-3)
   const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
@@ -2386,6 +2400,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // slot-check can explain vacations when the client explicitly requests that prof.
   const _targetDateWh = session.data.date || todayISO;
   const professionalsVisible = professionals.filter((p: any) => {
+    // Bug 1: exclude professionals with disableAI flag (not accepting AI bookings)
+    if (p.disableAI) return false;
     // Filter out professionals on vacation for the target date
     const onVacation = (settings.breaks || []).some((b: any) => {
       if (b.type !== 'vacation') return false;
@@ -3974,6 +3990,7 @@ Deno.serve(async (req) => {
       customerData: (fu._customerData || {}) as Record<string, { aiPaused?: boolean; planId?: string; planStatus?: string }>,
       plans: (fu._plans || []) as Array<{ id: string; active: boolean; quotas?: Array<{ serviceId: string; quantity: number }>; serviceId?: string; proceduresPerMonth?: number; price?: number }>,
       planUsage: (fu._planUsage || {}) as Record<string, number>,
+      professionalMeta: (fu._professionalMeta || {}) as Record<string, { disableAI?: boolean }>,
     };
 
     // Process each message — ALWAYS persist (even if aiActive is off)

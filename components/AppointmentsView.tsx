@@ -1123,15 +1123,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     const requestedDate = new Date(`${manualDate}T${manualTime}:00`);
     if (isNaN(requestedDate.getTime())) { setErrorMsg('Data ou hora inválida.'); return; }
 
-    // If the time was verified by the slot picker, skip the isSlotAvailable check
-    const verifiedByPicker = bookingSlots.includes(manualTime);
-    if (!verifiedByPicker) {
-      const check = await db.isSlotAvailable(tenantId, profId, requestedDate, totalDuration);
-      if (!check.available) {
-        setErrorMsg(check.reason || 'Este horário não está disponível.');
-        return;
-      }
-    }
+    // Admin manual booking: skip operating-hours validation (admin can book at any time).
+    // Only block true appointment conflicts (checked by the DB at insert time).
+    // isSlotAvailable is NOT called — it would reject times outside configured hours.
 
     try {
       // Check if customer has active plan — cover services from quota
@@ -2324,14 +2318,17 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviço(s)</label>
                       <div className="bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-3 max-h-44 overflow-y-auto space-y-1">
-                        {services.filter(s => s.active).map(s => (
+                        {(() => {
+                          const _editProf = professionals.find(p => p.id === editProfId);
+                          return services.filter(s => s.active && (!_editProf?.serviceIds?.length || _editProf.serviceIds.includes(s.id)));
+                        })().map(s => (
                           <label key={s.id} className="flex items-center gap-3 cursor-pointer hover:bg-white dark:hover:bg-slate-700 rounded-xl px-3 py-2 transition-all">
                             <input
                               type="checkbox"
                               checked={editSvcIds.includes(s.id)}
                               onChange={() => {
                                 setEditSvcIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]);
-                                setEditTime('');
+                                // Bug 3b: removed setEditTime('') — don't reset time on service change
                               }}
                               className="w-4 h-4 accent-orange-500"
                             />
