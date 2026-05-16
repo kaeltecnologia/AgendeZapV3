@@ -307,6 +307,30 @@ Deno.serve(async (_req) => {
       });
     }
 
+    // ── Webhook re-registration ─────────────────────────────────────────
+    // Garante que a Evolution API sempre encaminha mensagens para a Edge Function,
+    // mesmo após restart do servidor VPS. Roda em paralelo, silencioso.
+    const WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
+    await Promise.allSettled(
+      tenants
+        .filter((t: any) => t.evolution_instance)
+        .map((t: any) =>
+          fetch(`${EVO_URL}/webhook/set/${t.evolution_instance}`, {
+            method: 'POST',
+            headers: EVO_HEADERS,
+            body: JSON.stringify({
+              webhook: {
+                url: WEBHOOK_URL,
+                enabled: true,
+                webhook_by_events: false,
+                webhook_base64: true,
+                events: ['MESSAGES_UPSERT'],
+              },
+            }),
+          }).catch(() => {})
+        )
+    );
+
     for (const tenant of tenants) {
       const tenantId = tenant.id;
       const instance = tenant.evolution_instance;
