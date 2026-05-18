@@ -4291,12 +4291,14 @@ Deno.serve(async (req) => {
         resolvedCustomerId = existingCust?.id || null;
       }
       // ── Human takeover auto-expire (24h) ──────────────────────────
+      // Also clears legacy entries that have aiPaused=true but no humanTakeoverAt
+      // (set by older code versions — would never auto-expire otherwise).
       const _htKey = resolvedCustomerId || `phone:${phone}`;
       const _htEntry = settings.customerData[_htKey];
-      if (_htEntry?.aiPaused && _htEntry?.humanTakeoverAt) {
-        const _htAge = Date.now() - (_htEntry.humanTakeoverAt as number);
+      if (_htEntry?.aiPaused) {
+        const _htAge = _htEntry.humanTakeoverAt ? Date.now() - (_htEntry.humanTakeoverAt as number) : Infinity;
         if (_htAge > 24 * 60 * 60 * 1000) {
-          // 24h expired — auto-reactivate AI
+          // 24h expired (or legacy entry without timestamp) — auto-reactivate AI
           settings.customerData[_htKey] = { ..._htEntry, aiPaused: false, humanTakeoverAt: undefined };
           EdgeRuntime.waitUntil((async () => {
             try {
@@ -4313,8 +4315,8 @@ Deno.serve(async (req) => {
       // Also check the other key format
       const _htKey2 = _htKey === `phone:${phone}` && resolvedCustomerId ? resolvedCustomerId : `phone:${phone}`;
       const _htEntry2 = settings.customerData[_htKey2];
-      if (_htEntry2?.aiPaused && _htEntry2?.humanTakeoverAt) {
-        const _htAge2 = Date.now() - (_htEntry2.humanTakeoverAt as number);
+      if (_htEntry2?.aiPaused) {
+        const _htAge2 = _htEntry2.humanTakeoverAt ? Date.now() - (_htEntry2.humanTakeoverAt as number) : Infinity;
         if (_htAge2 > 24 * 60 * 60 * 1000) {
           settings.customerData[_htKey2] = { ..._htEntry2, aiPaused: false, humanTakeoverAt: undefined };
           EdgeRuntime.waitUntil((async () => {
