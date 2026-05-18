@@ -824,10 +824,23 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
   const _botEchoKey = `bot_echo::${phone.replace(/\D/g,'').slice(-10)}::${text.trim().slice(0,80)}`;
   try { await supabase.from('msg_dedup').insert({ fp: _botEchoKey }); } catch (_) {}
   // Send with composing presence (simulates typing before message)
-  await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
-    method: 'POST', headers: EVO_HEADERS,
-    body: JSON.stringify({ number: phone, text: text, options: { delay: 1200, presence: 'composing', linkPreview: false } }),
-  }).catch(e => console.error('[sendMsg] error:', e));
+  // Retry once on 404 — zombie instance state (Evolution shows 'open' but rejects sends)
+  const _sendPayload = JSON.stringify({ number: phone, text: text, options: { delay: 1200, presence: 'composing', linkPreview: false } });
+  let _sendRes: Response | null = null;
+  try {
+    _sendRes = await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
+      method: 'POST', headers: EVO_HEADERS, body: _sendPayload,
+    });
+  } catch (e) { console.error('[sendMsg] network error:', e); }
+  if (_sendRes && _sendRes.status === 404) {
+    console.warn('[sendMsg] 404 — zombie instance, aguardando 2s e reenviando');
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
+        method: 'POST', headers: EVO_HEADERS, body: _sendPayload,
+      });
+    } catch (e2) { console.error('[sendMsg] retry error:', e2); }
+  }
   // Persist outgoing message so ConversationsView shows full history
   if (tenantId) {
     saveWaMsg(

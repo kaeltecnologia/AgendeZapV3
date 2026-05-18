@@ -169,6 +169,30 @@ export const evolutionService = {
         })
       });
       if (response.ok) return { success: true };
+
+      // Retry once on 404 — zombie instance (shows 'open' in connectionState but rejects sends)
+      if (response.status === 404) {
+        console.warn(`[Evolution] sendText 404 — zombie instance, aguardando 2s e reenviando`);
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const retry = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              number: cleanNumber,
+              text: text,
+              options: { delay: 1200, presence: 'composing', linkPreview: false }
+            })
+          });
+          if (retry.ok) return { success: true };
+          const retryErr = await retry.json().catch(() => ({}));
+          console.error(`[Evolution] sendText retry ${retry.status}:`, JSON.stringify(retryErr).substring(0, 300));
+          return { success: false, error: retryErr.message || `HTTP ${retry.status}` };
+        } catch (e2: any) {
+          return { success: false, error: e2.message };
+        }
+      }
+
       const errData = await response.json().catch(() => ({}));
       console.error(`[Evolution] sendText ${response.status}:`, JSON.stringify(errData).substring(0, 500), '| instance:', instanceName, '| number:', cleanNumber.slice(0, 4) + '***');
       return { success: false, error: errData.message || `HTTP ${response.status}` };

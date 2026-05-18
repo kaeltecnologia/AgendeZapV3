@@ -131,25 +131,47 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
   const cleanPhone = extrairNumero(msg);
   if (!cleanPhone) return;
 
-  // ── Check per-lead aiPaused ──────────────────────────────────────────
+  // ── Check per-lead aiPaused (with auto-expire for legacy entries) ────
   if (settings?.customerData) {
-    let isPaused = !!settings.customerData[`phone:${cleanPhone}`]?.aiPaused;
-    if (!isPaused) {
+    const phoneKey = `phone:${cleanPhone}`;
+    let pausedEntry = settings.customerData[phoneKey]?.aiPaused ? settings.customerData[phoneKey] : null;
+    let pausedKey = pausedEntry ? phoneKey : null;
+
+    if (!pausedEntry) {
       try {
-        // Use suffix match (last 10 digits) — phone format may differ between
-        // WhatsApp (5511999998888) and DB (11999998888)
         const suffix = cleanPhone.replace(/\D/g, '').slice(-10);
         const { data: custs } = await supabase.from('customers')
           .select('id').eq('tenant_id', tenant.id).like('telefone', `%${suffix}`).limit(1);
         const existingCust = custs?.[0] || null;
         if (existingCust && settings.customerData[existingCust.id]?.aiPaused) {
-          isPaused = true;
+          pausedEntry = settings.customerData[existingCust.id];
+          pausedKey = existingCust.id;
         }
       } catch {}
     }
-    if (isPaused) {
-      console.log(`[AiPolling] IA pausada para ${maskPhone(cleanPhone)} — ignorando`);
-      return;
+
+    if (pausedEntry && pausedKey) {
+      const htAge = pausedEntry.humanTakeoverAt
+        ? Date.now() - (pausedEntry.humanTakeoverAt as number)
+        : Infinity; // legacy entry without timestamp → treat as expired
+
+      if (htAge > 24 * 60 * 60 * 1000) {
+        // Expired (or legacy) — reactivate AI
+        console.log(`[AiPolling] Human takeover expirado para ${maskPhone(cleanPhone)} — reativando IA`);
+        try {
+          await supabase.rpc('set_customer_data_key', {
+            p_tenant_id: tenant.id,
+            p_customer_key: pausedKey,
+            p_value: { aiPaused: false, humanTakeoverAt: null },
+          });
+        } catch (e) {
+          console.error('[AiPolling] Erro ao reativar IA:', e);
+        }
+        // Continue processing this message — AI is now active
+      } else {
+        console.log(`[AiPolling] IA pausada para ${maskPhone(cleanPhone)} — ignorando`);
+        return;
+      }
     }
   }
 
