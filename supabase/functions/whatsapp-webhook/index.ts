@@ -4090,8 +4090,8 @@ Deno.serve(async (req) => {
             // Check persistent dedup table: if bot_echo key exists → this is a bot message, not human
             const botEchoKey = `bot_echo::${phoneSuffix}::${_outBody.trim().slice(0,80)}`;
             const { error: echoErr } = await supabase.from('msg_dedup').insert({ fp: botEchoKey });
-            if (!echoErr || echoErr.code !== '23505') {
-              // Key didn't exist → truly human-sent, proceed with takeover
+            if (!echoErr) {
+              // INSERT succeeded → key was new → truly human-sent, proceed with takeover
               const { data: custRows } = await supabase.from('customers')
                 .select('id').eq('tenant_id', tenant.id).like('telefone', `%${phoneSuffix}`).limit(1);
               const custKey = custRows?.[0]?.id || `phone:${_outPhone}`;
@@ -4103,7 +4103,8 @@ Deno.serve(async (req) => {
               });
               console.log(`[Webhook] Human takeover set for ${custKey}`);
             } else {
-              console.log(`[Webhook] Skipping human takeover — bot echo detected for ${phoneSuffix}`);
+              // 23505 = bot echo (pre-inserted by sendMsg) or other error → fail-safe, skip takeover
+              console.log(`[Webhook] Skipping human takeover — ${echoErr.code === '23505' ? 'bot echo detected' : 'db error: ' + echoErr.code} for ${phoneSuffix}`);
             }
           } catch (e) { console.error('[Webhook] human takeover error:', e); }
         })());
