@@ -3767,7 +3767,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   const lastBotMsgs = botMsgs.slice(-3).map((h: any) => _normForLoop(h.text));
   const repeatCount = lastBotMsgs.filter(m => _wordSim(m, newReplyNorm) > 0.6).length;
 
-  if (repeatCount >= 2) {
+  if (repeatCount >= 2 && !_syntheticBrain) {
     // AI is repeating itself for the 3rd time — stop the loop
     console.log(`[Agent] LOOP DETECTED: reply similar to ${repeatCount} of last 3 bot msgs. Stopping loop.`);
     const _loopBookingHint = tenant.slug ? ` Ou agende pelo link: ${APP_URL}/agendar/${tenant.slug}` : '';
@@ -3783,7 +3783,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   _recentBotTs.push(_now);
   (session.data as any)._botSendTs = _recentBotTs.slice(-10); // keep last 10
 
-  if (_recentBotTs.length > 3 && repeatCount >= 1) {
+  if (_recentBotTs.length > 3 && repeatCount >= 1 && !_syntheticBrain) {
     console.log(`[Agent] RATE LIMIT: ${_recentBotTs.length} bot msgs in 2min + repeating. Stopping.`);
     const _rateBookingHint = tenant.slug ? ` Ou se preferir, agende direto pelo link: ${APP_URL}/agendar/${tenant.slug} 🔗` : '';
     brain.reply = `Parece que estamos dando voltas! 😅 Quando puder, me conta direitinho o que precisa que eu te ajudo.${_rateBookingHint}`;
