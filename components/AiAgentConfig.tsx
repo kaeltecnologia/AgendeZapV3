@@ -37,10 +37,14 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [msgBufferSecs, setMsgBufferSecs] = useState(20);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [sharedOpenAiKey, setSharedOpenAiKey] = useState('');
 
   useEffect(() => {
     const load = async () => {
-      const settings = await db.getSettings(tenantId);
+      const [settings, globalCfg] = await Promise.all([
+        db.getSettings(tenantId),
+        db.getGlobalConfig(),
+      ]);
       setActive(settings.aiActive);
       setAiLeadActive(settings.aiLeadActive !== false);
       setAiProfessionalActive(!!settings.aiProfessionalActive);
@@ -49,6 +53,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       setAgentGender((settings.agentGender as 'neutro' | 'masculino' | 'feminino') || 'neutro');
       setOpenaiApiKey(settings.openaiApiKey || '');
       setMsgBufferSecs(settings.msgBufferSecs ?? 20);
+      setSharedOpenAiKey((globalCfg['shared_openai_key'] || '').trim());
       setLoadingSettings(false);
     };
     load();
@@ -100,7 +105,10 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
     );
   }
 
-  const usingOpenAI = openaiApiKey.trim().startsWith('sk-');
+  const ownKeyIsOpenAI = openaiApiKey.trim().startsWith('sk-');
+  const sharedKeyIsOpenAI = sharedOpenAiKey.startsWith('sk-');
+  const usingOpenAI = ownKeyIsOpenAI || sharedKeyIsOpenAI;
+  const usingSharedKey = !ownKeyIsOpenAI && sharedKeyIsOpenAI;
 
   return (
     <div className="space-y-10 animate-fadeIn">
@@ -109,7 +117,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
           Configurações de inteligência artificial
           {usingOpenAI
-            ? <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase">GPT-4.1 Mini</span>
+            ? <span className="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase" title={usingSharedKey ? 'Usando chave compartilhada do SuperAdmin' : 'Chave própria do tenant'}>GPT-4.1 Mini{usingSharedKey ? ' ✦' : ''}</span>
             : <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase">Gemini Flash</span>
           }
         </p>
