@@ -77,6 +77,9 @@ function savePicCache(cache: Record<string, { url: string; ts: number }>) {
 
 const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number) => void }> = ({ tenantId, onUnreadCount }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [hiddenPhones, setHiddenPhones] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(`agz_hidden_convs_${tenantId}`) || '[]')); } catch { return new Set(); }
+  });
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [instanceName, setInstanceName] = useState('');
@@ -322,7 +325,10 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
       }
 
       setConversations(prev => {
-        const next = Array.from(convMap.values()).sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+        const hidden = (() => { try { return new Set<string>(JSON.parse(localStorage.getItem(`agz_hidden_convs_${tenantId}`) || '[]')); } catch { return new Set<string>(); } })();
+        const next = Array.from(convMap.values())
+          .filter(c => !hidden.has(c.phone))
+          .sort((a, b) => b.lastTimestamp - a.lastTimestamp);
         // Preserve locally-sent messages that haven't been saved to DB yet
         return next.map(conv => {
           const old = prev.find(c => c.phone === conv.phone);
@@ -624,19 +630,16 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
     } catch (e) { console.error('clearWaitlistAlert error:', e); }
   };
 
-  const deleteConversation = async (phone: string) => {
-    if (deletingConv) return;
-    setDeletingConv(true);
-    try {
-      await db.deleteWaConversation(tenantId, phone);
-      setConversations(prev => prev.filter(c => c.phone !== phone));
-      setSelectedPhone(null);
-      setConfirmDeletePhone(null);
-    } catch (e) {
-      console.error('deleteConversation error:', e);
-    } finally {
-      setDeletingConv(false);
-    }
+  const deleteConversation = (phone: string) => {
+    setHiddenPhones(prev => {
+      const next = new Set(prev);
+      next.add(phone);
+      try { localStorage.setItem(`agz_hidden_convs_${tenantId}`, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+    setConversations(prev => prev.filter(c => c.phone !== phone));
+    setSelectedPhone(null);
+    setConfirmDeletePhone(null);
   };
 
   // Recompute available slots whenever prof / date / service changes while modal is open
@@ -1116,14 +1119,12 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                         <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Apagar tudo?</span>
                         <button
                           onClick={() => deleteConversation(selectedConv.phone)}
-                          disabled={deletingConv}
-                          className="text-[10px] font-black text-white bg-red-500 hover:bg-red-600 px-2.5 py-1 rounded-xl transition-all disabled:opacity-50 uppercase"
+                          className="text-[10px] font-black text-white bg-red-500 hover:bg-red-600 px-2.5 py-1 rounded-xl transition-all uppercase"
                         >
-                          {deletingConv ? '...' : 'Sim'}
+                          Sim
                         </button>
                         <button
                           onClick={() => setConfirmDeletePhone(null)}
-                          disabled={deletingConv}
                           className="text-[10px] font-black text-red-500 hover:text-red-700 px-2 py-1 uppercase"
                         >
                           Não
