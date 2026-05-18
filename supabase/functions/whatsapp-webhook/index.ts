@@ -817,6 +817,12 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
     console.log(`[sendMsg] Dedup: blocked duplicate → ${phone.slice(0, 2)}***${phone.slice(-4)}`);
     return;
   }
+  // Pre-register bot echo key BEFORE sending so the human-takeover detection
+  // (which runs when Evolution API echos the message back as fromMe=true) can
+  // reliably identify this as a bot message, not a human takeover.
+  // Race condition if done after send: echo can arrive before the key is saved.
+  const _botEchoKey = `bot_echo::${phone.replace(/\D/g,'').slice(-10)}::${text.trim().slice(0,80)}`;
+  try { await supabase.from('msg_dedup').insert({ fp: _botEchoKey }); } catch (_) {}
   // Send with composing presence (simulates typing before message)
   await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
     method: 'POST', headers: EVO_HEADERS,
@@ -830,12 +836,6 @@ async function sendMsg(instanceName: string, phone: string, text: string, tenant
       phone, text, Math.floor(Date.now() / 1000), 'Bot', 'text', true
     ).catch(() => {});
   }
-  // Mark as bot-sent in msg_dedup so human-takeover detection doesn't
-  // misidentify this echo (fromMe=true) as a human takeover when it
-  // arrives back from Evolution API in a fresh serverless invocation.
-  const _botEchoKey = `bot_echo::${phone.replace(/\D/g,'').slice(-10)}::${text.trim().slice(0,80)}`;
-  // NOTE: never use .catch() on Supabase queries in Deno — use try/await in IIFE
-  (async () => { try { await supabase.from('msg_dedup').insert({ fp: _botEchoKey }); } catch (_) {} })();
 }
 
 // ── Send AI reply split into multiple bubbles at paragraph breaks ─────
