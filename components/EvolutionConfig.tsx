@@ -12,7 +12,7 @@ interface LogEntry {
 }
 
 const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ tenantId, tenantSlug }) => {
-  const [instanceStatus, setInstanceStatus] = useState<'open' | 'close' | 'connecting' | 'idle'>('idle');
+  const [instanceStatus, setInstanceStatus] = useState<'open' | 'close' | 'connecting' | 'notfound' | 'idle'>('idle');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -228,11 +228,25 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
             Instância Dedicada: <span className="text-orange-500 font-black">{instanceName || 'VINCULANDO...'}</span>
           </p>
         </div>
-        <div className={`px-4 py-2 rounded-xl border-2 flex items-center space-x-3 transition-all ${instanceStatus === 'open' ? 'border-green-100 bg-green-50 shadow-lg shadow-green-100/50' : 'border-slate-100 bg-white'}`}>
-          <div className={`w-2 h-2 rounded-full ${instanceStatus === 'open' ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
-          <span className="text-[10px] font-black uppercase text-slate-500">{instanceStatus === 'open' ? 'ESTABELECIDA' : 'DESCONECTADA'}</span>
+        <div className={`px-4 py-2 rounded-xl border-2 flex items-center space-x-3 transition-all ${instanceStatus === 'open' ? 'border-green-100 bg-green-50 shadow-lg shadow-green-100/50' : instanceStatus === 'notfound' ? 'border-red-200 bg-red-50' : 'border-slate-100 bg-white'}`}>
+          <div className={`w-2 h-2 rounded-full ${instanceStatus === 'open' ? 'bg-green-500 animate-pulse' : instanceStatus === 'notfound' ? 'bg-red-500 animate-pulse' : 'bg-slate-300'}`}></div>
+          <span className={`text-[10px] font-black uppercase ${instanceStatus === 'notfound' ? 'text-red-600' : 'text-slate-500'}`}>{instanceStatus === 'open' ? 'ESTABELECIDA' : instanceStatus === 'notfound' ? 'NÃO CRIADA' : 'DESCONECTADA'}</span>
         </div>
       </div>
+
+      {instanceStatus === 'notfound' && (
+        <div className="flex items-start gap-4 bg-red-50 border-2 border-red-200 rounded-2xl px-5 py-4">
+          <span className="text-2xl mt-0.5">⚠️</span>
+          <div>
+            <p className="text-sm font-black text-red-700 uppercase tracking-wide">Instância Evolution API não encontrada</p>
+            <p className="text-xs text-red-500 font-bold mt-1">
+              A instância <span className="font-black">{instanceName}</span> não existe no servidor Evolution API.
+              Clique em <span className="font-black">"SOLICITAR QR CODE"</span> abaixo para criá-la e conectar o WhatsApp.
+              Enquanto isso, o agente IA não consegue enviar nem receber mensagens.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-4 sm:p-6 md:p-8 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 flex flex-col items-center space-y-6">

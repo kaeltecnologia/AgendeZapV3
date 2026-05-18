@@ -528,7 +528,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handler);
   }, []);
   const [inviteResult, setInviteResult] = useState<{ email: string; password: string; phone: string } | null>(null);
-  const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean } | null>(null);
+  const [pollingStatus, setPollingStatus] = useState<{ connected: boolean; aiActive: boolean; instanceMissing?: boolean } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ daysLeft: number; isExpired: boolean; active: boolean } | null>(null);
   const [pendingPayment, setPendingPayment] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -1179,7 +1179,7 @@ const App: React.FC = () => {
       {tenantId && hasFeature(effectivePlan, 'agenteIA') && (
         <AiPollingManager
           tenantId={tenantId}
-          onStatus={(connected, aiActive) => setPollingStatus({ connected, aiActive })}
+          onStatus={(connected, aiActive, instanceMissing) => setPollingStatus({ connected, aiActive, instanceMissing })}
         />
       )}
 
@@ -1410,12 +1410,15 @@ const App: React.FC = () => {
                 onClick={() => setCurrentView(View.CONEXOES)}
                 title={
                   !pollingStatus.aiActive ? 'IA desligada — clique para configurar' :
+                  pollingStatus.instanceMissing ? 'Instância Evolution API não encontrada — clique para recriar' :
                   !pollingStatus.connected ? 'WhatsApp desconectado — clique para reconectar' :
                   'IA Online'
                 }
                 className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${
                   !pollingStatus.aiActive
                     ? 'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100'
+                    : pollingStatus.instanceMissing
+                    ? 'border-orange-300 bg-orange-50 text-orange-600 hover:bg-orange-100 animate-pulse'
                     : pollingStatus.connected
                     ? 'border-green-200 bg-green-50 text-green-600 hover:bg-green-100'
                     : 'border-red-200 bg-red-50 text-red-500 hover:bg-red-100 animate-pulse'
@@ -1423,9 +1426,10 @@ const App: React.FC = () => {
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${
                   !pollingStatus.aiActive ? 'bg-slate-300' :
+                  pollingStatus.instanceMissing ? 'bg-orange-500' :
                   pollingStatus.connected ? 'bg-green-500' : 'bg-red-500'
                 }`} />
-                {!pollingStatus.aiActive ? 'IA off' : pollingStatus.connected ? 'IA online' : 'WA offline'}
+                {!pollingStatus.aiActive ? 'IA off' : pollingStatus.instanceMissing ? 'sem instância' : pollingStatus.connected ? 'IA online' : 'WA offline'}
               </button>
             )}
             {/* Theme picker */}

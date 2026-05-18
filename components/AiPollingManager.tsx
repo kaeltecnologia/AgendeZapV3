@@ -27,7 +27,7 @@ let _backfillDone = false;
 let _aiWasActive = false;
 
 // ── Status callback — shared with App.tsx for header badge ────────────
-let _statusCallback: ((connected: boolean, aiActive: boolean) => void) | null = null;
+let _statusCallback: ((connected: boolean, aiActive: boolean, instanceMissing?: boolean) => void) | null = null;
 
 // ── Persistent dedup via localStorage ────────────────────────────────
 // IDs marked as processed are persisted for 30 min so page reloads and
@@ -257,7 +257,8 @@ async function poll(tenantId: string) {
     const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
     const connectionStatus = await evolutionService.checkStatus(instanceName);
     const isConnected = connectionStatus === 'open';
-    _statusCallback?.(isConnected, true);
+    const instanceMissing = connectionStatus === 'notfound';
+    _statusCallback?.(isConnected, true, instanceMissing);
     if (!isConnected) return;
 
     const messages = await evolutionService.fetchRecentMessages(instanceName, 10);
@@ -447,7 +448,7 @@ async function backfillFollowUpReplies(tenantId: string, tenant: any, instanceNa
 
 const AiPollingManager: React.FC<{
   tenantId: string;
-  onStatus?: (connected: boolean, aiActive: boolean) => void;
+  onStatus?: (connected: boolean, aiActive: boolean, instanceMissing?: boolean) => void;
 }> = ({ tenantId, onStatus }) => {
 
   // ── Wire up the module-level status callback ──────────────────────────

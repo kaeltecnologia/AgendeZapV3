@@ -47,13 +47,14 @@ export const evolutionService = {
     return `agz_${cleanSlug}`;
   },
 
-  async checkStatus(instanceName: string): Promise<'open' | 'close' | 'connecting'> {
-    if (!instanceName) return 'close';
+  async checkStatus(instanceName: string): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
+    if (!instanceName) return 'notfound';
     try {
       const response = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
         method: 'GET',
         headers
       });
+      if (response.status === 404) return 'notfound';
       if (!response.ok) return 'close';
       const data = await response.json();
       const state = (data.instance?.state || data.state || "").toUpperCase();
