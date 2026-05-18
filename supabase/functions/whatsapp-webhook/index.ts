@@ -1365,17 +1365,43 @@ async function debouncedRun(tenant: any, phone: string, text: string, settings: 
     console.log(`[debouncedRun] AI desativada durante debounce para ${phone.slice(0,2)}***`);
     return;
   }
-  const _freshCd = (_freshSettings.follow_up?._customerData || {}) as Record<string, { aiPaused?: boolean }>;
-  if (_freshCd[`phone:${phone}`]?.aiPaused) {
-    console.log(`[debouncedRun] IA pausada (phone key) durante debounce para ${phone.slice(0,2)}***`);
-    return;
-  }
+  const _freshCd = (_freshSettings.follow_up?._customerData || {}) as Record<string, { aiPaused?: boolean; humanTakeoverAt?: number }>;
   const _phoneSuffix = phone.replace(/\D/g, '').slice(-10);
   const { data: _custCheck } = await supabase.from('customers')
     .select('id').eq('tenant_id', tenantId).like('telefone', `%${_phoneSuffix}`).limit(1);
-  if (_custCheck?.[0] && _freshCd[_custCheck[0].id]?.aiPaused) {
-    console.log(`[debouncedRun] IA pausada (customer) durante debounce para ${phone.slice(0,2)}***`);
+  const _freshCustId = _custCheck?.[0]?.id || null;
+
+  // Helper: auto-expire legacy or stale aiPaused entries (same logic as main handler)
+  const _autoExpireKey = async (key: string) => {
+    const entry = _freshCd[key];
+    if (!entry?.aiPaused) return false; // not paused
+    const age = entry.humanTakeoverAt ? Date.now() - entry.humanTakeoverAt : Infinity;
+    if (age > 24 * 60 * 60 * 1000) {
+      console.log(`[debouncedRun] Auto-expire aiPaused para ${key} — reativando IA`);
+      try {
+        await supabase.rpc('set_customer_data_key', {
+          p_tenant_id: tenantId,
+          p_customer_key: key,
+          p_value: { aiPaused: false, humanTakeoverAt: null },
+        });
+      } catch (e) { console.error('[debouncedRun] expire RPC error:', e); }
+      return false; // expired → not paused anymore
+    }
+    return true; // still paused (within 24h)
+  };
+
+  const _phoneKey = `phone:${phone}`;
+  const _isPhonePaused = await _autoExpireKey(_phoneKey);
+  if (_isPhonePaused) {
+    console.log(`[debouncedRun] IA pausada (phone key) durante debounce para ${phone.slice(0,2)}***`);
     return;
+  }
+  if (_freshCustId) {
+    const _isCustPaused = await _autoExpireKey(_freshCustId);
+    if (_isCustPaused) {
+      console.log(`[debouncedRun] IA pausada (customer) durante debounce para ${phone.slice(0,2)}***`);
+      return;
+    }
   }
 
   // Show "typing..." indicator + mark chat as read while AI processes the message
