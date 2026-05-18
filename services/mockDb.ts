@@ -1103,7 +1103,9 @@ class DatabaseService {
             lembrete: fu.lembrete || defaults.followUp.lembrete,
             reativacao: fu.reativacao || defaults.followUp.reativacao,
           },
-          operatingHours: data.operating_hours || defaults.operatingHours,
+          operatingHours: (data.operating_hours && Object.keys(data.operating_hours).length > 0)
+            ? data.operating_hours
+            : defaults.operatingHours,
           aiActive: data.ai_active ?? false,
           themeColor: data.theme_color || '#f97316',
           whatsapp: fu._whatsapp || '',

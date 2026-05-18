@@ -3051,8 +3051,11 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // The initial professionalsVisible (computed before TS service extraction) did not
   // have serviceId yet. Now that serviceId is set (or confirmed unchanged), refilter
   // so callBrain receives only professionals who can perform the selected service.
+  // Safety: only replace professionalsVisible if the filtered list is non-empty.
+  // If empty (e.g. service misconfigured — not assigned to anyone), keep original so
+  // the AI can still respond gracefully instead of seeing zero professionals.
   if (session.data.serviceId) {
-    professionalsVisible = professionals.filter((p: any) => {
+    const _svcFiltered = professionals.filter((p: any) => {
       if (p.disableAI) return false;
       const onVacation = (settings.breaks || []).some((b: any) => {
         if (b.type !== 'vacation') return false;
@@ -3067,7 +3070,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       }
       return true;
     });
-    console.log(`[Agent] professionalsVisible recomputed for service ${session.data.serviceId}: ${professionalsVisible.map((p: any) => p.name).join(', ') || '(nenhum)'}`);
+    if (_svcFiltered.length > 0) {
+      professionalsVisible = _svcFiltered;
+      console.log(`[Agent] professionalsVisible recomputed for service ${session.data.serviceId}: ${professionalsVisible.map((p: any) => p.name).join(', ')}`);
+    } else {
+      console.log(`[Agent] professionalsVisible recomputation for service ${session.data.serviceId} returned empty — keeping original list`);
+    }
   }
 
   // ── TypeScript-layer colloquial time pre-extraction ─────────────────
@@ -4019,7 +4027,13 @@ Deno.serve(async (req) => {
       aiLeadActive: fu._aiLeadActive !== false, // default true; false = não responder leads desconhecidos
       openaiApiKey: fu._openaiApiKey || '',
       systemPrompt: fu._systemPrompt || '',
-      operatingHours: settingsRow?.operating_hours || fu._operatingHours || {},
+      operatingHours: (() => {
+        const _oh = settingsRow?.operating_hours || fu._operatingHours;
+        // If operating_hours is missing or an empty object, use sensible defaults
+        // (Mon–Sat 09:00-18:00) so slot generation doesn't always return [].
+        return (_oh && Object.keys(_oh).length > 0) ? _oh
+          : { 0: { active: false, range: '09:00-18:00' }, 1: { active: true, range: '09:00-18:00' }, 2: { active: true, range: '09:00-18:00' }, 3: { active: true, range: '09:00-18:00' }, 4: { active: true, range: '09:00-18:00' }, 5: { active: true, range: '09:00-18:00' }, 6: { active: true, range: '09:00-18:00' } };
+      })(),
       breaks: fu._breaks || [],
       msgBufferSecs: fu._msgBufferSecs ?? 20,
       customerData: (fu._customerData || {}) as Record<string, { aiPaused?: boolean; planId?: string; planStatus?: string }>,
