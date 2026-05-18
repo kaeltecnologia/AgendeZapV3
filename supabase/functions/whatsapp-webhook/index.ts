@@ -1090,10 +1090,13 @@ function matchProfessionalName(text: string, professionals: Array<{ id: string; 
 }
 
 // ── Service synonym map (shared) ──────────────────────────────────────
+// IMPORTANT: synonyms are used BOTH for detecting user intent AND for matching service names.
+// Do NOT add generic words that appear in unrelated service names (e.g. 'design' also appears
+// in "Buço (promo Designer)" → causes false matches). Keep synonyms specific.
 const SVC_SYNONYMS: Record<string, string[]> = {
   'corte': ['corte', 'corta', 'cabelo', 'cabeca', 'cabecinha', 'cortar', 'aparar', 'zerar', 'degrade', 'social', 'navalhado', 'franja', 'maquina'],
   'barba': ['barba', 'barbinha', 'bigode'],
-  'sobrancelha': ['sobrancelha', 'design'],
+  'sobrancelha': ['sobrancelha'],  // 'design' removed — too generic, matches "Buço (promo Designer)" falsely
   'coloracao': ['pintar', 'colorir', 'mechas', 'reflexo', 'tingir', 'coloracao'],
   'progressiva': ['progressiva', 'alisar', 'alisamento', 'botox', 'produtinho', 'produto'],
   'escova': ['escova', 'modelar'],
@@ -3455,6 +3458,15 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     if (confirmWords.test(brain.reply || '')) {
       brain.reply = `Quase lá! Ainda preciso saber: ${missingParts}. 😊`;
     }
+  }
+
+  // Phantom booking safeguard: AI replied with "✅ Agendamento confirmado" text but forgot to
+  // extract confirmed:true — force the booking to happen to match what was told to the client.
+  if (!brain.extracted.confirmed &&
+      session.data.serviceId && session.data.professionalId && session.data.date && session.data.time &&
+      /agendamento confirmado|✅.*agendad|✅.*marcad/i.test(brain.reply || '')) {
+    brain.extracted.confirmed = true;
+    console.log('[Agent] TS phantom-booking guard: forced confirmed=true from confirmation-like reply');
   }
 
   // Handle cancellation extracted by AI
