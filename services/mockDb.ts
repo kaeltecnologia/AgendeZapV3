@@ -25,7 +25,7 @@ import {
   NotaFiscal, Adiantamento, PagamentoPro, FocusNfeConfig, SupportMessage, ConversationLog,
   Review, MarketplaceLead, CentralBooking, CashbackBalance, CustomerAccount, CustomerFavorite,
   MarketplacePost, MarketplacePostComment, MarketplaceStory,
-  parseServiceIds, encodeServiceIds,
+  parseServiceIds,
   AffiliateLink, AffiliateLinkStats, ResellerProfile
 } from '../types';
 
@@ -479,6 +479,19 @@ class DatabaseService {
     startTime: string | Date,
     durationMinutes: number
   ): Promise<void> {
+    // Fetch existing to get tenant_id, customer_id, old professional_id and old inicio
+    // (needed to find and update companion appointments for multi-service bookings)
+    const { data: existing, error: fetchErr } = await supabase
+      .from('appointments').select('tenant_id, customer_id, professional_id, inicio, status, origem').eq('id', id).single();
+    if (fetchErr) throw fetchErr;
+
+    const tenantId = existing.tenant_id;
+    const customerId = existing.customer_id;
+    const oldProfId = existing.professional_id;
+    const oldInicio = existing.inicio;
+    const apptStatus = existing.status;
+    const apptOrigem = existing.origem;
+
     let inicio: string;
     let fim: string;
     if (typeof startTime === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(startTime) && !startTime.includes('Z') && !startTime.includes('+')) {
@@ -492,13 +505,39 @@ class DatabaseService {
       inicio = toLocalISO(d);
       fim = toLocalISO(e);
     }
+
+    // Update primary appointment with first service (service_id is UUID — cannot encode array)
     const { error } = await supabase.from('appointments').update({
       professional_id: professionalId,
-      service_id: encodeServiceIds(serviceIds),
+      service_id: serviceIds[0] || '',
       inicio,
       fim,
     }).eq('id', id);
     if (error) throw error;
+
+    // Delete old companion rows (same customer/professional/time, different id)
+    await supabase.from('appointments')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('customer_id', customerId)
+      .eq('professional_id', oldProfId)
+      .eq('inicio', oldInicio)
+      .neq('id', id);
+
+    // Insert new companion rows for additional services
+    for (let i = 1; i < serviceIds.length; i++) {
+      await supabase.from('appointments').insert({
+        tenant_id: tenantId,
+        customer_id: customerId,
+        professional_id: professionalId,
+        service_id: serviceIds[i],
+        inicio,
+        fim,
+        status: apptStatus,
+        origem: apptOrigem,
+      });
+    }
+
     _cache.invalidate('getAppointments:');
     _cache.invalidate('getFinancialSummary:');
   }

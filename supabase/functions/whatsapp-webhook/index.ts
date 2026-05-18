@@ -2402,7 +2402,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // The full `professionals` list is still used for name matching above so the
   // slot-check can explain vacations when the client explicitly requests that prof.
   const _targetDateWh = session.data.date || todayISO;
-  const professionalsVisible = professionals.filter((p: any) => {
+  let professionalsVisible = professionals.filter((p: any) => {
     // Bug 1: exclude professionals with disableAI flag (not accepting AI bookings)
     if (p.disableAI) return false;
     // Filter out professionals on vacation for the target date
@@ -3047,6 +3047,29 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     }
   }
 
+  // ── Recompute professionalsVisible now that serviceId may have been detected ──
+  // The initial professionalsVisible (computed before TS service extraction) did not
+  // have serviceId yet. Now that serviceId is set (or confirmed unchanged), refilter
+  // so callBrain receives only professionals who can perform the selected service.
+  if (session.data.serviceId) {
+    professionalsVisible = professionals.filter((p: any) => {
+      if (p.disableAI) return false;
+      const onVacation = (settings.breaks || []).some((b: any) => {
+        if (b.type !== 'vacation') return false;
+        if (!b.professionalId || b.professionalId !== p.id) return false;
+        const vs: string = b.date || '';
+        const ve: string = b.vacationEndDate || b.date || '';
+        return !!vs && _targetDateWh >= vs && _targetDateWh <= ve;
+      });
+      if (onVacation) return false;
+      if (p.serviceIds && p.serviceIds.length > 0) {
+        return p.serviceIds.includes(session.data.serviceId);
+      }
+      return true;
+    });
+    console.log(`[Agent] professionalsVisible recomputed for service ${session.data.serviceId}: ${professionalsVisible.map((p: any) => p.name).join(', ') || '(nenhum)'}`);
+  }
+
   // ── TypeScript-layer colloquial time pre-extraction ─────────────────
   // Parses "5 e meia"→"17:30", "as 3"→"15:00", "meio dia"→"12:00"
   // Runs BEFORE brain call so the AI doesn't need to interpret these.
@@ -3059,12 +3082,12 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   }
 
   // ── Auto-select single professional (TS layer) ───────────────────────────
-  // When there's exactly 1 active professional, select them automatically so
-  // slot prefetch can run without the AI needing to ask "qual profissional?".
-  if (!session.data.professionalId && professionals.length === 1) {
-    session.data.professionalId   = professionals[0].id;
-    session.data.professionalName = professionals[0].name;
-    console.log('[Agent] TS auto-selected only professional:', professionals[0].name);
+  // When there's exactly 1 visible professional (for this service), select them
+  // automatically so slot prefetch can run without the AI asking "qual profissional?".
+  if (!session.data.professionalId && professionalsVisible.length === 1) {
+    session.data.professionalId   = professionalsVisible[0].id;
+    session.data.professionalName = professionalsVisible[0].name;
+    console.log('[Agent] TS auto-selected only visible professional:', professionalsVisible[0].name);
   }
 
   // ── Auto-assume TODAY when client asks about availability without specifying day ──
