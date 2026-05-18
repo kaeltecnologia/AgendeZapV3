@@ -115,6 +115,10 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
   const [customerData, setCustomerData] = useState<Record<string, { aiPaused?: boolean; waitlistAlert?: boolean; humanTakeoverAt?: number }>>({});
   const [togglingAi, setTogglingAi] = useState(false);
 
+  // Delete conversation confirmation
+  const [confirmDeletePhone, setConfirmDeletePhone] = useState<string | null>(null);
+  const [deletingConv, setDeletingConv] = useState(false);
+
   // Audio transcription
   const [transcriptions, setTranscriptions] = useState<Record<string, string>>({});
   const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
@@ -517,6 +521,7 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
   // Mark conversation as seen + select it
   const handleSelectConv = (phone: string) => {
     setSelectedPhone(phone);
+    setConfirmDeletePhone(null);
     const conv = conversations.find(c => c.phone === phone);
     if (conv) {
       const updated = { ...seenAt, [phone]: conv.lastTimestamp };
@@ -617,6 +622,21 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
       await db.updateSettings(tenantId, { customerData: updated });
       setCustomerData(updated);
     } catch (e) { console.error('clearWaitlistAlert error:', e); }
+  };
+
+  const deleteConversation = async (phone: string) => {
+    if (deletingConv) return;
+    setDeletingConv(true);
+    try {
+      await db.deleteWaConversation(tenantId, phone);
+      setConversations(prev => prev.filter(c => c.phone !== phone));
+      setSelectedPhone(null);
+      setConfirmDeletePhone(null);
+    } catch (e) {
+      console.error('deleteConversation error:', e);
+    } finally {
+      setDeletingConv(false);
+    }
   };
 
   // Recompute available slots whenever prof / date / service changes while modal is open
@@ -1090,6 +1110,36 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
                         </button>
                       );
                     })()}
+                    {/* Delete conversation button */}
+                    {confirmDeletePhone === selectedConv.phone ? (
+                      <div className="flex items-center gap-2 bg-red-50 border-2 border-red-200 rounded-2xl px-3 py-1.5">
+                        <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Apagar tudo?</span>
+                        <button
+                          onClick={() => deleteConversation(selectedConv.phone)}
+                          disabled={deletingConv}
+                          className="text-[10px] font-black text-white bg-red-500 hover:bg-red-600 px-2.5 py-1 rounded-xl transition-all disabled:opacity-50 uppercase"
+                        >
+                          {deletingConv ? '...' : 'Sim'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeletePhone(null)}
+                          disabled={deletingConv}
+                          className="text-[10px] font-black text-red-500 hover:text-red-700 px-2 py-1 uppercase"
+                        >
+                          Não
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeletePhone(selectedConv.phone)}
+                        title="Apagar conversa"
+                        className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-red-50 hover:text-red-500 text-slate-400 flex items-center justify-center transition-all"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                      </button>
+                    )}
                   </div>
 
                   {/* Waitlist alert banner */}

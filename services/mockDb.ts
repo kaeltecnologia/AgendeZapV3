@@ -2223,6 +2223,17 @@ class DatabaseService {
     } catch (e) { console.error('[mockDb] saveWaMessages error:', e); }
   }
 
+  async deleteWaConversation(tenantId: string, phone: string): Promise<void> {
+    try {
+      await supabase.from('whatsapp_messages').delete()
+        .eq('tenant_id', tenantId).eq('phone', phone);
+      await supabase.from('agent_sessions').delete()
+        .eq('tenant_id', tenantId).eq('phone', phone);
+    } catch (e) {
+      console.error('[mockDb] deleteWaConversation error:', e);
+    }
+  }
+
   async getWaMessages(tenantId: string, sinceDays = 365): Promise<any[]> {
     try {
       const since = Math.floor(Date.now() / 1000) - sinceDays * 86400;
