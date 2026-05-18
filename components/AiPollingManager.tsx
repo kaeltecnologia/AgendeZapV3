@@ -25,6 +25,8 @@ let _isBusy = false;
 let _backfillDone = false;
 // _aiWasActive: tracks previous AI state to detect OFF→ON transition
 let _aiWasActive = false;
+// _instanceNotFoundUntil: backoff timestamp — skip polls while instance is 404
+let _instanceNotFoundUntil = 0;
 
 // ── Status callback — shared with App.tsx for header badge ────────────
 let _statusCallback: ((connected: boolean, aiActive: boolean, instanceMissing?: boolean) => void) | null = null;
@@ -255,9 +257,21 @@ async function poll(tenantId: string) {
     if (!tenant) return;
 
     const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+
+    // Backoff: if instance was 'notfound' recently, skip checkStatus to avoid 404 spam
+    if (_instanceNotFoundUntil > Date.now()) {
+      _statusCallback?.(false, true, true);
+      return;
+    }
+
     const connectionStatus = await evolutionService.checkStatus(instanceName);
     const isConnected = connectionStatus === 'open';
     const instanceMissing = connectionStatus === 'notfound';
+    if (instanceMissing) {
+      _instanceNotFoundUntil = Date.now() + 60_000; // retry after 60s
+    } else {
+      _instanceNotFoundUntil = 0; // reset backoff when instance is found
+    }
     _statusCallback?.(isConnected, true, instanceMissing);
     if (!isConnected) return;
 
@@ -466,6 +480,8 @@ const AiPollingManager: React.FC<{
 
     const activateWebhook = async () => {
       try {
+        // Skip if instance recently returned 404 — avoid spamming Evolution API
+        if (_instanceNotFoundUntil > Date.now()) return;
         const settings = await db.getSettings(tenantId);
         if (!settings.aiActive) return;
         const tenant = await db.getTenant(tenantId);
