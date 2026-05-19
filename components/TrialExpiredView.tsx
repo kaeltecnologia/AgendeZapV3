@@ -135,6 +135,9 @@ const TrialExpiredView: React.FC<{
     setStep('loading');
     setError(null);
 
+    // Open blank tab immediately (synchronous user-gesture context) to avoid popup blockers
+    const paymentWindow = window.open('', '_blank');
+
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/asaas-checkout`, {
         method: 'POST',
@@ -155,16 +158,20 @@ const TrialExpiredView: React.FC<{
       const data = await res.json();
 
       if (!res.ok || data.error) {
+        paymentWindow?.close();
         throw new Error(data.error || 'Erro ao criar assinatura');
       }
 
-      if (data.invoiceUrl) {
-        window.open(data.invoiceUrl, '_blank');
+      if (data.invoiceUrl && paymentWindow) {
+        paymentWindow.location.href = data.invoiceUrl;
+      } else if (paymentWindow) {
+        paymentWindow.close();
       }
 
       setStep('waiting');
       startPolling();
     } catch (err: any) {
+      paymentWindow?.close();
       setError(err.message || 'Erro inesperado. Tente novamente.');
       setStep('payment');
     }

@@ -212,6 +212,12 @@ Deno.serve(async (req) => {
       });
       asaasCustomerId = customerData.id;
       console.log(`[asaas] Customer created: ${asaasCustomerId}`);
+
+      // Persist customer ID immediately so it's not lost if subscription creation fails
+      await supabase.from('tenant_settings').upsert(
+        { tenant_id: tenantId, follow_up: { ...fup, _asaasCustomerId: asaasCustomerId } },
+        { onConflict: 'tenant_id' }
+      );
     }
 
     // ── Calculate referral discount ───────────────────────────────────
@@ -477,15 +483,17 @@ Deno.serve(async (req) => {
     const subscriptionId = subscriptionData.id;
     console.log(`[asaas] Subscription created: ${subscriptionId}`);
 
-    // ── Get first payment to retrieve invoiceUrl ────────────────────────
-    await new Promise(r => setTimeout(r, 1500));
-
-    const paymentsData = await asaasFetch(`/subscriptions/${subscriptionId}/payments`);
-    const firstPayment = paymentsData.data?.[0];
-
-    let invoiceUrl = firstPayment?.invoiceUrl || '';
-    if (!invoiceUrl && firstPayment?.id) {
-      invoiceUrl = `https://www.asaas.com/i/${firstPayment.id}`;
+    // ── Get first payment to retrieve invoiceUrl (retry up to 3x) ────────
+    let invoiceUrl = '';
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await new Promise(r => setTimeout(r, attempt === 1 ? 1500 : 2000));
+      const paymentsData = await asaasFetch(`/subscriptions/${subscriptionId}/payments`);
+      const firstPayment = paymentsData.data?.[0];
+      if (firstPayment) {
+        invoiceUrl = firstPayment.invoiceUrl || (firstPayment.id ? `https://www.asaas.com/i/${firstPayment.id}` : '');
+        if (invoiceUrl) break;
+      }
+      console.log(`[asaas] No payment found yet on attempt ${attempt}, retrying...`);
     }
 
     // ── Create addon subscriptions for extra professionals ───────────────
