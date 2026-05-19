@@ -59,8 +59,12 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
   const [emitNfseOnClose, setEmitNfseOnClose] = useState(false);
   const [nfseTomadorCpf, setNfseTomadorCpf] = useState('');
 
-  // ── Detail modal ──────────────────────────────────────────────────
-  const [detailComanda, setDetailComanda] = useState<Comanda | null>(null);
+  // ── Edit closed comanda modal ─────────────────────────────────────
+  const [editClosedId, setEditClosedId] = useState<string | null>(null);
+  const [editClosedPayment, setEditClosedPayment] = useState<PaymentMethod>(PaymentMethod.PIX);
+  const [editClosedNotes, setEditClosedNotes] = useState('');
+  const [editClosedSaving, setEditClosedSaving] = useState(false);
+  const editClosedObj = editClosedId ? comandas.find(c => c.id === editClosedId) ?? null : null;
 
   // ── Estorno modal ─────────────────────────────────────────────────
   const [estornoComanda, setEstornoComanda] = useState<Comanda | null>(null);
@@ -285,6 +289,26 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
 
   // Total efetivo: usa finalAmount se ajustado, senão calcula dos itens
   const effectiveTotal = (c: Comanda) => c.finalAmount ?? comandaTotal(c);
+
+  // ── Save edits on closed comanda ──────────────────────────────────
+  const handleSaveEditClosed = async () => {
+    if (!editClosedObj) return;
+    setEditClosedSaving(true);
+    try {
+      await db.updateComanda(editClosedObj.id, {
+        paymentMethod: editClosedPayment,
+        notes: editClosedNotes || undefined,
+      });
+      await db.updateAppointmentStatus(editClosedObj.appointment_id, AppointmentStatus.FINISHED, {
+        paymentMethod: editClosedPayment,
+        amountPaid: effectiveTotal(editClosedObj),
+      });
+      setEditClosedId(null);
+      load();
+    } finally {
+      setEditClosedSaving(false);
+    }
+  };
 
   const open = comandas
     .filter(c => c.status === 'open')
@@ -547,10 +571,14 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
                           <button
-                            onClick={() => setDetailComanda(c)}
-                            className="text-[10px] font-black text-slate-400 uppercase hover:text-orange-500 transition-all"
+                            onClick={() => {
+                              setEditClosedId(c.id);
+                              setEditClosedPayment(c.paymentMethod ?? PaymentMethod.PIX);
+                              setEditClosedNotes(c.notes ?? '');
+                            }}
+                            className="text-[10px] font-black text-orange-500 uppercase hover:text-orange-700 transition-all"
                           >
-                            Ver
+                            ✏️ Editar
                           </button>
                           <button
                             onClick={() => {
@@ -846,61 +874,97 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
         );
       })()}
 
-      {/* ── Modal: Detalhes da Comanda Finalizada ─────────────────────── */}
-      {detailComanda && (
+      {/* ── Modal: Editar Comanda Finalizada ─────────────────────────── */}
+      {editClosedObj && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] w-full max-w-md max-h-[90vh] overflow-y-auto p-8 space-y-5 animate-scaleUp border-4 border-black">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-black text-black uppercase tracking-tight">Detalhes</h2>
-                <button onClick={() => setDetailComanda(null)} className="text-slate-400 hover:text-black font-black text-lg">✕</button>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-black uppercase tracking-tight">Editar Comanda</h2>
+                <p className="text-xs font-bold text-slate-400 mt-0.5">
+                  {custName(editClosedObj.customer_id)} · {profName(editClosedObj.professional_id)}
+                  {editClosedObj.number ? ` · #${String(editClosedObj.number).padStart(3, '0')}` : ''}
+                </p>
               </div>
-              <div className="space-y-1 text-xs font-bold text-slate-500">
-                <p>👤 {custName(detailComanda.customer_id)}</p>
-                <p>✂️ {profName(detailComanda.professional_id)}</p>
-                <p>📅 Fechada em: {detailComanda.closedAt
-                  ? new Date(detailComanda.closedAt).toLocaleString('pt-BR')
-                  : '—'}</p>
-                {detailComanda.notes && <p>📝 {detailComanda.notes}</p>}
-              </div>
+              <button onClick={() => setEditClosedId(null)} className="text-slate-400 hover:text-black font-black text-lg">✕</button>
+            </div>
+
+            {/* Items com remoção */}
+            <div className="space-y-1">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Itens</p>
               <div className="bg-slate-50 rounded-2xl px-4 py-3 space-y-0">
-                {detailComanda.items.map(item => {
-                  const discountDisplay = item.discount > 0
-                    ? item.discountType === 'percent' ? `-${item.discount}%` : `-${fmt(item.discount)}`
-                    : null;
-                  const itemProf = item.professionalId
-                    ? professionals.find(p => p.id === item.professionalId)
-                    : null;
-                  return (
-                    <div key={item.id} className="flex justify-between py-1.5 border-b border-slate-100 last:border-0">
-                      <div>
-                        <span className="text-xs font-bold text-black">{item.name}</span>
-                        {item.type === 'product' && (
-                          <span className="ml-1.5 text-[9px] font-black text-blue-400 uppercase">produto</span>
-                        )}
-                        {itemProf && item.type === 'service' && (
-                          <span className="ml-1.5 text-[9px] font-black text-orange-400 uppercase">{itemProf.name}</span>
-                        )}
-                        <span className="ml-2 text-[10px] text-slate-400">{item.qty}x {fmt(item.unitPrice)}</span>
-                        {discountDisplay && <span className="ml-1 text-[10px] text-red-400">{discountDisplay}</span>}
-                      </div>
-                      <span className="text-xs font-black text-black">{fmt(itemTotal(item))}</span>
-                    </div>
-                  );
-                })}
+                {editClosedObj.items.length === 0 ? (
+                  <p className="text-[10px] font-bold text-slate-300 text-center py-2">Nenhum item</p>
+                ) : (
+                  editClosedObj.items.map(item => renderItemRow(item, editClosedObj, true))
+                )}
               </div>
-              <div className="flex justify-between items-center px-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase">
-                  {detailComanda.paymentMethod ?? '—'}
-                </span>
-                <div className="text-right">
-                  <span className="text-xl font-black text-black">{fmt(effectiveTotal(detailComanda))}</span>
-                  {detailComanda.finalAmount !== undefined && (
-                    <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">
-                      Original: {fmt(comandaTotal(detailComanda))} · Ajustado
-                    </p>
-                  )}
-                </div>
-              </div>
+            </div>
+
+            {/* Botões adicionar produto/serviço */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setAddProductItemId(''); setAddProductQty(1);
+                  setAddProductDiscount(0); setAddProductDiscountType('value');
+                  setAddProductComanda(editClosedObj);
+                }}
+                className="flex-1 py-2 bg-blue-50 text-blue-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-100 transition-all"
+              >
+                ➕ Produto
+              </button>
+              <button
+                onClick={() => {
+                  setAddServiceSvcId(''); setAddServicePrice(0);
+                  setAddServiceDiscount(0); setAddServiceDiscountType('value');
+                  setAddServiceProfId(editClosedObj.professional_id);
+                  setAddServiceComanda(editClosedObj);
+                }}
+                className="flex-1 py-2 bg-orange-50 text-orange-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-100 transition-all"
+              >
+                ✂️ Serviço
+              </button>
+            </div>
+
+            {/* Total */}
+            <div className="bg-black rounded-2xl px-6 py-4 text-center">
+              <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Total</p>
+              <p className="text-2xl font-black text-white">{fmt(effectiveTotal(editClosedObj))}</p>
+            </div>
+
+            {/* Forma de Pagamento */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Forma de Pagamento</label>
+              <select
+                value={editClosedPayment}
+                onChange={e => setEditClosedPayment(e.target.value as PaymentMethod)}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black"
+              >
+                {Object.values(PaymentMethod).map(pm => <option key={pm} value={pm}>{pm}</option>)}
+              </select>
+            </div>
+
+            {/* Observações */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Observações</label>
+              <input
+                value={editClosedNotes}
+                onChange={e => setEditClosedNotes(e.target.value)}
+                placeholder="Ex: desconto concedido, pagamento parcial..."
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-500 transition-all"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setEditClosedId(null)} className="flex-1 py-3 text-slate-400 font-black text-xs uppercase">Cancelar</button>
+              <button
+                onClick={handleSaveEditClosed}
+                disabled={editClosedSaving}
+                className="flex-1 py-3 bg-black text-white rounded-2xl font-black text-xs uppercase disabled:opacity-50 hover:bg-orange-500 transition-all"
+              >
+                {editClosedSaving ? 'Salvando...' : '✅ Salvar Alterações'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1213,6 +1213,41 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       }
     }
 
+    // When finished directly (not via comanda flow): create closed comanda record
+    if (editStatus === AppointmentStatus.FINISHED) {
+      try {
+        const existingComandas = await db.getComandas(tenantId);
+        const alreadyHas = existingComandas.some(c => c.appointment_id === showFinishModal.id);
+        if (!alreadyHas) {
+          const svcIds = (showFinishModal as any).serviceIds?.length
+            ? (showFinishModal as any).serviceIds
+            : showFinishModal.service_id ? [showFinishModal.service_id] : [];
+          const items = (svcIds as string[]).map((svcId: string) => {
+            const svc = services.find(s => s.id === svcId);
+            return svc ? {
+              id: generateId(), type: 'service' as const, itemId: svc.id,
+              name: svc.name, qty: 1, unitPrice: svc.price,
+              discountType: 'value' as const, discount: 0,
+              professionalId: showFinishModal.professional_id,
+            } : null;
+          }).filter((x): x is NonNullable<typeof x> => x !== null);
+          await db.createComanda({
+            tenant_id: tenantId,
+            appointment_id: showFinishModal.id,
+            professional_id: showFinishModal.professional_id!,
+            customer_id: showFinishModal.customer_id!,
+            items,
+            status: 'closed',
+            paymentMethod,
+            notes: extraNote || undefined,
+            closedAt: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        console.error('Erro ao criar comanda ao finalizar:', err);
+      }
+    }
+
     setShowFinishModal(null);
     if (editStatus === AppointmentStatus.ARRIVED) {
       onOpenComandas?.();
