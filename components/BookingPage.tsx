@@ -230,9 +230,10 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         const dayConfig = settings.operatingHours?.[dayIndex];
         if (!dayConfig || dayConfig.active === false) { setSlots([]); return; }
 
-        // Parse configured operating window from "HH:mm-HH:mm" range
+        // Parse configured operating window from "HH:mm-HH:mm" range (with optional date-range override)
         const parseHM = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
-        const [rangeStart, rangeEnd] = (dayConfig.range || '06:00-24:00').split('-');
+        const _dayOverride = dayConfig.dateRangeOverrides?.find((o: any) => selectedDate >= o.startDate && selectedDate <= o.endDate);
+        const [rangeStart, rangeEnd] = (_dayOverride?.range || dayConfig.range || '06:00-24:00').split('-');
         const opStart = parseHM(rangeStart);
         const opEnd   = parseHM(rangeEnd);
 

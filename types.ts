@@ -34,6 +34,7 @@ export interface WorkingDay {
   active: boolean;
   range: string; // "09:00-18:00"
   acceptLastSlot?: boolean; // permite agendar no horário exato de fechamento
+  dateRangeOverrides?: Array<{ startDate: string; endDate: string; range: string }>; // override por período (ex.: junho com horário estendido)
 }
 
 export interface FollowUpConfig {

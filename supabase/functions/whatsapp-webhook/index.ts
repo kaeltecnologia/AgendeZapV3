@@ -246,7 +246,8 @@ async function getAvailableSlots(
   const dayConfig = settings.operatingHours?.[dayIndex];
   if (!dayConfig?.active) return [];
 
-  const [startRange, endRange] = dayConfig.range.split('-');
+  const _override = (dayConfig.dateRangeOverrides as any[])?.find((o: any) => date >= o.startDate && date <= o.endDate);
+  const [startRange, endRange] = (_override?.range || dayConfig.range).split('-');
   const [startH, startM] = startRange.split(':').map(Number);
   const [endH, endM] = endRange.split(':').map(Number);
 
@@ -433,7 +434,12 @@ async function callBrain(
     const lines: string[] = [];
     for (let d = 0; d < 7; d++) {
       const cfg = (operatingHours as any)[d];
-      lines.push(cfg?.active ? `- ${DOW_SHORT[d]}: ${cfg.start || '??'}--${cfg.end || '??'}` : `- ${DOW_SHORT[d]}: FECHADO`);
+      if (cfg?.active) {
+        const [_ohStart, _ohEnd] = (cfg.range || '').split('-');
+        lines.push(`- ${DOW_SHORT[d]}: ${_ohStart || '??'}–${_ohEnd || '??'}`);
+      } else {
+        lines.push(`- ${DOW_SHORT[d]}: FECHADO`);
+      }
     }
     return lines.join('\n');
   })();

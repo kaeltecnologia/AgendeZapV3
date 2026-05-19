@@ -373,7 +373,8 @@ export async function getAvailableSlots(
   const dayConfig = settings.operatingHours?.[dayIndex];
   if (!dayConfig?.active) return [];
 
-  const [startRange, endRange] = dayConfig.range.split('-');
+  const _override = dayConfig.dateRangeOverrides?.find((o: any) => date >= o.startDate && date <= o.endDate);
+  const [startRange, endRange] = (_override?.range || dayConfig.range).split('-');
   const [startH, startM] = startRange.split(':').map(Number);
   const [endH, endM] = endRange.split(':').map(Number);
 
