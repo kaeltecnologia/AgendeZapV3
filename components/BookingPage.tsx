@@ -379,15 +379,25 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
       const _brandEmoji  = _isFem ? '💖' : _isBarbearia ? '💈' : '✨';
       const _svcEmoji    = _isFem ? '💅🏻' : _isBarbearia ? '✂️' : '🛎️';
       const _closingEmoji = _isFem ? '🫶🏻' : '😊';
-      await evolutionService.sendMessage(instanceName, phone,
+      const _confirmMsg =
         `Agendamento Confirmado!\n\n` +
         `${_brandEmoji} *${tenant.name}*\n\n` +
         `📅 *Dia:* ${dateLabel}\n` +
         `⏰ *Horário:* ${selectedTime}\n` +
         `${_svcEmoji} *Serviço:* ${selectedService.name.toUpperCase()}\n` +
         `👤 *Profissional:* ${selectedBarber.name}\n\n` +
-        `_Em caso de imprevisto entre em contato. Aguardamos você! ${_closingEmoji}_`
-      );
+        `_Em caso de imprevisto entre em contato. Aguardamos você! ${_closingEmoji}_`;
+      await evolutionService.sendMessage(instanceName, phone, _confirmMsg);
+      // Register context so AI doesn't misinterpret casual post-booking replies
+      try {
+        const { registerWebBookingContext } = await import('../services/agentService');
+        registerWebBookingContext(tenant.id, phone, _confirmMsg, {
+          apptTime: selectedTime,
+          apptDate: selectedDate,
+          serviceName: selectedService.name,
+          professionalName: selectedBarber.name,
+        });
+      } catch { /* non-fatal */ }
 
       // Individual appointment notifications are disabled.
       // Professionals receive a daily agenda summary at 00:01 instead.

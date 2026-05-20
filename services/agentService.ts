@@ -87,6 +87,13 @@ interface SessionData {
   };
   // Name capture flow: set when booking is ready but client name is unknown
   _pendingNameForBooking?: boolean;
+  // Web booking context: set when client books via link so AI handles follow-up comments gracefully
+  pendingWebBooking?: {
+    apptTime: string;        // HH:MM
+    apptDate: string;        // YYYY-MM-DD
+    serviceName: string;
+    professionalName: string;
+  };
 }
 
 interface Session {
@@ -266,6 +273,30 @@ export function registerRatingContext(
   sessions.set(key, sess);
   saveSession(sess as Session);
   console.log(`[Agent] Rating context registered → ${maskPhone(phone)}`);
+}
+
+/**
+ * Register web booking context — called by BookingPage after sending confirmation via WhatsApp.
+ * Prevents AI from misinterpreting casual follow-up comments as new booking requests.
+ */
+export function registerWebBookingContext(
+  tenantId: string,
+  phone: string,
+  sentMessage: string,
+  ctx: { apptTime: string; apptDate: string; serviceName: string; professionalName: string }
+): void {
+  const key = sessionKey(tenantId, phone);
+  let sess = sessions.get(key);
+  if (!sess) {
+    sess = { tenantId, phone, data: {} as SessionData, history: [], updatedAt: Date.now() };
+  }
+  sess.data.pendingWebBooking = ctx;
+  sess.history.push({ role: 'bot', text: sentMessage });
+  if (sess.history.length > 20) sess.history = sess.history.slice(-20);
+  sess.updatedAt = Date.now();
+  sessions.set(key, sess);
+  saveSession(sess as Session);
+  console.log(`[Agent] Web booking context registered → ${maskPhone(phone)}`);
 }
 
 // =====================================================================
@@ -523,7 +554,14 @@ async function callBrain(
     }
   }
 
-  const followUpCtx = data.pendingFollowUpType === 'reativacao'
+  const followUpCtx = data.pendingWebBooking
+    ? `\n📩 CONTEXTO ESPECIAL — AGENDAMENTO VIA LINK CONFIRMADO:
+• Cliente acabou de confirmar via link: *${data.pendingWebBooking.serviceName}* com *${data.pendingWebBooking.professionalName}* às *${data.pendingWebBooking.apptTime}*.
+• Esta mensagem é provavelmente uma reação à confirmação. ⛔ NÃO inicie novo fluxo de agendamento por comentário casual.
+• Comentários informais ("valeu", "show", "é minha mãe que vai", "ela faz corte de homem?") → responda naturalmente sobre o agendamento já confirmado, sem perguntar serviço/data/horário.
+• Se mencionar outra pessoa que TAMBÉM quer agendar → pergunte EXPLICITAMENTE: "Quer que eu agende um horário para ela também?" antes de iniciar qualquer fluxo.
+• Inicie novo fluxo SOMENTE se o cliente pedir EXPLICITAMENTE.\n`
+    : data.pendingFollowUpType === 'reativacao'
     ? `\n📩 CONTEXTO ESPECIAL — RECUPERAÇÃO DE CLIENTE INATIVO:
 • O cliente estava ausente e recebeu uma mensagem de reativação.
 • Se a resposta for positiva/afirmativa → Mostre entusiasmo em recebê-lo de volta e IMEDIATAMENTE pergunte quando quer agendar (ex: "Que ótimo ter você de volta! 😊 Quando prefere vir? Temos horários disponíveis essa semana!").
@@ -3449,6 +3487,8 @@ async function _handleMessage(
   }
 
   if (shouldGreet) session.data.greetedAt = brasiliaDate; // persist so cold-start doesn't re-greet
+  // Clear one-shot context flags after AI responds
+  if (session.data.pendingWebBooking) session.data.pendingWebBooking = undefined;
   const finalReply = brain.reply;
   session.history.push({ role: 'bot', text: finalReply });
   saveSession(session);
