@@ -152,7 +152,9 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
           const svc       = i.type === 'service' ? services.find(s => s.id === i.itemId) : undefined;
           const matPct    = svc?.materialCostPercent ?? 0;
           const materialDeduction = grossBase * matPct / 100;
-          const comissao  = (grossBase * commRate / 100) - materialDeduction;
+          const comissao  = i.commissionOverride !== undefined
+            ? i.commissionOverride
+            : (grossBase * commRate / 100) - materialDeduction;
           return {
             comandaId: c.id,
             comandaNumber: c.number,

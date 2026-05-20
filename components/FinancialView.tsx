@@ -121,7 +121,9 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
         const commRate_ = commMap[profId] ?? 0;
         const svc = item.type === 'service' ? svcs.find((s: Service) => s.id === item.itemId) : undefined;
         const matPct = svc?.materialCostPercent ?? 0;
-        const itemComm = (grossBase * commRate_ / 100) - (grossBase * matPct / 100);
+        const itemComm = item.commissionOverride !== undefined
+          ? item.commissionOverride
+          : (grossBase * commRate_ / 100) - (grossBase * matPct / 100);
         proCommMap[profId] = (proCommMap[profId] ?? 0) + itemComm;
         if (item.type === 'service') {
           proSvcCountMap[profId][item.itemId] = (proSvcCountMap[profId][item.itemId] ?? 0) + 1;

@@ -76,6 +76,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
   const [loginPin, setLoginPin] = useState('');
   const [proPhoto, setProPhoto] = useState<string>('');
   const [proDisableAI, setProDisableAI] = useState(false);
+  const [proCommissionRate, setProCommissionRate] = useState(0);
 
   // Portal permissions
   const [proCanBook, setProCanBook] = useState(true);
@@ -125,7 +126,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     setSaving(true);
     try {
       const newPro = await db.addProfessional({ tenant_id: tenantId, name, phone, specialty, active: true });
-      await db.updateProfessional(tenantId, newPro.id, { role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined, portalPermissions: { canBook: proCanBook, canViewRevenue: proCanViewRevenue, seeDashboard: proSeeDashboard } } as any);
+      await db.updateProfessional(tenantId, newPro.id, { role, disableAI: proDisableAI, commissionRate: proCommissionRate, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined, portalPermissions: { canBook: proCanBook, canViewRevenue: proCanViewRevenue, seeDashboard: proSeeDashboard } } as any);
       await load();
       setShowModal(false);
       resetForm();
@@ -167,7 +168,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     if (!editingPro || !name || !phone) return;
     setSaving(true);
     try {
-      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, disableAI: proDisableAI, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined, portalPermissions: { canBook: proCanBook, canViewRevenue: proCanViewRevenue, seeDashboard: proSeeDashboard } } as any);
+      await db.updateProfessional(tenantId, editingPro.id, { name, phone, specialty, role, disableAI: proDisableAI, commissionRate: proCommissionRate, serviceIds: proServiceIds, loginPin: loginPin || undefined, loginPhone: phone, photoBase64: proPhoto || undefined, portalPermissions: { canBook: proCanBook, canViewRevenue: proCanViewRevenue, seeDashboard: proSeeDashboard } } as any);
       await load();
       setEditingPro(null);
       resetForm();
@@ -176,7 +177,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     } finally { setSaving(false); }
   };
 
-  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setProPhoto(''); setProDisableAI(false); setProCanBook(true); setProCanViewRevenue(true); setProSeeDashboard(true); };
+  const resetForm = () => { setName(''); setPhone(''); setSpecialty(''); setRole('colab'); setProServiceIds([]); setLoginPin(''); setProPhoto(''); setProDisableAI(false); setProCommissionRate(0); setProCanBook(true); setProCanViewRevenue(true); setProSeeDashboard(true); };
 
   const handleDeletePro = async () => {
     if (!deleteProId) return;
@@ -576,7 +577,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                     </button>
                     <div className="flex justify-between items-center pt-1">
                       <div className="flex items-center gap-3">
-                        <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProDisableAI(p.disableAI || false); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); const perms = loadedSettings.professionalMeta?.[p.id]?.portalPermissions || {}; setProCanBook(perms.canBook ?? true); setProCanViewRevenue(perms.canViewRevenue ?? true); setProSeeDashboard(perms.seeDashboard ?? true); }}
+                        <button onClick={(e) => { e.stopPropagation(); setEditingPro(p); setName(p.name); setPhone(p.phone); setSpecialty(p.specialty); setRole(p.role || 'colab'); setProDisableAI(p.disableAI || false); setProCommissionRate(loadedSettings.professionalMeta?.[p.id]?.commissionRate ?? 0); setProServiceIds(p.serviceIds || []); setLoginPin(p.loginPin || ''); setProPhoto(p.photoBase64 || ''); const perms = loadedSettings.professionalMeta?.[p.id]?.portalPermissions || {}; setProCanBook(perms.canBook ?? true); setProCanViewRevenue(perms.canViewRevenue ?? true); setProSeeDashboard(perms.seeDashboard ?? true); }}
                           className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-all">
                           📝 Editar
                         </button>
@@ -1064,6 +1065,20 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
                     className={`py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all ${role === 'admin' ? 'bg-black text-white border-black' : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-black'}`}>
                     👑 Admin
                   </button>
+                </div>
+              </div>
+
+              {/* Comissão */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Comissão (%)</label>
+                <div className="relative">
+                  <input
+                    type="number" min={0} max={100} step={1}
+                    value={proCommissionRate}
+                    onChange={e => setProCommissionRate(Number(e.target.value))}
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-orange-500 text-right pr-10"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">%</span>
                 </div>
               </div>
 

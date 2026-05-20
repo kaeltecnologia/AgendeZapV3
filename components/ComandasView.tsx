@@ -3,7 +3,7 @@ import { db } from '../services/mockDb';
 import { emitirNfse } from '../services/focusNfeService';
 import {
   Comanda, ComandaItem, PaymentMethod, AppointmentStatus,
-  Professional, Customer, Service, Product,
+  Professional, Customer, Service, Product, Appointment,
   FocusNfeConfig, NotaFiscal,
 } from '../types';
 
@@ -64,7 +64,11 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
   const [editClosedPayment, setEditClosedPayment] = useState<PaymentMethod>(PaymentMethod.PIX);
   const [editClosedNotes, setEditClosedNotes] = useState('');
   const [editClosedSaving, setEditClosedSaving] = useState(false);
+  const [editCommissions, setEditCommissions] = useState<Record<string, string>>({});
   const editClosedObj = editClosedId ? comandas.find(c => c.id === editClosedId) ?? null : null;
+
+  // ── Orphan FINISHED appointments (no comanda) ─────────────────────
+  const [orphanAppts, setOrphanAppts] = useState<Appointment[]>([]);
 
   // ── Estorno modal ─────────────────────────────────────────────────
   const [estornoComanda, setEstornoComanda] = useState<Comanda | null>(null);
@@ -75,7 +79,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
 
   const load = useCallback(async () => {
     try {
-      const [c, pros, custs, svcs, prods, settings, nfeCfg] = await Promise.all([
+      const [c, pros, custs, svcs, prods, settings, nfeCfg, appts] = await Promise.all([
         db.getComandas(tenantId),
         db.getProfessionals(tenantId),
         db.getCustomers(tenantId),
@@ -83,6 +87,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
         db.getProducts(tenantId),
         db.getSettings(tenantId),
         db.getFocusNfeConfig(tenantId),
+        db.getAppointments(tenantId),
       ]);
       setFocusNfeConfig(nfeCfg);
       setComandas(c);
@@ -98,6 +103,13 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
         }
       }
       setCommissionMap(cMap);
+      // Orphan FINISHED appointments: finalizados sem comanda correspondente
+      const cmdApptIds = new Set(c.map(cmd => cmd.appointment_id));
+      setOrphanAppts(
+        appts
+          .filter((a: Appointment) => a.status === AppointmentStatus.FINISHED && !cmdApptIds.has(a.id))
+          .sort((a: Appointment, b: Appointment) => b.startTime.localeCompare(a.startTime))
+      );
     } finally {
       setLoading(false);
     }
@@ -255,6 +267,18 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
       return acc;
     }, {} as Record<string, number>);
 
+  // ── Total comissão de uma comanda (respeitando overrides) ──────────
+  const comandaCommission = (c: Comanda) =>
+    c.items.filter(i => i.type === 'service').reduce((s, i) => {
+      if (i.commissionOverride !== undefined) return s + i.commissionOverride;
+      const profId = i.professionalId ?? c.professional_id;
+      const rate = commissionMap[profId] ?? 0;
+      const grossBase = i.qty * i.unitPrice;
+      const svc = services.find(sv => sv.id === i.itemId);
+      const matPct = (svc as any)?.materialCostPercent ?? 0;
+      return s + (grossBase * rate / 100) - (grossBase * matPct / 100);
+    }, 0);
+
   // ── Lei do Salão-Parceiro: valor declarável (cota-parte estabelecimento) ──
   const calcDeclaravel = (c: Comanda): number =>
     c.items.reduce((acc, item) => {
@@ -295,7 +319,22 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
     if (!editClosedObj) return;
     setEditClosedSaving(true);
     try {
+      // Build updated items with commissionOverride where user changed the value
+      const updatedItems = editClosedObj.items.map(item => {
+        if (item.type !== 'service' || editCommissions[item.id] === undefined) return item;
+        const newComm = parseFloat(editCommissions[item.id]);
+        if (isNaN(newComm)) return item;
+        const profId = item.professionalId ?? editClosedObj.professional_id;
+        const rate = commissionMap[profId] ?? 0;
+        const grossBase = item.qty * item.unitPrice;
+        const svc = services.find(s => s.id === item.itemId);
+        const matPct = (svc as any)?.materialCostPercent ?? 0;
+        const calcComm = (grossBase * rate / 100) - (grossBase * matPct / 100);
+        const override = Math.abs(newComm - calcComm) > 0.005 ? newComm : undefined;
+        return { ...item, commissionOverride: override };
+      });
       await db.updateComanda(editClosedObj.id, {
+        items: updatedItems,
         paymentMethod: editClosedPayment,
         notes: editClosedNotes || undefined,
       });
@@ -542,6 +581,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                     <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Itens</th>
                     <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Pagamento</th>
                     <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Total</th>
+                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissão</th>
                     <th className="px-6 py-4" />
                   </tr>
                 </thead>
@@ -569,12 +609,30 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
+                        <span className="text-sm font-black text-orange-600">{fmt(comandaCommission(c))}</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
                           <button
                             onClick={() => {
                               setEditClosedId(c.id);
                               setEditClosedPayment(c.paymentMethod ?? PaymentMethod.PIX);
                               setEditClosedNotes(c.notes ?? '');
+                              // Init commission values per service item
+                              const initComm: Record<string, string> = {};
+                              c.items.filter(i => i.type === 'service').forEach(item => {
+                                if (item.commissionOverride !== undefined) {
+                                  initComm[item.id] = item.commissionOverride.toFixed(2);
+                                } else {
+                                  const profId = item.professionalId ?? c.professional_id;
+                                  const rate = commissionMap[profId] ?? 0;
+                                  const grossBase = item.qty * item.unitPrice;
+                                  const svc = services.find(s => s.id === item.itemId);
+                                  const matPct = (svc as any)?.materialCostPercent ?? 0;
+                                  initComm[item.id] = ((grossBase * rate / 100) - (grossBase * matPct / 100)).toFixed(2);
+                                }
+                              });
+                              setEditCommissions(initComm);
                             }}
                             className="text-[10px] font-black text-orange-500 uppercase hover:text-orange-700 transition-all"
                           >
@@ -597,6 +655,40 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                   ))}
                 </tbody>
               </table>
+              {/* ── Atendimentos finalizados sem comanda (dados legados) ── */}
+              {orphanAppts.length > 0 && (
+                <>
+                  <div className="px-6 py-2 border-t border-amber-100 bg-amber-50/40">
+                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
+                      Atendimentos sem comanda ({orphanAppts.length})
+                    </p>
+                  </div>
+                  <table className="w-full">
+                    <tbody>
+                      {orphanAppts.map(a => {
+                        const svcName = services.find(s => s.id === a.service_id)?.name ?? '—';
+                        return (
+                          <tr key={a.id} className="border-b border-amber-50 bg-amber-50/20 hover:bg-amber-50/40 transition-all">
+                            <td className="px-6 py-3 text-[10px] font-black text-amber-400">—</td>
+                            <td className="px-6 py-3 text-xs font-bold text-slate-500">
+                              {new Date(a.startTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-6 py-3 text-xs font-black">{custName(a.customer_id)}</td>
+                            <td className="px-6 py-3 text-xs text-slate-500">{profName(a.professional_id)}</td>
+                            <td className="px-6 py-3 text-xs text-slate-500">{svcName}</td>
+                            <td className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase">{a.paymentMethod ?? '—'}</td>
+                            <td className="px-6 py-3 text-right font-black text-sm">{fmt(a.amountPaid || 0)}</td>
+                            <td className="px-6 py-3 text-right">—</td>
+                            <td className="px-6 py-3">
+                              <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">Sem Comanda</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
           )}
         </>
@@ -954,6 +1046,48 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-orange-500 transition-all"
               />
             </div>
+
+            {/* Comissões por Serviço */}
+            {editClosedObj && editClosedObj.items.some(i => i.type === 'service') && (
+              <div className="space-y-1.5">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Comissões por Serviço</p>
+                <div className="space-y-2">
+                  {editClosedObj.items.filter(i => i.type === 'service').map(item => {
+                    const profId = item.professionalId ?? editClosedObj.professional_id;
+                    const rate = commissionMap[profId] ?? 0;
+                    const grossBase = item.qty * item.unitPrice;
+                    const svc = services.find(s => s.id === item.itemId);
+                    const matPct = (svc as any)?.materialCostPercent ?? 0;
+                    const calcComm = (grossBase * rate / 100) - (grossBase * matPct / 100);
+                    const currentVal = editCommissions[item.id] ?? calcComm.toFixed(2);
+                    const isOverridden = item.commissionOverride !== undefined && Math.abs(item.commissionOverride - calcComm) > 0.005;
+                    return (
+                      <div key={item.id} className="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-2.5">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-black truncate">{item.name}</p>
+                          <p className="text-[10px] font-semibold text-slate-400">
+                            {profName(profId)} · {rate}%{matPct > 0 ? ` (−${matPct}% mat.)` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-black text-slate-300">R$</span>
+                          <input
+                            type="number" step="0.01"
+                            value={currentVal}
+                            onChange={e => setEditCommissions(prev => ({ ...prev, [item.id]: e.target.value }))}
+                            className={`w-24 p-2 rounded-xl border-2 text-xs font-black text-right outline-none transition-colors ${
+                              isOverridden
+                                ? 'border-orange-300 bg-orange-50 text-orange-600'
+                                : 'border-slate-200 bg-white focus:border-orange-400'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button onClick={() => setEditClosedId(null)} className="flex-1 py-3 text-slate-400 font-black text-xs uppercase">Cancelar</button>

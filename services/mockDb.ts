@@ -619,14 +619,15 @@ class DatabaseService {
         const { error } = await supabase.from('professionals').update(payload).eq('id', id);
         if (error) throw error;
       }
-      // role + disableAI + portalPermissions stored in settings JSONB (no schema change needed)
-      if (pro.role !== undefined || pro.disableAI !== undefined || (pro as any).portalPermissions !== undefined) {
+      // role + disableAI + portalPermissions + commissionRate stored in settings JSONB (no schema change needed)
+      if (pro.role !== undefined || pro.disableAI !== undefined || (pro as any).portalPermissions !== undefined || (pro as any).commissionRate !== undefined) {
         const s = await this.getSettings(tenantId);
         const meta = { ...(s.professionalMeta || {}) };
         meta[id] = { ...(meta[id] || {}) };
         if (pro.role !== undefined) meta[id].role = pro.role;
         if (pro.disableAI !== undefined) meta[id].disableAI = pro.disableAI;
         if ((pro as any).portalPermissions !== undefined) meta[id].portalPermissions = (pro as any).portalPermissions;
+        if ((pro as any).commissionRate !== undefined) meta[id].commissionRate = (pro as any).commissionRate;
         await this.updateSettings(tenantId, { professionalMeta: meta });
       }
       _cache.invalidate(`getProfessionals:${tenantId}`);

@@ -503,6 +503,7 @@ export interface ComandaItem {
   discountType: 'value' | 'percent'; // tipo de desconto: R$ ou %
   discount: number;     // valor digitado (R$ flat ou % dependendo de discountType)
   professionalId?: string; // profissional responsável por este item
+  commissionOverride?: number; // valor de comissão editado manualmente após finalização
 }
 
 export interface Comanda {
