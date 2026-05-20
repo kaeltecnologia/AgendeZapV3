@@ -1192,20 +1192,26 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       if (fullApp) sendClientArrivedNotification(fullApp).catch(err =>
         console.warn('Notificação ARRIVED falhou:', err)
       );
-      // Criar comanda
+      // Criar comanda (suporta múltiplos serviços)
       try {
-        const svc = services.find(s => s.id === showFinishModal.service_id);
+        const svcIds: string[] = (showFinishModal as any).serviceIds?.length
+          ? (showFinishModal as any).serviceIds
+          : showFinishModal.service_id ? [showFinishModal.service_id] : [];
+        const items = svcIds.map((svcId: string) => {
+          const svc = services.find(s => s.id === svcId);
+          return svc ? {
+            id: generateId(), type: 'service' as const, itemId: svc.id,
+            name: svc.name, qty: 1, unitPrice: svc.price,
+            discountType: 'value' as const, discount: 0,
+            professionalId: showFinishModal.professional_id,
+          } : null;
+        }).filter((x): x is NonNullable<typeof x> => x !== null);
         await db.createComanda({
           tenant_id: tenantId,
           appointment_id: showFinishModal.id,
           professional_id: showFinishModal.professional_id!,
           customer_id: showFinishModal.customer_id!,
-          items: svc ? [{
-            id: generateId(), type: 'service', itemId: svc.id,
-            name: svc.name, qty: 1, unitPrice: svc.price,
-            discountType: 'value' as const, discount: 0,
-            professionalId: showFinishModal.professional_id,
-          }] : [],
+          items,
           status: 'open',
         });
       } catch (err) {
@@ -2296,7 +2302,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                         professional_id: ia.professional_id, service_id: ia.service_id,
                         customer_id: ia.customer_id, startTime: ia.startTime,
                         source: ia.source, isPlan: ia.isPlan,
-                      });
+                        ...((ia as any).serviceIds?.length ? { serviceIds: (ia as any).serviceIds } : {}),
+                      } as any);
                     }}
                     style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: iaColor, fontSize: 13, fontWeight: 700, color: '#ffffff', cursor: 'pointer' }}
                   >
