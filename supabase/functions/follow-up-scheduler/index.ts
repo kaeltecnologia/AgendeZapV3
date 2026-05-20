@@ -1030,7 +1030,8 @@ Deno.serve(async (_req) => {
                 .replace(/\{valor\}/gi, vars.valor || '')
                 .replace(/\{vencimento\}/gi, vars.vencimento || '')
                 .replace(/\{diasRestantes\}/gi, vars.diasRestantes || '')
-                .replace(/\{diasAtraso\}/gi, vars.diasAtraso || '');
+                .replace(/\{diasAtraso\}/gi, vars.diasAtraso || '')
+                .replace(/\{chavePix\}/gi, vars.chavePix || '');
             }
 
             for (const cust of customers) {
@@ -1060,6 +1061,7 @@ Deno.serve(async (_req) => {
                 vencimento:    fmtDateBR2(nextDue),
                 diasRestantes: String(Math.max(0, daysUntilDue)),
                 diasAtraso:    String(Math.max(0, daysOverdue)),
+                chavePix:      subCfg.pixKey || '',
               };
 
               // ── Atualizar status ─────────────────────────────────────
@@ -1086,7 +1088,7 @@ Deno.serve(async (_req) => {
               const warnDays = subCfg.daysBeforeWarning ?? 3;
               const alreadyWarnSent = cd.subscriptionWarnSent === nextDue;
               if (daysUntilDue === warnDays && newStatus === 'active' && !alreadyWarnSent) {
-                const claimKey = `sub_warn::${cust.id}::${nextDue}`;
+                const claimKey = `sub_warn3_${cust.id}_${nextDue}`;
                 if (await claimMessage(claimKey)) {
                   const fallbackWarn = 'Olá {nome}! Seu plano *{plano}* vence em {diasRestantes} dia(s) ({vencimento}). Valor: {valor}. 💳';
                   const msg = interpolateSub(subCfg.warningMessage || fallbackWarn, vars);
@@ -1101,7 +1103,7 @@ Deno.serve(async (_req) => {
 
               // ── Cobrança diária (pending ou overdue) ─────────────────
               if ((newStatus === 'pending' || newStatus === 'overdue') && daysOverdue > 0) {
-                const claimKey = `sub_charge::${cust.id}::${nowDate}`;
+                const claimKey = `sub_charge_${cust.id}_${nowDate}`;
                 if (await claimMessage(claimKey)) {
                   const fallbackCharge = 'Olá {nome}! Seu plano *{plano}* está em atraso há {diasAtraso} dia(s). Regularize para continuar agendando. 💳';
                   const msg = interpolateSub(subCfg.overdueMessage || fallbackCharge, vars);
