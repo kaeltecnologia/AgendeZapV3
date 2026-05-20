@@ -1943,12 +1943,17 @@ async function _handleMessage(
           const p0 = (n: number) => String(n).padStart(2, '0');
           const nowLocal = `${now0.getFullYear()}-${p0(now0.getMonth()+1)}-${p0(now0.getDate())}T${p0(now0.getHours())}:${p0(now0.getMinutes())}:00`;
           const { data: upcomingRS } = await supabase.from('appointments')
-            .select('id, inicio, service_id, professional_id')
+            .select('id, inicio, service_id, professional_id, is_plan')
             .eq('tenant_id', tenantId).eq('customer_id', custRS.id)
             .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
             .gte('inicio', nowLocal).order('inicio', { ascending: true }).limit(1);
           if (upcomingRS && upcomingRS.length > 0) {
             const apptRS = upcomingRS[0];
+            // Plan appointments cannot be rescheduled by the AI
+            if ((apptRS as any).is_plan) {
+              saveSession(session as Session);
+              return `Seu agendamento do plano está confirmado para ${formatDate(apptRS.inicio.substring(0,10))} às ${apptRS.inicio.substring(11,16)}. 😊\n\nAgendamentos do plano de assinatura não podem ser reagendados por aqui. Para alterações, entre em contato diretamente com o estabelecimento.`;
+            }
             const oldDate = (apptRS.inicio as string).substring(0, 10);
             const oldTime = (apptRS.inicio as string).substring(11, 16);
             const svcRS  = services.find((s: any) => s.id === apptRS.service_id);
@@ -1990,12 +1995,17 @@ async function _handleMessage(
       if (custRS2) {
         // Broader search: any PENDING/CONFIRMED appointment (no date cutoff)
         const { data: anyRS } = await supabase.from('appointments')
-          .select('id, inicio, service_id, professional_id')
+          .select('id, inicio, service_id, professional_id, is_plan')
           .eq('tenant_id', tenantId).eq('customer_id', custRS2.id)
           .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
           .order('inicio', { ascending: true }).limit(1);
         if (anyRS && anyRS.length > 0) {
           const apptRS2 = anyRS[0];
+          if ((apptRS2 as any).is_plan) {
+            session.data.pendingRescheduleSearch = undefined;
+            saveSession(session as Session);
+            return `Seu agendamento do plano está confirmado para ${formatDate(apptRS2.inicio.substring(0,10))} às ${apptRS2.inicio.substring(11,16)}. 😊\n\nAgendamentos do plano de assinatura não podem ser reagendados por aqui. Para alterações, entre em contato diretamente com o estabelecimento.`;
+          }
           const oldDate2 = (apptRS2.inicio as string).substring(0, 10);
           const oldTime2 = (apptRS2.inicio as string).substring(11, 16);
           const svcRS2  = services.find((s: any) => s.id === apptRS2.service_id);
@@ -2045,7 +2055,7 @@ async function _handleMessage(
           const p0 = (n: number) => String(n).padStart(2, '0');
           const nowLocal = `${now0.getFullYear()}-${p0(now0.getMonth()+1)}-${p0(now0.getDate())}T${p0(now0.getHours())}:${p0(now0.getMinutes())}:00`;
           const { data: upcomingE } = await supabase.from('appointments')
-            .select('id, inicio, service_id, professional_id')
+            .select('id, inicio, service_id, professional_id, is_plan')
             .eq('tenant_id', tenantId).eq('customer_id', custE.id)
             .in('status', ['CONFIRMED', 'PENDING', 'confirmado', 'pendente'])
             .gte('inicio', nowLocal).order('inicio', { ascending: true }).limit(1);
@@ -2055,6 +2065,13 @@ async function _handleMessage(
             const apptTime = (apptE.inicio as string).substring(11, 16);
             const svcE  = services.find((s: any) => s.id === apptE.service_id);
             const profE = professionals.find((p: any) => p.id === apptE.professional_id);
+            // Plan appointments cannot be moved to earlier slots
+            if ((apptE as any).is_plan) {
+              const reply = `Seu agendamento do plano está confirmado para hoje às *${apptTime}* com ${profE?.name || 'o profissional'}. 😊\n\nAgendamentos do plano de assinatura não podem ser alterados por aqui.`;
+              session.history.push({ role: 'user', text }, { role: 'bot', text: reply });
+              saveSession(session);
+              return reply;
+            }
             // Only consider earlier if appointment is TODAY
             if (apptDate === todayISO) {
               const allSlots = await getAvailableSlots(tenantId, apptE.professional_id, apptDate, svcE?.durationMinutes || 30, settings);
