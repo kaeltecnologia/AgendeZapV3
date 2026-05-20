@@ -52,8 +52,10 @@ interface ProcedimentoRow {
   closedAt: string;
   customerId: string;
   item: ComandaItem;
-  valor: number;
-  comissao: number;
+  valor: number;       // valor pago pelo cliente (com desconto)
+  grossBase: number;   // valor original do serviço (sem desconto) — base de comissão
+  materialDeduction: number; // custo de material deduzido da comissão
+  comissao: number;    // comissão líquida = grossBase * commRate% - materialDeduction
 }
 
 interface Props {
@@ -145,7 +147,12 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
       c.items
         .filter(i => (i.professionalId ?? c.professional_id) === selectedProfId)
         .map(i => {
-          const val  = itemTotal(i);
+          const val       = itemTotal(i);
+          const grossBase = i.qty * i.unitPrice; // valor original cadastrado, sem desconto
+          const svc       = i.type === 'service' ? services.find(s => s.id === i.itemId) : undefined;
+          const matPct    = svc?.materialCostPercent ?? 0;
+          const materialDeduction = grossBase * matPct / 100;
+          const comissao  = (grossBase * commRate / 100) - materialDeduction;
           return {
             comandaId: c.id,
             comandaNumber: c.number,
@@ -153,7 +160,9 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
             customerId: c.customer_id,
             item: i,
             valor: val,
-            comissao: val * commRate / 100,
+            grossBase,
+            materialDeduction,
+            comissao,
           };
         })
     )
@@ -348,8 +357,18 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
                       {row.item.type === 'service' ? getServiceName(row.item.itemId) : row.item.name}
                       {row.item.qty > 1 && <span className="text-slate-400 ml-1">×{row.item.qty}</span>}
                     </td>
-                    <td className="px-6 py-4 font-black text-sm text-green-700">{fmtCurrency(row.valor)}</td>
-                    <td className="px-6 py-4 font-black text-sm text-orange-600">{fmtCurrency(row.comissao)}</td>
+                    <td className="px-6 py-4 font-black text-sm text-green-700">
+                      {fmtCurrency(row.valor)}
+                      {row.grossBase !== row.valor && (
+                        <div className="text-[10px] font-semibold text-slate-400">base: {fmtCurrency(row.grossBase)}</div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 font-black text-sm text-orange-600">
+                      {fmtCurrency(row.comissao)}
+                      {row.materialDeduction > 0 && (
+                        <div className="text-[10px] font-semibold text-slate-400">−{fmtCurrency(row.materialDeduction)} mat.</div>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-xs font-bold text-slate-400">#{row.comandaNumber ?? row.comandaId.slice(0, 6)}</td>
                   </tr>
                 );

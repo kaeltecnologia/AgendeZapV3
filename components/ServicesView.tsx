@@ -52,6 +52,7 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           durationMinutes: modal.data.durationMinutes || 30,
           active: modal.data.active ?? true,
           category: modal.data.category || undefined,
+          materialCostPercent: modal.data.materialCostPercent ?? 0,
         });
       } else {
         await db.addService({
@@ -61,6 +62,7 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           durationMinutes: modal.data.durationMinutes || 30,
           active: true,
           category: modal.data.category || undefined,
+          materialCostPercent: modal.data.materialCostPercent ?? 0,
         });
       }
       await loadData();
@@ -260,6 +262,18 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 outline-none text-sm focus:border-orange-400 transition-colors"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500">Custo de Material (%)</label>
+              <input
+                type="number" min="0" max="100" step="0.1"
+                value={modal.data?.materialCostPercent ?? ''}
+                onChange={e => setModal({ ...modal, data: { ...modal.data, materialCostPercent: Number(e.target.value) } })}
+                placeholder="Ex: 20 (20% do valor do serviço)"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 outline-none text-sm focus:border-orange-400 transition-colors"
+              />
+              <p className="text-[10px] text-slate-400 leading-tight">Deduzido da comissão do profissional (calculado sobre o valor cadastrado do serviço)</p>
             </div>
 
             <div className="space-y-1">

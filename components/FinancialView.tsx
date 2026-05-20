@@ -97,6 +97,8 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
     // Per-professional breakdown using comanda items for multi-pro attribution
     const commMap: Record<string, number> = {};
     pros.forEach(p => { commMap[p.id] = st.professionalMeta?.[p.id]?.commissionRate ?? 0; });
+    // Accumulate correct commission per item: grossBase * commRate% - materialCost
+    const proCommMap: Record<string, number> = {};
 
     const closedComandas = allComandas.filter((c: Comanda) =>
       c.status === 'closed' && c.closedAt && new Date(c.closedAt) >= startDate
@@ -114,6 +116,13 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
         const profId = item.professionalId ?? c.professional_id;
         proRevMap[profId] = (proRevMap[profId] ?? 0) + comandaItemTotal(item);
         proSvcCountMap[profId] = proSvcCountMap[profId] ?? {};
+        // Commission: always on original price (grossBase), minus material cost
+        const grossBase = item.qty * item.unitPrice;
+        const commRate_ = commMap[profId] ?? 0;
+        const svc = item.type === 'service' ? svcs.find((s: Service) => s.id === item.itemId) : undefined;
+        const matPct = svc?.materialCostPercent ?? 0;
+        const itemComm = (grossBase * commRate_ / 100) - (grossBase * matPct / 100);
+        proCommMap[profId] = (proCommMap[profId] ?? 0) + itemComm;
         if (item.type === 'service') {
           proSvcCountMap[profId][item.itemId] = (proSvcCountMap[profId][item.itemId] ?? 0) + 1;
         }
@@ -136,7 +145,9 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       const revenue = proRevMap[p.id] ?? 0;
       const count = proCountMap[p.id] ?? 0;
       const commRate = commMap[p.id] ?? 0;
-      const commission = revenue * commRate / 100;
+      // Use pre-calculated commission (original price base, material cost deducted)
+      // Fallback to simple formula for appointments without comanda (legacy path)
+      const commission = proCommMap[p.id] !== undefined ? proCommMap[p.id] : revenue * commRate / 100;
       const avgTicket = count > 0 ? revenue / count : 0;
       const svcCounts = proSvcCountMap[p.id] ?? {};
       const topSvcId = Object.entries(svcCounts).sort((a, b) => b[1] - a[1])[0]?.[0];

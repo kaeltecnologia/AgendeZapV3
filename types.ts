@@ -453,6 +453,7 @@ export interface Service {
   durationMinutes: number;
   active: boolean;
   category?: string;
+  materialCostPercent?: number; // % do valor cadastrado deduzido como custo de material
 }
 
 export interface Customer {

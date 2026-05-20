@@ -676,7 +676,8 @@ class DatabaseService {
         price: Number(s.preco || 0),
         durationMinutes: s.duracao_minutos || 30,
         active: s.ativo ?? true,
-        ...(s.category ? { category: s.category } : {})
+        ...(s.category ? { category: s.category } : {}),
+        materialCostPercent: Number(s.material_cost_percent || 0)
       }));
       _cache.set(ck, result, TTL_MED);
       return result;
@@ -696,6 +697,7 @@ class DatabaseService {
         ativo: svc.ativo ?? true
       };
       if (svc.category !== undefined) payload.category = svc.category || null;
+      if (svc.materialCostPercent !== undefined) payload.material_cost_percent = svc.materialCostPercent ?? 0;
       const { data, error } = await supabase.from('services').insert(payload).select().single();
       if (error) throw error;
       _cache.invalidate(`getServices:${svc.tenant_id}`);
@@ -723,6 +725,7 @@ class DatabaseService {
         ativo: svc.active
       };
       if (svc.category !== undefined) upd.category = svc.category || null;
+      if (svc.materialCostPercent !== undefined) upd.material_cost_percent = svc.materialCostPercent;
       const { error } = await supabase.from('services').update(upd).eq('id', id);
       if (error) throw error;
       _cache.invalidate('getServices:');
