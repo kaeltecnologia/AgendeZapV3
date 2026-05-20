@@ -1090,7 +1090,7 @@ Deno.serve(async (_req) => {
                 if (await claimMessage(claimKey)) {
                   const fallbackWarn = 'Olá {nome}! Seu plano *{plano}* vence em {diasRestantes} dia(s) ({vencimento}). Valor: {valor}. 💳';
                   const msg = interpolateSub(subCfg.warningMessage || fallbackWarn, vars);
-                  const ok = await sendWhatsApp(instance, cust.phone, msg);
+                  const ok = await sendWhatsApp(centralInstance, cust.phone, msg);
                   if (ok) {
                     custData[cust.id] = { ...(custData[cust.id] || {}), subscriptionWarnSent: nextDue };
                     anySubChanged = true;
@@ -1105,7 +1105,7 @@ Deno.serve(async (_req) => {
                 if (await claimMessage(claimKey)) {
                   const fallbackCharge = 'Olá {nome}! Seu plano *{plano}* está em atraso há {diasAtraso} dia(s). Regularize para continuar agendando. 💳';
                   const msg = interpolateSub(subCfg.overdueMessage || fallbackCharge, vars);
-                  const ok = await sendWhatsApp(instance, cust.phone, msg);
+                  const ok = await sendWhatsApp(centralInstance, cust.phone, msg);
                   if (ok) console.log(`[Sub Cobrança] ${tenant.nome} → ${cust.name} (${daysOverdue}d atraso)`);
                 }
               }
