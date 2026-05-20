@@ -2662,7 +2662,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
       'quero', 'bora', 'beleza', 'combinado', 'claro', 'perfeito', 'otimo',
       'obrigado', 'obrigada', 'vlw', 'valeu', 'vou', 'estarei', 'ta', 'yes',
       'blz', 'show', 'tenho', 'posso', 'afirmativo', 'ate la', 'to la', 'boa',
-      'bom', 'tmj', 'fechado', 'isso',
+      'bom', 'tmj', 'fechado', 'fechou', 'isso', 'dale', 'pode ser',
     ];
     const DENY_WORDS = [
       'nao', 'nope', 'negativo', 'impossivel', 'nao vou', 'nao consigo', 'nao quero',

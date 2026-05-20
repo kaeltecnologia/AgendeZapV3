@@ -1350,13 +1350,13 @@ async function _handleMessage(
     const wds   = norm.split(/\s+/);
 
     const AFFIRM = [
-      'sim', 'ok', 'pode', 'certo', 'fechado', 'confirmado', 'confirmar', 'confirma',
+      'sim', 'ok', 'pode', 'certo', 'fechado', 'fechou', 'confirmado', 'confirmar', 'confirma',
       'confirmo', 'quero', 'bora', 'beleza', 'combinado', 'claro', 'exato', 'correto',
       'perfeito', 'otimo', 'obrigado', 'obrigada', 'vlw', 'valeu', 'vou', 'estarei',
       'ta', 'tá', 'yes', 'vamos', 'sure', 'blz', 'ótimo', 'show', 'certo',
       'tenho', 'consigo', 'posso', 'afirmativo', 'certeza', 'com certeza',
       'até lá', 'ate la', 'estarei lá', 'estarei la', 'boa', 'bom', 'tô lá', 'to la',
-      'tmj', 'isso',
+      'tmj', 'isso', 'dale', 'pode ser', 'com certeza',
     ];
     const DENY = [
       'nao', 'não', 'nao posso', 'não posso', 'nope', 'negativo', 'impossivel',
@@ -1907,7 +1907,7 @@ async function _handleMessage(
       'nao quero hoje', 'nao quero amanha', 'prefiro amanha', 'prefiro outro dia',
     ];
     // Only trigger if it's clearly a different-day question (not a "yes/confirm" message)
-    const AFFIRM_DC = ['sim', 'ok', 'pode', 'confirmo', 'isso', 'beleza', 'bora', 'ta', 'tá', 'certo', 'fechado', 'quero', 'perfeito', 'claro', 'serve', 'yes'];
+    const AFFIRM_DC = ['sim', 'ok', 'pode', 'confirmo', 'isso', 'beleza', 'bora', 'ta', 'tá', 'certo', 'fechado', 'fechou', 'quero', 'perfeito', 'claro', 'serve', 'yes', 'dale'];
     const isAffirm = AFFIRM_DC.some(a => normDC === a || normDC.split(/\s+/).includes(a));
     const hasDateChange = !isAffirm && DATE_CHANGE_KW.some(k => normDC.includes(k));
     if (hasDateChange) {
