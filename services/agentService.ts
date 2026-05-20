@@ -541,7 +541,8 @@ async function callBrain(
 
   const known: string[] = [];
   if (data.clientName) known.push(`Nome: ${data.clientName}`);
-  if (data.serviceName) known.push(`Serviço: ${data.serviceName} ⛔ SERVIÇO JÁ DEFINIDO — NÃO liste, sugira ou pergunte sobre outros serviços. Continue o fluxo.`);
+  if (data.serviceName) known.push(`Serviço: ${(data as any)._comboTotalDuration ? `${data.serviceName} (${(data as any)._comboTotalDuration}min total, R$${((data as any)._comboTotalPrice || 0).toFixed(2)})` : data.serviceName} ⛔ SERVIÇO JÁ DEFINIDO — NÃO liste, sugira ou pergunte sobre outros serviços. Continue o fluxo.`);
+  if ((data as any)._comboRequest) known.push(`⚠️ MULTI-SERVIÇO: Cliente pediu ${(data as any)._comboRequest}. Mencione TODOS os serviços na resposta. Duração total e preço já estão calculados acima.`);
   if (data.professionalName) known.push(`Profissional: ${data.professionalName}`);
   if (data.date) known.push(`Data: ${formatDate(data.date)}`);
   if (data.time) known.push(`Horário: ${data.time}`);
@@ -1056,6 +1057,65 @@ function matchServiceByKeywords(
   }
 
   return best;
+}
+
+// ── Multi-service detection (same as edge function) ──────────────────
+const _AS_SVC_SYNONYMS: Record<string, string[]> = {
+  'corte':       ['corte', 'corta', 'cabelo', 'cabeca', 'cabecinha', 'cortar', 'aparar', 'zerar', 'degrade', 'social', 'navalhado', 'franja', 'maquina'],
+  'barba':       ['barba', 'barbinha', 'bigode'],
+  'sobrancelha': ['sobrancelha'],
+  'coloracao':   ['pintar', 'colorir', 'mechas', 'reflexo', 'tingir', 'coloracao'],
+  'progressiva': ['progressiva', 'alisar', 'alisamento', 'botox', 'produtinho', 'produto'],
+  'escova':      ['escova', 'modelar'],
+  'relaxamento': ['relaxamento', 'relaxar'],
+};
+const _AS_SVC_STOP = new Set(['de','do','da','dos','das','e','com','no','na','em','o','a','os','as','um','uma','pra','para','por','que','nao','sim','hoje','amanha','horas','hora','marca','marcar','agendar','reservar','quero','preciso','gostaria','favor','pode','vou','vai','ter','tem','boa','bom','tarde','noite','dia','manha','voce','viu','deixa','agendado','tambem','aquele','fazer','querer']);
+const _asSvcNorm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
+
+function _asDetectCategories(text: string): Set<string> {
+  const normText = _asSvcNorm(text);
+  const msgWords = normText.split(/\s+/).filter(w => w.length >= 3 && !_AS_SVC_STOP.has(w));
+  const mentions = new Set<string>();
+  for (const mw of msgWords) {
+    for (const [canon, syns] of Object.entries(_AS_SVC_SYNONYMS)) {
+      if (syns.some(s => s.includes(mw) || mw.includes(s))) mentions.add(canon);
+    }
+  }
+  return mentions;
+}
+
+function _asMatchAllServices(
+  text: string,
+  services: Array<{ id: string; name: string; durationMinutes: number; price: number }>
+): Array<{ id: string; name: string; durationMinutes: number; price: number }> {
+  const categories = _asDetectCategories(text);
+  if (categories.size === 0) return [];
+  const cats = [...categories];
+  const usedIds = new Set<string>();
+  const matched: Array<{ id: string; name: string; durationMinutes: number; price: number }> = [];
+
+  // First pass: combo services covering 2+ categories
+  for (const svc of services) {
+    const sn = _asSvcNorm(svc.name);
+    const coveredCats = cats.filter(cat => (_AS_SVC_SYNONYMS[cat] || [cat]).some(s => sn.includes(s)));
+    if (coveredCats.length >= 2 && !usedIds.has(svc.id)) {
+      matched.push(svc); usedIds.add(svc.id);
+      coveredCats.forEach(c => categories.delete(c));
+    }
+  }
+  // Second pass: individual service per remaining category
+  for (const cat of [...categories]) {
+    const syns = _AS_SVC_SYNONYMS[cat] || [cat];
+    const best = services
+      .filter(s => !usedIds.has(s.id) && syns.some(syn => _asSvcNorm(s.name).includes(syn)))
+      .sort((a, b) => _asSvcNorm(a.name).length - _asSvcNorm(b.name).length)[0];
+    if (best) {
+      const _CHILD_W = ['infantil','crianca','filho','filha','kid','bebe','menino','menina'];
+      if (_CHILD_W.some(w => _asSvcNorm(best.name).includes(w)) && !_CHILD_W.some(w => _asSvcNorm(text).includes(w))) continue;
+      matched.push(best); usedIds.add(best.id); categories.delete(cat);
+    }
+  }
+  return matched;
 }
 
 // =====================================================================
@@ -1783,6 +1843,14 @@ async function _handleMessage(
       updatedAt: Date.now(),
     };
     // No early return — fall through so callBrain processes first message naturally
+  }
+
+  // ─── Validate restored session professionalId against current active list ─
+  // Clears it if the professional was since set to disableAI or deactivated.
+  if (session.data.professionalId && !activeProfessionals.find((p: any) => p.id === session.data.professionalId)) {
+    console.log('[Agent] Session professional no longer available for AI (disableAI/inactive), clearing');
+    session.data.professionalId = undefined;
+    session.data.professionalName = undefined;
   }
 
   // ─── Brasília greeting ──────────────────────────────────────────────
@@ -2554,22 +2622,51 @@ async function _handleMessage(
     }
   }
 
-  // ─── TS-level service pre-extraction via keywords ────────────────
+  // ─── TS-level service pre-extraction via keywords (multi-service aware) ─
   // Always attempt to match — allows client to CORRECT a wrong service already in session.
   {
-    const _matchedSvc = matchServiceByKeywords(lowerText, services);
-    if (_matchedSvc && _matchedSvc.id !== session.data.serviceId) {
-      if (session.data.serviceId) {
-        // Service being corrected mid-booking — reset time/confirm to avoid stale state
-        session.data.time = undefined;
-        session.data.pendingConfirm = false;
-        console.log('[Agent] TS service correction:', session.data.serviceName, '→', _matchedSvc.name);
+    // First try multi-service detection
+    const _allSvcs = _asMatchAllServices(lowerText, services);
+    const _singleFallback = _allSvcs.length === 0 ? matchServiceByKeywords(lowerText, services) : null;
+
+    if (_allSvcs.length >= 2) {
+      // Multi-service combo
+      const _totalDuration = _allSvcs.reduce((s, v) => s + v.durationMinutes, 0);
+      const _totalPrice    = _allSvcs.reduce((s, v) => s + v.price, 0);
+      const _primary       = [..._allSvcs].sort((a, b) => b.durationMinutes - a.durationMinutes)[0];
+      const _comboName     = _allSvcs.map(s => s.name).join(' + ');
+
+      if (_primary.id !== session.data.serviceId || (session.data as any)._comboServiceIds?.length !== _allSvcs.length) {
+        if (session.data.serviceId) { session.data.time = undefined; session.data.pendingConfirm = false; }
+        session.data.serviceId        = _primary.id;
+        session.data.serviceName      = _comboName;
+        session.data.serviceDuration  = _totalDuration;
+        session.data.servicePrice     = _totalPrice;
+        (session.data as any)._comboRequest      = _comboName;
+        (session.data as any)._comboTotalDuration = _totalDuration;
+        (session.data as any)._comboTotalPrice    = _totalPrice;
+        (session.data as any)._comboServiceIds    = _allSvcs.map(s => s.id);
+        console.log('[Agent] TS multi-service:', _comboName, `(${_totalDuration}min, R$${_totalPrice})`);
       }
-      session.data.serviceId       = _matchedSvc.id;
-      session.data.serviceName     = _matchedSvc.name;
-      session.data.serviceDuration = _matchedSvc.durationMinutes;
-      session.data.servicePrice    = _matchedSvc.price;
-      console.log('[Agent] TS pre-extracted service:', _matchedSvc.name);
+    } else {
+      const _matchedSvc = _allSvcs.length === 1 ? _allSvcs[0] : _singleFallback;
+      if (_matchedSvc && _matchedSvc.id !== session.data.serviceId) {
+        if (session.data.serviceId) {
+          session.data.time = undefined;
+          session.data.pendingConfirm = false;
+          console.log('[Agent] TS service correction:', session.data.serviceName, '→', _matchedSvc.name);
+        }
+        session.data.serviceId       = _matchedSvc.id;
+        session.data.serviceName     = _matchedSvc.name;
+        session.data.serviceDuration = _matchedSvc.durationMinutes;
+        session.data.servicePrice    = _matchedSvc.price;
+        // Clear any stale combo data when switching to single service
+        (session.data as any)._comboRequest      = undefined;
+        (session.data as any)._comboTotalDuration = undefined;
+        (session.data as any)._comboTotalPrice    = undefined;
+        (session.data as any)._comboServiceIds    = undefined;
+        console.log('[Agent] TS pre-extracted service:', _matchedSvc.name);
+      }
     }
   }
 
@@ -3344,17 +3441,25 @@ async function _handleMessage(
         }
       }
 
-      const appointment = await db.addAppointment({
-        tenant_id: tenantId,
-        customer_id: customer.id,
-        professional_id: session.data.professionalId,
-        service_id: session.data.serviceId,
-        startTime: startTimeStr,
-        durationMinutes: session.data.serviceDuration,
-        status: AppointmentStatus.CONFIRMED,
-        source: isPlanAppointment ? BookingSource.PLAN : BookingSource.AI,
-        isPlan: isPlanAppointment,
-      });
+      // Multi-service: create one appointment row per service (same time slot)
+      const _allSvcIdsAS: string[] = ((session.data as any)._comboServiceIds?.length >= 2)
+        ? (session.data as any)._comboServiceIds
+        : [session.data.serviceId!];
+      let appointment: any = null;
+      for (const _svcIdAS of _allSvcIdsAS) {
+        const _appt = await db.addAppointment({
+          tenant_id: tenantId,
+          customer_id: customer.id,
+          professional_id: session.data.professionalId,
+          service_id: _svcIdAS,
+          startTime: startTimeStr,
+          durationMinutes: session.data.serviceDuration,
+          status: AppointmentStatus.CONFIRMED,
+          source: isPlanAppointment ? BookingSource.PLAN : BookingSource.AI,
+          isPlan: isPlanAppointment,
+        });
+        if (!appointment) appointment = _appt; // keep first for notification
+      }
       if (appointment) sendProfessionalNotification(appointment).catch(console.error);
 
       // ─── Reschedule: cancel old appointment ──────────────────────────

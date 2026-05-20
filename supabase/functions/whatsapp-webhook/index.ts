@@ -2254,8 +2254,10 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
 
   // Professional name pre-extraction (TypeScript layer — more reliable than LLM)
   // Vacation check runs for any # of professionals. Personal-contact-flow only for multi-prof.
+  // disableAI professionals are excluded: they don't accept AI bookings.
+  const _profsNoDisable = (professionals as any[]).filter((p: any) => !p.disableAI);
   if (!session.data.professionalId && !session.data.pendingProfContact) {
-    const matched = matchProfessionalName(lowerText, professionals);
+    const matched = matchProfessionalName(lowerText, _profsNoDisable);
     if (matched) {
       // ── Vacation check: always runs regardless of professional count ──
       const _vacBreakWh1 = (settings.breaks || []).find((b: any) => {
@@ -2273,7 +2275,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
           return formatDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
         })() : '';
         const _returnInfo1 = _returnDate1 ? ` Retorna ${_returnDate1}.` : '';
-        const othersAvail = (professionals as any[])
+        const othersAvail = _profsNoDisable
           .filter((p: any) => p.id !== matched.id)
           .filter((p: any) => !(settings.breaks || []).some((b: any) => {
             if (!b.professionalId || b.professionalId !== p.id) return false;
@@ -2298,7 +2300,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
         return;
       }
 
-      if (professionals.length > 1) {
+      if (_profsNoDisable.length > 1) {
         // Multiple professionals: check for booking intent or personal-contact flow
         const normMsg2 = lowerText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
         const BOOK_KW2 = ['agendar', 'marcar', 'horario', 'reservar', 'procedimento', 'servico', 'corte', 'corta', 'cortar', 'barba', 'agendamento', 'cabelo', 'cabeca', 'cabecinha', 'cabeça', 'vaga', 'disponivel', 'disponibilidade', 'encaixe', 'encaixar', 'sobrancelha', 'progressiva', 'escova', 'pintar', 'colorir', 'alisar'];
