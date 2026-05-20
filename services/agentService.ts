@@ -2085,6 +2085,11 @@ async function _handleMessage(
             saveSession(session as Session);
             return '😕 Não identifiquei nenhum agendamento ativo no seu número.\n\nPode me confirmar seu *nome completo* e o *dia que estava agendado*? Assim consigo verificar melhor!';
           }
+        } else {
+          // Customer not found by phone — still enter reschedule-search mode
+          session.data.pendingRescheduleSearch = { attempt: 1 };
+          saveSession(session as Session);
+          return '😕 Não identifiquei nenhum agendamento ativo no seu número.\n\nPode me confirmar seu *nome completo* e o *dia que estava agendado*? Assim consigo verificar melhor!';
         }
       } catch (eRS) { console.error('[Agent] reschedule pre-detection error:', eRS); }
     }
@@ -3043,7 +3048,7 @@ async function _handleMessage(
       /nao\s+ir/, /ir\s+nao/,
       /(?:vou|preciso)\s+(?:faltar|desistir)/,
     ];
-    if (!_cancelSPA.some(re => re.test(_normCancelSPA))) {
+    if (!_cancelSPA.some(re => re.test(_normCancelSPA)) && !session.data.pendingRescheduleSearch) {
       session.data.date = ext.date;
     }
   }
@@ -3128,7 +3133,7 @@ async function _handleMessage(
 
   // Validate time against available slots — suggest nearest before/after if occupied
   const currentSlots = prefetchedSlots || [];
-  if (ext.time && !session.data.time && currentSlots.length > 0) {
+  if (ext.time && !session.data.time && currentSlots.length > 0 && !session.data.pendingRescheduleSearch) {
     const validTime = currentSlots.includes(ext.time) ? ext.time : quickTime(ext.time, currentSlots);
     if (validTime) {
       session.data.time = validTime;

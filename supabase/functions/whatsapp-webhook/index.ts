@@ -2016,6 +2016,14 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
             await sendMsg(instanceName, phone, noApptMsg, tenantId);
             return;
           }
+        } else {
+          // Customer not found by phone — still enter reschedule-search mode
+          session.data.pendingRescheduleSearch = { attempt: 1 };
+          const noApptMsg = '😕 Não identifiquei nenhum agendamento ativo no seu número.\n\nPode me confirmar seu *nome completo* e o *dia que estava agendado*? Assim consigo verificar melhor!';
+          session.history.push({ role: 'user', text: text }, { role: 'bot', text: noApptMsg });
+          await saveSession(tenantId, phone, session.data, session.history);
+          await sendMsg(instanceName, phone, noApptMsg, tenantId);
+          return;
         }
       } catch (eRS) { console.error('[Agent] reschedule pre-detection error:', eRS); }
     }
@@ -3410,8 +3418,8 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
     const prof = professionals.find(p => p.id === ext.professionalId);
     if (prof) { session.data.professionalId = prof.id; session.data.professionalName = prof.name; }
   }
-  if (ext.date && !session.data.date) session.data.date = ext.date;
-  if (ext.time && !session.data.time && /^\d{1,2}:\d{2}$/.test(ext.time)) {
+  if (ext.date && !session.data.date && !session.data.pendingRescheduleSearch) session.data.date = ext.date;
+  if (ext.time && !session.data.time && /^\d{1,2}:\d{2}$/.test(ext.time) && !session.data.pendingRescheduleSearch) {
     // Accept valid HH:MM time regardless of prefetchedSlots.
     // The booking conflict check (line ~3502) validates real availability against the DB.
     // Previously rejecting times not in prefetchedSlots caused "agenda cheia" when combo
