@@ -507,7 +507,7 @@ async function callBrain(
   apiKey: string,
   tenantName: string,
   today: string,
-  services: Array<{ id: string; name: string; durationMinutes: number; price: number }>,
+  services: Array<{ id: string; name: string; durationMinutes: number; price: number; category?: string }>,
   professionals: Array<{ id: string; name: string }>,
   history: HistoryEntry[],
   data: SessionData,
@@ -531,9 +531,27 @@ async function callBrain(
   const todayISO = `${_brNowCB.getUTCFullYear()}-${_padCB(_brNowCB.getUTCMonth()+1)}-${_padCB(_brNowCB.getUTCDate())}`;
   const _currentTime = `${_padCB(_brNowCB.getUTCHours())}:${_padCB(_brNowCB.getUTCMinutes())}`;
 
-  const svcList = services.map(s =>
-    `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`
-  ).join('\n');
+  const _categories = [...new Set(services.filter(s => s.category).map(s => s.category!))];
+  const hasCategories = _categories.length > 0;
+  let svcList: string;
+  let categoryFlowRule = '';
+  if (hasCategories) {
+    const _grouped = _categories.map(cat => {
+      const svcs = services.filter(s => s.category === cat);
+      return `[${cat}]\n${svcs.map(s => `  • ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`).join('\n')}`;
+    });
+    const _uncategorized = services.filter(s => !s.category);
+    if (_uncategorized.length > 0) {
+      _grouped.push(`[Outros]\n${_uncategorized.map(s => `  • ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`).join('\n')}`);
+      _categories.push('Outros');
+    }
+    svcList = _grouped.join('\n');
+    categoryFlowRule = `\n🗂️ REGRA DE CATEGORIAS (OBRIGATÓRIA): serviços organizados por categoria acima. Se o cliente NÃO informou o serviço → pergunte a categoria PRIMEIRO (ex: "Você busca serviços de ${_categories.join(', ')}?") → somente após o cliente escolher a categoria, apresente os serviços DAQUELA categoria. Jamais liste serviços de todas as categorias de uma vez.\n`;
+  } else {
+    svcList = services.map(s =>
+      `• ${s.name} (${s.durationMinutes}min, R$${s.price.toFixed(2)}) — ID:"${s.id}"`
+    ).join('\n');
+  }
 
   const profList = professionals.length > 0
     ? professionals.map(p => `• ${p.name} — ID:"${p.id}"`).join('\n')
@@ -640,7 +658,7 @@ async function callBrain(
   // ── Modo de conversa (gênero) — sobrepõe tom do nicho ─────────────
   const agentGender: string = settings?.agentGender || 'neutro';
   const genderTomOverride: Record<string, string> = {
-    feminino:  '• Tom: feminino e acolhedor — "linda", "querida", "flor", "amor" — natural e caloroso',
+    feminino:  '• Tom: feminino e simpático — linguagem leve e natural, sem exagerar em termos carinhosos — seja direta e objetiva',
     masculino: '• Tom: masculino e direto — "cara", "mano", "irmão", "beleza" — casual e descontraído',
     neutro:    '• Tom: neutro e profissional — use "cliente", "você" — sem termos gendrizados',
   };
@@ -665,7 +683,7 @@ async function callBrain(
 
   // ── Sequential flow + professional selection rule ─────────────────────
   const flowSection = `\n📋 FLUXO OBRIGATÓRIO (pule etapas que o cliente já informou — não repita perguntas):
-1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ PERÍODO (manhã/tarde) → 5️⃣ HORÁRIO → 5️⃣.5 NOME (se não constar no contexto) → 6️⃣ CONFIRMAÇÃO
+${hasCategories ? '0️⃣ CATEGORIA → ' : ''}1️⃣ SERVIÇO → 2️⃣ PROFISSIONAL → 3️⃣ DIA → 4️⃣ PERÍODO (manhã/tarde) → 5️⃣ HORÁRIO → 5️⃣.5 NOME (se não constar no contexto) → 6️⃣ CONFIRMAÇÃO
 ⚠️ NOME OBRIGATÓRIO: Se "Nome" NÃO aparecer no CONTEXTO ATUAL quando tiver Serviço + Profissional + Dia + Horário definidos, pergunte o nome ANTES do resumo final. Exemplo: "Ótimo! Antes de confirmar, qual é o seu nome?"
 ⛔ REGRAS ABSOLUTAS:
 • Se DIA não estiver no CONTEXTO ATUAL → pergunte "Tem algum dia de preferência?" ANTES de qualquer horário
@@ -790,7 +808,7 @@ ${data.pendingConfirm ? '\n⚠️ RESUMO JÁ MOSTRADO — se cliente afirmar ("s
 
 HISTÓRICO (mais recente no final):
 ${histStr}
-${flowSection}${profSelectionRule}${behaviorRules}
+${flowSection}${categoryFlowRule}${profSelectionRule}${behaviorRules}
 ════════════════════════════════
 COMO RESPONDER — APRENDA COM HUMANOS:
 ════════════════════════════════
@@ -1774,7 +1792,7 @@ async function _handleMessage(
   const pad = (n: number) => String(n).padStart(2, '0');
   const todayISO = `${_nowBrasilia.getUTCFullYear()}-${pad(_nowBrasilia.getUTCMonth()+1)}-${pad(_nowBrasilia.getUTCDate())}`;
 
-  const serviceOptions = activeServices.map((s: any) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, price: s.price }));
+  const serviceOptions = activeServices.map((s: any) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, price: s.price, category: s.category || undefined }));
 
   const profOptions = activeProfessionals.map((p: any) => ({ id: p.id, name: p.name }));
 

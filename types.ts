@@ -269,6 +269,7 @@ export interface TenantSettings {
   planUsage?: Record<string, number>;   // { "customerId::YYYY-MM": count }
   professionalOrder?: string[];          // ordered list of professional IDs for calendar columns
   breakColor?: string;                   // hex color for break/interval blocks in calendar (default #f97316)
+  calendarGridInterval?: number;         // minutes between horizontal grid lines (5/10/15/20/25/30), default 30
   professionalMeta?: Record<string, {   // per-professional role (stored in JSONB)
     role: 'admin' | 'colab';
     commissionRate?: number;             // commission percentage, e.g. 40 = 40%
