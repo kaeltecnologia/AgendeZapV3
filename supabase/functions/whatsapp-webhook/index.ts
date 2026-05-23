@@ -395,7 +395,25 @@ async function callBrain(
   nichoName?: string
 ): Promise<any | null> {
   // ── Data preparation (unchanged) ──────────────────────────────────
-  const svcList = services.map(s => `- ${s.name || 'Serviço'} (${s.durationMinutes || 30}min, R$${(Number(s.price) || 0).toFixed(2)}) -- ID:"${s.id}"`).join('\n');
+  const _wh_cats = [...new Set(services.filter((s: any) => s.category).map((s: any) => s.category as string))];
+  const _wh_hasCats = _wh_cats.length > 0;
+  let svcList: string;
+  let categoryFlowRule = '';
+  if (_wh_hasCats) {
+    const _grouped = _wh_cats.map((cat: string) => {
+      const svcs = services.filter((s: any) => s.category === cat);
+      return `[${cat}]\n${svcs.map((s: any) => `  - ${s.name || 'Serviço'} (${s.durationMinutes || 30}min, R$${(Number(s.price) || 0).toFixed(2)}) -- ID:"${s.id}"`).join('\n')}`;
+    });
+    const _uncategorized = services.filter((s: any) => !s.category);
+    if (_uncategorized.length > 0) {
+      _grouped.push(`[Outros]\n${_uncategorized.map((s: any) => `  - ${s.name || 'Serviço'} (${s.durationMinutes || 30}min, R$${(Number(s.price) || 0).toFixed(2)}) -- ID:"${s.id}"`).join('\n')}`);
+      _wh_cats.push('Outros');
+    }
+    svcList = _grouped.join('\n');
+    categoryFlowRule = `\n🗂️ REGRA DE CATEGORIAS (OBRIGATÓRIA): serviços organizados por categoria acima. Se o cliente NÃO informou o serviço → pergunte a categoria PRIMEIRO (ex: "Você busca serviços de ${_wh_cats.join(', ')}?") → somente após o cliente escolher a categoria, apresente os serviços DAQUELA categoria. Jamais liste serviços de todas as categorias de uma vez.\n`;
+  } else {
+    svcList = services.map((s: any) => `- ${s.name || 'Serviço'} (${s.durationMinutes || 30}min, R$${(Number(s.price) || 0).toFixed(2)}) -- ID:"${s.id}"`).join('\n');
+  }
   const profList = professionals.length > 0 ? professionals.map(p => `- ${p.name || 'Profissional'} -- ID:"${p.id}"`).join('\n') : '- (apenas um profissional disponível)';
 
   const known: string[] = [];
@@ -702,7 +720,7 @@ Responda APENAS com JSON válido (sem markdown, sem backticks):
 4. PROIBIDO: NUNCA diga "não abre", "não atende", "estamos fechados", "não funciona". Se sem vagas, diga "agenda cheia". Se Data no contexto, o dia já foi validado pelo sistema.
 5. RECONHECIMENTO: Se o cliente já informou serviço, data ou horário na mesma mensagem, NÃO pergunte de novo. Extraia tudo de uma vez.
 6. FLUXO: NUNCA reinicie o fluxo quando CONTEXTO ATUAL já tem dados coletados. Se Serviço, Profissional, Data já estão no contexto, NÃO pergunte "Qual procedimento?" de novo. Continue de onde parou.
-7. MULTI-SERVIÇO: Quando o CONTEXTO diz "MULTI-SERVIÇO", confirme TODOS os serviços listados. Nunca mencione apenas um.`;
+7. MULTI-SERVIÇO: Quando o CONTEXTO diz "MULTI-SERVIÇO", confirme TODOS os serviços listados. Nunca mencione apenas um.${categoryFlowRule}`;
 
   // ── User Prompt (dynamic per-turn data) ──────────────────────────
   const userPrompt = `## Serviços
@@ -1596,7 +1614,7 @@ async function runAgent(tenant: any, phone: string, text: string, settings: any,
   // Load data
   const [profsRes, svcsRes] = await Promise.all([
     supabase.from('professionals').select('id, nome, ativo, phone, service_ids').eq('tenant_id', tenantId).eq('ativo', true),
-    supabase.from('services').select('id, nome, preco, duracao_minutos, ativo').eq('tenant_id', tenantId).eq('ativo', true),
+    supabase.from('services').select('id, nome, preco, duracao_minutos, ativo, category').eq('tenant_id', tenantId).eq('ativo', true),
   ]);
 
   const profsRaw = profsRes.data || [];
