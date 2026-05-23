@@ -1,42 +1,36 @@
 import React, { useEffect, useState } from 'react';
 
-const VERSION_KEY = 'agz_whats_new_seen_v8';
+const VERSION_KEY = 'agz_whats_new_seen_v9';
 
 const updates = [
   {
-    icon: '👤',
-    title: 'Portal do profissional com abas',
-    desc: 'O portal agora tem duas abas: Agenda (agendamentos do profissional) e Meu Desempenho (dashboard pessoal com KPIs, gráfico e serviços mais realizados).',
+    icon: '🖱️',
+    title: 'Clique direito nos agendamentos',
+    desc: 'Clique com o botão direito em qualquer agendamento da agenda para abrir um menu rápido: mude o status (Confirmado, Chegou, Finalizado, Faltou…) ou abra o editor diretamente, sem sair da agenda.',
     highlight: true,
   },
   {
-    icon: '📊',
-    title: 'Dashboard pessoal do profissional',
-    desc: 'Cada profissional vê seus próprios números: atendimentos do dia, receita do mês, comissão, meta com barra de progresso e gráfico dos últimos 7 dias.',
+    icon: '✂️',
+    title: 'Editar agendamento com múltiplos serviços',
+    desc: 'Ao editar um agendamento, agora você pode adicionar quantos serviços quiser — cada um com horário de início, fim e preço individuais. Clique em "+ Adicionar Serviço" para inserir mais linhas.',
     highlight: true,
-  },
-  {
-    icon: '🔐',
-    title: 'Permissões do portal por profissional',
-    desc: 'Em Equipe, o admin configura individualmente o que cada profissional pode fazer no portal: criar agendamentos, ver receita e acessar o Meu Desempenho.',
-    highlight: false,
-  },
-  {
-    icon: '↕️',
-    title: 'Reordenar profissionais na agenda',
-    desc: 'Arraste e solte as colunas da agenda para reorganizar a ordem dos profissionais. A ordem é salva automaticamente.',
-    highlight: false,
   },
   {
     icon: '☕',
-    title: 'Intervalos visíveis na agenda',
-    desc: 'Horários de almoço e intervalos agora aparecem como blocos coloridos na agenda. A cor é configurável em Configurações Gerais.',
+    title: 'Clique direito nos intervalos e almoço',
+    desc: 'Clique com o botão direito em qualquer bloco de intervalo (almoço, imprevisto, feriado…) diretamente na agenda para editar ou excluir sem precisar ir em Configurações.',
+    highlight: true,
+  },
+  {
+    icon: '📋',
+    title: 'Modal de intervalo com modo edição',
+    desc: 'O modal de intervalo agora detecta quando você está editando um existente e exibe "Editar Intervalo" no título — sem criar duplicatas ao salvar.',
     highlight: false,
   },
   {
-    icon: '🔍',
-    title: 'Pesquisa de serviços',
-    desc: 'Nova caixa de busca em Serviços para encontrar qualquer serviço pelo nome, independente da categoria.',
+    icon: '🎯',
+    title: 'Mudança de status sem recarregar',
+    desc: 'Os botões de status rápido no popup de clique direito aplicam a mudança instantaneamente e atualizam a agenda sem precisar abrir o modal completo.',
     highlight: false,
   },
 ];
@@ -82,11 +76,11 @@ const WhatsNew: React.FC = () => {
                   🎉 Versão Nova
                 </span>
                 <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">
-                  v4.48
+                  v4.70
                 </span>
               </div>
               <h2 className="text-[26px] font-black text-slate-900 leading-tight">
-                Novidades de<br />hoje! 🚀
+                Agenda turbinada!<br />🖱️✨
               </h2>
               <p className="text-xs text-slate-400 mt-1.5 font-medium">
                 {updates.length} melhorias chegaram pro seu sistema

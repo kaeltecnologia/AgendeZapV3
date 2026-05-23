@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod, parseServiceIds, encodeServiceIds } from '../types';
-import { sendProfessionalNotification, sendClientArrivedNotification } from '../services/notificationService';
+import { sendProfessionalNotification, sendClientArrivedNotification, sendApptConfirmationToClient } from '../services/notificationService';
 import { notifyWaitlistLeads } from '../services/waitlistService';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -140,9 +140,17 @@ function generateId(): string {
 
 // ── Visual Week Calendar ──────────────────────────────────────────────────────
 const PROF_COLORS = ['#f97316', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#ef4444'];
+const CATEGORY_COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#06b6d4', '#ef4444', '#84cc16', '#f97316', '#14b8a6'];
 const HOUR_START = 6;
 const HOUR_END = 24;
 const HOUR_PX = 96; // px per hour
+
+function hexToRgb(hex: string): [number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return [r, g, b];
+}
 
 /** Compute side-by-side column layout for overlapping appointments (Google Calendar style) */
 function computeApptLayout(appts: Appointment[]): Record<string, { col: number; totalCols: number }> {
@@ -199,7 +207,7 @@ function useNow() {
 }
 
 function WeekCalendar({
-  days, appointments, customers, professionals, services, filterProfId, onApptClick, onSlotClick,
+  days, appointments, customers, professionals, services, filterProfId, gridInterval = 30, onApptClick, onSlotClick,
 }: {
   days: Date[];
   appointments: Appointment[];
@@ -207,6 +215,7 @@ function WeekCalendar({
   professionals: Professional[];
   services: Service[];
   filterProfId: string;
+  gridInterval?: number;
   onApptClick: (a: Appointment) => void;
   onSlotClick: (date: string, time: string) => void;
 }) {
@@ -214,6 +223,11 @@ function WeekCalendar({
   const now = useNow();
   const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
   const totalHeight = (HOUR_END - HOUR_START) * HOUR_PX;
+
+  const categoryColorsMap = React.useMemo(() => {
+    const cats = [...new Set(services.filter(s => s.category).map(s => s.category!))];
+    return Object.fromEntries(cats.map((c, i) => [c, CATEGORY_COLORS[i % CATEGORY_COLORS.length]]));
+  }, [services]);
   const cols = days.length;
 
   // Current time indicator position
@@ -312,19 +326,18 @@ function WeekCalendar({
                   cursor: 'pointer',
                 }}
               >
-                {/* Hour grid lines — solid */}
-                {hours.map(h => (
-                  <div key={h} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: '#E2E8F0' }} />
-                ))}
-                {/* Half-hour grid lines — dashed */}
-                {hours.map(h => (
-                  <div key={`${h}h`} style={{
-                    position: 'absolute', width: '100%',
-                    top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`,
-                    height: 1,
-                    background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)',
-                  }} />
-                ))}
+                {/* Horizontal grid lines (interval-based) */}
+                {Array.from({ length: Math.ceil((HOUR_END - HOUR_START) * 60 / gridInterval) }, (_, i) => i * gridInterval).map(mins => {
+                  const isHour = mins % 60 === 0;
+                  return (
+                    <div key={mins} style={{
+                      position: 'absolute', width: '100%',
+                      top: `${(mins / 60) * HOUR_PX}px`, height: 1,
+                      background: isHour ? '#E2E8F0' : 'transparent',
+                      backgroundImage: isHour ? 'none' : 'repeating-linear-gradient(90deg,#E2E8F0 0,#E2E8F0 4px,transparent 4px,transparent 8px)',
+                    }} />
+                  );
+                })}
 
                 {/* Current time indicator */}
                 {isToday && nowPx !== null && (
@@ -352,18 +365,23 @@ function WeekCalendar({
                     const svc = services.find(s => s.id === a.service_id);
                     const isCancelled = a.status === AppointmentStatus.CANCELLED;
                     const isFinished = a.status === AppointmentStatus.FINISHED;
+                    const isBilled = isFinished && (a.amountPaid !== undefined && a.amountPaid > 0);
+                    const hasPlan = !!a.isPlan;
 
-                    const r = parseInt(color.slice(1, 3), 16);
-                    const g = parseInt(color.slice(3, 5), 16);
-                    const b = parseInt(color.slice(5, 7), 16);
+                    const catColor = svc?.category ? (categoryColorsMap[svc.category] ?? color) : color;
+                    const [cr, cg, cb] = isCancelled ? [203, 213, 225] : hexToRgb(catColor);
                     const bgAlpha = isCancelled ? 0.05 : isFinished ? 0.10 : 0.18;
-                    const bgColor = `rgba(${r},${g},${b},${bgAlpha})`;
+                    const bgColor = `rgba(${cr},${cg},${cb},${bgAlpha})`;
                     const borderColor = isCancelled ? '#CBD5E1' : color;
 
                     const { col, totalCols } = layout[a.id] ?? { col: 0, totalCols: 1 };
-                    const GAP = 2;
-                    const colW = `calc((100% - ${GAP * (totalCols + 1)}px) / ${totalCols})`;
-                    const leftPos = `calc(${GAP}px + ${col} * (${colW} + ${GAP}px))`;
+                    const widthPct = (100 / totalCols).toFixed(2);
+                    const leftPct = (col * 100 / totalCols).toFixed(2);
+                    const colW = `calc(${widthPct}% - 4px)`;
+                    const leftPos = `calc(${leftPct}% + 2px)`;
+
+                    const endDt = new Date(startDt.getTime() + (a.durationMinutes || 30) * 60000);
+                    const timeRange = `${startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}–${endDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 
                     return (
                       <div
@@ -380,13 +398,20 @@ function WeekCalendar({
                           boxShadow: `0 1px 3px rgba(0,0,0,0.08)`,
                           opacity: isCancelled ? 0.45 : 1,
                           transition: 'transform 0.1s, box-shadow 0.1s',
+                          zIndex: 3,
                         }}
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.015)'; (e.currentTarget as HTMLElement).style.zIndex = '20'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.zIndex = ''; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.zIndex = '3'; }}
                       >
-                        <div style={{ padding: '3px 6px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', overflow: 'hidden' }}>
-                          <p style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, margin: 0, color: borderColor, fontVariantNumeric: 'tabular-nums' }}>
-                            {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        <div style={{ padding: '3px 6px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', overflow: 'hidden', position: 'relative' }}>
+                          {(isBilled || hasPlan) && (
+                            <div style={{ position: 'absolute', top: 2, right: 4, display: 'flex', gap: 2, fontSize: 10, lineHeight: 1 }}>
+                              {isBilled && <span title="Faturado">💲</span>}
+                              {hasPlan && <span title="Plano">🎟️</span>}
+                            </div>
+                          )}
+                          <p style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, margin: 0, color: borderColor, fontVariantNumeric: 'tabular-nums', paddingRight: (isBilled || hasPlan) ? 18 : 0 }}>
+                            {timeRange}
                           </p>
                           {heightPx >= 38 && (
                             <p style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', lineHeight: 1.3, margin: '2px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
@@ -428,7 +453,7 @@ function WeekCalendar({
 }
 
 function DayCalendar({
-  date, appointments, customers, professionals, services, filterProfId, breaks = [], breakColor = '#f97316', operatingHours, onApptClick, onSlotClick, onReorder,
+  date, appointments, customers, professionals, services, filterProfId, breaks = [], breakColor = '#f97316', gridInterval = 30, operatingHours, onApptClick, onSlotClick, onReorder, onApptRightClick, onBreakRightClick,
 }: {
   date: Date;
   appointments: Appointment[];
@@ -438,10 +463,13 @@ function DayCalendar({
   filterProfId: string;
   breaks?: BreakPeriod[];
   breakColor?: string;
+  gridInterval?: number;
   operatingHours?: Record<number, { active: boolean; range: string }>;
   onApptClick: (a: Appointment) => void;
   onSlotClick: (date: string, time: string, profId?: string) => void;
   onReorder?: (newOrder: string[]) => void;
+  onApptRightClick?: (appt: Appointment, x: number, y: number) => void;
+  onBreakRightClick?: (brk: BreakPeriod, x: number, y: number) => void;
 }) {
   const todayStr = localDateStr();
   const dateStr = localDateStr(date);
@@ -487,6 +515,15 @@ function DayCalendar({
     const closePx = Math.max(0, Math.min(totalHeight, ((toMins(closeStr) - HOUR_START * 60) / 60) * HOUR_PX));
     return { openPx, closePx };
   };
+
+  // ── Category color map (auto-palette by appearance order) ────────────
+  const categoryColorsMap = React.useMemo(() => {
+    const cats = [...new Set(services.filter(s => s.category).map(s => s.category!))];
+    return Object.fromEntries(cats.map((c, i) => [c, CATEGORY_COLORS[i % CATEGORY_COLORS.length]]));
+  }, [services]);
+
+  // ── Hover ghost state ────────────────────────────────────────────────
+  const [hoverInfo, setHoverInfo] = useState<{ colId: string; y: number; timeStr: string } | null>(null);
 
   // ── Drag-to-reorder state ──────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -583,13 +620,26 @@ function DayCalendar({
                   if ((e.target as HTMLElement).closest('[data-appt]')) return;
                   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                   const relY = e.clientY - rect.top;
-                  const totalMins = HOUR_START * 60 + Math.round((relY / HOUR_PX) * 60 / 15) * 15;
+                  const totalMins = HOUR_START * 60 + Math.round((relY / HOUR_PX) * 60 / gridInterval) * gridInterval;
                   const h = Math.floor(totalMins / 60);
                   const m = totalMins % 60;
                   if (h >= HOUR_START && h < HOUR_END) {
                     onSlotClick(dateStr, `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, p.id);
                   }
                 }}
+                onMouseMove={(e) => {
+                  if ((e.target as HTMLElement).closest('[data-appt]')) { setHoverInfo(null); return; }
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  const relY = e.clientY - rect.top;
+                  const totalMins = HOUR_START * 60 + Math.round((relY / HOUR_PX) * 60 / gridInterval) * gridInterval;
+                  const snappedY = ((totalMins - HOUR_START * 60) / 60) * HOUR_PX;
+                  const h = Math.floor(totalMins / 60);
+                  const m = totalMins % 60;
+                  if (h >= HOUR_START && h < HOUR_END) {
+                    setHoverInfo({ colId: p.id, y: snappedY, timeStr: `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}` });
+                  }
+                }}
+                onMouseLeave={() => setHoverInfo(null)}
                 style={{
                   position: 'relative',
                   borderRight: colIdx < cols - 1 ? '1px solid #E2E8F0' : 'none',
@@ -598,14 +648,19 @@ function DayCalendar({
                   cursor: 'pointer',
                 }}>
 
-                {/* Horizontal hour lines */}
-                {hours.map(h => (
-                  <div key={h} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX}px`, height: 1, background: '#E2E8F0', pointerEvents: 'none' }} />
-                ))}
-                {/* Half-hour lines */}
-                {hours.map(h => (
-                  <div key={`${h}h`} style={{ position: 'absolute', width: '100%', top: `${(h - HOUR_START) * HOUR_PX + HOUR_PX / 2}px`, height: 1, background: 'repeating-linear-gradient(90deg, #E2E8F0 0, #E2E8F0 4px, transparent 4px, transparent 8px)', pointerEvents: 'none' }} />
-                ))}
+                {/* Horizontal grid lines (interval-based) */}
+                {Array.from({ length: Math.ceil((HOUR_END - HOUR_START) * 60 / gridInterval) }, (_, i) => i * gridInterval).map(mins => {
+                  const isHour = mins % 60 === 0;
+                  return (
+                    <div key={mins} style={{
+                      position: 'absolute', width: '100%',
+                      top: `${(mins / 60) * HOUR_PX}px`, height: 1,
+                      background: isHour ? '#E2E8F0' : 'transparent',
+                      backgroundImage: isHour ? 'none' : 'repeating-linear-gradient(90deg,#E2E8F0 0,#E2E8F0 4px,transparent 4px,transparent 8px)',
+                      pointerEvents: 'none',
+                    }} />
+                  );
+                })}
 
                 {/* Tarja cinza — horários fora do atendimento */}
                 {(() => {
@@ -654,11 +709,13 @@ function DayCalendar({
 
                   if (isAllDay) {
                     return (
-                      <div key={b.id} style={{
-                        position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none',
-                        background: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.07) 0px, rgba(${r},${g},${bv},0.07) 8px, transparent 8px, transparent 16px)`,
-                        borderLeft: `3px solid rgba(${r},${g},${bv},0.5)`,
-                      }}>
+                      <div key={b.id}
+                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBreakRightClick?.(b, e.clientX, e.clientY); }}
+                        style={{
+                          position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'auto', cursor: 'context-menu',
+                          background: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.07) 0px, rgba(${r},${g},${bv},0.07) 8px, transparent 8px, transparent 16px)`,
+                          borderLeft: `3px solid rgba(${r},${g},${bv},0.5)`,
+                        }}>
                         <span style={{ position: 'sticky', top: 4, display: 'block', fontSize: 9, fontWeight: 800, color: typeColor, textTransform: 'uppercase', padding: '2px 6px', letterSpacing: '0.05em' }}>{b.label}</span>
                       </div>
                     );
@@ -675,14 +732,16 @@ function DayCalendar({
                   const fmt = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
 
                   return (
-                    <div key={b.id} style={{
-                      position: 'absolute', left: 2, right: 2,
-                      top: `${topPx}px`, height: `${heightPx}px`,
-                      zIndex: 2, borderRadius: 6, pointerEvents: 'none',
-                      backgroundColor: `rgba(${r},${g},${bv},0.12)`,
-                      borderLeft: `3px solid ${typeColor}`,
-                      backgroundImage: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.06) 0px, rgba(${r},${g},${bv},0.06) 4px, transparent 4px, transparent 8px)`,
-                    }}>
+                    <div key={b.id}
+                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBreakRightClick?.(b, e.clientX, e.clientY); }}
+                      style={{
+                        position: 'absolute', left: 2, right: 2,
+                        top: `${topPx}px`, height: `${heightPx}px`,
+                        zIndex: 2, borderRadius: 6, pointerEvents: 'auto', cursor: 'context-menu',
+                        backgroundColor: `rgba(${r},${g},${bv},0.12)`,
+                        borderLeft: `3px solid ${typeColor}`,
+                        backgroundImage: `repeating-linear-gradient(45deg, rgba(${r},${g},${bv},0.06) 0px, rgba(${r},${g},${bv},0.06) 4px, transparent 4px, transparent 8px)`,
+                      }}>
                       {heightPx >= 22 && (
                         <div style={{ padding: '2px 5px', overflow: 'hidden' }}>
                           <p style={{ fontSize: 9, fontWeight: 800, color: typeColor, textTransform: 'uppercase', margin: 0, letterSpacing: '0.05em', lineHeight: 1.3 }}>{b.label}</p>
@@ -709,18 +768,24 @@ function DayCalendar({
                   const svc = services.find(s => s.id === a.service_id);
                   const isCancelled = a.status === AppointmentStatus.CANCELLED;
                   const isFinished = a.status === AppointmentStatus.FINISHED;
+                  const isBilled = isFinished && (a.amountPaid !== undefined && a.amountPaid > 0);
+                  const hasPlan = !!a.isPlan;
 
-                  const r = parseInt(color.slice(1, 3), 16);
-                  const g = parseInt(color.slice(3, 5), 16);
-                  const b = parseInt(color.slice(5, 7), 16);
+                  // bg color: category color (if service has category), else professional color
+                  const catColor = svc?.category ? (categoryColorsMap[svc.category] ?? color) : color;
+                  const [cr, cg, cb] = isCancelled ? [203, 213, 225] : hexToRgb(catColor);
                   const bgAlpha = isCancelled ? 0.05 : isFinished ? 0.10 : 0.18;
-                  const bgColor = `rgba(${r},${g},${b},${bgAlpha})`;
-                  const borderColor = isCancelled ? '#CBD5E1' : color;
+                  const bgColor = `rgba(${cr},${cg},${cb},${bgAlpha})`;
+                  const borderColor = isCancelled ? '#CBD5E1' : color; // border = professional color
 
                   const { col, totalCols } = layout[a.id] ?? { col: 0, totalCols: 1 };
-                  const GAP = 2;
-                  const colW = `calc((100% - ${GAP * (totalCols + 1)}px) / ${totalCols})`;
-                  const leftPos = `calc(${GAP}px + ${col} * (${colW} + ${GAP}px))`;
+                  const widthPct = (100 / totalCols).toFixed(2);
+                  const leftPct = (col * 100 / totalCols).toFixed(2);
+                  const colW = `calc(${widthPct}% - 4px)`;
+                  const leftPos = `calc(${leftPct}% + 2px)`;
+
+                  const endDt = new Date(startDt.getTime() + (a.durationMinutes || 30) * 60000);
+                  const timeRange = `${startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}–${endDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 
                   return (
                     <div
@@ -737,13 +802,33 @@ function DayCalendar({
                         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                         opacity: isCancelled ? 0.45 : 1,
                         transition: 'transform 0.1s, box-shadow 0.1s',
+                        zIndex: 3,
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.015)'; (e.currentTarget as HTMLElement).style.zIndex = '20'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.zIndex = ''; }}
+                      onContextMenu={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onApptRightClick?.(a, e.clientX, e.clientY);
+                      }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLElement).style.transform = 'scale(1.015)';
+                        (e.currentTarget as HTMLElement).style.zIndex = '20';
+                        setHoverInfo(null);
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLElement).style.transform = '';
+                        (e.currentTarget as HTMLElement).style.zIndex = '3';
+                      }}
                     >
-                      <div style={{ padding: '3px 6px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', overflow: 'hidden' }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, margin: 0, color: borderColor, fontVariantNumeric: 'tabular-nums' }}>
-                          {startDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      <div style={{ padding: '3px 6px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', overflow: 'hidden', position: 'relative' }}>
+                        {/* Emojis top-right */}
+                        {(isBilled || hasPlan) && (
+                          <div style={{ position: 'absolute', top: 2, right: 4, display: 'flex', gap: 2, fontSize: 10, lineHeight: 1 }}>
+                            {isBilled && <span title="Faturado">💲</span>}
+                            {hasPlan && <span title="Plano">🎟️</span>}
+                          </div>
+                        )}
+                        <p style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, margin: 0, color: borderColor, fontVariantNumeric: 'tabular-nums', paddingRight: (isBilled || hasPlan) ? 18 : 0 }}>
+                          {timeRange}
                         </p>
                         {heightPx >= 38 && (
                           <p style={{ fontSize: 11, fontWeight: 600, color: '#1E293B', lineHeight: 1.3, margin: '2px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
@@ -757,6 +842,15 @@ function DayCalendar({
                     </div>
                   );
                 })}
+
+                {/* Hover ghost line */}
+                {hoverInfo?.colId === p.id && (
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: `${hoverInfo.y}px`, height: 1, background: '#94A3B8', pointerEvents: 'none', zIndex: 10 }}>
+                    <span style={{ position: 'absolute', right: 4, top: -9, fontSize: 9, fontWeight: 700, color: '#475569', background: '#F1F5F9', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
+                      {hoverInfo.timeStr}
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -770,6 +864,19 @@ function DayCalendar({
           )}
         </div>
       </div>
+
+      {/* Category legend */}
+      {Object.keys(categoryColorsMap).length > 0 && (
+        <div style={{ padding: '6px 16px', borderTop: '1px solid #E2E8F0', display: 'flex', flexWrap: 'wrap', gap: '4px 14px', alignItems: 'center' }}>
+          <span style={{ fontSize: 9, fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Categorias:</span>
+          {Object.entries(categoryColorsMap).map(([cat, catClr]) => (
+            <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: catClr, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontWeight: 500, color: '#475569' }}>{cat}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -872,7 +979,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   const [showDayPicker, setShowDayPicker] = useState(false);
   const dayPickerRef = useRef<HTMLDivElement>(null);
-  const pendingSlotTimeRef = useRef(''); // stores time clicked on calendar slot before slots load
+  const hoverApptRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [calApptDays, setCalApptDays] = useState<Set<string>>(new Set());
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -882,15 +989,52 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [breaks, setBreaks] = useState<BreakPeriod[]>([]);
 
   // new booking form
+  interface BookingRow {
+    rowId: string;
+    category: string;
+    svcId: string;
+    profId: string;
+    startTime: string;
+    endTime: string;
+    price: number;
+  }
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [profId, setProfId] = useState('');
-  const [svcIds, setSvcIds] = useState<string[]>([]);
-  const [manualDate, setManualDate] = useState('');
-  const [manualTime, setManualTime] = useState('');
+  const [bookingRows, setBookingRows] = useState<BookingRow[]>([
+    { rowId: crypto.randomUUID(), category: '', svcId: '', profId: '', startTime: '', endTime: '', price: 0 }
+  ]);
+  const [bookingDate, setBookingDate] = useState('');
+  const [bookingDiscount, setBookingDiscount] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState('');
-  const [bookingSlots, setBookingSlots] = useState<string[]>([]);
-  const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false);
+
+  // right-click appointment popup
+  const [hoverAppt, setHoverAppt] = useState<{ appt: Appointment; x: number; y: number } | null>(null);
+  // right-click break popup
+  const [hoverBreak, setHoverBreak] = useState<{ brk: BreakPeriod; x: number; y: number } | null>(null);
+  const [editingBreakId, setEditingBreakId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hoverAppt) return;
+    const handler = (e: MouseEvent) => {
+      const popup = document.querySelector('[data-popup="hover-appt"]');
+      if (popup && !popup.contains(e.target as Node)) setHoverAppt(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHoverAppt(null); };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', onKey); };
+  }, [hoverAppt]);
+
+  useEffect(() => {
+    if (!hoverBreak) return;
+    const handler = (e: MouseEvent) => {
+      const popup = document.querySelector('[data-popup="hover-break"]');
+      if (popup && !popup.contains(e.target as Node)) setHoverBreak(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHoverBreak(null); };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', onKey); };
+  }, [hoverBreak]);
 
   // inline new-customer creation (inside booking modal)
   const [showNewCustForm, setShowNewCustForm] = useState(false);
@@ -932,6 +1076,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [editTime, setEditTime] = useState('');
   const [editSlots, setEditSlots] = useState<string[]>([]);
   const [editSlotsLoading, setEditSlotsLoading] = useState(false);
+  interface EditRow { rowId: string; svcId: string; startTime: string; endTime: string; price: number; }
+  const [editRows, setEditRows] = useState<EditRow[]>([]);
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -947,6 +1093,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   // ── Break color (persisted in tenant_settings) ─────────────────────────
   const [breakColor, setBreakColor] = useState<string>('#f97316');
+  const [calendarGridInterval, setCalendarGridInterval] = useState<number>(30);
   const [operatingHours, setOperatingHours] = useState<Record<number, { active: boolean; range: string }>>({});
 
   // ── Professional column order (persisted in tenant_settings) ──────────
@@ -970,6 +1117,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setProfessionals(pros);
     if (sett.professionalOrder?.length) setProfOrder(sett.professionalOrder);
     if (sett.breakColor) setBreakColor(sett.breakColor);
+    if (sett.calendarGridInterval) setCalendarGridInterval(sett.calendarGridInterval);
     if (sett.operatingHours) setOperatingHours(sett.operatingHours as Record<number, { active: boolean; range: string }>);
     setBreaks(loadedBreaks);
 
@@ -1087,85 +1235,93 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   };
 
   const openBookingModal = () => {
-    setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setProfId(''); setSvcIds([]);
-    setManualDate(localDateStr()); setManualTime('');
+    setErrorMsg(''); setCustomerId(''); setCustomerSearch('');
+    setBookingRows([{ rowId: crypto.randomUUID(), category: '', svcId: '', profId: '', startTime: '', endTime: '', price: 0 }]);
+    setBookingDate(localDateStr()); setBookingDiscount(0);
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
-    setBookingSlots([]); setBookingSlotsLoading(false);
     setShowBookingModal(true);
   };
 
-  const openBookingModalWithSlot = (date: string, time: string, profId?: string) => {
-    pendingSlotTimeRef.current = time; // will auto-select after slots load
-    setErrorMsg(''); setCustomerId(''); setCustomerSearch(''); setSvcIds([]);
-    setManualDate(date); setManualTime(time);
-    setProfId(profId ?? '');
+  const openBookingModalWithSlot = (date: string, time: string, slotProfId?: string) => {
+    setErrorMsg(''); setCustomerId(''); setCustomerSearch('');
+    setBookingRows([{ rowId: crypto.randomUUID(), category: '', svcId: '', profId: slotProfId ?? '', startTime: time, endTime: '', price: 0 }]);
+    setBookingDate(date); setBookingDiscount(0);
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
-    setBookingSlots([]); setBookingSlotsLoading(false);
     setShowBookingModal(true);
   };
 
-  // Services available for the currently selected professional (empty serviceIds = all services)
-  const bookingProf = professionals.find(p => p.id === profId);
-  const availableServices = bookingProf?.serviceIds?.length
-    ? services.filter(s => bookingProf.serviceIds!.includes(s.id))
-    : services;
+  // ── Booking helpers ──────────────────────────────────────────────────
+  const calcEnd = (start: string, durationMin: number): string => {
+    if (!start) return '';
+    const [h, m] = start.split(':').map(Number);
+    const total = h * 60 + m + durationMin;
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
 
-  // Compute total duration from selected services
-  const selectedServices = services.filter(s => svcIds.includes(s.id));
-  const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMinutes, 0);
-  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const allBookingCategories = [...new Set(services.filter(s => s.category).map(s => s.category!))].sort();
+  const bookingTotal = bookingRows.reduce((sum, r) => sum + (r.price || 0), 0) - (bookingDiscount || 0);
+
+  const getServicesForRow = (row: BookingRow) => {
+    let svcs = services.filter(s => s.active !== false);
+    if (row.category) svcs = svcs.filter(s => s.category === row.category);
+    if (row.profId) {
+      const p = professionals.find(pr => pr.id === row.profId);
+      if (p?.serviceIds?.length) svcs = svcs.filter(s => p.serviceIds!.includes(s.id));
+    }
+    return svcs;
+  };
+
+  const getProfsForRow = (row: BookingRow) => {
+    if (!row.svcId) return professionals;
+    return professionals.filter(p => !p.serviceIds?.length || p.serviceIds.includes(row.svcId));
+  };
+
+  const updateRow = (rowId: string, updates: Partial<BookingRow>) =>
+    setBookingRows(prev => prev.map(r => r.rowId === rowId ? { ...r, ...updates } : r));
+
+  const addBookingRow = () =>
+    setBookingRows(prev => [...prev, { rowId: crypto.randomUUID(), category: '', svcId: '', profId: '', startTime: '', endTime: '', price: 0 }]);
+
+  const removeBookingRow = (rowId: string) =>
+    setBookingRows(prev => prev.filter(r => r.rowId !== rowId));
 
   const handleCreateBooking = async () => {
-    if (!customerId || !profId || svcIds.length === 0 || !manualDate || !manualTime) {
+    const incomplete = bookingRows.some(r => !r.svcId || !r.profId || !r.startTime || !r.endTime);
+    if (!customerId || !bookingDate || incomplete) {
       setErrorMsg('Por favor, preencha todos os campos.'); return;
     }
-    if (totalDuration === 0) return;
-    const requestedDate = new Date(`${manualDate}T${manualTime}:00`);
-    if (isNaN(requestedDate.getTime())) { setErrorMsg('Data ou hora inválida.'); return; }
-
-    // Admin manual booking: skip operating-hours validation (admin can book at any time).
-    // Only block true appointment conflicts (checked by the DB at insert time).
-    // isSlotAvailable is NOT called — it would reject times outside configured hours.
-
     try {
-      // Check if customer has active plan — cover services from quota
       const customer = customers.find(cu => cu.id === customerId);
-      let isPlanAppt = false;
-      if (customer?.planId && customer.planStatus === 'ativo') {
-        const balance = await db.getPlanBalance(tenantId, customerId);
-        const allCovered = svcIds.every(id => (balance[id]?.remaining || 0) > 0);
-        if (allCovered) {
-          isPlanAppt = true;
-          await db.incrementPlanUsageMulti(tenantId, customerId, svcIds);
-        }
-      }
+      for (const row of bookingRows) {
+        const [sh, sm] = row.startTime.split(':').map(Number);
+        const [eh, em] = row.endTime.split(':').map(Number);
+        const durationMinutes = Math.max(1, (eh * 60 + em) - (sh * 60 + sm));
+        const startTimeISO = `${bookingDate}T${row.startTime}:00`;
 
-      // Pass local time string directly — never go through toISOString (avoids UTC+3h shift)
-      const newApp = await db.addAppointment({
-        tenant_id: tenantId, customer_id: customerId, professional_id: profId,
-        service_id: svcIds[0], serviceIds: svcIds,
-        startTime: `${manualDate}T${manualTime}:00`,
-        durationMinutes: totalDuration, status: AppointmentStatus.CONFIRMED,
-        source: isPlanAppt ? BookingSource.PLAN : BookingSource.MANUAL,
-        isPlan: isPlanAppt
-      });
-      sendProfessionalNotification(newApp);
-      // Adiciona o agendamento diretamente ao estado para aparecer imediatamente,
-      // independente do limite de 1000 linhas do Supabase no getAppointments
-      const appEntry: Appointment = {
-        id: newApp.id, tenant_id: tenantId, customer_id: customerId,
-        professional_id: profId, service_id: svcIds[0], serviceIds: svcIds,
-        startTime: `${manualDate}T${manualTime}:00`,
-        durationMinutes: totalDuration, status: AppointmentStatus.CONFIRMED,
-        source: isPlanAppt ? BookingSource.PLAN : BookingSource.MANUAL,
-        isPlan: isPlanAppt, paymentMethod: PaymentMethod.PIX, amountPaid: 0
-      };
-      setAppointments(prev => [...prev, appEntry].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
+        let isPlanAppt = false;
+        if (customer?.planId && customer.planStatus === 'ativo') {
+          const balance = await db.getPlanBalance(tenantId, customerId);
+          if ((balance[row.svcId]?.remaining || 0) > 0) {
+            isPlanAppt = true;
+            await db.incrementPlanUsageMulti(tenantId, customerId, [row.svcId]);
+          }
+        }
+
+        const newApp = await db.addAppointment({
+          tenant_id: tenantId, customer_id: customerId,
+          professional_id: row.profId, service_id: row.svcId, serviceIds: [row.svcId],
+          startTime: startTimeISO, durationMinutes,
+          status: AppointmentStatus.CONFIRMED,
+          source: isPlanAppt ? BookingSource.PLAN : BookingSource.MANUAL,
+          isPlan: isPlanAppt,
+        });
+        sendProfessionalNotification(newApp);
+      }
       setShowBookingModal(false); setErrorMsg('');
-      // Expande o range visível se a data estiver fora do intervalo atual
-      if (presetPeriod !== 'all' && (manualDate < startDate || manualDate > endDate)) {
-        if (manualDate > endDate) setEndDate(manualDate);
-        if (manualDate < startDate) setStartDate(manualDate);
+      // Expand visible range if bookingDate is outside current range
+      if (presetPeriod !== 'all' && (bookingDate < startDate || bookingDate > endDate)) {
+        if (bookingDate > endDate) setEndDate(bookingDate);
+        if (bookingDate < startDate) setStartDate(bookingDate);
         setPresetPeriod('');
       } else {
         refreshData();
@@ -1312,11 +1468,23 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     const d = new Date(a.startTime);
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
+    const startHHMM = `${hh}:${mm}`;
+    const svcIds = a.serviceIds?.length ? a.serviceIds : (a.service_id ? parseServiceIds(a.service_id) : []);
+    let cumMin = 0;
+    const rows: EditRow[] = svcIds.map(svcId => {
+      const svc = services.find(s => s.id === svcId);
+      const dur = svc?.durationMinutes || 30;
+      const rs = calcEnd(startHHMM, cumMin);
+      const re = calcEnd(startHHMM, cumMin + dur);
+      cumMin += dur;
+      return { rowId: crypto.randomUUID(), svcId, startTime: rs, endTime: re, price: svc?.price || 0 };
+    });
     setEditAppt(a);
     setEditProfId(a.professional_id);
-    setEditSvcIds(a.serviceIds?.length ? a.serviceIds : (a.service_id ? parseServiceIds(a.service_id) : []));
+    setEditSvcIds(svcIds);
     setEditDate(a.startTime.split('T')[0]);
-    setEditTime(`${hh}:${mm}`);
+    setEditTime(startHHMM);
+    setEditRows(rows.length ? rows : [{ rowId: crypto.randomUUID(), svcId: '', startTime: startHHMM, endTime: '', price: 0 }]);
     setEditSlots([]);
     setEditError('');
   };
@@ -1397,135 +1565,33 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editProfId, editDate, editSvcIds.join(','), editAppt, loadEditSlots]);
 
-  // Load available slots for the NEW booking modal
-  const loadBookingSlots = useCallback(async (pId: string, date: string, durOverride: number) => {
-    if (!pId || !date || !durOverride) { setBookingSlots([]); return; }
-    setBookingSlotsLoading(true);
-    try {
-      const dur = durOverride;
-      const settings = await db.getSettings(tenantId);
-      const dateObj = new Date(date + 'T12:00:00');
-      const dayIndex = dateObj.getDay();
-      const dayConfig = settings.operatingHours?.[dayIndex];
-      if (dayConfig && dayConfig.active === false) { setBookingSlots([]); return; }
-
-      // Fetch appointments from DB for this professional/date (no state filter issues)
-      const { data: dbAppts } = await supabase
-        .from('appointments').select('inicio, fim, status')
-        .eq('tenant_id', tenantId).eq('professional_id', pId)
-        .neq('status', 'CANCELLED').neq('status', 'cancelado')
-        .gte('inicio', `${date}T00:00:00`).lte('inicio', `${date}T23:59:59`);
-
-      const breaks: BreakPeriod[] = settings.breaks || [];
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const INTERVAL = 30;
-      const BUFFER = 11 * 60 * 1000;
-      const slots: string[] = [];
-      let cursor = 6 * 60; // 06:00
-      const endCursor = 24 * 60; // 00:00 meia-noite
-      const loopLimit = endCursor - dur;
-
-      while (cursor <= loopLimit) {
-        const h = Math.floor(cursor / 60);
-        const m = cursor % 60;
-        const label = `${pad(h)}:${pad(m)}`;
-        const slotStart = new Date(`${date}T${label}:00`);
-        const slotEnd = new Date(slotStart.getTime() + dur * 60000);
-        const slotEndLabel = `${pad(slotEnd.getHours())}:${pad(slotEnd.getMinutes())}`;
-
-        const conflict = (dbAppts || []).some((a: any) => {
-          const aStart = new Date(a.inicio);
-          const aEnd = new Date(a.fim);
-          // Overlap duration = max(0, min(slotEnd, aEnd) - max(slotStart, aStart))
-          const overlapMs = Math.max(0,
-            Math.min(slotEnd.getTime(), aEnd.getTime()) - Math.max(slotStart.getTime(), aStart.getTime())
-          );
-          return overlapMs > BUFFER; // conflict if overlap > 11 min
-        });
-
-        const brkConflict = breaks.some(brk => {
-          if (brk.professionalId && brk.professionalId !== pId) return false;
-          if ((brk as any).type === 'vacation') {
-            const vacStart = brk.date || '';
-            const vacEnd = (brk as any).vacationEndDate || brk.date || '';
-            return !!vacStart && date >= vacStart && date <= vacEnd;
-          }
-          const matchDate = !brk.date || brk.date === date;
-          const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
-          if (!matchDate || !matchDay) return false;
-          return label < brk.endTime && slotEndLabel > brk.startTime;
-        });
-
-        if (!conflict && !brkConflict) slots.push(label);
-        cursor += INTERVAL;
-      }
-      setBookingSlots(slots);
-      // Restore pre-clicked time (always — user explicitly clicked this slot)
-      const pending = pendingSlotTimeRef.current;
-      if (pending) {
-        pendingSlotTimeRef.current = '';
-        setManualTime(pending);
-      }
-    } catch (e) {
-      console.error('loadBookingSlots error:', e);
-      setBookingSlots([]);
-    } finally {
-      setBookingSlotsLoading(false);
-    }
-  }, [tenantId, services]);
-
-  useEffect(() => {
-    if (showBookingModal && profId && manualDate && totalDuration > 0) {
-      loadBookingSlots(profId, manualDate, totalDuration);
-    } else {
-      setBookingSlots([]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profId, manualDate, totalDuration, showBookingModal]);
+  // loadBookingSlots removed — new booking modal uses free-form time inputs
 
   const handleSaveEdit = async () => {
-    if (!editAppt || !editProfId || editSvcIds.length === 0 || !editDate || !editTime) {
-      setEditError('Preencha todos os campos.'); return;
-    }
-    const editSelectedSvcs = services.filter(s => editSvcIds.includes(s.id));
-    const totalEditDuration = editSelectedSvcs.reduce((sum, s) => sum + s.durationMinutes, 0);
-    if (totalEditDuration === 0) return;
-    const startTimeStr = `${editDate}T${editTime}:00`;
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(startTimeStr)) { setEditError('Data ou hora inválida.'); return; }
-
-    // Break check — skip only if time was selected from the slot picker (already validated)
-    if (!editSlots.includes(editTime)) {
-      const settings = await db.getSettings(tenantId);
-      const breaksData: BreakPeriod[] = settings.breaks || [];
-      const startTime = new Date(startTimeStr);
-      const endTime = new Date(startTime.getTime() + totalEditDuration * 60000);
-      const dayIndex = startTime.getDay();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const endLabel = `${pad(endTime.getHours())}:${pad(endTime.getMinutes())}`;
-      for (const brk of breaksData) {
-        if (brk.professionalId && brk.professionalId !== editProfId) continue;
-        if ((brk as any).type === 'vacation') {
-          const vacStart = brk.date || '';
-          const vacEnd = (brk as any).vacationEndDate || brk.date || '';
-          if (vacStart && editDate >= vacStart && editDate <= vacEnd) {
-            setEditError(`${brk.label || 'Profissional de férias'} (até ${vacEnd}).`);
-            return;
-          }
-          continue;
-        }
-        const matchDate = !brk.date || brk.date === editDate;
-        const matchDay = brk.dayOfWeek == null || brk.dayOfWeek === dayIndex;
-        if (matchDate && matchDay && editTime < brk.endTime && endLabel > brk.startTime) {
-          setEditError(`Período de intervalo: ${brk.label} (${brk.startTime}–${brk.endTime}).`);
-          return;
-        }
-      }
-    }
-
+    if (!editAppt || !editProfId || !editDate) { setEditError('Preencha todos os campos.'); return; }
+    const incomplete = editRows.length === 0 || editRows.some(r => !r.svcId || !r.startTime || !r.endTime);
+    if (incomplete) { setEditError('Preencha serviço, início e fim de cada linha.'); return; }
     setSavingEdit(true);
     setEditError('');
     try {
-      await db.updateAppointmentSchedule(editAppt.id, editProfId, editSvcIds, startTimeStr, totalEditDuration);
+      // First row: update existing appointment
+      const r0 = editRows[0];
+      const [sh, sm] = r0.startTime.split(':').map(Number);
+      const [eh, em] = r0.endTime.split(':').map(Number);
+      const dur0 = Math.max(1, (eh * 60 + em) - (sh * 60 + sm));
+      await db.updateAppointmentSchedule(editAppt.id, editProfId, [r0.svcId], `${editDate}T${r0.startTime}:00`, dur0);
+      // Additional rows: create new appointments
+      for (const row of editRows.slice(1)) {
+        const [rsh, rsm] = row.startTime.split(':').map(Number);
+        const [reh, rem] = row.endTime.split(':').map(Number);
+        const rdur = Math.max(1, (reh * 60 + rem) - (rsh * 60 + rsm));
+        await db.addAppointment({
+          tenant_id: tenantId, customer_id: editAppt.customer_id,
+          professional_id: editProfId, service_id: row.svcId, serviceIds: [row.svcId],
+          startTime: `${editDate}T${row.startTime}:00`, durationMinutes: rdur,
+          status: editAppt.status, source: (editAppt.source || BookingSource.MANUAL) as BookingSource,
+        });
+      }
       setEditAppt(null);
       refreshData();
     } catch (e: any) {
@@ -1536,9 +1602,25 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   };
 
   const openBreakModal = () => {
+    setEditingBreakId(null);
     setBrkLabel(''); setBrkProfId(''); setBrkType('recurring');
     setBrkDate(''); setBrkDayOfWeek(1); setBrkStart('12:00'); setBrkEnd('13:00');
     setBrkAllDay(true);
+    setShowBreakModal(true);
+  };
+
+  const openEditBreak = (brk: BreakPeriod) => {
+    setEditingBreakId(brk.id);
+    setBrkLabel(brk.label || '');
+    setBrkProfId(brk.professionalId || '');
+    const bType = brk.type === 'holiday' ? 'holiday' : brk.date ? 'specific' : 'recurring';
+    setBrkType(bType);
+    setBrkDate(brk.date || '');
+    setBrkDayOfWeek(brk.dayOfWeek ?? 1);
+    const isAllDay = brk.startTime === '00:00' && (brk.endTime === '23:59' || brk.endTime === '23:00');
+    setBrkAllDay(isAllDay);
+    setBrkStart(isAllDay ? '12:00' : brk.startTime);
+    setBrkEnd(isAllDay ? '13:00' : brk.endTime);
     setShowBreakModal(true);
   };
 
@@ -1546,7 +1628,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     if (brkType === 'holiday') {
       if (!brkLabel || !brkDate) return;
       const newBreak: BreakPeriod = {
-        id: generateId(),
+        id: editingBreakId || generateId(),
         label: brkLabel,
         type: 'holiday',
         professionalId: null,
@@ -1555,15 +1637,18 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         startTime: brkAllDay ? '00:00' : brkStart,
         endTime: brkAllDay ? '23:59' : brkEnd,
       };
-      const updated = [...breaks, newBreak];
+      const updated = editingBreakId
+        ? breaks.map(b => b.id === editingBreakId ? newBreak : b)
+        : [...breaks, newBreak];
       await db.saveBreaks(tenantId, updated);
       setBreaks(updated);
+      setEditingBreakId(null);
       setShowBreakModal(false);
       return;
     }
     if (!brkLabel || !brkStart || !brkEnd) return;
     const newBreak: BreakPeriod = {
-      id: generateId(),
+      id: editingBreakId || generateId(),
       label: brkLabel,
       professionalId: brkProfId || null,
       date: brkType === 'specific' ? (brkDate || null) : null,
@@ -1571,9 +1656,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       startTime: brkStart,
       endTime: brkEnd
     };
-    const updated = [...breaks, newBreak];
+    const updated = editingBreakId
+      ? breaks.map(b => b.id === editingBreakId ? newBreak : b)
+      : [...breaks, newBreak];
     await db.saveBreaks(tenantId, updated);
     setBreaks(updated);
+    setEditingBreakId(null);
     setShowBreakModal(false);
   };
 
@@ -1635,6 +1723,23 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
               Lista
             </button>
           </div>
+          {/* Grid interval selector */}
+          {calView === 'dia' && (
+            <select
+              value={calendarGridInterval}
+              onChange={e => {
+                const v = Number(e.target.value);
+                setCalendarGridInterval(v);
+                db.updateSettings(tenantId, { calendarGridInterval: v });
+              }}
+              title="Divisão das linhas horizontais"
+              style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#475569', cursor: 'pointer' }}
+            >
+              {[5, 10, 15, 20, 25, 30].map(v => (
+                <option key={v} value={v}>{v}min</option>
+              ))}
+            </select>
+          )}
           {!readOnly && (
             <button onClick={openBookingModal} className="bg-orange-500 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-colors ml-auto sm:ml-0 whitespace-nowrap">
               + Novo Horário
@@ -1713,10 +1818,13 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           filterProfId={filterProfId}
           breaks={breaks}
           breakColor={breakColor}
+          gridInterval={calendarGridInterval}
           operatingHours={operatingHours}
           onApptClick={(a) => setInfoAppt(a)}
           onSlotClick={readOnly ? () => {} : openBookingModalWithSlot}
           onReorder={handleProfReorder}
+          onApptRightClick={(appt, x, y) => setHoverAppt({ appt, x: x + 12, y: y - 10 })}
+          onBreakRightClick={(brk, x, y) => setHoverBreak({ brk, x: x + 12, y: y - 10 })}
         />
       )}
 
@@ -2312,6 +2420,21 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 </div>
               )}
 
+              {/* Enviar confirmação ao cliente via WhatsApp */}
+              {iaCust?.phone && (
+                <div style={{ padding: '0 20px 8px' }}>
+                  <button
+                    onClick={async () => {
+                      const ok = await sendApptConfirmationToClient(tenantId, ia);
+                      alert(ok ? '✅ Mensagem enviada ao cliente!' : '❌ Falha ao enviar. Verifique se a instância WhatsApp está conectada.');
+                    }}
+                    style={{ width: '100%', padding: '9px 0', borderRadius: 10, border: 'none', background: '#DCFCE7', fontSize: 12, fontWeight: 800, color: '#15803D', cursor: 'pointer' }}
+                  >
+                    📤 Enviar confirmação ao cliente
+                  </button>
+                </div>
+              )}
+
               {/* Excluir — sempre visível */}
               <div style={{ padding: '0 20px 16px', display: 'flex', justifyContent: 'center' }}>
                 <button
@@ -2325,6 +2448,122 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           </div>
         );
 
+      })()}
+
+      {/* ─── Hover Appointment Popup ────────────────── */}
+      {hoverAppt && (() => {
+        const ha = hoverAppt.appt;
+        const haCust = customers.find(c => c.id === ha.customer_id);
+        const haProf = professionals.find(p => p.id === ha.professional_id);
+        const haStartDt = new Date(ha.startTime);
+        const haEndDt = new Date(haStartDt.getTime() + (ha.durationMinutes || 0) * 60000);
+        const fmtT = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const haSvcIds = ha.serviceIds?.length ? ha.serviceIds : [ha.service_id];
+        const haSvcs = services.filter(s => haSvcIds.includes(s.id));
+
+        const STATUS_OPTIONS: { key: AppointmentStatus; label: string; bg: string; color: string }[] = [
+          { key: AppointmentStatus.CONFIRMED, label: '✓ Confirmado', bg: '#DBEAFE', color: '#1D4ED8' },
+          { key: AppointmentStatus.ARRIVED,   label: '🚶 Chegou',    bg: '#D1FAE5', color: '#065F46' },
+          { key: AppointmentStatus.FINISHED,  label: '✓ Finalizado', bg: '#F0FDF4', color: '#15803D' },
+          { key: AppointmentStatus.NO_SHOW,   label: '✗ Faltou',    bg: '#FEE2E2', color: '#DC2626' },
+          { key: AppointmentStatus.CANCELLED, label: '✕ Cancelado', bg: '#F1F5F9', color: '#64748B' },
+        ].filter(o => o.key !== ha.status);
+
+        const popX = Math.min(hoverAppt.x, window.innerWidth - 264);
+        const popY = Math.max(8, Math.min(hoverAppt.y, window.innerHeight - 240));
+
+        return (
+          <div
+            key={ha.id}
+            data-popup="hover-appt"
+            style={{
+              position: 'fixed', zIndex: 9999,
+              left: popX, top: popY, width: 256,
+              background: '#fff', borderRadius: 14,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+              border: '1.5px solid #E2E8F0',
+              overflow: 'hidden', pointerEvents: 'auto',
+            }}
+          >
+            <div style={{ padding: '12px 14px 8px' }}>
+              <p style={{ fontWeight: 800, fontSize: 13, color: '#0F172A', margin: '0 0 2px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                {haCust?.name || '—'}
+              </p>
+              <p style={{ fontSize: 11, color: '#64748B', margin: 0 }}>
+                {haProf?.name} · {fmtT(haStartDt)}–{fmtT(haEndDt)}
+              </p>
+              {haSvcs.length > 0 && (
+                <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                  {haSvcs.map(s => s.name).join(', ')}
+                </p>
+              )}
+            </div>
+            <div style={{ padding: '0 8px 4px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {STATUS_OPTIONS.map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={async () => {
+                    await db.updateAppointmentStatus(ha.id, opt.key, {});
+                    setHoverAppt(null);
+                    refreshData();
+                  }}
+                  style={{ padding: '4px 8px', borderRadius: 8, border: 'none', background: opt.bg, color: opt.color, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: '4px 8px 10px' }}>
+              <button
+                onClick={() => { setHoverAppt(null); openEditModal(ha); }}
+                style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#F8FAFC', color: '#1E293B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                ✏️ Editar agendamento
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── Right-Click Break Popup ────────────────── */}
+      {hoverBreak && (() => {
+        const hb = hoverBreak.brk;
+        const popX = Math.min(hoverBreak.x, window.innerWidth - 220);
+        const popY = Math.max(8, Math.min(hoverBreak.y, window.innerHeight - 130));
+        return (
+          <div
+            data-popup="hover-break"
+            style={{
+              position: 'fixed', zIndex: 9999,
+              left: popX, top: popY, width: 204,
+              background: '#fff', borderRadius: 14,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+              border: '1.5px solid #E2E8F0',
+              overflow: 'hidden', pointerEvents: 'auto',
+            }}
+          >
+            <div style={{ padding: '10px 14px 6px' }}>
+              <p style={{ fontWeight: 800, fontSize: 12, color: '#0F172A', margin: '0 0 2px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{hb.label}</p>
+              {!(hb.startTime === '00:00') && (
+                <p style={{ fontSize: 10, color: '#64748B', margin: 0 }}>{hb.startTime}–{hb.endTime}</p>
+              )}
+            </div>
+            <div style={{ padding: '2px 8px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <button
+                onClick={() => { setHoverBreak(null); openEditBreak(hb); }}
+                style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#F8FAFC', color: '#1E293B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                ✏️ Editar intervalo
+              </button>
+              <button
+                onClick={async () => { setHoverBreak(null); await handleDeleteBreak(hb.id); }}
+                style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: 'none', background: '#FEE2E2', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                🗑️ Excluir
+              </button>
+            </div>
+          </div>
+        );
       })()}
 
       {/* ─── Edit Appointment Modal ─────────────────── */}
@@ -2351,83 +2590,94 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                     ))}
                   </select>
                 </div>
-                {/* Services — multi-select */}
-                {(() => {
-                  const editSelectedSvcs = services.filter(s => editSvcIds.includes(s.id));
-                  const editTotalDur = editSelectedSvcs.reduce((sum, s) => sum + s.durationMinutes, 0);
-                  const editTotalPrice = editSelectedSvcs.reduce((sum, s) => sum + s.price, 0);
-                  return (
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviço(s)</label>
-                      <div className="bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-3 max-h-44 overflow-y-auto space-y-1">
-                        {(() => {
-                          const _editProf = professionals.find(p => p.id === editProfId);
-                          return services.filter(s => s.active && (!_editProf?.serviceIds?.length || _editProf.serviceIds.includes(s.id)));
-                        })().map(s => (
-                          <label key={s.id} className="flex items-center gap-3 cursor-pointer hover:bg-white dark:hover:bg-slate-700 rounded-xl px-3 py-2 transition-all">
-                            <input
-                              type="checkbox"
-                              checked={editSvcIds.includes(s.id)}
-                              onChange={() => {
-                                setEditSvcIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]);
-                                // Bug 3b: removed setEditTime('') — don't reset time on service change
-                              }}
-                              className="w-4 h-4 accent-orange-500"
-                            />
-                            <span className="text-xs font-bold text-black dark:text-white">{s.name}</span>
-                            <span className="text-[10px] font-bold text-slate-400 ml-auto">{s.durationMinutes}min · R${s.price.toFixed(2)}</span>
-                          </label>
-                        ))}
-                      </div>
-                      {editSvcIds.length > 0 && (
-                        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl px-4 py-2 flex items-center justify-between">
-                          <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">
-                            {editSelectedSvcs.map(s => s.name).join(' + ')}
-                          </span>
-                          <span className="text-xs font-black text-orange-600">{editTotalDur}min · R${editTotalPrice.toFixed(2)}</span>
+                {/* Services — per-row with individual time + price */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviço(s)</label>
+                  {editRows.map((row) => {
+                    const rowSvc = services.find(s => s.id === row.svcId);
+                    const availSvcs = services.filter(s => s.active);
+                    return (
+                      <div key={row.rowId} style={{ background: '#F8FAFC', borderRadius: 12, padding: '10px 12px', border: '1.5px solid #E2E8F0' }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                          <select
+                            value={row.svcId}
+                            onChange={e => {
+                              const svc = services.find(s => s.id === e.target.value);
+                              setEditRows(prev => prev.map(r => r.rowId !== row.rowId ? r : {
+                                ...r, svcId: e.target.value,
+                                endTime: svc ? calcEnd(r.startTime, svc.durationMinutes) : r.endTime,
+                                price: svc?.price ?? r.price,
+                              }));
+                            }}
+                            style={{ flex: 1, padding: '6px 8px', borderRadius: 8, border: '1.5px solid #CBD5E1', fontSize: 11, fontWeight: 700, background: '#fff', outline: 'none' }}
+                          >
+                            <option value="">Serviço...</option>
+                            {availSvcs.map(s => <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes}min</option>)}
+                          </select>
+                          {editRows.length > 1 && (
+                            <button onClick={() => setEditRows(prev => prev.filter(r => r.rowId !== row.rowId))}
+                              style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', fontWeight: 800, fontSize: 13, cursor: 'pointer', lineHeight: 1 }}>
+                              ✕
+                            </button>
+                          )}
                         </div>
-                      )}
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', margin: '0 0 3px' }}>INÍCIO</p>
+                            <input type="time" value={row.startTime}
+                              onChange={e => setEditRows(prev => prev.map(r => r.rowId !== row.rowId ? r : {
+                                ...r, startTime: e.target.value,
+                                endTime: rowSvc ? calcEnd(e.target.value, rowSvc.durationMinutes) : r.endTime,
+                              }))}
+                              style={{ width: '100%', padding: '5px 6px', borderRadius: 8, border: '1.5px solid #CBD5E1', fontSize: 12, fontWeight: 700, background: '#fff', outline: 'none' }}
+                            />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', margin: '0 0 3px' }}>FIM</p>
+                            <input type="time" value={row.endTime}
+                              onChange={e => setEditRows(prev => prev.map(r => r.rowId !== row.rowId ? r : { ...r, endTime: e.target.value }))}
+                              style={{ width: '100%', padding: '5px 6px', borderRadius: 8, border: '1.5px solid #CBD5E1', fontSize: 12, fontWeight: 700, background: '#fff', outline: 'none' }}
+                            />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', margin: '0 0 3px' }}>R$</p>
+                            <input type="number" value={row.price} min={0} step={0.01}
+                              onChange={e => setEditRows(prev => prev.map(r => r.rowId !== row.rowId ? r : { ...r, price: parseFloat(e.target.value) || 0 }))}
+                              style={{ width: '100%', padding: '5px 6px', borderRadius: 8, border: '1.5px solid #CBD5E1', fontSize: 12, fontWeight: 700, background: '#fff', outline: 'none' }}
+                            />
+                          </div>
+                        </div>
+                        {rowSvc && (
+                          <p style={{ fontSize: 9, color: '#94A3B8', margin: '6px 0 0', fontWeight: 600 }}>
+                            {rowSvc.name} · {rowSvc.durationMinutes}min padrão
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button
+                    onClick={() => {
+                      const last = editRows[editRows.length - 1];
+                      setEditRows(prev => [...prev, { rowId: crypto.randomUUID(), svcId: '', startTime: last?.endTime || '', endTime: '', price: 0 }]);
+                    }}
+                    style={{ width: '100%', padding: '8px', borderRadius: 10, border: '2px dashed #CBD5E1', background: 'transparent', color: '#64748B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >+ Adicionar Serviço</button>
+                  {editRows.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, padding: '4px 2px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>
+                        Total: <strong style={{ color: '#f97316' }}>R$ {editRows.reduce((s, r) => s + (r.price || 0), 0).toFixed(2)}</strong>
+                      </span>
                     </div>
-                  );
-                })()}
+                  )}
+                </div>
                 {/* Date */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data</label>
                   <input
                     type="date"
                     value={editDate}
-                    onChange={e => { setEditDate(e.target.value); setEditTime(''); }}
+                    onChange={e => setEditDate(e.target.value)}
                     className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold text-black dark:text-white outline-none focus:border-orange-500 transition-colors"
-                  />
-                </div>
-                {/* Time */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    Horário {editSlotsLoading && <span className="text-orange-400">carregando...</span>}
-                  </label>
-                  {editSlots.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {editSlots.map(s => (
-                        <button
-                          key={s}
-                          onClick={() => setEditTime(s)}
-                          className={`px-4 py-2 rounded-2xl text-xs font-black border-2 transition-all ${
-                            editTime === s
-                              ? 'bg-orange-500 border-orange-500 text-white'
-                              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-black dark:text-white hover:border-orange-400'
-                          }`}
-                        >{s}</button>
-                      ))}
-                    </div>
-                  ) : !editSlotsLoading && editProfId && editDate ? (
-                    <p className="text-xs text-slate-400 font-bold ml-1">Nenhum horário disponível neste dia.</p>
-                  ) : null}
-                  {/* Manual time fallback */}
-                  <input
-                    type="time"
-                    value={editTime}
-                    onChange={e => setEditTime(e.target.value)}
-                    className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl text-xs font-bold text-black dark:text-white outline-none focus:border-orange-500 transition-colors mt-2"
                   />
                 </div>
               </div>
@@ -2438,7 +2688,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 >CANCELAR</button>
                 <button
                   onClick={handleSaveEdit}
-                  disabled={savingEdit || !editTime}
+                  disabled={savingEdit}
                   className="flex-1 py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black uppercase tracking-widest transition-colors disabled:opacity-50"
                 >{savingEdit ? '...' : 'SALVAR'}</button>
               </div>
@@ -2475,210 +2725,220 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       {/* ─── New Booking Modal ─────────────────────── */}
       {showBookingModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
-          <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
-          <div className="bg-white rounded-[40px] w-full max-w-md p-12 space-y-8 animate-scaleUp border-4 border-black">
-            <h2 className="text-3xl font-black text-black tracking-tight uppercase">Novo Horário</h2>
+          <div className="flex justify-center items-start min-h-full p-4 pt-8 pb-10">
+          <div className="bg-white rounded-[32px] w-full max-w-2xl p-8 space-y-6 animate-scaleUp border-4 border-black">
+            <h2 className="text-2xl font-black text-black tracking-tight uppercase">Novo Horário</h2>
             {errorMsg && (
               <div className="bg-red-50 border-2 border-red-200 p-4 rounded-2xl text-red-600 text-xs font-black uppercase tracking-widest animate-pulse">⚠️ {errorMsg}</div>
             )}
-            <div className="space-y-4">
-              {/* ── Customer searchable picker ── */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cliente</label>
-                <div className="relative">
-                  <div className="flex items-center gap-2 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus-within:border-orange-500 transition-colors">
-                    <svg className="w-3.5 h-3.5 text-slate-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input
-                      value={customerSearch}
-                      onChange={e => { setCustomerSearch(e.target.value); setCustomerId(''); }}
-                      placeholder={customerId ? customers.find(c => c.id === customerId)?.name : 'Pesquisar por nome ou telefone...'}
-                      className="flex-1 bg-transparent outline-none text-xs font-bold text-black placeholder:text-slate-400"
-                    />
-                    {(customerSearch || customerId) && (
-                      <button onClick={() => { setCustomerSearch(''); setCustomerId(''); }} className="text-slate-300 hover:text-red-400 text-xs font-black">✕</button>
+
+            {/* ── Customer picker ── */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Cliente</label>
+              <div className="relative">
+                <div className="flex items-center gap-2 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus-within:border-orange-500 transition-colors">
+                  <svg className="w-3.5 h-3.5 text-slate-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input
+                    value={customerSearch}
+                    onChange={e => { setCustomerSearch(e.target.value); setCustomerId(''); }}
+                    placeholder={customerId ? customers.find(c => c.id === customerId)?.name : 'Pesquisar por nome ou telefone...'}
+                    className="flex-1 bg-transparent outline-none text-xs font-bold text-black placeholder:text-slate-400"
+                  />
+                  {(customerSearch || customerId) && (
+                    <button onClick={() => { setCustomerSearch(''); setCustomerId(''); }} className="text-slate-300 hover:text-red-400 text-xs font-black">✕</button>
+                  )}
+                </div>
+                {customerSearch.trim().length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-xl z-10 max-h-52 overflow-y-auto">
+                    {[...customers]
+                      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+                      .filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch))
+                      .slice(0, 50)
+                      .map(c => (
+                        <button key={c.id} onClick={() => { setCustomerId(c.id); setCustomerSearch(''); }}
+                          className="w-full text-left px-4 py-3 hover:bg-slate-100 transition-colors border-b border-slate-50 last:border-0">
+                          <span className="text-xs font-black text-black uppercase">{c.name}</span>
+                          <span className="text-[10px] text-slate-400 font-bold ml-2">{c.phone}</span>
+                        </button>
+                      ))
+                    }
+                    {[...customers].filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch)).length === 0 && (
+                      <button onClick={() => {
+                        setShowNewCustForm(true);
+                        const isPhone = /^\+?[\d\s\-\(\)]{6,}$/.test(customerSearch.trim());
+                        if (isPhone) { setNewCustPhone(customerSearch.replace(/\D/g, '')); setNewCustName(''); }
+                        else { setNewCustName(customerSearch); setNewCustPhone(''); }
+                        setCustomerSearch('');
+                      }} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-orange-50 transition-colors text-left">
+                        <span className="text-xs font-black text-orange-500">+ Cadastrar "{customerSearch}"</span>
+                      </button>
                     )}
                   </div>
-                  {/* Dropdown list */}
-                  {customerSearch.trim().length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-xl z-10 max-h-52 overflow-y-auto">
-                      {[...customers]
-                        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-                        .filter(c =>
-                          c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                          c.phone.includes(customerSearch)
-                        )
-                        .slice(0, 50)
-                        .map(c => (
-                          <button
-                            key={c.id}
-                            onClick={() => { setCustomerId(c.id); setCustomerSearch(''); }}
-                            className="w-full text-left px-4 py-3 hover:bg-slate-100 transition-colors border-b border-slate-50 last:border-0"
-                          >
-                            <span className="text-xs font-black text-black uppercase">{c.name}</span>
-                            <span className="text-[10px] text-slate-400 font-bold ml-2">{c.phone}</span>
-                          </button>
-                        ))
-                      }
-                      {[...customers].filter(c =>
-                        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                        c.phone.includes(customerSearch)
-                      ).length === 0 && (
-                        <button
-                          onClick={() => {
-                            setShowNewCustForm(true);
-                            const isPhone = /^\+?[\d\s\-\(\)]{6,}$/.test(customerSearch.trim());
-                            if (isPhone) {
-                              setNewCustPhone(customerSearch.replace(/\D/g, ''));
-                              setNewCustName('');
-                            } else {
-                              setNewCustName(customerSearch);
-                              setNewCustPhone('');
-                            }
-                            setCustomerSearch('');
-                          }}
-                          className="w-full flex items-center gap-2 px-4 py-3 hover:bg-orange-50 transition-colors text-left"
-                        >
-                          <span className="text-xs font-black text-orange-500">+ Cadastrar "{customerSearch}"</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {/* Show sorted list when empty search but no selection and not creating new */}
-                  {customerSearch.trim().length === 0 && !customerId && !showNewCustForm && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-xl z-10 max-h-52 overflow-y-auto">
-                      {[...customers]
-                        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-                        .map(c => (
-                          <button
-                            key={c.id}
-                            onClick={() => { setCustomerId(c.id); setCustomerSearch(''); }}
-                            className="w-full text-left px-4 py-3 hover:bg-slate-100 transition-colors border-b border-slate-50 last:border-0"
-                          >
-                            <span className="text-xs font-black text-black uppercase">{c.name}</span>
-                            <span className="text-[10px] text-slate-400 font-bold ml-2">{c.phone}</span>
-                          </button>
-                        ))
-                      }
-                    </div>
-                  )}
-                </div>
-                {customerId && (
-                  <p className="text-[10px] font-black text-orange-500 ml-4 mt-1">
-                    ✓ {customers.find(c => c.id === customerId)?.name}
-                  </p>
                 )}
-              </div>
-
-              {/* Inline new-customer mini-form */}
-              {showNewCustForm && !customerId && (
-                <div className="bg-orange-50 border-2 border-orange-200 rounded-2xl p-4 space-y-3">
-                  <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Novo Cliente</p>
-                  <div className="space-y-2">
-                    <input
-                      value={newCustName}
-                      onChange={e => setNewCustName(e.target.value)}
-                      placeholder="Nome completo"
-                      className="w-full p-3 bg-white border-2 border-orange-100 rounded-xl font-bold text-xs outline-none focus:border-orange-500 transition-colors"
-                    />
-                    <input
-                      value={newCustPhone}
-                      onChange={e => setNewCustPhone(e.target.value)}
-                      placeholder="Telefone (ex: 11999999999)"
-                      className="w-full p-3 bg-white border-2 border-orange-100 rounded-xl font-bold text-xs outline-none focus:border-orange-500 transition-colors"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { setShowNewCustForm(false); setNewCustName(''); setNewCustPhone(''); }}
-                      className="flex-1 py-2 font-black text-slate-400 uppercase text-[10px] border-2 border-slate-100 rounded-xl hover:border-slate-300 transition-all"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleCreateAndSelectCustomer}
-                      disabled={creatingCust || !newCustName.trim() || !newCustPhone.trim()}
-                      className="flex-1 py-2 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] hover:bg-black transition-all disabled:opacity-40"
-                    >
-                      {creatingCust ? 'Criando...' : 'Criar e Selecionar'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <ModalSelect label="Profissional" value={profId} onChange={v => {
-                setProfId(v);
-                // Clear selected services that the new professional doesn't perform
-                const newProf = professionals.find(p => p.id === v);
-                if (newProf?.serviceIds?.length) {
-                  setSvcIds(prev => prev.filter(id => newProf.serviceIds!.includes(id)));
-                }
-              }} placeholder="Selecionar Profissional">
-                {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </ModalSelect>
-              {/* Multi-service selection with checkboxes */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Serviço(s)</label>
-                <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 max-h-48 overflow-y-auto space-y-2">
-                  {availableServices.map(s => (
-                    <label key={s.id} className="flex items-center gap-3 cursor-pointer hover:bg-white rounded-xl px-3 py-2 transition-all">
-                      <input
-                        type="checkbox"
-                        checked={svcIds.includes(s.id)}
-                        onChange={() => setSvcIds(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id])}
-                        className="w-4 h-4 accent-orange-500"
-                      />
-                      <span className="text-xs font-bold text-black">{s.name}</span>
-                      <span className="text-[10px] font-bold text-slate-400 ml-auto">{s.durationMinutes}min · R${s.price.toFixed(2)}</span>
-                    </label>
-                  ))}
-                </div>
-                {svcIds.length > 0 && (
-                  <div className="bg-orange-50 rounded-xl px-4 py-2 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">
-                      {selectedServices.map(s => s.name).join(' + ')}
-                    </span>
-                    <span className="text-xs font-black text-orange-600">{totalDuration}min · R${totalPrice.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Data</label>
-                <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs uppercase" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                  Horário {bookingSlotsLoading && <span className="text-orange-400">carregando...</span>}
-                </label>
-                {bookingSlots.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {bookingSlots.map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setManualTime(s)}
-                        className={`px-4 py-2 rounded-2xl text-xs font-black border-2 transition-all ${
-                          manualTime === s
-                            ? 'bg-orange-500 border-orange-500 text-white'
-                            : 'bg-white border-slate-200 text-black hover:border-orange-400'
-                        }`}
-                      >{s}</button>
+                {customerSearch.trim().length === 0 && !customerId && !showNewCustForm && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-xl z-10 max-h-52 overflow-y-auto">
+                    {[...customers].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(c => (
+                      <button key={c.id} onClick={() => { setCustomerId(c.id); setCustomerSearch(''); }}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-100 transition-colors border-b border-slate-50 last:border-0">
+                        <span className="text-xs font-black text-black uppercase">{c.name}</span>
+                        <span className="text-[10px] text-slate-400 font-bold ml-2">{c.phone}</span>
+                      </button>
                     ))}
                   </div>
-                ) : !bookingSlotsLoading && profId && manualDate && svcIds.length > 0 ? (
-                  <p className="text-xs text-slate-400 font-bold ml-1">Nenhum horário disponível neste dia.</p>
-                ) : null}
+                )}
+              </div>
+              {customerId && <p className="text-[10px] font-black text-orange-500 ml-4 mt-1">✓ {customers.find(c => c.id === customerId)?.name}</p>}
+            </div>
+
+            {/* Inline new-customer mini-form */}
+            {showNewCustForm && !customerId && (
+              <div className="bg-orange-50 border-2 border-orange-200 rounded-2xl p-4 space-y-3">
+                <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Novo Cliente</p>
+                <div className="space-y-2">
+                  <input value={newCustName} onChange={e => setNewCustName(e.target.value)} placeholder="Nome completo" className="w-full p-3 bg-white border-2 border-orange-100 rounded-xl font-bold text-xs outline-none focus:border-orange-500 transition-colors" />
+                  <input value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)} placeholder="Telefone (ex: 11999999999)" className="w-full p-3 bg-white border-2 border-orange-100 rounded-xl font-bold text-xs outline-none focus:border-orange-500 transition-colors" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowNewCustForm(false); setNewCustName(''); setNewCustPhone(''); }} className="flex-1 py-2 font-black text-slate-400 uppercase text-[10px] border-2 border-slate-100 rounded-xl hover:border-slate-300 transition-all">Cancelar</button>
+                  <button onClick={handleCreateAndSelectCustomer} disabled={creatingCust || !newCustName.trim() || !newCustPhone.trim()} className="flex-1 py-2 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] hover:bg-black transition-all disabled:opacity-40">{creatingCust ? 'Criando...' : 'Criar e Selecionar'}</button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Date ── */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Data</label>
+              <input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs uppercase" />
+            </div>
+
+            {/* ── Service rows ── */}
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviços</label>
+              {bookingRows.map((row, idx) => {
+                const rowSvcs = getServicesForRow(row);
+                const rowProfs = getProfsForRow(row);
+                const selectedSvc = services.find(s => s.id === row.svcId);
+                return (
+                  <div key={row.rowId} className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Serviço {idx + 1}</span>
+                      {bookingRows.length > 1 && (
+                        <button onClick={() => removeBookingRow(row.rowId)} className="text-slate-300 hover:text-red-400 text-xs font-black transition-colors">✕ Remover</button>
+                      )}
+                    </div>
+                    {/* Row 1: Categoria, Serviço, Profissional */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Categoria</label>
+                        <select
+                          value={row.category}
+                          onChange={e => updateRow(row.rowId, { category: e.target.value, svcId: '', price: 0, endTime: '' })}
+                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                        >
+                          <option value="">Todas</option>
+                          {allBookingCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Serviço</label>
+                        <select
+                          value={row.svcId}
+                          onChange={e => {
+                            const svc = services.find(s => s.id === e.target.value);
+                            updateRow(row.rowId, {
+                              svcId: e.target.value,
+                              price: svc?.price ?? 0,
+                              endTime: row.startTime && svc ? calcEnd(row.startTime, svc.durationMinutes) : row.endTime,
+                            });
+                          }}
+                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                        >
+                          <option value="">Selecionar...</option>
+                          {rowSvcs.map(s => <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes}min</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Profissional</label>
+                        <select
+                          value={row.profId}
+                          onChange={e => updateRow(row.rowId, { profId: e.target.value })}
+                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                        >
+                          <option value="">Selecionar...</option>
+                          {rowProfs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {/* Row 2: Início, Fim, Preço */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Início</label>
+                        <input
+                          type="time"
+                          value={row.startTime}
+                          onChange={e => {
+                            const start = e.target.value;
+                            updateRow(row.rowId, {
+                              startTime: start,
+                              endTime: selectedSvc && start ? calcEnd(start, selectedSvc.durationMinutes) : row.endTime,
+                            });
+                          }}
+                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fim</label>
+                        <input
+                          type="time"
+                          value={row.endTime}
+                          onChange={e => updateRow(row.rowId, { endTime: e.target.value })}
+                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Valor (R$)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={row.price}
+                          onChange={e => updateRow(row.rowId, { price: parseFloat(e.target.value) || 0 })}
+                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                onClick={addBookingRow}
+                className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-xs font-black text-slate-400 hover:border-orange-400 hover:text-orange-500 transition-all"
+              >
+                + Adicionar Serviço
+              </button>
+            </div>
+
+            {/* ── Discount + Total ── */}
+            <div className="flex items-center gap-4">
+              <div className="flex-1 space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Desconto (R$)</label>
                 <input
-                  type="time"
-                  value={manualTime}
-                  onChange={e => setManualTime(e.target.value)}
-                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs"
-                  placeholder="ou digite manualmente"
+                  type="number" min="0" step="0.01"
+                  value={bookingDiscount}
+                  onChange={e => setBookingDiscount(parseFloat(e.target.value) || 0)}
+                  className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs outline-none focus:border-orange-400"
                 />
               </div>
+              <div className="text-right">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</p>
+                <p className="text-xl font-black text-orange-500">R$ {bookingTotal.toFixed(2)}</p>
+              </div>
             </div>
-            <div className="flex gap-4 pt-4">
+
+            {/* ── Actions ── */}
+            <div className="flex gap-4 pt-2">
               <button onClick={() => setShowBookingModal(false)} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs">Voltar</button>
               <button onClick={handleCreateBooking} className="flex-1 py-4 bg-orange-500 text-white rounded-2xl font-black uppercase text-xs shadow-xl shadow-orange-100 hover:bg-black transition-all">Agendar</button>
             </div>
@@ -2790,7 +3050,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
           <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
           <div className="bg-white rounded-[40px] w-full max-w-md p-10 space-y-6 animate-scaleUp border-4 border-black">
-            <h2 className="text-2xl font-black text-black uppercase tracking-tight">{brkType === 'holiday' ? 'Novo Feriado' : 'Gerar Intervalo'}</h2>
+            <h2 className="text-2xl font-black text-black uppercase tracking-tight">{brkType === 'holiday' ? (editingBreakId ? 'Editar Feriado' : 'Novo Feriado') : (editingBreakId ? 'Editar Intervalo' : 'Gerar Intervalo')}</h2>
 
             <div className="space-y-4">
               <div className="space-y-1">
@@ -2868,7 +3128,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
             </div>
 
             <div className="flex gap-4 pt-2">
-              <button onClick={() => setShowBreakModal(false)} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs">Cancelar</button>
+              <button onClick={() => { setShowBreakModal(false); setEditingBreakId(null); }} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs">Cancelar</button>
               <button onClick={handleCreateBreak} className={`flex-1 py-4 text-white rounded-2xl font-black uppercase text-xs transition-all ${brkType === 'holiday' ? 'bg-red-500 hover:bg-red-600' : 'bg-black hover:bg-orange-500'}`}>{brkType === 'holiday' ? 'Salvar Feriado' : 'Salvar Intervalo'}</button>
             </div>
           </div>
