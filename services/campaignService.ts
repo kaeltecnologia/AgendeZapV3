@@ -3,7 +3,7 @@
  * Server-side bulk-campaign queue — persists in Supabase so dispatches
  * continue even when the browser tab is closed or the computer hibernates.
  */
-import { supabase } from './supabase';
+import { supabase, projectUrl, anonKey } from './supabase';
 
 export interface BulkCampaign {
   id: string;
@@ -84,10 +84,8 @@ export async function deleteCampaign(id: string): Promise<void> {
 // ── Tick — triggers the Edge Function to process the next pending message ─────
 // The browser calls this every few seconds while open.
 // pg_cron calls it every minute as server-side fallback.
-const TICK_URL =
-  'https://cnnfnqrnjckntnxdgwae.supabase.co/functions/v1/whatsapp-webhook';
-const ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
+const TICK_URL = `${projectUrl}/functions/v1/whatsapp-webhook`;
+const ANON_KEY = anonKey;
 
 export async function triggerTick(): Promise<void> {
   await fetch(TICK_URL, {

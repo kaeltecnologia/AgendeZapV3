@@ -168,8 +168,7 @@ const PublicarView: React.FC<Props> = ({ tenantId }) => {
       }
 
       if (chGoogle && googleConnected) {
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
-        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
+        const { projectUrl: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = await import('../services/supabase');
         promises.push(
           fetch(`${SUPABASE_URL}/functions/v1/google-business-publish`, {
             method: 'POST',

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { supabase } from '../services/supabase';
+import { supabase, projectUrl as _sbUrl, anonKey as SUPABASE_ANON_KEY } from '../services/supabase';
 import { evolutionService } from '../services/evolutionService';
 import { Tenant } from '../types';
 
@@ -205,8 +205,7 @@ function saveCustomScenarios(scenarios: TestScenario[]) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const WEBHOOK_URL = 'https://cnnfnqrnjckntnxdgwae.supabase.co/functions/v1/whatsapp-webhook';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
+const WEBHOOK_URL = `${_sbUrl}/functions/v1/whatsapp-webhook`;
 
 async function simulateWebhook(instanceName: string, phone: string, text: string): Promise<boolean> {
   const msgId = `test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

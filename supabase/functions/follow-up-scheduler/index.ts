@@ -15,7 +15,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const EVO_URL = Deno.env.get('EVOLUTION_API_URL') || 'https://evolution-api-agendezap-evolution-api.xzftjp.easypanel.host';
-const EVO_KEY = Deno.env.get('EVOLUTION_API_KEY') || '429683C4C977415CAAFCCE10F7D57E11';
+const EVO_KEY = Deno.env.get('EVOLUTION_API_KEY') ?? '';
 const EVO_HEADERS: Record<string, string> = { 'Content-Type': 'application/json', apikey: EVO_KEY };
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);

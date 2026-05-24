@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
             .from('tenants').select('nome, phone').eq('id', tenantId).single();
           if (tenantRow?.phone) {
             const evolutionUrl = Deno.env.get('EVOLUTION_API_URL') || 'https://evolution-api-agendezap-evolution-api.xzftjp.easypanel.host';
-            const evolutionKey = Deno.env.get('EVOLUTION_API_KEY') || '429683C4C977415CAAFCCE10F7D57E11';
+            const evolutionKey = Deno.env.get('EVOLUTION_API_KEY') ?? '';
             const { data: cfgRow } = await supabase
               .from('global_settings').select('value').eq('key', 'central_instance').maybeSingle();
             const centralInstance = cfgRow?.value || 'central_AgendeZap';

@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
-import { supabase } from '../services/supabase';
+import { supabase, projectUrl as SUPABASE_URL, anonKey as SUPABASE_ANON_KEY } from '../services/supabase';
 
 const IG_APP_ID = '917328734572559';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cnnfnqrnjckntnxdgwae.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNubmZucXJuamNrbnRueGRnd2FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MTM3NzksImV4cCI6MjA4NzE4OTc3OX0.ANyOJVIsBv0GWuJyUmdicRrgHqZc5VAXRUSua_roO4I';
 
 interface Props {
   tenantId: string;
