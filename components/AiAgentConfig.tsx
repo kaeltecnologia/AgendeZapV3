@@ -32,6 +32,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [aiProfessionalActive, setAiProfessionalActive] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPT);
   const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME);
+  const [welcomeMessage, setWelcomeMessage] = useState('');
   const [agentGender, setAgentGender] = useState<'neutro' | 'masculino' | 'feminino'>('neutro');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [msgBufferSecs, setMsgBufferSecs] = useState(20);
@@ -50,6 +51,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       setAiProfessionalActive(!!settings.aiProfessionalActive);
       setSystemPrompt(settings.systemPrompt || DEFAULT_PROMPT);
       setAgentName(settings.agentName || DEFAULT_AGENT_NAME);
+      setWelcomeMessage(settings.welcomeMessage || '');
       setAgentGender((settings.agentGender as 'neutro' | 'masculino' | 'feminino') || 'neutro');
       setOpenaiApiKey(settings.openaiApiKey || '');
       setMsgBufferSecs(settings.msgBufferSecs ?? 20);
@@ -77,7 +79,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
 
   const handleSavePrompt = async () => {
     setSavingPrompt(true);
-    await db.updateSettings(tenantId, { systemPrompt, agentName, agentGender, openaiApiKey, msgBufferSecs });
+    await db.updateSettings(tenantId, { systemPrompt, agentName, agentGender, openaiApiKey, msgBufferSecs, welcomeMessage });
     setSavingPrompt(false);
   };
 
@@ -227,6 +229,23 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* ─── Mensagem de boas-vindas estática ─── */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-black uppercase tracking-[0.2em] ml-2">Mensagem de Boas-vindas (1º contato do dia)</label>
+            <textarea
+              rows={7}
+              value={welcomeMessage}
+              onChange={e => setWelcomeMessage(e.target.value)}
+              placeholder={`Deixe em branco para usar a saudação padrão da IA.\n\nVariáveis disponíveis:\n{greeting} → Bom dia / Boa tarde / Boa noite\n{tenantName} → Nome do estabelecimento\n{botName} → Nome do atendente (acima)\n{bookingLink} → Link de agendamento online\n\nExemplo:\n{greeting}! ✨\nSeja bem-vinda ao {tenantName} 💖\n\nEu sou a {botName}, assistente virtual!\n\nAgende pelo link: {bookingLink}\n\nOu escolha uma opção:\nAgendar horário\nVer procedimentos`}
+              className="w-full p-8 bg-slate-50 border-2 border-slate-100 rounded-[30px] outline-none focus:border-orange-500 transition-all text-sm font-bold leading-relaxed text-black"
+            />
+            {welcomeMessage.trim() && (
+              <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest ml-2">
+                ⚡ Mensagem estática ativa — a IA não será chamada no 1º contato do dia
+              </p>
+            )}
           </div>
 
           <div className="space-y-3">

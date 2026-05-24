@@ -795,7 +795,8 @@ ${hasCategories ? '0️⃣ CATEGORIA → ' : ''}1️⃣ SERVIÇO → 2️⃣ PRO
     .filter(Boolean).join(', ');
   const _todayStatus = _todayOpen ? `HOJE (${_dowNames[_todayDow]}): ABERTO (${_opHours[_todayDow].range})` : `HOJE (${_dowNames[_todayDow]}): ❌ FECHADO`;
 
-  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}". Hoje é ${today}. Agora são ${_currentTime} (Brasília).
+  const _agentNameLine = (settings?.agentName || '').trim() ? ` Seu nome é ${(settings.agentName as string).trim()}.` : '';
+  const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}".${_agentNameLine} Hoje é ${today}. Agora são ${_currentTime} (Brasília).
 ${introLinha}
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${followUpCtx}${audioNote}${greetSection}${groupSection}
 SERVIÇOS: ${svcList}
@@ -3000,6 +3001,24 @@ async function _handleMessage(
         }
       };
     }
+  }
+
+  // ─── Custom static welcome message (bypasses AI on first contact of the day) ──
+  if (shouldGreet && (settings.welcomeMessage || '').trim()) {
+    const _wBookingLink = tenant.slug
+      ? `${typeof window !== 'undefined' ? window.location.origin : 'https://agendezap.com'}/agendar/${tenant.slug}`
+      : '';
+    const _wGreet = brasiliaGreeting.charAt(0).toUpperCase() + brasiliaGreeting.slice(1);
+    const _wMsg = (settings.welcomeMessage as string).trim()
+      .replace(/\{greeting\}/gi, _wGreet)
+      .replace(/\{tenantName\}/gi, tenantName)
+      .replace(/\{botName\}/gi, (settings.agentName || 'Assistente').trim())
+      .replace(/\{bookingLink\}/gi, _wBookingLink);
+    session.data.greetedAt = brasiliaDate;
+    _greetedToday.set(_greetKey, brasiliaDate);
+    session.history.push({ role: 'bot', text: _wMsg });
+    saveSession(session);
+    return _wMsg;
   }
 
   // ─── First AI Brain call ────────────────────────────────────────────
