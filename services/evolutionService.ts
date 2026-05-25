@@ -50,16 +50,21 @@ export const evolutionService = {
   async checkStatus(instanceName: string): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
     if (!instanceName) return 'notfound';
     try {
-      const response = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
+      // Use fetchInstances (includes disconnectionReasonCode) to detect "stuck open" instances
+      // where connectionState says 'open' but the WA session was actually dropped (401/conflict).
+      const fetchRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, {
         method: 'GET',
         headers
       });
-      if (response.status === 404) return 'notfound';
-      if (!response.ok) return 'close';
-      const data = await response.json();
-      const state = (data.instance?.state || data.state || "").toUpperCase();
-      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(state)) return 'open';
-      if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION'].includes(state)) return 'connecting';
+      if (!fetchRes.ok) return fetchRes.status === 404 ? 'notfound' : 'close';
+      const list: any[] = await fetchRes.json();
+      if (!Array.isArray(list) || list.length === 0) return 'notfound';
+      const inst = list[0];
+      const connStatus = (inst.connectionStatus || '').toUpperCase();
+      // If the instance has a disconnectionReasonCode it was actually dropped — treat as close
+      if (inst.disconnectionReasonCode && connStatus === 'OPEN') return 'close';
+      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(connStatus)) return 'open';
+      if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION'].includes(connStatus)) return 'connecting';
       return 'close';
     } catch (e) {
       return 'close';
