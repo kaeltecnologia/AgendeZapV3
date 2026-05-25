@@ -47,49 +47,63 @@ export const evolutionService = {
     return `agz_${cleanSlug}`;
   },
 
-  async checkStatus(instanceName: string): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
+  async checkStatus(
+    instanceName: string,
+    onDebug?: (msg: string) => void
+  ): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
     if (!instanceName) return 'notfound';
+    const dbg = (msg: string) => { console.log('[checkStatus]', msg); onDebug?.(msg); };
 
-    // Parse status from any known Evolution API response shape
-    const parseStatusFromObj = (raw: any): 'open' | 'close' | 'connecting' | null => {
+    // Extract status from any known Evolution API response shape
+    const parseObj = (raw: any): 'open' | 'close' | 'connecting' | null => {
       if (!raw || typeof raw !== 'object') return null;
       const inner = raw.instance ?? raw.data ?? raw;
-      const s = String(inner.connectionStatus ?? inner.state ?? inner.status ?? '').toUpperCase();
+      // Check every known field name for connection status
+      const s = String(
+        inner.connectionStatus ?? inner.connectionState ?? inner.state ??
+        inner.status ?? inner.connection?.status ?? ''
+      ).toUpperCase();
       if (['OPEN', 'CONNECTED', 'ONLINE'].includes(s)) return 'open';
       if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION', 'QRCODE'].includes(s)) return 'connecting';
       if (['CLOSE', 'CLOSED', 'DISCONNECTED'].includes(s)) return 'close';
       return null;
     };
 
+    // Name matches with or without "agz_" prefix
+    const nameMatches = (n: string) => {
+      const a = n.toLowerCase();
+      const b = instanceName.toLowerCase();
+      return a === b || a === b.replace(/^agz_/, '') || b === a.replace(/^agz_/, '');
+    };
+
     // Strategy 1: GET /instance/connectionState/{name}
     try {
       const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, { method: 'GET', headers });
-      const data = res.ok ? await res.json().catch(() => null) : null;
-      console.log('[checkStatus] connectionState HTTP', res.status, JSON.stringify(data).slice(0, 200));
+      const data = await res.json().catch(() => null);
+      dbg(`connectionState HTTP ${res.status}: ${JSON.stringify(data).slice(0, 150)}`);
       if (res.ok && data) {
-        const s = parseStatusFromObj(data);
+        const s = parseObj(data);
         if (s !== null) return s;
       }
-    } catch { /* fall through */ }
+    } catch (e: any) { dbg(`connectionState error: ${e?.message}`); }
 
-    // Strategy 2: GET /instance/fetchInstances (ALL instances, no filter — filter unsupported in some versions)
+    // Strategy 2: GET /instance/fetchInstances (no filter — most compatible)
     try {
       const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, { method: 'GET', headers });
-      const raw = res.ok ? await res.json().catch(() => null) : null;
-      console.log('[checkStatus] fetchInstances HTTP', res.status, JSON.stringify(raw).slice(0, 400));
+      const raw = await res.json().catch(() => null);
+      dbg(`fetchInstances HTTP ${res.status}: ${JSON.stringify(raw).slice(0, 300)}`);
       if (res.ok && raw) {
         const list: any[] = Array.isArray(raw) ? raw : raw?.instances ?? [raw];
         for (const item of list) {
           const inner = item.instance ?? item.data ?? item;
-          const name = String(inner.instanceName ?? inner.name ?? '').toLowerCase();
-          if (name && name !== instanceName.toLowerCase()) continue; // different instance
-          const s = parseStatusFromObj(item);
-          if (s !== null) return s;
+          const itemName = String(inner.instanceName ?? inner.name ?? inner.id ?? '');
+          if (itemName && !nameMatches(itemName)) continue;
+          const s = parseObj(item);
+          if (s !== null) { dbg(`matched "${itemName}" → ${s}`); return s; }
         }
-        // Searched all instances and not found
         if (list.length > 0) return 'notfound';
       }
-    } catch { /* ignore */ }
+    } catch (e: any) { dbg(`fetchInstances error: ${e?.message}`); }
 
     return 'close';
   },

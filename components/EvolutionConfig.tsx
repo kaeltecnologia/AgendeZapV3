@@ -199,7 +199,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
     const check = async () => {
       const name = await refreshInstanceInfo();
       if (!name || !mounted) return;
-      const status = await evolutionService.checkStatus(name);
+      const status = await evolutionService.checkStatus(name, (msg) => addLog('POLLING', msg));
       if (!mounted) return;
       setInstanceStatus(status);
 
