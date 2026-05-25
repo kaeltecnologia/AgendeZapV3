@@ -4052,6 +4052,37 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const event: string = body.event || body.type || '';
 
+    // Handle CONNECTION_UPDATE — store status in DB so frontend can read it reliably
+    if (event.toLowerCase().includes('connection')) {
+      const instanceName: string = body.instance || body.data?.instance || body.instanceName || '';
+      const state: string = (body.data?.state || body.state || '').toLowerCase();
+      if (instanceName && (state === 'open' || state === 'close' || state === 'connecting')) {
+        try {
+          const { data: tenantRow } = await supabase
+            .from('tenants').select('id').eq('evolution_instance', instanceName).maybeSingle();
+          if (tenantRow?.id) {
+            await supabase.from('tenant_settings')
+              .upsert({ tenant_id: tenantRow.id, follow_up: {} }, { onConflict: 'tenant_id', ignoreDuplicates: true });
+            await supabase.rpc('jsonb_set_key', {
+              p_tenant_id: tenantRow.id,
+              p_key: '_connectionStatus',
+              p_value: JSON.stringify(state)
+            }).catch(async () => {
+              // Fallback: read-modify-write
+              const { data: s } = await supabase.from('tenant_settings').select('follow_up').eq('tenant_id', tenantRow.id).single();
+              const fu = s?.follow_up || {};
+              fu._connectionStatus = state;
+              await supabase.from('tenant_settings').update({ follow_up: fu }).eq('tenant_id', tenantRow.id);
+            });
+            console.log(`[connection.update] ${instanceName} → ${state}`);
+          }
+        } catch (e) { console.error('[connection.update] error:', e); }
+      }
+      return new Response(JSON.stringify({ ok: true, event, state }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     // Only process message events
     if (!event.toLowerCase().includes('message')) {
       return new Response(JSON.stringify({ ok: true, skipped: event }), {

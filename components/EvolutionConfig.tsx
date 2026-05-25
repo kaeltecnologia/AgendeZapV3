@@ -199,6 +199,22 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
     const check = async () => {
       const name = await refreshInstanceInfo();
       if (!name || !mounted) return;
+
+      // Primary: read status saved by webhook (CONNECTION_UPDATE event) — most reliable
+      const settings = await db.getSettings(tenantId, { fresh: true }).catch(() => null);
+      const dbStatus = settings?.connectionStatus;
+      if (dbStatus === 'open' || dbStatus === 'close' || dbStatus === 'connecting') {
+        if (!mounted) return;
+        setInstanceStatus(dbStatus);
+        if (dbStatus === 'open' && lastStatus !== 'open') {
+          evolutionService.enableWebhook(name, WEBHOOK_URL).catch(() => {});
+        }
+        lastStatus = dbStatus;
+        addLog('POLLING', `Status do banco: ${dbStatus}`);
+        return;
+      }
+
+      // Fallback: direct Evolution API poll
       const status = await evolutionService.checkStatus(name, (msg) => addLog('POLLING', msg));
       if (!mounted) return;
       setInstanceStatus(status);
