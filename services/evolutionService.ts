@@ -279,33 +279,44 @@ export const evolutionService = {
 
   // Connects (or reconnects) to get a QR code.
   // Strategy:
-  //   1. If instance already exists → restart it to clear old WA session → get QR
-  //   2. If instance does not exist → create it → get QR
-  //   3. If already open → return success immediately
+  //   1. Fetch instance info once (existence + state + disconnectionReasonCode)
+  //   2. Truly connected (open, no disc code) → return success immediately
+  //   3. Stuck (open + disconnectionReasonCode) OR forceQr → logout → restart → connect
+  //   4. Disconnected (close/connecting) → restart → connect
+  //   5. Not found → create → connect
   async createAndFetchQr(instanceName: string, forceQr = false): Promise<any> {
     if (!instanceName) return { status: 'error', message: 'Nome da instância inválido.' };
     try {
-      // ── Step 1: check current connection state first (fast path)
-      // Skip when forceQr=true (e.g. after logout, instance may still report 'open' briefly)
-      if (!forceQr) {
-        const currentStatus = await this.checkStatus(instanceName);
-        if (currentStatus === 'open') {
-          return { status: 'success', qrcode: null, message: 'Conectado.' };
-        }
+      // ── Step 1: fetch instance info once (covers existence + state + disc code)
+      const infoRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, { method: 'GET', headers });
+      const infoList: any[] = infoRes.ok ? (await infoRes.json().catch(() => [])) : [];
+      const inst = Array.isArray(infoList) ? infoList[0] : null;
+      const exists = !!inst && (inst.name === instanceName || inst.instanceName === instanceName);
+      const connStatus = ((inst?.connectionStatus) || '').toUpperCase();
+      const discCode = inst?.disconnectionReasonCode;
+      // Instance is truly open when connectionStatus=OPEN and no disconnect code
+      const trulyOpen = exists && connStatus === 'OPEN' && !discCode;
+      // Instance is stuck when Evolution reports OPEN but there's a disconnection code
+      const isStuck = exists && connStatus === 'OPEN' && !!discCode;
+
+      // ── Step 2: fast-path for truly connected instances
+      if (!forceQr && trulyOpen) {
+        return { status: 'success', qrcode: null, message: 'Conectado.' };
       }
 
-      // ── Step 2: check existence
-      const exists = await this.instanceExists(instanceName);
-
+      // ── Step 3: prepare the instance
       if (exists) {
-        if (!forceQr) {
-          // Normal reconnect: restart restores saved WA session → gets QR if disconnected
+        if (forceQr || isStuck) {
+          // Stuck/forced: logout to clear the dead session, then restart for fresh QR
+          await this.logoutInstance(instanceName);
+          await this.sleep(1500);
+          await this.restartInstance(instanceName);
+          await this.sleep(2500);
+        } else {
+          // Normal disconnect: restart to clear old WA session → get QR
           await this.restartInstance(instanceName);
           await this.sleep(2000);
         }
-        // forceQr=true (after logout): skip restart — restart would re-connect the saved
-        // WA credentials from disk, defeating the logout. Just call /connect directly
-        // which will generate a fresh QR since the session was cleared.
       } else {
         // Instance doesn't exist → create it
         const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
@@ -321,24 +332,25 @@ export const evolutionService = {
         // 409 = already exists (race condition) — safe to continue
         if (!createRes.ok && createRes.status !== 409) {
           const errData = await createRes.json().catch(() => ({}));
-          throw new Error(errData.message || "Erro ao criar instância no servidor Evolution.");
+          const httpInfo = `HTTP ${createRes.status}`;
+          throw new Error(`${errData.message || 'Erro ao criar instância no servidor Evolution.'} (${httpInfo})`);
         }
         await this.sleep(1500);
       }
 
-      // ── Step 3: request QR code / connection
+      // ── Step 4: request QR code / connection
       const connectResponse = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
         method: 'GET',
         headers
       });
       if (!connectResponse.ok) {
-        throw new Error("Servidor Evolution não respondeu ao pedido de conexão.");
+        throw new Error(`Servidor Evolution não respondeu ao pedido de conexão. HTTP ${connectResponse.status}`);
       }
 
       const data = await connectResponse.json();
-      // When forcing a new QR, ignore 'open' state — the connect endpoint may
-      // transiently report open right after logout before the session fully closes.
-      if (!forceQr && (data.instance?.state === 'open' || data.state === 'open')) {
+      // Only trust "open" from connect when we know the instance is truly stable
+      // (not in stuck/forced mode which cleared the session)
+      if (!forceQr && !isStuck && (data.instance?.state === 'open' || data.state === 'open')) {
         return { status: 'success', qrcode: null, message: 'Conectado.' };
       }
 
