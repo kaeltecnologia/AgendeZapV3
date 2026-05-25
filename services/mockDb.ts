@@ -1135,6 +1135,7 @@ class DatabaseService {
           agentName: fu._agentName || '',
           agentGender: fu._agentGender || 'neutro',
           calendarGridInterval: fu._calendarGridInterval || 30,
+          bookingSlotInterval: fu._bookingSlotInterval || 30,
           openaiApiKey: fu._openaiApiKey || '',
           msgBufferSecs: fu._msgBufferSecs ?? 20,
           trialStartDate: fu._trialStartDate ?? null,

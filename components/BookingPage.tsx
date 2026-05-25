@@ -250,6 +250,7 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
         const isToday = selectedDate === todayISO();
         const duration = selectedService.durationMinutes;
         const breaks: any[] = settings.breaks || [];
+        const slotInterval: number = (settings.bookingSlotInterval as number) || 30;
         const result: string[] = [];
         let cursor = opStart;
         const endCursor = opEnd;
@@ -264,12 +265,12 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
           const slotStart = new Date(`${selectedDate}T${label}:00`);
           const slotEnd = new Date(slotStart.getTime() + duration * 60000);
 
-          if (isToday && slotStart <= now) { cursor += 30; continue; }
+          if (isToday && slotStart <= now) { cursor += slotInterval; continue; }
 
           const apptConflict = (appts || []).some((a: any) =>
             new Date(a.inicio) < slotEnd && new Date(a.fim) > slotStart
           );
-          if (apptConflict) { cursor += 30; continue; }
+          if (apptConflict) { cursor += slotInterval; continue; }
 
           const brkConflict = breaks.some((brk: any) => {
             // Holiday: applies to everyone on that date
@@ -290,10 +291,10 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
             if (!matchDate || !matchDay) return false;
             return label < brk.endTime && slotEndLabel > brk.startTime;
           });
-          if (brkConflict) { cursor += 30; continue; }
+          if (brkConflict) { cursor += slotInterval; continue; }
 
           result.push(label);
-          cursor += 30;
+          cursor += slotInterval;
         }
         setSlots(result);
       } finally {
