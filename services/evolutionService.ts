@@ -264,13 +264,20 @@ export const evolutionService = {
   },
 
   // Restarts an existing (disconnected) instance so we can get a fresh QR code.
+  // Tries PUT (v2) then POST (some forks) as fallback.
   async restartInstance(instanceName: string): Promise<boolean> {
     try {
-      // Evolution API v2: PUT /instance/restart/{name}
-      const res = await fetch(`${EVOLUTION_API_URL}/instance/restart/${instanceName}`, {
+      let res = await fetch(`${EVOLUTION_API_URL}/instance/restart/${instanceName}`, {
         method: 'PUT',
         headers
       });
+      if (!res.ok && res.status === 404) {
+        // Some Evolution API forks use POST instead of PUT
+        res = await fetch(`${EVOLUTION_API_URL}/instance/restart/${instanceName}`, {
+          method: 'POST',
+          headers
+        });
+      }
       return res.ok;
     } catch {
       return false;
@@ -310,13 +317,29 @@ export const evolutionService = {
           // Stuck/forced: logout to clear the dead session, then restart for fresh QR
           await this.logoutInstance(instanceName);
           await this.sleep(1500);
-          await this.restartInstance(instanceName);
-          await this.sleep(2500);
-        } else {
-          // Normal disconnect: restart to clear old WA session → get QR
-          await this.restartInstance(instanceName);
-          await this.sleep(2000);
         }
+        // Restart: if it fails (unsupported endpoint), delete + recreate as fallback
+        const restarted = await this.restartInstance(instanceName);
+        if (!restarted) {
+          // Restart endpoint not available on this Evolution API version — delete and recreate
+          await this.deleteInstance(instanceName);
+          await this.sleep(1500);
+          const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              instanceName,
+              token: EVOLUTION_API_KEY,
+              qrcode: true,
+              integration: "WHATSAPP-BAILEYS"
+            })
+          });
+          if (!createRes.ok && createRes.status !== 409) {
+            const errData = await createRes.json().catch(() => ({}));
+            throw new Error(`${errData.message || 'Erro ao recriar instância.'} (HTTP ${createRes.status})`);
+          }
+        }
+        await this.sleep(2000);
       } else {
         // Instance doesn't exist → create it
         const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
