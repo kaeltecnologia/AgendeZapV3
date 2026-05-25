@@ -50,52 +50,48 @@ export const evolutionService = {
   async checkStatus(instanceName: string): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
     if (!instanceName) return 'notfound';
 
-    const parseStatus = (inst: any): 'open' | 'close' | 'connecting' | 'notfound' | null => {
-      if (!inst) return null;
-      // Unwrap nested { instance: {...} } format used by some forks
-      const data = inst.instance || inst;
-      const name = data.instanceName || data.name || '';
-      if (name && name !== instanceName) return null; // wrong instance in list
-      const connStatus = (data.connectionStatus || data.state || data.status || '').toUpperCase();
-      if (!connStatus) return null;
-      if (data.disconnectionReasonCode && connStatus === 'OPEN') return 'close'; // stuck-open
-      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(connStatus)) return 'open';
-      if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION'].includes(connStatus)) return 'connecting';
+    const extractStatus = (raw: any): 'open' | 'close' | 'connecting' | null => {
+      if (!raw) return null;
+      // Unwrap nested object formats: { instance: {...} } or { data: {...} }
+      const obj = raw.instance ?? raw.data ?? raw;
+      // Collect all candidate status fields
+      const s = (obj.connectionStatus ?? obj.state ?? obj.status ?? '').toUpperCase();
+      console.log('[checkStatus]', instanceName, '→ raw obj:', JSON.stringify(obj).slice(0, 200));
+      if (!s) return null;
+      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(s)) return 'open';
+      if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION', 'QRCODE'].includes(s)) return 'connecting';
       return 'close';
     };
 
+    // Strategy 1: /instance/connectionState/{name} — direct, most reliable
     try {
-      // Primary: fetchInstances (includes disconnectionReasonCode for stuck-open detection)
-      const fetchRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, {
-        method: 'GET',
-        headers
-      });
-      if (fetchRes.ok) {
-        const raw = await fetchRes.json().catch(() => null);
-        // Handle array, single object, or { instances: [...] } formats
-        const list: any[] = Array.isArray(raw) ? raw
-          : raw?.instances ? raw.instances
-          : raw ? [raw]
-          : [];
+      const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, { method: 'GET', headers });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        const s = extractStatus(data);
+        if (s !== null) return s;
+      } else if (res.status === 404) {
+        return 'notfound';
+      }
+    } catch { /* fall through */ }
+
+    // Strategy 2: /instance/fetchInstances?instanceName={name}
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, { method: 'GET', headers });
+      if (res.ok) {
+        const raw = await res.json().catch(() => null);
+        const list: any[] = Array.isArray(raw) ? raw : raw?.instances ?? (raw ? [raw] : []);
+        console.log('[checkStatus] fetchInstances raw:', JSON.stringify(raw).slice(0, 300));
         for (const item of list) {
-          const s = parseStatus(item);
+          // Skip items belonging to a different instance
+          const obj = item.instance ?? item.data ?? item;
+          const name = obj.instanceName ?? obj.name ?? '';
+          if (name && name.toLowerCase() !== instanceName.toLowerCase()) continue;
+          const s = extractStatus(item);
           if (s !== null) return s;
         }
-        if (list.length > 0) return 'notfound'; // items exist but none matched
-      }
-    } catch { /* fall through to connectionState */ }
-
-    try {
-      // Fallback: /instance/connectionState/{name} — simpler endpoint, widely supported
-      const stateRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
-        method: 'GET',
-        headers
-      });
-      if (stateRes.ok) {
-        const data = await stateRes.json().catch(() => null);
-        const s = parseStatus(data);
-        if (s !== null) return s;
-      } else if (stateRes.status === 404) {
+        if (list.length === 0) return 'notfound';
+      } else if (res.status === 404) {
         return 'notfound';
       }
     } catch { /* ignore */ }
