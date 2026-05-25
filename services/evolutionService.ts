@@ -49,26 +49,58 @@ export const evolutionService = {
 
   async checkStatus(instanceName: string): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
     if (!instanceName) return 'notfound';
+
+    const parseStatus = (inst: any): 'open' | 'close' | 'connecting' | 'notfound' | null => {
+      if (!inst) return null;
+      // Unwrap nested { instance: {...} } format used by some forks
+      const data = inst.instance || inst;
+      const name = data.instanceName || data.name || '';
+      if (name && name !== instanceName) return null; // wrong instance in list
+      const connStatus = (data.connectionStatus || data.state || data.status || '').toUpperCase();
+      if (!connStatus) return null;
+      if (data.disconnectionReasonCode && connStatus === 'OPEN') return 'close'; // stuck-open
+      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(connStatus)) return 'open';
+      if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION'].includes(connStatus)) return 'connecting';
+      return 'close';
+    };
+
     try {
-      // Use fetchInstances (includes disconnectionReasonCode) to detect "stuck open" instances
-      // where connectionState says 'open' but the WA session was actually dropped (401/conflict).
+      // Primary: fetchInstances (includes disconnectionReasonCode for stuck-open detection)
       const fetchRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, {
         method: 'GET',
         headers
       });
-      if (!fetchRes.ok) return fetchRes.status === 404 ? 'notfound' : 'close';
-      const list: any[] = await fetchRes.json();
-      if (!Array.isArray(list) || list.length === 0) return 'notfound';
-      const inst = list[0];
-      const connStatus = (inst.connectionStatus || '').toUpperCase();
-      // If the instance has a disconnectionReasonCode it was actually dropped — treat as close
-      if (inst.disconnectionReasonCode && connStatus === 'OPEN') return 'close';
-      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(connStatus)) return 'open';
-      if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION'].includes(connStatus)) return 'connecting';
-      return 'close';
-    } catch (e) {
-      return 'close';
-    }
+      if (fetchRes.ok) {
+        const raw = await fetchRes.json().catch(() => null);
+        // Handle array, single object, or { instances: [...] } formats
+        const list: any[] = Array.isArray(raw) ? raw
+          : raw?.instances ? raw.instances
+          : raw ? [raw]
+          : [];
+        for (const item of list) {
+          const s = parseStatus(item);
+          if (s !== null) return s;
+        }
+        if (list.length > 0) return 'notfound'; // items exist but none matched
+      }
+    } catch { /* fall through to connectionState */ }
+
+    try {
+      // Fallback: /instance/connectionState/{name} — simpler endpoint, widely supported
+      const stateRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
+        method: 'GET',
+        headers
+      });
+      if (stateRes.ok) {
+        const data = await stateRes.json().catch(() => null);
+        const s = parseStatus(data);
+        if (s !== null) return s;
+      } else if (stateRes.status === 404) {
+        return 'notfound';
+      }
+    } catch { /* ignore */ }
+
+    return 'close';
   },
 
   async fetchRecentMessages(instanceName: string, count: number = 20) {
