@@ -247,10 +247,12 @@ export async function runFollowUp(tenant: any): Promise<void> {
     //             after that appointment AND message hasn't been sent yet.
     // ─────────────────────────────────────────────────────────────────────
 
+    // REGRA GLOBAL: apenas clientes com agendamento FINALIZADO registrado.
+    // Leads/contatos sem histórico de agendamento NUNCA recebem reativação.
     // Build map: customerId → most recent FINISHED appointment
     const custLastFinished: Record<string, { appt: any; date: Date }> = {};
     for (const appt of allAppts) {
-      if (appt.status !== AppointmentStatus.FINISHED) continue;
+      if (appt.status !== AppointmentStatus.FINISHED) continue; // apenas finalizados
       const d = new Date(appt.startTime);
       const prev = custLastFinished[appt.customer_id];
       if (!prev || d > prev.date) {
@@ -258,7 +260,19 @@ export async function runFollowUp(tenant: any): Promise<void> {
       }
     }
 
+    // IDs de clientes com histórico de agendamento (garantia extra)
+    const custIdsWithAppt = new Set(Object.keys(custLastFinished));
+
+    let reativacaoSentThisRun = 0;
+    const MAX_REATIVACAO_PER_RUN = 3; // anti-disparo em massa: máx 3 por ciclo de polling
+
     for (const [custId, { appt: lastAppt, date: lastDate }] of Object.entries(custLastFinished)) {
+      // Rate limit: impede disparos em massa (ex: ao ativar modo pela 1ª vez)
+      if (reativacaoSentThisRun >= MAX_REATIVACAO_PER_RUN) break;
+
+      // Garantia extra: nunca enviar para quem não tem agendamento FINISHED
+      if (!custIdsWithAppt.has(custId)) continue;
+
       const cust = findCust(custId);
       if (!cust?.phone) continue;
 
@@ -305,9 +319,10 @@ export async function runFollowUp(tenant: any): Promise<void> {
 
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);
+        reativacaoSentThisRun++;
         newSent[sentKey] = nowDate;
         anySent = true;
-        console.log(`[FollowUp] Recuperação enviada → ${cust.name} (${daysSince.toFixed(1)} dias)`);
+        console.log(`[FollowUp] Recuperação enviada → ${cust.name} (${daysSince.toFixed(1)} dias) [${reativacaoSentThisRun}/${MAX_REATIVACAO_PER_RUN}]`);
         registerFollowUpContext(tenantId, cust.phone, 'reativacao', msg, {
           serviceName: svc?.name || '',
           clientName: cust.name,

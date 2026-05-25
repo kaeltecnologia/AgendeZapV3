@@ -528,11 +528,16 @@ Deno.serve(async (_req) => {
         }
 
         // ── 3. REATIVAÇÃO (cliente inativo) ───────────────────────────
+        // REGRA GLOBAL: apenas clientes que já tiveram agendamento FINALIZADO
+        // registrado no sistema. Nunca disparar para leads sem histórico.
+        // Rate limit: máx 3 envios por execução por tenant (scheduler roda a cada 1 min)
+        // → no máximo ~180 por hora, impossibilitando disparos em massa.
         if (settings.reativacaoModes.length > 0) {
           // Build map: customerId → most recent FINISHED appointment
+          // Clientes sem agendamento FINISHED nunca entram neste mapa → nunca recebem
           const custLastFinished: Record<string, { appt: any; date: Date }> = {};
           for (const appt of allAppts) {
-            if (appt.status !== 'FINISHED') continue;
+            if (appt.status !== 'FINISHED') continue; // apenas finalizados
             const d = new Date(appt.startTime);
             const prev = custLastFinished[appt.customer_id];
             if (!prev || d > prev.date) {
@@ -540,7 +545,19 @@ Deno.serve(async (_req) => {
             }
           }
 
+          // Construir conjunto de IDs de clientes com agendamento para validação extra
+          const custIdsWithAppt = new Set(Object.keys(custLastFinished));
+
+          let reativacaoSentThisRun = 0;
+          const MAX_REATIVACAO_PER_RUN = 3; // anti-disparo em massa
+
           for (const [custId, { appt: lastAppt, date: lastDate }] of Object.entries(custLastFinished)) {
+            // Rate limit: pare de processar se atingiu o máximo desta execução
+            if (reativacaoSentThisRun >= MAX_REATIVACAO_PER_RUN) break;
+
+            // Garantia extra: cliente DEVE ter agendamento FINISHED
+            if (!custIdsWithAppt.has(custId)) continue;
+
             const cust = findCust(custId);
             if (!cust?.phone) continue;
 
@@ -574,9 +591,10 @@ Deno.serve(async (_req) => {
 
             const sent = await sendWhatsApp(instance, cust.phone, msg);
             if (sent) {
+              reativacaoSentThisRun++;
               newFollowUpSent[sentKey] = nowDate;
               anyFollowUpSent = true;
-              console.log(`[Reativação] ${tenant.nome} → ${cust.name} (${daysSince.toFixed(0)}d)`);
+              console.log(`[Reativação] ${tenant.nome} → ${cust.name} (${daysSince.toFixed(0)}d) [${reativacaoSentThisRun}/${MAX_REATIVACAO_PER_RUN}]`);
               await registerFollowUpContext(tenantId, cust.phone, 'reativacao', msg, {
                 serviceName: svc?.name || '', clientName: cust.name,
               });
