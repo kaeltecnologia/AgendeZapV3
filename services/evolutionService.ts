@@ -50,49 +50,44 @@ export const evolutionService = {
   async checkStatus(instanceName: string): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
     if (!instanceName) return 'notfound';
 
-    const extractStatus = (raw: any): 'open' | 'close' | 'connecting' | null => {
-      if (!raw) return null;
-      // Unwrap nested object formats: { instance: {...} } or { data: {...} }
-      const obj = raw.instance ?? raw.data ?? raw;
-      // Collect all candidate status fields
-      const s = (obj.connectionStatus ?? obj.state ?? obj.status ?? '').toUpperCase();
-      console.log('[checkStatus]', instanceName, '→ raw obj:', JSON.stringify(obj).slice(0, 200));
-      if (!s) return null;
+    // Parse status from any known Evolution API response shape
+    const parseStatusFromObj = (raw: any): 'open' | 'close' | 'connecting' | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const inner = raw.instance ?? raw.data ?? raw;
+      const s = String(inner.connectionStatus ?? inner.state ?? inner.status ?? '').toUpperCase();
       if (['OPEN', 'CONNECTED', 'ONLINE'].includes(s)) return 'open';
       if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION', 'QRCODE'].includes(s)) return 'connecting';
-      return 'close';
+      if (['CLOSE', 'CLOSED', 'DISCONNECTED'].includes(s)) return 'close';
+      return null;
     };
 
-    // Strategy 1: /instance/connectionState/{name} — direct, most reliable
+    // Strategy 1: GET /instance/connectionState/{name}
     try {
       const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, { method: 'GET', headers });
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        const s = extractStatus(data);
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      console.log('[checkStatus] connectionState HTTP', res.status, JSON.stringify(data).slice(0, 200));
+      if (res.ok && data) {
+        const s = parseStatusFromObj(data);
         if (s !== null) return s;
-      } else if (res.status === 404) {
-        return 'notfound';
       }
     } catch { /* fall through */ }
 
-    // Strategy 2: /instance/fetchInstances?instanceName={name}
+    // Strategy 2: GET /instance/fetchInstances (ALL instances, no filter — filter unsupported in some versions)
     try {
-      const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, { method: 'GET', headers });
-      if (res.ok) {
-        const raw = await res.json().catch(() => null);
-        const list: any[] = Array.isArray(raw) ? raw : raw?.instances ?? (raw ? [raw] : []);
-        console.log('[checkStatus] fetchInstances raw:', JSON.stringify(raw).slice(0, 300));
+      const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, { method: 'GET', headers });
+      const raw = res.ok ? await res.json().catch(() => null) : null;
+      console.log('[checkStatus] fetchInstances HTTP', res.status, JSON.stringify(raw).slice(0, 400));
+      if (res.ok && raw) {
+        const list: any[] = Array.isArray(raw) ? raw : raw?.instances ?? [raw];
         for (const item of list) {
-          // Skip items belonging to a different instance
-          const obj = item.instance ?? item.data ?? item;
-          const name = obj.instanceName ?? obj.name ?? '';
-          if (name && name.toLowerCase() !== instanceName.toLowerCase()) continue;
-          const s = extractStatus(item);
+          const inner = item.instance ?? item.data ?? item;
+          const name = String(inner.instanceName ?? inner.name ?? '').toLowerCase();
+          if (name && name !== instanceName.toLowerCase()) continue; // different instance
+          const s = parseStatusFromObj(item);
           if (s !== null) return s;
         }
-        if (list.length === 0) return 'notfound';
-      } else if (res.status === 404) {
-        return 'notfound';
+        // Searched all instances and not found
+        if (list.length > 0) return 'notfound';
       }
     } catch { /* ignore */ }
 
