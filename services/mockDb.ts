@@ -1728,25 +1728,61 @@ class DatabaseService {
     const ck = `getFinancialSummary:${tenantId}:${period}:${professionalId || ''}`;
     if (!opts?.fresh) { const c = _cache.get<any>(ck); if (c) return c; }
     try {
-      const apps = await this.getAppointments(tenantId);
+      const [apps, allComandas] = await Promise.all([
+        this.getAppointments(tenantId),
+        this.getComandas(tenantId),
+      ]);
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - period);
-      const filtered = apps.filter(a =>
-        new Date(a.startTime) >= startDate &&
-        a.status === AppointmentStatus.FINISHED &&
-        !a.isPlan &&                              // exclude plan appointments
-        a.source !== BookingSource.PLAN &&        // exclude plan source too
-        (!professionalId || a.professional_id === professionalId)
-      );
+
       const res: any = {
         totalRevenue: 0, totalExpenses: 0,
         [PaymentMethod.MONEY]: 0, [PaymentMethod.PIX]: 0,
         [PaymentMethod.DEBIT]: 0, [PaymentMethod.CREDIT]: 0
       };
-      filtered.forEach(a => {
+
+      // Helper: valor de item com desconto
+      const itemVal = (item: any) => {
+        const gross = item.qty * item.unitPrice;
+        if (item.discountType === 'percent') return gross * (1 - item.discount / 100);
+        return Math.max(0, gross - (item.discount ?? 0));
+      };
+
+      const apptMap = new Map(apps.map((a: any) => [a.id, a]));
+
+      // Bug 2+3: usar closedAt da comanda como data (não startTime) e total da comanda (não amountPaid)
+      const comandaApptIds = new Set<string>();
+      const closedComandas = (allComandas as any[]).filter(c =>
+        c.status === 'closed' && c.closedAt && new Date(c.closedAt) >= startDate
+      );
+      for (const cmd of closedComandas) {
+        const appt = cmd.appointment_id ? apptMap.get(cmd.appointment_id) : null;
+        if (appt?.status === AppointmentStatus.CANCELLED) continue; // Bug 1
+        if (cmd.appointment_id) comandaApptIds.add(cmd.appointment_id);
+        const items = (cmd.items || []) as any[];
+        const relevantItems = professionalId
+          ? items.filter((i: any) => (i.professionalId ?? cmd.professional_id) === professionalId)
+          : items;
+        if (professionalId && relevantItems.length === 0) continue;
+        const cmdTotal = relevantItems.reduce((s: number, i: any) => s + itemVal(i), 0);
+        res.totalRevenue += cmdTotal;
+        const payMethod = appt?.paymentMethod || cmd.paymentMethod;
+        if (payMethod) res[payMethod] = (res[payMethod] || 0) + cmdTotal;
+      }
+
+      // Legacy: appointments FINISHED sem comanda — usa startTime e amountPaid
+      (apps as any[]).filter(a =>
+        new Date(a.startTime) >= startDate &&
+        a.status === AppointmentStatus.FINISHED &&
+        !a.isPlan &&
+        a.source !== BookingSource.PLAN &&
+        !comandaApptIds.has(a.id) &&
+        (!professionalId || a.professional_id === professionalId)
+      ).forEach(a => {
         res.totalRevenue += (a.amountPaid || 0);
         if (a.paymentMethod) res[a.paymentMethod] = (res[a.paymentMethod] || 0) + (a.amountPaid || 0);
       });
+
       _cache.set(ck, res, TTL_SHORT);
       return res;
     } catch (err) {

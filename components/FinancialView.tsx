@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
-import { PaymentMethod, AppointmentStatus, Professional, Expense, Appointment, Service, Comanda, ComandaItem, Plan, Customer } from '../types';
+import { PaymentMethod, AppointmentStatus, Professional, Expense, Appointment, Service, Comanda, ComandaItem, Plan, Customer, Adiantamento } from '../types';
 import { hasFeature } from '../config/planConfig';
 
 const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -33,7 +33,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [loading, setLoading] = useState(true);
   const [proBreakdown, setProBreakdown] = useState<Array<{
     prof: Professional; count: number; revenue: number;
-    commRate: number; commission: number; avgTicket: number; topSvcName: string;
+    commRate: number; commission: number; adiantamentos: number; netLiquido: number; avgTicket: number; topSvcName: string;
   }>>([]);
   const [proDetailProf, setProDetailProf] = useState<Professional | null>(null);
 
@@ -51,9 +51,16 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [planRevenue, setPlanRevenue] = useState(0);
   const [activePlanCount, setActivePlanCount] = useState(0);
 
+  // ── Profissionais tab: período próprio (espelha FolhaPagamento) ───────────
+  const [proStart, setProStart] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [proEnd, setProEnd] = useState(() => new Date().toISOString().slice(0, 10));
+
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [pros, svcs, summ, exps, apps, st, allComandas, allPlans, allCustomers] = await Promise.all([
+    const [pros, svcs, summ, exps, apps, st, allComandas, allPlans, allCustomers, allAdiantamentos] = await Promise.all([
       db.getProfessionals(tenantId),
       db.getServices(tenantId),
       db.getFinancialSummary(tenantId, period, selectedProfId),
@@ -63,6 +70,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       db.getComandas(tenantId),
       db.getPlans(tenantId),
       db.getCustomers(tenantId),
+      db.getAdiantamentos(tenantId),
     ]);
 
     // Calculate active plan revenue: sum of plan.price for customers with active plans
@@ -100,23 +108,26 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
     // Accumulate correct commission per item: grossBase * commRate% - materialCost
     const proCommMap: Record<string, number> = {};
 
-    const closedComandas = allComandas.filter((c: Comanda) =>
-      c.status === 'closed' && c.closedAt && new Date(c.closedAt) >= startDate
+    // Profissionais tab: período próprio (proStart/proEnd), apenas comandas fechadas
+    // — mesma lógica do FolhaPagamentoView para resultados idênticos
+    const apptMap = new Map(apps.map((a: Appointment) => [a.id, a]));
+    const proStartDate = new Date(proStart + 'T00:00:00');
+    const proEndDate = new Date(proEnd + 'T23:59:59');
+    const proComandas = allComandas.filter((c: Comanda) =>
+      c.status === 'closed' && c.closedAt &&
+      new Date(c.closedAt) >= proStartDate && new Date(c.closedAt) <= proEndDate &&
+      (!c.appointment_id || apptMap.get(c.appointment_id)?.status !== AppointmentStatus.CANCELLED)
     );
-    const appointmentsWithComanda = new Set(closedComandas.map((c: Comanda) => c.appointment_id));
 
-    // Revenue per professional: from comanda items first, then fallback to amountPaid
     const proRevMap: Record<string, number> = {};
     const proCountMap: Record<string, number> = {};
     const proSvcCountMap: Record<string, Record<string, number>> = {};
 
-    // 1. From closed comandas (supports multi-professional items)
-    closedComandas.forEach((c: Comanda) => {
+    proComandas.forEach((c: Comanda) => {
       c.items.forEach(item => {
         const profId = item.professionalId ?? c.professional_id;
         proRevMap[profId] = (proRevMap[profId] ?? 0) + comandaItemTotal(item);
         proSvcCountMap[profId] = proSvcCountMap[profId] ?? {};
-        // Commission: always on original price (grossBase), minus material cost
         const grossBase = item.qty * item.unitPrice;
         const commRate_ = commMap[profId] ?? 0;
         const svc = item.type === 'service' ? svcs.find((s: Service) => s.id === item.itemId) : undefined;
@@ -129,32 +140,27 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
           proSvcCountMap[profId][item.itemId] = (proSvcCountMap[profId][item.itemId] ?? 0) + 1;
         }
       });
-      // Count procedures per original professional
       proCountMap[c.professional_id] = (proCountMap[c.professional_id] ?? 0) + 1;
     });
 
-    // 2. From appointments without comanda (direct FINISHED, legacy)
-    allRevenues
-      .filter(a => !appointmentsWithComanda.has(a.id))
-      .forEach(a => {
-        proRevMap[a.professional_id] = (proRevMap[a.professional_id] ?? 0) + (a.amountPaid || 0);
-        proCountMap[a.professional_id] = (proCountMap[a.professional_id] ?? 0) + 1;
-        proSvcCountMap[a.professional_id] = proSvcCountMap[a.professional_id] ?? {};
-        proSvcCountMap[a.professional_id][a.service_id] = (proSvcCountMap[a.professional_id][a.service_id] ?? 0) + 1;
-      });
+    // Adiantamentos: mesmos limites de data do Profissionais (igual ao FolhaPagamento)
+    const proAdiantMap: Record<string, number> = {};
+    (allAdiantamentos as Adiantamento[]).filter(a => a.date >= proStart && a.date <= proEnd).forEach(a => {
+      proAdiantMap[a.professionalId] = (proAdiantMap[a.professionalId] ?? 0) + a.amount;
+    });
 
     const breakdown = pros.map(p => {
       const revenue = proRevMap[p.id] ?? 0;
       const count = proCountMap[p.id] ?? 0;
       const commRate = commMap[p.id] ?? 0;
-      // Use pre-calculated commission (original price base, material cost deducted)
-      // Fallback to simple formula for appointments without comanda (legacy path)
       const commission = proCommMap[p.id] !== undefined ? proCommMap[p.id] : revenue * commRate / 100;
+      const adiantamentos = proAdiantMap[p.id] ?? 0; // Bug 6
+      const netLiquido = commission - adiantamentos;  // Bug 6
       const avgTicket = count > 0 ? revenue / count : 0;
       const svcCounts = proSvcCountMap[p.id] ?? {};
       const topSvcId = Object.entries(svcCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
       const topSvcName = svcs.find(s => s.id === topSvcId)?.name ?? '—';
-      return { prof: p, count, revenue, commRate, commission, avgTicket, topSvcName };
+      return { prof: p, count, revenue, commRate, commission, adiantamentos, netLiquido, avgTicket, topSvcName };
     }).filter(r => r.revenue > 0 || r.count > 0).sort((a, b) => b.revenue - a.revenue);
     setProBreakdown(breakdown);
     // Init config (reuse commMap already built above)
@@ -164,7 +170,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
     setCfgGoal(st.monthlyRevenueGoal ?? 0);
     setCfgCommissions(commMap);
     setLoading(false);
-  }, [tenantId, period, selectedProfId]);
+  }, [tenantId, period, selectedProfId, proStart, proEnd]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -411,17 +417,26 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
             <div className="bg-white rounded-[24px] border-2 border-orange-100 p-5">
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Comissões a Pagar</p>
               <p className="text-2xl font-black text-orange-500">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.commission, 0))}</p>
+              {proBreakdown.some(r => r.adiantamentos > 0) && (
+                <p className="text-[9px] font-bold text-green-600 mt-1">
+                  Líquido: R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.netLiquido, 0))}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Period filter */}
-          <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
-            {[7, 30, 90].map(d => (
-              <button key={d} onClick={() => setPeriod(d)}
-                className={`px-4 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${period === d ? 'bg-black text-white' : 'text-slate-400'}`}>
-                {d}D
-              </button>
-            ))}
+          {/* Period filter — mesmo padrão do FolhaPagamento */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">De</label>
+              <input type="date" value={proStart} onChange={e => setProStart(e.target.value)}
+                className="p-2 bg-white border-2 border-slate-100 rounded-xl text-[10px] font-black outline-none focus:border-black" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Até</label>
+              <input type="date" value={proEnd} onChange={e => setProEnd(e.target.value)}
+                className="p-2 bg-white border-2 border-slate-100 rounded-xl text-[10px] font-black outline-none focus:border-black" />
+            </div>
           </div>
 
           {proBreakdown.length === 0 ? (
@@ -438,6 +453,8 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
                     <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Receita</th>
                     <th className="px-4 sm:px-6 py-3 sm:py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Com. %</th>
                     <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Com. R$</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Adiant.</th>
+                    <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Líquido</th>
                     <th className="px-4 sm:px-6 py-3 sm:py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest">Ticket</th>
                     <th className="px-4 sm:px-6 py-3 sm:py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Top Proc.</th>
                     <th className="px-4 sm:px-6 py-3 sm:py-4" />
@@ -456,6 +473,8 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
                         <span className="text-xs font-black text-orange-500">{r.commRate}%</span>
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-black text-orange-500">R$ {fmtBRL(r.commission)}</td>
+                      <td className="px-6 py-4 text-right text-sm font-bold text-slate-400">{r.adiantamentos > 0 ? `R$ ${fmtBRL(r.adiantamentos)}` : '—'}</td>
+                      <td className="px-6 py-4 text-right text-sm font-black text-green-600">R$ {fmtBRL(r.netLiquido)}</td>
                       <td className="px-6 py-4 text-right text-xs font-bold text-slate-500">R$ {fmtBRL(r.avgTicket)}</td>
                       <td className="px-6 py-4 text-xs font-bold text-slate-500">{r.topSvcName}</td>
                       <td className="px-6 py-4 text-right">
@@ -476,6 +495,8 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
                     <td className="px-6 py-4 text-right text-xs font-black text-black">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.revenue, 0))}</td>
                     <td />
                     <td className="px-6 py-4 text-right text-xs font-black text-orange-500">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.commission, 0))}</td>
+                    <td className="px-6 py-4 text-right text-xs font-black text-slate-400">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.adiantamentos, 0))}</td>
+                    <td className="px-6 py-4 text-right text-xs font-black text-green-600">R$ {fmtBRL(proBreakdown.reduce((s, r) => s + r.netLiquido, 0))}</td>
                     <td colSpan={3} />
                   </tr>
                 </tfoot>

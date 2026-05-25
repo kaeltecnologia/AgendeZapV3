@@ -3,7 +3,8 @@ import { db } from '../services/mockDb';
 import { evolutionService } from '../services/evolutionService';
 import {
   Professional, Comanda, ComandaItem,
-  Adiantamento, PagamentoPro, Customer, Service
+  Adiantamento, PagamentoPro, Customer, Service,
+  Appointment, AppointmentStatus
 } from '../types';
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
   const [adiantamentos, setAdiantamentos] = useState<Adiantamento[]>([]);
   const [pagamentos, setPagamentos]       = useState<PagamentoPro[]>([]);
   const [commissionMap, setCommissionMap] = useState<Record<string, number>>({});
+  const [cancelledApptIds, setCancelledApptIds] = useState<Set<string>>(new Set());
   const [loading, setLoading]             = useState(true);
 
   const [selectedProfId, setSelectedProfId] = useState('');
@@ -107,7 +109,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [profs, cmds, custs, svcs, adis, pgtos, settings] = await Promise.all([
+    const [profs, cmds, custs, svcs, adis, pgtos, settings, apps] = await Promise.all([
       db.getProfessionals(tenantId),
       db.getComandas(tenantId),
       db.getCustomers(tenantId),
@@ -115,6 +117,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
       db.getAdiantamentos(tenantId),
       db.getPagamentosPro(tenantId),
       db.getSettings(tenantId),
+      db.getAppointments(tenantId),
     ]);
     setProfessionals(profs.filter(p => p.active));
     setComandas(cmds.filter(c => c.status === 'closed'));
@@ -129,6 +132,9 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
       }
     }
     setCommissionMap(cMap);
+    setCancelledApptIds(new Set(
+      (apps as Appointment[]).filter(a => a.status === AppointmentStatus.CANCELLED).map(a => a.id)
+    ));
     if (!selectedProfId && profs.length > 0) setSelectedProfId(profs[0].id);
     setLoading(false);
   }, [tenantId]);
@@ -140,6 +146,8 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
   const procedimentos: ProcedimentoRow[] = comandas
     .filter(c => {
       if (!c.closedAt) return false;
+      // Bug 1 fix: pular comandas cujo agendamento foi cancelado posteriormente
+      if (c.appointment_id && cancelledApptIds.has(c.appointment_id)) return false;
       const d = c.closedAt.slice(0, 10);
       return d >= toDateISO(periodoInicio) && d <= toDateISO(periodoFim);
     })
