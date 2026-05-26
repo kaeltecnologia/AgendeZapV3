@@ -421,8 +421,8 @@ export const evolutionService = {
   async enableWebhook(instanceName: string, webhookUrl: string): Promise<boolean> {
     if (!instanceName || !webhookUrl) return false;
     const events = ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'];
-    const bodyV2 = JSON.stringify({ webhook: { url: webhookUrl, enabled: true, webhook_by_events: false, webhook_base64: true, events } });
-    const bodyV1 = JSON.stringify({ url: webhookUrl, enabled: true, webhook_by_events: false, webhook_base64: true, events });
+    const bodyV2 = JSON.stringify({ webhook: { url: webhookUrl, enabled: true, webhookByEvents: false, webhookBase64: false, events } });
+    const bodyV1 = JSON.stringify({ url: webhookUrl, enabled: true, webhookByEvents: false, webhookBase64: false, events });
     // Tenta POST v2, POST v1, PUT v2 — aceita o primeiro 2xx
     try {
       for (const [method, body] of [['POST', bodyV2], ['POST', bodyV1], ['PUT', bodyV2]] as const) {
