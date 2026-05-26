@@ -18,7 +18,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [instanceName, setInstanceName] = useState('');
-  
+
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   const addLog = useCallback((type: LogEntry['type'], message: string) => {
@@ -90,16 +90,15 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
           if (i === 11) addLog('INFO', 'Timeout aguardando desconexão — forçando mesmo assim...');
         }
 
-        // Restart to initialize fresh connection (session was cleared → generates QR)
-        await evolutionService.restartInstance(name);
-        await new Promise(r => setTimeout(r, 3000));
-
-        // Retry connect up to 5× until QR appears
+        // createAndFetchQr abaixo faz o restart internamente — NÃO chamar restartInstance
+        // aqui para evitar double restart que destabiliza a instância na Evolution API.
         addLog('INFO', 'Solicitando QR Code...');
         let qrResult: any = null;
         for (let attempt = 0; attempt < 5; attempt++) {
           qrResult = await evolutionService.createAndFetchQr(name, false);
           if (qrResult.qrcode || qrResult.message === 'Conectado.') break;
+          // Erro persistente (instância bugada/irrecuperável) — para imediatamente
+          if (qrResult.status === 'error') break;
           if (attempt < 4) {
             addLog('INFO', `QR ainda não disponível, aguardando... (${attempt + 1}/5)`);
             await new Promise(r => setTimeout(r, 2500));
@@ -192,35 +191,20 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
     }
   }, [loading, refreshInstanceInfo, addLog]);
 
+  // Polling de status — consulta Evolution API a cada 10s
   useEffect(() => {
+    addLog('INFO', '▶ Polling iniciado'); // log síncrono — confirma que o código novo carregou
     let mounted = true;
     let lastStatus = '';
 
     const check = async () => {
       const name = await refreshInstanceInfo();
+      addLog('POLLING', `inst="${name || '(vazio)'}"`);
       if (!name || !mounted) return;
-
-      // Primary: read status saved by webhook (CONNECTION_UPDATE event) — most reliable
-      const settings = await db.getSettings(tenantId, { fresh: true }).catch(() => null);
-      const dbStatus = settings?.connectionStatus;
-      if (dbStatus === 'open' || dbStatus === 'close' || dbStatus === 'connecting') {
-        if (!mounted) return;
-        setInstanceStatus(dbStatus);
-        if (dbStatus === 'open' && lastStatus !== 'open') {
-          evolutionService.enableWebhook(name, WEBHOOK_URL).catch(() => {});
-        }
-        lastStatus = dbStatus;
-        addLog('POLLING', `Status do banco: ${dbStatus}`);
-        return;
-      }
-
-      // Fallback: direct Evolution API poll
       const status = await evolutionService.checkStatus(name, (msg) => addLog('POLLING', msg));
+      addLog('POLLING', `→ status final: ${status}`);
       if (!mounted) return;
       setInstanceStatus(status);
-
-      // When connection (re)opens, immediately re-register the Edge Function webhook
-      // so 24/7 operation is restored without waiting for the 5-min AiPollingManager cycle.
       if (status === 'open' && lastStatus !== 'open') {
         evolutionService.enableWebhook(name, WEBHOOK_URL).catch(() => {});
       }
@@ -233,7 +217,32 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       mounted = false;
       clearInterval(interval);
     };
-  }, [tenantId, refreshInstanceInfo]);
+  }, [tenantId, refreshInstanceInfo, addLog]);
+
+  // Poll agressivo a cada 3s enquanto QR está visível — detecta conexão imediatamente
+  useEffect(() => {
+    if (!qrCode || !instanceName) return;
+    let active = true;
+    let attempts = 0;
+
+    const poll = async () => {
+      if (!active || attempts >= 30) return;
+      attempts++;
+      const status = await evolutionService.checkStatus(instanceName, (msg) => addLog('POLLING', msg));
+      if (!active) return;
+      if (status === 'open') {
+        setInstanceStatus('open');
+        setQrCode(null);
+        addLog('SUCCESS', 'WhatsApp conectado!');
+        evolutionService.enableWebhook(instanceName, WEBHOOK_URL).catch(() => {});
+        return;
+      }
+      setTimeout(poll, 3000);
+    };
+
+    const t = setTimeout(poll, 3000);
+    return () => { active = false; clearTimeout(t); };
+  }, [qrCode, instanceName, addLog]);
 
   return (
     <div className="space-y-10 animate-fadeIn max-w-5xl mx-auto">

@@ -4058,22 +4058,18 @@ Deno.serve(async (req) => {
       const state: string = (body.data?.state || body.state || '').toLowerCase();
       if (instanceName && (state === 'open' || state === 'close' || state === 'connecting')) {
         try {
-          const { data: tenantRow } = await supabase
-            .from('tenants').select('id').eq('evolution_instance', instanceName).maybeSingle();
+          let tenantRow: { id: string } | null = null;
+          { const { data } = await supabase.from('tenants').select('id').eq('evolution_instance', instanceName).maybeSingle(); tenantRow = data; }
+          if (!tenantRow) {
+            const slugFromName = instanceName.replace(/^agz_/, '');
+            const { data } = await supabase.from('tenants').select('id').eq('slug', slugFromName).maybeSingle();
+            tenantRow = data;
+          }
           if (tenantRow?.id) {
-            await supabase.from('tenant_settings')
-              .upsert({ tenant_id: tenantRow.id, follow_up: {} }, { onConflict: 'tenant_id', ignoreDuplicates: true });
-            await supabase.rpc('jsonb_set_key', {
-              p_tenant_id: tenantRow.id,
-              p_key: '_connectionStatus',
-              p_value: JSON.stringify(state)
-            }).catch(async () => {
-              // Fallback: read-modify-write
-              const { data: s } = await supabase.from('tenant_settings').select('follow_up').eq('tenant_id', tenantRow.id).single();
-              const fu = s?.follow_up || {};
-              fu._connectionStatus = state;
-              await supabase.from('tenant_settings').update({ follow_up: fu }).eq('tenant_id', tenantRow.id);
-            });
+            const { data: s } = await supabase.from('tenant_settings').select('follow_up').eq('tenant_id', tenantRow.id).maybeSingle();
+            const fu = (s?.follow_up as Record<string, unknown>) || {};
+            fu._connectionStatus = state;
+            await supabase.from('tenant_settings').upsert({ tenant_id: tenantRow.id, follow_up: fu }, { onConflict: 'tenant_id' });
             console.log(`[connection.update] ${instanceName} → ${state}`);
           }
         } catch (e) { console.error('[connection.update] error:', e); }

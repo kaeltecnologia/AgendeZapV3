@@ -254,7 +254,7 @@ async function poll(tenantId: string) {
   }, 20_000);
 
   try {
-    const settings = await db.getSettings(tenantId);
+    const settings = await db.getSettings(tenantId, { fresh: true });
     if (!settings.aiActive) {
       // Advance _processAfter while AI is off so that when it's re-enabled,
       // all messages received during the off period are treated as "already past"
@@ -280,20 +280,31 @@ async function poll(tenantId: string) {
 
     const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
 
-    // Backoff: if instance was 'notfound' recently, skip checkStatus to avoid 404 spam
-    if (_instanceNotFoundUntil > Date.now()) {
+    // Primary: read connection status saved by webhook (CONNECTION_UPDATE) — avoids API polling failures
+    const dbStatus = (settings as any).connectionStatus as string | null | undefined;
+
+    let connectionStatus: 'open' | 'close' | 'connecting' | 'notfound';
+    if (dbStatus === 'open') {
+      // Trust DB status — set by webhook when Evolution API fires CONNECTION_UPDATE
+      connectionStatus = 'open';
+      _instanceNotFoundUntil = 0;
+    } else if (_instanceNotFoundUntil > Date.now()) {
+      // Backoff: instance was 'notfound' recently
       _statusCallback?.(false, true, true);
       return;
+    } else {
+      // Fallback: query Evolution API directly
+      connectionStatus = await evolutionService.checkStatus(instanceName);
+      const instanceMissing = connectionStatus === 'notfound';
+      if (instanceMissing) {
+        _instanceNotFoundUntil = Date.now() + 60_000;
+      } else {
+        _instanceNotFoundUntil = 0;
+      }
     }
 
-    const connectionStatus = await evolutionService.checkStatus(instanceName);
     const isConnected = connectionStatus === 'open';
     const instanceMissing = connectionStatus === 'notfound';
-    if (instanceMissing) {
-      _instanceNotFoundUntil = Date.now() + 60_000; // retry after 60s
-    } else {
-      _instanceNotFoundUntil = 0; // reset backoff when instance is found
-    }
     _statusCallback?.(isConnected, true, instanceMissing);
     if (!isConnected) return;
 

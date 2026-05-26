@@ -53,59 +53,53 @@ export const evolutionService = {
   ): Promise<'open' | 'close' | 'connecting' | 'notfound'> {
     if (!instanceName) return 'notfound';
     const dbg = (msg: string) => { console.log('[checkStatus]', msg); onDebug?.(msg); };
-
-    // Extract status from any known Evolution API response shape
-    const parseObj = (raw: any): 'open' | 'close' | 'connecting' | null => {
-      if (!raw || typeof raw !== 'object') return null;
-      const inner = raw.instance ?? raw.data ?? raw;
-      // Check every known field name for connection status
-      const s = String(
-        inner.connectionStatus ?? inner.connectionState ?? inner.state ??
-        inner.status ?? inner.connection?.status ?? ''
-      ).toUpperCase();
-      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(s)) return 'open';
-      if (['CONNECTING', 'PAIRING', 'CONNECTING_SESSION', 'QRCODE'].includes(s)) return 'connecting';
-      if (['CLOSE', 'CLOSED', 'DISCONNECTED'].includes(s)) return 'close';
-      return null;
-    };
-
-    // Name matches with or without "agz_" prefix
-    const nameMatches = (n: string) => {
-      const a = n.toLowerCase();
-      const b = instanceName.toLowerCase();
-      return a === b || a === b.replace(/^agz_/, '') || b === a.replace(/^agz_/, '');
-    };
-
-    // Strategy 1: GET /instance/connectionState/{name}
     try {
-      const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, { method: 'GET', headers });
-      const data = await res.json().catch(() => null);
-      dbg(`connectionState HTTP ${res.status}: ${JSON.stringify(data).slice(0, 150)}`);
-      if (res.ok && data) {
-        const s = parseObj(data);
-        if (s !== null) return s;
+      const res = await fetch(
+        `${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`,
+        { method: 'GET', headers }
+      );
+      dbg(`HTTP ${res.status}`);
+      if (!res.ok) return res.status === 404 ? 'notfound' : 'close';
+      const body = await res.json().catch(() => null);
+      dbg(`body: ${JSON.stringify(body).slice(0, 300)}`);
+      const list: any[] = Array.isArray(body) ? body : (body ? [body] : []);
+      if (list.length === 0) {
+        // Fallback: busca sem filtro e procura por nome
+        const res2 = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, { method: 'GET', headers });
+        if (!res2.ok) return 'notfound';
+        const all: any[] = await res2.json().catch(() => []);
+        dbg(`fallback: ${all.length} instâncias`);
+        const nameLow = instanceName.toLowerCase();
+        const found = all.find((i: any) => {
+          const n = (i?.name ?? i?.instanceName ?? '').toLowerCase();
+          return n === nameLow || n === nameLow.replace(/^agz_/, '') || nameLow === n.replace(/^agz_/, '');
+        });
+        if (!found) return 'notfound';
+        dbg(`fallback encontrado: ${JSON.stringify(found).slice(0, 300)}`);
+        const cs2 = (
+          found.connectionStatus ?? found.instance?.connectionStatus ??
+          found.state ?? found.instance?.state ?? ''
+        ).toString().toUpperCase();
+        if (['OPEN', 'CONNECTED', 'ONLINE'].includes(cs2)) return 'open';
+        if (['CONNECTING', 'PAIRING', 'QRCODE'].includes(cs2)) return 'connecting';
+        return 'close';
       }
-    } catch (e: any) { dbg(`connectionState error: ${e?.message}`); }
-
-    // Strategy 2: GET /instance/fetchInstances (no filter — most compatible)
-    try {
-      const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, { method: 'GET', headers });
-      const raw = await res.json().catch(() => null);
-      dbg(`fetchInstances HTTP ${res.status}: ${JSON.stringify(raw).slice(0, 300)}`);
-      if (res.ok && raw) {
-        const list: any[] = Array.isArray(raw) ? raw : raw?.instances ?? [raw];
-        for (const item of list) {
-          const inner = item.instance ?? item.data ?? item;
-          const itemName = String(inner.instanceName ?? inner.name ?? inner.id ?? '');
-          if (itemName && !nameMatches(itemName)) continue;
-          const s = parseObj(item);
-          if (s !== null) { dbg(`matched "${itemName}" → ${s}`); return s; }
-        }
-        if (list.length > 0) return 'notfound';
-      }
-    } catch (e: any) { dbg(`fetchInstances error: ${e?.message}`); }
-
-    return 'close';
+      const inst = list[0];
+      // Log do objeto bruto para diagnóstico — mostra o formato exato retornado pela API
+      dbg(`inst: ${JSON.stringify(inst).slice(0, 500)}`);
+      // Suporta raiz OU aninhado em inst.instance (varia por versão da Evolution API)
+      const connStatus = (
+        inst.connectionStatus ?? inst.instance?.connectionStatus ??
+        inst.state ?? inst.instance?.state ?? ''
+      ).toString().toUpperCase();
+      dbg(`connStatus="${connStatus}"`);
+      if (['OPEN', 'CONNECTED', 'ONLINE'].includes(connStatus)) return 'open';
+      if (['CONNECTING', 'PAIRING', 'QRCODE', 'CONNECTING_SESSION'].includes(connStatus)) return 'connecting';
+      return 'close';
+    } catch (e: any) {
+      dbg(`erro: ${e?.message}`);
+      return 'close';
+    }
   },
 
   async fetchRecentMessages(instanceName: string, count: number = 20) {
@@ -337,11 +331,9 @@ export const evolutionService = {
       const inst = Array.isArray(infoList) ? infoList[0] : null;
       const exists = !!inst && (inst.name === instanceName || inst.instanceName === instanceName);
       const connStatus = ((inst?.connectionStatus) || '').toUpperCase();
-      const discCode = inst?.disconnectionReasonCode;
-      // Instance is truly open when connectionStatus=OPEN and no disconnect code
-      const trulyOpen = exists && connStatus === 'OPEN' && !discCode;
-      // Instance is stuck when Evolution reports OPEN but there's a disconnection code
-      const isStuck = exists && connStatus === 'OPEN' && !!discCode;
+      // Se connectionStatus=OPEN, a instância está conectada — ignora disconnectionReasonCode
+      // (pode ser resíduo de desconexão anterior e não indica estado atual)
+      const trulyOpen = exists && connStatus === 'OPEN';
 
       // ── Step 2: fast-path for truly connected instances
       if (!forceQr && trulyOpen) {
@@ -350,8 +342,8 @@ export const evolutionService = {
 
       // ── Step 3: prepare the instance
       if (exists) {
-        if (forceQr || isStuck) {
-          // Stuck/forced: logout to clear the dead session, then restart for fresh QR
+        if (forceQr) {
+          // Forced reset: logout to clear session, then restart for fresh QR
           await this.logoutInstance(instanceName);
           await this.sleep(1500);
         }
@@ -409,8 +401,8 @@ export const evolutionService = {
 
       const data = await connectResponse.json();
       // Only trust "open" from connect when we know the instance is truly stable
-      // (not in stuck/forced mode which cleared the session)
-      if (!forceQr && !isStuck && (data.instance?.state === 'open' || data.state === 'open')) {
+      // (not in forced-reset mode which cleared the session)
+      if (!forceQr && (data.instance?.state === 'open' || data.state === 'open')) {
         return { status: 'success', qrcode: null, message: 'Conectado.' };
       }
 
@@ -428,20 +420,17 @@ export const evolutionService = {
   // Enables the Edge Function webhook so Evolution API posts messages to it 24/7.
   async enableWebhook(instanceName: string, webhookUrl: string): Promise<boolean> {
     if (!instanceName || !webhookUrl) return false;
-    // Evolution API v2+ requires the payload wrapped in a "webhook" object
-    const body = JSON.stringify({
-      webhook: {
-        url: webhookUrl,
-        enabled: true,
-        webhook_by_events: false,
-        webhook_base64: true,
-        events: ['MESSAGES_UPSERT']
-      }
-    });
+    const events = ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'];
+    const bodyV2 = JSON.stringify({ webhook: { url: webhookUrl, enabled: true, webhook_by_events: false, webhook_base64: true, events } });
+    const bodyV1 = JSON.stringify({ url: webhookUrl, enabled: true, webhook_by_events: false, webhook_base64: true, events });
+    // Tenta POST v2, POST v1, PUT v2 — aceita o primeiro 2xx
     try {
-      await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, { method: 'POST', headers, body });
+      for (const [method, body] of [['POST', bodyV2], ['POST', bodyV1], ['PUT', bodyV2]] as const) {
+        const r = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, { method, headers, body });
+        if (r.ok) return true;
+      }
     } catch { /* ignore */ }
-    return true;
+    return false;
   },
 
   // NOTE: setWebhook intentionally calls disableWebhook — the external webhook server
