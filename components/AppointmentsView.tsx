@@ -2575,7 +2575,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       {editAppt && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
           <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
-            <div className="bg-white dark:bg-slate-900 rounded-[40px] w-full max-w-md p-10 space-y-6 animate-scaleUp border-4 border-black dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-900 rounded-[40px] w-full max-w-lg p-10 space-y-6 animate-scaleUp border-4 border-black dark:border-slate-700">
               <h2 className="text-2xl font-black text-black dark:text-white uppercase tracking-tight">Editar Agendamento</h2>
               {editError && (
                 <div className="bg-red-50 border-2 border-red-200 p-3 rounded-2xl text-red-600 text-xs font-black uppercase tracking-widest">⚠️ {editError}</div>
@@ -2600,7 +2600,14 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviço(s)</label>
                   {editRows.map((row) => {
                     const rowSvc = services.find(s => s.id === row.svcId);
-                    const availSvcs = services.filter(s => s.active);
+                    const availSvcs = (() => {
+                      let svcs = services.filter(s => s.active !== false);
+                      if (editProfId) {
+                        const prof = professionals.find(p => p.id === editProfId);
+                        if (prof?.serviceIds?.length) svcs = svcs.filter(s => prof.serviceIds!.includes(s.id));
+                      }
+                      return svcs;
+                    })();
                     return (
                       <div key={row.rowId} style={{ background: '#F8FAFC', borderRadius: 12, padding: '10px 12px', border: '1.5px solid #E2E8F0' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
@@ -2617,7 +2624,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                             style={{ flex: 1, padding: '6px 8px', borderRadius: 8, border: '1.5px solid #CBD5E1', fontSize: 11, fontWeight: 700, background: '#fff', outline: 'none' }}
                           >
                             <option value="">Serviço...</option>
-                            {availSvcs.map(s => <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes}min</option>)}
+                            {availSvcs.map(s => <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes}min · R$ {(s.price ?? 0).toFixed(2)}</option>)}
                           </select>
                           {editRows.length > 1 && (
                             <button onClick={() => setEditRows(prev => prev.filter(r => r.rowId !== row.rowId))}
