@@ -1187,7 +1187,7 @@ const App: React.FC = () => {
     <div className={`flex h-screen bg-slate-50/30 ${themeClass}`}>
       <Toast toasts={toasts} onRemove={removeToast} />
       {role === 'TENANT' && !pendingPayment && !resellerProfile && <WhatsNew />}
-      {tenantId && hasFeature(effectivePlan, 'agenteIA') && (
+      {tenantId && role === 'TENANT' && (
         <AiPollingManager
           tenantId={tenantId}
           onStatus={(connected, aiActive, instanceMissing) => setPollingStatus({ connected, aiActive, instanceMissing })}
