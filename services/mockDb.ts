@@ -852,13 +852,6 @@ class DatabaseService {
         telefone: customer.phone
       }).select().single();
 
-      // Unique constraint violation: customer with same phone already exists
-      if (error?.code === '23505') {
-        const { data: existing } = await supabase.from('customers')
-          .select('*').eq('tenant_id', customer.tenant_id).eq('telefone', customer.phone).maybeSingle();
-        if (existing) return this.buildCustomer(existing, {});
-      }
-
       if (error) {
         console.error("Supabase Customer Insert Error:", error.code, error.message, error.details, error.hint);
         throw error;
@@ -866,7 +859,7 @@ class DatabaseService {
       _cache.invalidate(`getCustomers:${customer.tenant_id}`);
       return this.buildCustomer(data, {});
     } catch (e: any) {
-      if (e?.code !== '23505') console.error("Supabase Customer Insert Error:", e);
+      console.error("Supabase Customer Insert Error:", e);
       throw e;
     }
   }
@@ -940,13 +933,19 @@ class DatabaseService {
 
   async findOrCreateCustomer(tenantId: string, phone: string, name: string) {
     try {
-      const [{ data: existing, error: fetchError }, settings] = await Promise.all([
-        supabase.from('customers').select('*').eq('tenant_id', tenantId).eq('telefone', phone).maybeSingle(),
+      const [{ data: rows, error: fetchError }, settings] = await Promise.all([
+        supabase.from('customers').select('*').eq('tenant_id', tenantId).eq('telefone', phone).limit(20),
         this.getSettings(tenantId)
       ]);
       if (fetchError) throw fetchError;
       const customerData = settings.customerData || {};
-      if (existing) return this.buildCustomer(existing, customerData[existing.id] || {});
+      if (rows && rows.length > 0) {
+        // Se há vários com o mesmo phone, prioriza o que tem o nome mais parecido
+        const normalName = name.trim().toLowerCase();
+        const exact = rows.find(r => r.nome?.toLowerCase() === normalName);
+        const best = exact ?? rows[0];
+        return this.buildCustomer(best, customerData[best.id] || {});
+      }
       return await this.addCustomer({ tenant_id: tenantId, name, phone });
     } catch (err) {
       console.error("Error findOrCreateCustomer:", err);
