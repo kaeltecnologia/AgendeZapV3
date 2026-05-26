@@ -455,6 +455,18 @@ class DatabaseService {
   }
 
   async updateAppointmentStatus(id: string, status: AppointmentStatus, updates: Partial<Appointment>) {
+    // Guard: never overwrite a CANCELLED appointment with FINISHED (prevents financial
+    // corruption when a comanda is closed after its appointment was already cancelled)
+    if (status === AppointmentStatus.FINISHED) {
+      try {
+        const { data } = await supabase.from('appointments').select('status').eq('id', id).maybeSingle();
+        if (data?.status === AppointmentStatus.CANCELLED) {
+          console.warn('[DB] Blocked: attempt to set FINISHED on a CANCELLED appointment', id);
+          return;
+        }
+      } catch {}
+    }
+
     try {
       const { error } = await supabase.from('appointments').update({
         status,
@@ -469,6 +481,17 @@ class DatabaseService {
     } catch (e) {
       console.error("Supabase Appointment Update Error:", e);
       throw e;
+    }
+
+    // Cascade: when appointment is CANCELLED, delete any linked open comanda so it
+    // cannot be closed later and corrupt the financial records
+    if (status === AppointmentStatus.CANCELLED) {
+      try {
+        await supabase.from('comandas').delete().eq('appointment_id', id).eq('status', 'open');
+        _cache.invalidate('getComandas:');
+      } catch (err) {
+        console.warn('[DB] Could not cascade-delete open comanda on appointment cancel:', err);
+      }
     }
   }
 
@@ -2062,6 +2085,28 @@ class DatabaseService {
       if (error) throw new Error(error.message);
     } catch (err) {
       console.warn('[Comandas] Supabase update failed, localStorage updated only:', err);
+    }
+    _cache.invalidate('getComandas:');
+  }
+
+  async deleteComanda(id: string): Promise<void> {
+    // Remove from localStorage across all tenant keys
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('agz_comandas_'));
+    for (const k of keys) {
+      try {
+        const list: Comanda[] = JSON.parse(localStorage.getItem(k) || '[]');
+        const idx = list.findIndex(c => c.id === id);
+        if (idx !== -1) {
+          list.splice(idx, 1);
+          localStorage.setItem(k, JSON.stringify(list));
+        }
+      } catch {}
+    }
+    try {
+      const { error } = await supabase.from('comandas').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      console.warn('[Comandas] Supabase delete failed:', err);
     }
     _cache.invalidate('getComandas:');
   }
