@@ -1003,6 +1003,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [bookingRows, setBookingRows] = useState<BookingRow[]>([
     { rowId: crypto.randomUUID(), category: '', svcId: '', profId: '', startTime: '', endTime: '', price: 0 }
   ]);
+  const [rowSvcSearch, setRowSvcSearch] = useState<Record<string, string>>({});
   const [bookingDate, setBookingDate] = useState('');
   const [bookingDiscount, setBookingDiscount] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState('');
@@ -1261,12 +1262,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const allBookingCategories = [...new Set(services.filter(s => s.category).map(s => s.category!))].sort();
   const bookingTotal = bookingRows.reduce((sum, r) => sum + (r.price || 0), 0) - (bookingDiscount || 0);
 
-  const getServicesForRow = (row: BookingRow) => {
+  const getServicesForRow = (row: BookingRow, search?: string) => {
     let svcs = services.filter(s => s.active !== false);
-    if (row.category) svcs = svcs.filter(s => s.category === row.category);
     if (row.profId) {
       const p = professionals.find(pr => pr.id === row.profId);
       if (p?.serviceIds?.length) svcs = svcs.filter(s => p.serviceIds!.includes(s.id));
+    }
+    if (search?.trim()) {
+      const q = search.trim().toLowerCase();
+      svcs = svcs.filter(s => s.name.toLowerCase().includes(q));
     }
     return svcs;
   };
@@ -2817,7 +2821,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
             <div className="space-y-3">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Serviços</label>
               {bookingRows.map((row, idx) => {
-                const rowSvcs = getServicesForRow(row);
+                const svcSearch = rowSvcSearch[row.rowId] || '';
+                const rowSvcs = getServicesForRow(row, svcSearch);
                 const rowProfs = getProfsForRow(row);
                 const selectedSvc = services.find(s => s.id === row.svcId);
                 return (
@@ -2828,21 +2833,17 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                         <button onClick={() => removeBookingRow(row.rowId)} className="text-slate-300 hover:text-red-400 text-xs font-black transition-colors">✕ Remover</button>
                       )}
                     </div>
-                    {/* Row 1: Categoria, Serviço, Profissional */}
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Categoria</label>
-                        <select
-                          value={row.category}
-                          onChange={e => updateRow(row.rowId, { category: e.target.value, svcId: '', price: 0, endTime: '' })}
-                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
-                        >
-                          <option value="">Todas</option>
-                          {allBookingCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
+                    {/* Row 1: Serviço (com busca), Profissional */}
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Serviço</label>
+                        <input
+                          type="text"
+                          placeholder="Buscar serviço..."
+                          value={svcSearch}
+                          onChange={e => setRowSvcSearch(prev => ({ ...prev, [row.rowId]: e.target.value }))}
+                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400 mb-1.5"
+                        />
                         <select
                           value={row.svcId}
                           onChange={e => {
@@ -2854,9 +2855,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                             });
                           }}
                           className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                          size={Math.min(rowSvcs.length + 1, 5)}
                         >
                           <option value="">Selecionar...</option>
-                          {rowSvcs.map(s => <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes}min</option>)}
+                          {rowSvcs.map(s => <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes}min · R$ {(s.price ?? 0).toFixed(2)}</option>)}
                         </select>
                       </div>
                       <div>
