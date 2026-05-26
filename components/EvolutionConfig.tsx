@@ -15,6 +15,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
   const [instanceStatus, setInstanceStatus] = useState<'open' | 'close' | 'connecting' | 'notfound' | 'idle'>('idle');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [instanceName, setInstanceName] = useState('');
@@ -191,6 +192,50 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
     }
   }, [loading, refreshInstanceInfo, addLog]);
 
+  const handleForceSync = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setLogs([]);
+    addLog('INFO', '🔄 Sincronização forçada iniciada...');
+    try {
+      const name = await refreshInstanceInfo();
+      addLog('INFO', `📡 Instância: ${name || '(não encontrada)'}`);
+      if (!name) { addLog('ERROR', 'Instância não identificada. Tente sair e entrar novamente.'); return; }
+
+      // 1. Check Evolution API status (full debug)
+      addLog('INFO', '── Verificando status na Evolution API ──');
+      const status = await evolutionService.checkStatus(name, (msg) => addLog('POLLING', msg));
+      addLog(status === 'open' ? 'SUCCESS' : 'ERROR', `Status Evolution API: ${status.toUpperCase()}`);
+      setInstanceStatus(status);
+
+      // 2. Sync DB
+      addLog('INFO', '── Sincronizando banco de dados ──');
+      if (status === 'open' || status === 'close' || status === 'connecting') {
+        await db.updateSettings(tenantId, { connectionStatus: status });
+        addLog('SUCCESS', `DB atualizado: _connectionStatus = "${status}"`);
+      }
+
+      // 3. Re-register webhook with CONNECTION_UPDATE
+      addLog('INFO', '── Re-registrando webhook na Evolution API ──');
+      addLog('INFO', `Webhook URL: ${WEBHOOK_URL}`);
+      addLog('INFO', 'Events: MESSAGES_UPSERT, CONNECTION_UPDATE');
+      const webhookOk = await evolutionService.enableWebhook(name, WEBHOOK_URL);
+      addLog(webhookOk ? 'SUCCESS' : 'ERROR', `Webhook: ${webhookOk ? 'registrado com sucesso ✓' : 'falha no registro ✗'}`);
+
+      // 4. Final status
+      addLog('INFO', '── Resultado Final ──');
+      addLog(status === 'open' ? 'SUCCESS' : 'ERROR',
+        status === 'open'
+          ? '✅ WhatsApp CONECTADO — DB e webhook sincronizados!'
+          : `⚠️ WhatsApp ${status.toUpperCase()} — Escaneie o QR Code para conectar.`
+      );
+    } catch (e: any) {
+      addLog('ERROR', `Erro: ${e.message || 'falha desconhecida'}`);
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, tenantId, refreshInstanceInfo, addLog]);
+
   // Check rápido do DB na montagem — evita flash de "DESCONECTADA" antes do poll
   useEffect(() => {
     if (!tenantId) return;
@@ -354,6 +399,18 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
               className="w-full bg-white text-slate-300 py-3 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:text-red-500 hover:border-red-100 transition-all border-2 border-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {loading ? 'AGUARDE...' : 'Reiniciar Instância (Nova Sessão)'}
+            </button>
+
+            {/* Force sync button */}
+            <button
+              disabled={loading || syncing}
+              onClick={handleForceSync}
+              className="w-full bg-slate-900 text-orange-400 py-3 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-black hover:text-orange-500 transition-all border-2 border-slate-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {syncing
+                ? <><span className="w-3 h-3 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />SINCRONIZANDO...</>
+                : <><span>⚡</span><span>Forçar Sincronização com Evolution API</span></>
+              }
             </button>
           </div>
 
