@@ -507,6 +507,17 @@ const App: React.FC = () => {
   const [relatoriosOpen, setRelatoriosOpen] = useState(false);
   const [sistemaSectionOpen, setSistemaSectionOpen] = useState(false);
 
+  // Auto-reload when service worker sends SW_UPDATED (new version deployed)
+  useEffect(() => {
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SW_UPDATED') {
+        window.location.reload();
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', handleSWMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
+  }, []);
+
   // Global keyboard shortcuts (Alt+key) — active on any screen
   useEffect(() => {
     const NAV_SHORTCUTS: Record<string, View> = {

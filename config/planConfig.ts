@@ -239,6 +239,7 @@ export function getPlanConfig(planId?: string | null): PlanConfig {
   // Legacy aliases
   if (planId === 'PRO') return PLAN_CONFIGS.PROFISSIONAL;
   if (planId === 'ENTERPRISE') return PLAN_CONFIGS.ELITE;
+  if (planId === 'basico') return PLAN_CONFIGS.PROFISSIONAL; // plano legado = PROFISSIONAL
   return PLAN_CONFIGS.START;
 }
 

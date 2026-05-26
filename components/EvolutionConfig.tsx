@@ -191,6 +191,14 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
     }
   }, [loading, refreshInstanceInfo, addLog]);
 
+  // Check rápido do DB na montagem — evita flash de "DESCONECTADA" antes do poll
+  useEffect(() => {
+    if (!tenantId) return;
+    db.getSettings(tenantId).then(s => {
+      if (s.connectionStatus === 'open') setInstanceStatus('open');
+    }).catch(() => {});
+  }, [tenantId]);
+
   // Polling de status — consulta Evolution API a cada 10s
   useEffect(() => {
     addLog('INFO', '▶ Polling iniciado'); // log síncrono — confirma que o código novo carregou
