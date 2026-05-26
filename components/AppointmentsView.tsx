@@ -1004,6 +1004,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     { rowId: crypto.randomUUID(), category: '', svcId: '', profId: '', startTime: '', endTime: '', price: 0 }
   ]);
   const [rowSvcSearch, setRowSvcSearch] = useState<Record<string, string>>({});
+  const [openSvcDropdown, setOpenSvcDropdown] = useState<string | null>(null);
   const [bookingDate, setBookingDate] = useState('');
   const [bookingDiscount, setBookingDiscount] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState('');
@@ -2835,31 +2836,45 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                     </div>
                     {/* Row 1: Serviço (com busca), Profissional */}
                     <div className="grid grid-cols-2 gap-2">
-                      <div>
+                      <div className="relative">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Serviço</label>
+                        {/* Dropdown customizado — flutua sem limite de largura do container */}
                         <input
                           type="text"
-                          placeholder="Buscar serviço..."
-                          value={svcSearch}
+                          placeholder={row.svcId ? (services.find(s => s.id === row.svcId)?.name ?? 'Buscar...') : 'Buscar serviço...'}
+                          value={openSvcDropdown === row.rowId ? svcSearch : (services.find(s => s.id === row.svcId)?.name ?? '')}
+                          onFocus={() => { setOpenSvcDropdown(row.rowId); setRowSvcSearch(prev => ({ ...prev, [row.rowId]: '' })); }}
                           onChange={e => setRowSvcSearch(prev => ({ ...prev, [row.rowId]: e.target.value }))}
-                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400 mb-1.5"
-                        />
-                        <select
-                          value={row.svcId}
-                          onChange={e => {
-                            const svc = services.find(s => s.id === e.target.value);
-                            updateRow(row.rowId, {
-                              svcId: e.target.value,
-                              price: svc?.price ?? 0,
-                              endTime: row.startTime && svc ? calcEnd(row.startTime, svc.durationMinutes) : row.endTime,
-                            });
-                          }}
+                          onBlur={() => setTimeout(() => setOpenSvcDropdown(null), 150)}
                           className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
-                          size={Math.min(rowSvcs.length + 1, 5)}
-                        >
-                          <option value="">Selecionar...</option>
-                          {rowSvcs.map(s => <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes}min · R$ {(s.price ?? 0).toFixed(2)}</option>)}
-                        </select>
+                          autoComplete="off"
+                        />
+                        {openSvcDropdown === row.rowId && (
+                          <div className="absolute left-0 top-full mt-1 z-[200] bg-white border-2 border-orange-300 rounded-xl shadow-2xl overflow-y-auto"
+                            style={{ minWidth: '340px', maxHeight: '220px' }}>
+                            {rowSvcs.length === 0
+                              ? <p className="text-xs text-slate-400 p-3 text-center">Nenhum serviço encontrado</p>
+                              : rowSvcs.map(s => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onMouseDown={() => {
+                                    updateRow(row.rowId, {
+                                      svcId: s.id,
+                                      price: s.price ?? 0,
+                                      endTime: row.startTime && s ? calcEnd(row.startTime, s.durationMinutes) : row.endTime,
+                                    });
+                                    setOpenSvcDropdown(null);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-orange-50 transition-colors border-b border-slate-50 last:border-0 ${row.svcId === s.id ? 'bg-orange-50 font-black text-orange-600' : 'font-semibold text-slate-700'}`}
+                                >
+                                  <span className="block truncate">{s.name}</span>
+                                  <span className="text-[10px] text-slate-400 font-normal">{s.durationMinutes}min · R$ {(s.price ?? 0).toFixed(2)}</span>
+                                </button>
+                              ))
+                            }
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Profissional</label>
