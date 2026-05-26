@@ -567,7 +567,8 @@ const AiPollingManager: React.FC<{
     if (!tenantId) return;
 
     const tick = async () => {
-      try {
+      // Web Lock: garante que apenas 1 aba execute o tick por vez (previne duplicatas recorrentes)
+      const runTick = async () => {
         // Generate missing recurring plan appointments (next 4 weeks)
         await db.generateRecurringAppointments(tenantId);
 
@@ -605,6 +606,16 @@ const AiPollingManager: React.FC<{
               console.log('[Trial] Aviso do dia 6 enviado para', maskPhone(tenant.phone));
             }
           }
+        }
+      };
+      try {
+        if (typeof navigator !== 'undefined' && navigator.locks) {
+          await navigator.locks.request(`agz_tick_${tenantId}`, { ifAvailable: true }, async (lock) => {
+            if (!lock) return; // outra aba já está executando
+            await runTick();
+          });
+        } else {
+          await runTick();
         }
       } catch (e: any) {
         console.error('[FollowUp] Erro no scheduler:', e.message);

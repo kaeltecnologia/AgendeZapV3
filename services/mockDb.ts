@@ -1588,6 +1588,24 @@ class DatabaseService {
       const toDateStr = (d: Date) =>
         `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+      // Tracks keys created in THIS run so concurrent tabs don't duplicate
+      // even when the DB appointments array was loaded before the inserts
+      const createdThisRun = new Set<string>();
+      const alreadyExists = (customerId: string, dateStr: string, time: string) => {
+        const key = `${customerId}_${dateStr}_${time}`;
+        if (createdThisRun.has(key)) return true;
+        const found = appointments.some(a =>
+          a.customer_id === customerId &&
+          a.startTime.slice(0, 10) === dateStr &&
+          a.startTime.slice(11, 16) === time &&
+          a.status !== AppointmentStatus.CANCELLED
+        );
+        if (found) createdThisRun.add(key);
+        return found;
+      };
+      const markCreated = (customerId: string, dateStr: string, time: string) =>
+        createdThisRun.add(`${customerId}_${dateStr}_${time}`);
+
       for (const customer of customers) {
         const entries: RecurringEntry[] = customer.recurringEntries || [];
         const hasLegacy = !!(customer.recurringSchedule?.enabled && customer.recurringSchedule?.slots?.length);
@@ -1613,13 +1631,7 @@ class DatabaseService {
               if (target <= now) continue;
 
               const dateStr = toDateStr(target);
-              const exists = appointments.some(a =>
-                a.customer_id === customer.id &&
-                a.startTime.slice(0, 10) === dateStr &&
-                a.startTime.slice(11, 16) === entry.time &&
-                a.status !== AppointmentStatus.CANCELLED
-              );
-              if (exists) continue;
+              if (alreadyExists(customer.id, dateStr, entry.time)) continue;
 
               await this.addAppointment({
                 tenant_id: tenantId,
@@ -1632,6 +1644,7 @@ class DatabaseService {
                 source: BookingSource.PLAN,
                 isPlan: true,
               });
+              markCreated(customer.id, dateStr, entry.time);
               created++;
               console.log(`[RecurSched] Único: ${customer.name} → ${dateStr} ${entry.time}`);
             } else {
@@ -1648,13 +1661,7 @@ class DatabaseService {
                 if (!isEntryActiveForWeek(entry, absWeek)) continue;
 
                 const dateStr = toDateStr(target);
-                const exists = appointments.some(a =>
-                  a.customer_id === customer.id &&
-                  a.startTime.slice(0, 10) === dateStr &&
-                  a.startTime.slice(11, 16) === entry.time &&
-                  a.status !== AppointmentStatus.CANCELLED
-                );
-                if (exists) continue;
+                if (alreadyExists(customer.id, dateStr, entry.time)) continue;
 
                 await this.addAppointment({
                   tenant_id: tenantId,
@@ -1667,6 +1674,7 @@ class DatabaseService {
                   source: BookingSource.PLAN,
                   isPlan: true,
                 });
+                markCreated(customer.id, dateStr, entry.time);
                 created++;
                 const freqLabel = entry.frequency === 'alternating' ? `Alt.Sem${(entry.weekOffset ?? 0) === 0 ? 'A' : 'B'}` : entry.frequency;
                 console.log(`[RecurSched] ${freqLabel}: ${customer.name} → ${dateStr} ${entry.time}`);
@@ -1695,13 +1703,7 @@ class DatabaseService {
             if (target <= now) continue;
 
             const dateStr = toDateStr(target);
-            const exists = appointments.some(a =>
-              a.customer_id === customer.id &&
-              a.startTime.slice(0, 10) === dateStr &&
-              a.startTime.slice(11, 16) === slot.time &&
-              a.status !== AppointmentStatus.CANCELLED
-            );
-            if (exists) continue;
+            if (alreadyExists(customer.id, dateStr, slot.time)) continue;
 
             await this.addAppointment({
               tenant_id: tenantId,
@@ -1714,6 +1716,7 @@ class DatabaseService {
               source: BookingSource.PLAN,
               isPlan: true,
             });
+            markCreated(customer.id, dateStr, slot.time);
             created++;
             console.log(`[RecurSched] Legacy: ${customer.name} → ${dateStr} ${slot.time}`);
           }
