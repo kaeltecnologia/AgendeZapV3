@@ -1420,27 +1420,27 @@ const App: React.FC = () => {
               <button
                 onClick={() => setCurrentView(View.CONEXOES)}
                 title={
-                  !pollingStatus.aiActive ? 'IA desligada — clique para configurar' :
                   pollingStatus.instanceMissing ? 'Instância Evolution API não encontrada — clique para recriar' :
                   !pollingStatus.connected ? 'WhatsApp desconectado — clique para reconectar' :
+                  !pollingStatus.aiActive ? 'WhatsApp conectado · IA desligada — clique para configurar' :
                   'IA Online'
                 }
                 className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${
-                  !pollingStatus.aiActive
-                    ? 'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100'
-                    : pollingStatus.instanceMissing
+                  pollingStatus.instanceMissing
                     ? 'border-orange-300 bg-orange-50 text-orange-600 hover:bg-orange-100 animate-pulse'
-                    : pollingStatus.connected
+                    : !pollingStatus.connected
+                    ? 'border-red-200 bg-red-50 text-red-500 hover:bg-red-100 animate-pulse'
+                    : !pollingStatus.aiActive
                     ? 'border-green-200 bg-green-50 text-green-600 hover:bg-green-100'
-                    : 'border-red-200 bg-red-50 text-red-500 hover:bg-red-100 animate-pulse'
+                    : 'border-green-200 bg-green-50 text-green-600 hover:bg-green-100'
                 }`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${
-                  !pollingStatus.aiActive ? 'bg-slate-300' :
                   pollingStatus.instanceMissing ? 'bg-orange-500' :
-                  pollingStatus.connected ? 'bg-green-500' : 'bg-red-500'
+                  !pollingStatus.connected ? 'bg-red-500' :
+                  'bg-green-500'
                 }`} />
-                {!pollingStatus.aiActive ? 'IA off' : pollingStatus.instanceMissing ? 'sem instância' : pollingStatus.connected ? 'IA online' : 'WA offline'}
+                {pollingStatus.instanceMissing ? 'sem instância' : !pollingStatus.connected ? 'WA offline' : !pollingStatus.aiActive ? 'WA ok · IA off' : 'IA online'}
               </button>
             )}
             {/* Theme picker */}
