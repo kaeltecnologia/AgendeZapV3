@@ -27,6 +27,8 @@ let _backfillDone = false;
 let _aiWasActive = false;
 // _instanceNotFoundUntil: backoff timestamp — skip polls while instance is 404
 let _instanceNotFoundUntil = 0;
+// _lastConnCheck: throttle WhatsApp status check when AI is off (avoid hitting API every 4s)
+let _lastConnCheck = 0;
 
 // ── Status callback — shared with App.tsx for header badge ────────────
 let _statusCallback: ((connected: boolean, aiActive: boolean, instanceMissing?: boolean) => void) | null = null;
@@ -261,7 +263,24 @@ async function poll(tenantId: string) {
       // and won't trigger stale responses.
       _processAfter = Math.floor(Date.now() / 1000);
       _aiWasActive = false;
-      _statusCallback?.(false, false);
+
+      // ── Checar status WhatsApp mesmo com IA desativada (página de agendamento precisa) ──
+      // Throttle: verifica a cada 30s para não chamar a API a cada 4s desnecessariamente
+      const now = Date.now();
+      if (now - _lastConnCheck >= 30_000 && _instanceNotFoundUntil <= now) {
+        _lastConnCheck = now;
+        try {
+          const tenant = await db.getTenant(tenantId);
+          if (tenant) {
+            const instName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
+            const connSt = await evolutionService.checkStatus(instName);
+            if (connSt === 'notfound') _instanceNotFoundUntil = now + 60_000;
+            _statusCallback?.(connSt === 'open', false, connSt === 'notfound');
+          } else {
+            _statusCallback?.(false, false);
+          }
+        } catch { _statusCallback?.(false, false); }
+      }
       return;
     }
 
