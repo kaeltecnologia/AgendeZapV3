@@ -262,9 +262,6 @@ const App: React.FC = () => {
   // ── Notificações de chegada de clientes ──────────────────────────────
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [arrivingAppts, setArrivingAppts] = useState<any[]>([]);
-  const [dismissedNotifs, setDismissedNotifs] = useState<Set<string>>(() =>
-    new Set(JSON.parse(sessionStorage.getItem('agz_dismissed_notifs') || '[]'))
-  );
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const [upgradeModal, setUpgradeModal] = useState<{ feature: FeatureKey } | null>(null);
   const UPDATE_KEY = 'agz_update_seen_v3';
@@ -291,25 +288,22 @@ const App: React.FC = () => {
     });
   }, [affiliateSlug]);
 
-  // ── Polling de chegada de clientes (a cada 60s) ──────────────────────
+  // ── Fila de presença: todos agendamentos de hoje PENDING/CONFIRMED ────
   useEffect(() => {
     if (!tenantId || role !== 'TENANT') return;
     const checkArrivals = async () => {
       try {
-        const appts = await db.getAppointments(tenantId);
-        const now = new Date();
-        const windowMs = 20 * 60 * 1000; // 20 min window
-        const arriving = appts.filter(a => {
-          if (a.status !== AppointmentStatus.CONFIRMED && a.status !== AppointmentStatus.PENDING) return false;
-          const start = new Date(a.startTime);
-          const diff = start.getTime() - now.getTime();
-          return diff >= -5 * 60 * 1000 && diff <= windowMs; // -5min to +20min
-        });
-        setArrivingAppts(arriving);
+        const appts = await db.getAppointments(tenantId, { fresh: true });
+        const today = new Date().toISOString().slice(0, 10);
+        const pending = appts.filter(a =>
+          (a.status === AppointmentStatus.CONFIRMED || a.status === AppointmentStatus.PENDING) &&
+          a.startTime.slice(0, 10) === today
+        ).sort((a, b) => a.startTime.localeCompare(b.startTime));
+        setArrivingAppts(pending);
       } catch { /* silently */ }
     };
     checkArrivals();
-    const iv = setInterval(checkArrivals, 60_000);
+    const iv = setInterval(checkArrivals, 30_000);
     return () => clearInterval(iv);
   }, [tenantId, role]);
 
@@ -1494,72 +1488,49 @@ const App: React.FC = () => {
                   <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
-                  {(() => {
-                    const unread = arrivingAppts.filter(a => !dismissedNotifs.has(a.id)).length;
-                    return unread > 0 ? (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">
-                        {unread}
-                      </span>
-                    ) : null;
-                  })()}
+                  {arrivingAppts.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">
+                      {arrivingAppts.length}
+                    </span>
+                  )}
                 </button>
                 {showNotifPanel && (
                   <div className="absolute right-0 top-full mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl w-80">
-                    <div className="p-3 border-b border-slate-100">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Chegadas de clientes</p>
+                    <div className="p-3 border-b border-slate-100 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fila de atendimento — hoje</p>
+                      <span className="text-[9px] text-slate-400">{arrivingAppts.length} pendente{arrivingAppts.length !== 1 ? 's' : ''}</span>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
                       {arrivingAppts.length === 0 ? (
-                        <p className="text-xs text-slate-400 text-center py-6 font-semibold">Nenhum cliente chegando agora</p>
+                        <p className="text-xs text-slate-400 text-center py-6 font-semibold">Todos os clientes foram atendidos ✓</p>
                       ) : arrivingAppts.map(a => {
-                        const dismissed = dismissedNotifs.has(a.id);
                         const start = new Date(a.startTime);
                         const hhmm = `${String(start.getHours()).padStart(2,'0')}:${String(start.getMinutes()).padStart(2,'0')}`;
+                        const now = new Date();
+                        const isPast = start < now;
                         return (
-                          <div key={a.id} className={`p-3 border-b border-slate-50 transition-opacity ${dismissed ? 'opacity-40' : ''}`}>
+                          <div key={a.id} className="p-3 border-b border-slate-50">
                             <div className="flex items-start gap-2 mb-2">
-                              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-                                <span className="text-xs font-black text-orange-500">{(a.customerName || '?').charAt(0).toUpperCase()}</span>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isPast ? 'bg-red-100' : 'bg-orange-100'}`}>
+                                <span className={`text-xs font-black ${isPast ? 'text-red-500' : 'text-orange-500'}`}>{(a.customerName || '?').charAt(0).toUpperCase()}</span>
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-black text-slate-800 truncate">{a.customerName || 'Cliente'}</p>
-                                <p className="text-[10px] text-slate-400">{hhmm} · {a.serviceName || 'Serviço'}</p>
+                                <p className={`text-[10px] font-bold ${isPast ? 'text-red-400' : 'text-slate-400'}`}>{hhmm}{isPast ? ' · atrasado' : ''} · {a.serviceName || 'Serviço'}</p>
                                 {a.professionalName && <p className="text-[10px] text-slate-400">Prof: {a.professionalName}</p>}
                               </div>
                             </div>
-                            {!dismissed && (
-                              <div className="flex gap-1.5">
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      await db.updateAppointmentStatus(a.id, AppointmentStatus.ARRIVED, {});
-                                      setDismissedNotifs(prev => {
-                                        const next = new Set(prev); next.add(a.id);
-                                        sessionStorage.setItem('agz_dismissed_notifs', JSON.stringify([...next]));
-                                        return next;
-                                      });
-                                      setArrivingAppts(prev => prev.filter(x => x.id !== a.id));
-                                    } catch { /* silently */ }
-                                  }}
-                                  className="flex-1 py-1.5 bg-orange-500 text-white text-[9px] font-black rounded-lg uppercase hover:bg-orange-600 transition-all"
-                                >
-                                  ✓ Confirmar chegada
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setDismissedNotifs(prev => {
-                                      const next = new Set(prev); next.add(a.id);
-                                      sessionStorage.setItem('agz_dismissed_notifs', JSON.stringify([...next]));
-                                      return next;
-                                    });
-                                  }}
-                                  className="px-3 py-1.5 bg-slate-100 text-slate-500 text-[9px] font-black rounded-lg uppercase hover:bg-slate-200 transition-all"
-                                >
-                                  Ignorar
-                                </button>
-                              </div>
-                            )}
-                            {dismissed && <p className="text-[9px] text-slate-400 font-semibold">Confirmado ✓</p>}
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await db.updateAppointmentStatus(a.id, AppointmentStatus.ARRIVED, {});
+                                  setArrivingAppts(prev => prev.filter(x => x.id !== a.id));
+                                } catch { /* silently */ }
+                              }}
+                              className="w-full py-1.5 bg-orange-500 text-white text-[9px] font-black rounded-lg uppercase hover:bg-orange-600 transition-all"
+                            >
+                              ✓ Confirmar chegada
+                            </button>
                           </div>
                         );
                       })}
