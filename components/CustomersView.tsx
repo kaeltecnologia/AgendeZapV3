@@ -137,7 +137,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.phone.includes(searchTerm)
     )
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'variant' }));
 
   const handleAdd = async () => {
     if (!newName || !newPhone) { alert("Nome e WhatsApp são obrigatórios!"); return; }
@@ -381,7 +381,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 if (letter !== lastLetter) {
                   lastLetter = letter;
                   rows.push(
-                    <div key={`sep-${letter}`} className="px-4 py-1.5 bg-slate-50 border-b border-slate-100">
+                    <div key={`sep-${i}-${letter}`} className="px-4 py-1.5 bg-slate-50 border-b border-slate-100">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{letter}</span>
                     </div>
                   );
