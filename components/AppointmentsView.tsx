@@ -2730,7 +2730,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       {showBookingModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
           <div className="flex justify-center items-start min-h-full p-4 pt-8 pb-10">
-          <div className="bg-white rounded-[32px] w-full max-w-2xl p-8 space-y-6 animate-scaleUp border-4 border-black">
+          <div className="bg-white rounded-[32px] w-full max-w-3xl p-8 space-y-6 animate-scaleUp border-4 border-black">
             <h2 className="text-2xl font-black text-black tracking-tight uppercase">Novo Horário</h2>
             {errorMsg && (
               <div className="bg-red-50 border-2 border-red-200 p-4 rounded-2xl text-red-600 text-xs font-black uppercase tracking-widest animate-pulse">⚠️ {errorMsg}</div>
