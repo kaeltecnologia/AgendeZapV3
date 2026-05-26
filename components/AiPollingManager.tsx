@@ -276,6 +276,10 @@ async function poll(tenantId: string) {
             const connSt = await evolutionService.checkStatus(instName);
             if (connSt === 'notfound') _instanceNotFoundUntil = now + 60_000;
             _statusCallback?.(connSt === 'open', false, connSt === 'notfound');
+            // Sync DB so DB check on mount always reflects real status
+            if (connSt === 'open' || connSt === 'close' || connSt === 'connecting') {
+              db.updateSettings(tenantId, { connectionStatus: connSt }).catch(() => {});
+            }
           } else {
             _statusCallback?.(false, false);
           }

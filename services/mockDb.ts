@@ -1264,6 +1264,9 @@ class DatabaseService {
         _subscriptionConfig: newS.subscriptionConfig !== undefined ? newS.subscriptionConfig : (curr.subscriptionConfig ?? null),
         _professionalOrder: newS.professionalOrder ?? curr.professionalOrder ?? [],
         _breakColor: newS.breakColor ?? curr.breakColor ?? '#f97316',
+        // Preserve connection status written by webhook — not updatable via updateSettings
+        // but must survive every upsert to avoid data loss
+        _connectionStatus: newS.connectionStatus ?? curr.connectionStatus ?? null,
       };
 
       // Always include operating_hours to prevent data loss on upsert (uses current value as fallback)
