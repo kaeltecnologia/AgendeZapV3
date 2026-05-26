@@ -2673,14 +2673,31 @@ const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, 
   const [cbPercent, setCbPercent] = useState(5);
   const [cbThreshold, setCbThreshold] = useState(10);
 
-  // Heartbeat — check connection every 30s
+  // Heartbeat — check connection every 10s
   useEffect(() => {
     if (!instanceName) return;
     const tick = () => evolutionService.checkStatus(instanceName).then(s => setConnected(s === 'open')).catch(() => {});
     tick();
-    const interval = setInterval(tick, 30_000);
+    const interval = setInterval(tick, 10_000);
     return () => clearInterval(interval);
   }, [instanceName, setConnected]);
+
+  // Aggressive poll every 3s while QR is shown
+  useEffect(() => {
+    if (!qr || !instanceName) return;
+    let active = true;
+    let attempts = 0;
+    const poll = async () => {
+      if (!active || attempts >= 30) return;
+      attempts++;
+      const s = await evolutionService.checkStatus(instanceName).catch(() => 'close' as const);
+      if (!active) return;
+      if (s === 'open') { setConnected(true); setQr(null); return; }
+      setTimeout(poll, 3000);
+    };
+    const t = setTimeout(poll, 3000);
+    return () => { active = false; clearTimeout(t); };
+  }, [qr, instanceName, setConnected]);
 
   useEffect(() => {
     (async () => {
@@ -2711,6 +2728,7 @@ const CentralTab: React.FC<CentralTabProps> = ({ instanceName, setInstanceName, 
     try {
       const result = await evolutionService.createAndFetchQr(instanceName.trim());
       if (result.status === 'success' && result.qrcode) {
+        evolutionService.enableWebhook(instanceName.trim(), 'https://cnnfnqrnjckntnxdgwae.supabase.co/functions/v1/whatsapp-webhook').catch(() => {});
         setQr(result.qrcode);
       } else if (result.status === 'success' && !result.qrcode) {
         setConnected(true);
