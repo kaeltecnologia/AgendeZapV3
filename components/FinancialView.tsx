@@ -12,7 +12,7 @@ const comandaItemTotal = (item: ComandaItem) => {
   return gross - (item.discount ?? 0);
 };
 
-const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
+const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTicker?: number }> = ({ tenantId, tenantPlan, refreshTicker = 0 }) => {
   const hasCaixa = hasFeature(tenantPlan, 'caixaAvancado');
   const [activeTab, setActiveTab] = useState<'visao' | 'caixa' | 'config' | 'profissionais'>('visao');
 
@@ -170,7 +170,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
     setCfgGoal(st.monthlyRevenueGoal ?? 0);
     setCfgCommissions(commMap);
     setLoading(false);
-  }, [tenantId, period, selectedProfId, proStart, proEnd]);
+  }, [tenantId, period, selectedProfId, proStart, proEnd, refreshTicker]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

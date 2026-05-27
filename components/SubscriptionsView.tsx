@@ -67,7 +67,7 @@ interface AssocModalData {
   dueDay: number;
 }
 
-const SubscriptionsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const SubscriptionsView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +101,7 @@ const SubscriptionsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setCfg({ ...DEFAULT_CONFIG, ...s.subscriptionConfig });
     }
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

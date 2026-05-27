@@ -43,7 +43,7 @@ function getPeriodRange(p: Period): { start: string; end: string; label: string 
   return { start: iso(d), end: today, label: 'Últimos 30 dias' };
 }
 
-const MarketingView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [period, setPeriod] = useState<Period>('this_month');
   const [prevPeriod] = useState<Period>('30d');
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -57,7 +57,7 @@ const MarketingView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

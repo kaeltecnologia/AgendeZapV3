@@ -14,7 +14,7 @@ const CATEGORIES = ['Cabelo', 'Barba', 'Pele', 'Perfumaria', 'Acessórios', 'Hig
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-const ProductsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const ProductsView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,7 +49,7 @@ const ProductsView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

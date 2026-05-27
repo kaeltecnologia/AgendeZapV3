@@ -23,7 +23,7 @@ const itemTotal = (item: ComandaItem) => {
 
 const comandaTotal = (c: Comanda) => c.items.reduce((s, i) => s + itemTotal(i), 0);
 
-const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptOpened?: () => void }> = ({ tenantId, initialApptId, onApptOpened }) => {
+const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptOpened?: () => void; refreshTicker?: number }> = ({ tenantId, initialApptId, onApptOpened, refreshTicker = 0 }) => {
   const [activeTab, setActiveTab] = useState<'abertas' | 'finalizadas'>('abertas');
   const [comandas, setComandas] = useState<Comanda[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -113,7 +113,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

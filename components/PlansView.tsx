@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { Plan, PlanQuota, Customer, Service } from '../types';
 
-const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const PlansView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -32,7 +32,7 @@ const PlansView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     setCustomers(c);
     setServices(s.filter(sv => sv.active));
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -13,7 +13,7 @@ function genId() {
 const UNITS = ['unidades', 'ml', 'L', 'g', 'kg', 'pares', 'caixas'];
 const CATEGORIES = ['Higiene', 'Cabelo', 'Barba', 'Pele', 'Equipamento', 'Limpeza', 'Outros'];
 
-const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const EstoqueView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,7 +57,7 @@ const EstoqueView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

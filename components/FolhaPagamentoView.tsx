@@ -61,13 +61,14 @@ interface ProcedimentoRow {
 
 interface Props {
   tenantId: string;
+  refreshTicker?: number;
 }
 
 // ── component ──────────────────────────────────────────────────────────────
 
 const PAYMENT_METHODS = ['Dinheiro', 'PIX', 'Transferência/TED', 'Débito', 'Crédito', 'Outro'];
 
-const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
+const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) => {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [comandas, setComandas]           = useState<Comanda[]>([]);
   const [customers, setCustomers]         = useState<Customer[]>([]);
@@ -137,7 +138,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId }) => {
     ));
     if (!selectedProfId && profs.length > 0) setSelectedProfId(profs[0].id);
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

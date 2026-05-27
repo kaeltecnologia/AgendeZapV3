@@ -10,7 +10,7 @@ const DEFAULT_NFE: FocusNfeConfig = {
   aliquotaIss: 5, municipio: 0, ambiente: 'homologacao',
 };
 
-const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
+const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refreshTicker?: number }> = ({ tenantId, tenantPlan, refreshTicker = 0 }) => {
   const [operatingHours, setOperatingHours] = useState<{ [key: number]: WorkingDay }>({});
   const [storeName, setStoreName] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -45,7 +45,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ 
       setLoading(false);
     };
     load();
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   // Split "HH:mm-HH:mm" into { start, end }
   const parseRange = (range: string) => {

@@ -11,6 +11,7 @@ type Tab = 'calendario' | 'editor' | 'publicar' | 'tendencias';
 
 interface Props {
   tenantId: string;
+  refreshTicker?: number;
 }
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -27,7 +28,7 @@ const getCurrentMonthKey = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const SocialMidiaView: React.FC<Props> = ({ tenantId }) => {
+const SocialMidiaView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) => {
   const [tab, setTab] = useState<Tab>('calendario');
   const [profile, setProfile] = useState<SocialMediaProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +60,7 @@ const SocialMidiaView: React.FC<Props> = ({ tenantId }) => {
       console.error('[SocialMidiaView] load error:', e);
     }
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   const handleResetProfile = async () => {
     const currentKey = getCurrentMonthKey();

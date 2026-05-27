@@ -5,6 +5,7 @@ import { TenantSettings, ConversationLog } from '../types';
 interface Props {
   tenantId: string;
   tenantName: string;
+  refreshTicker?: number;
 }
 
 function fmtDate(iso: string) {
@@ -13,7 +14,7 @@ function fmtDate(iso: string) {
   } catch { return iso; }
 }
 
-export default function OtimizacaoView({ tenantId }: Props) {
+export default function OtimizacaoView({ tenantId, refreshTicker = 0 }: Props) {
   const [logs, setLogs] = useState<ConversationLog[]>([]);
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ export default function OtimizacaoView({ tenantId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [tenantId, sinceDays]);
+  }, [tenantId, sinceDays, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

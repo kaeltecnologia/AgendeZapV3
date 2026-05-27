@@ -29,7 +29,7 @@ interface BroadcastProgress {
   stopped: boolean;
 }
 
-const BroadcastView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const BroadcastView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   // Data
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -78,7 +78,7 @@ const BroadcastView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -19,7 +19,7 @@ const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoM
   reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId' }
 };
 
-const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?: (feature: FeatureKey) => void }> = ({ tenantId, tenantPlan, onUpgrade }) => {
+const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?: (feature: FeatureKey) => void; refreshTicker?: number }> = ({ tenantId, tenantPlan, onUpgrade, refreshTicker = 0 }) => {
   const [activeTab, setActiveTab] = useState<MainTab>('aviso');
 
   const [avisoModes, setAvisoModes] = useState<FollowUpNamedMode[]>([]);
@@ -83,7 +83,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
     // Load reviews
     db.getReviews(tenantId).then(r => setReviews(r)).catch(() => {});
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

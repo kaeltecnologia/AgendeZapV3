@@ -13,7 +13,7 @@ interface ReferralData {
   referrals: ReferralItem[];
 }
 
-const IndicacoesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const IndicacoesView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [data, setData] = useState<ReferralData | null>(null);
   const [slug, setSlug] = useState('');
   const [loading, setLoading] = useState(true);
@@ -34,7 +34,7 @@ const IndicacoesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         setLoading(false);
       }
     })();
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(`https://www.agendezap.com/?ref=${slug}`);

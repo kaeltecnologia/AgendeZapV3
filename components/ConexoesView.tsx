@@ -10,7 +10,7 @@ import type { BookingTheme } from '../types';
 
 type Tab = 'whatsapp' | 'agente' | 'linkweb' | 'instagram';
 
-const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?: string }> = ({ tenantId, tenantSlug, tenantPlan }) => {
+const ConexoesView: React.FC<{ tenantId: string; tenantSlug: string; tenantPlan?: string; refreshTicker?: number }> = ({ tenantId, tenantSlug, tenantPlan, refreshTicker = 0 }) => {
   const [tab, setTab] = useState<Tab>('whatsapp');
   const [copied, setCopied] = useState(false);
   const dbOnline = db.isOnline();

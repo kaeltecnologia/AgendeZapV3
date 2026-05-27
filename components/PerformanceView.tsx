@@ -34,7 +34,7 @@ function getPeriodRange(p: Period): { start: string; end: string; label: string 
   return { start: iso(d), end: today, label: 'Últimos 30 dias' };
 }
 
-const PerformanceView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const PerformanceView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [activeTab, setActiveTab] = useState<'geral' | 'individual'>('geral');
   const [period, setPeriod] = useState<Period>('this_month');
   const [selectedProId, setSelectedProId] = useState<string>('');
@@ -65,7 +65,7 @@ const PerformanceView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -41,6 +41,7 @@ function fmtDate(iso: string): string {
 
 interface Props {
   tenantId: string;
+  refreshTicker?: number;
 }
 
 type FilterStatus = 'todas' | 'nao_emitida' | 'emitida' | 'pendente' | 'erro';
@@ -52,7 +53,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   erro:        { label: 'Erro',        color: 'bg-red-100 text-red-600' },
 };
 
-const NotasFiscaisView: React.FC<Props> = ({ tenantId }) => {
+const NotasFiscaisView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) => {
   const [comandas, setComandas]           = useState<Comanda[]>([]);
   const [notas, setNotas]                 = useState<NotaFiscal[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -105,7 +106,7 @@ const NotasFiscaisView: React.FC<Props> = ({ tenantId }) => {
     }
     setCommissionMap(cMap);
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 
