@@ -361,7 +361,6 @@ async function poll(tenantId: string) {
 
     const sorted = [...messages].sort((a, b) => (a.messageTimestamp || 0) - (b.messageTimestamp || 0));
 
-    const now = Date.now();
     // Diagnostic: log new message candidates on each poll
     const newMsgs = sorted.filter(m => m.key?.id && !_processedIds.has(m.key.id) && !m.key?.fromMe);
     if (newMsgs.length > 0) {
