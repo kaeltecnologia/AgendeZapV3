@@ -17,19 +17,25 @@ export interface SendMessageResponse {
 const _sentDedup = new Map<string, number>();
 const _SEND_DEDUP_TTL = 180_000; // 3 minutes — prevents duplicates across tab reloads/scheduler ticks
 
-function _isSendDuplicate(phone: string, text: string): boolean {
-  const key = `${phone.replace(/\D/g, '')}::${text.trim().slice(0, 150)}`;
+function _dedupKey(phone: string, text: string): string {
+  return `${phone.replace(/\D/g, '')}::${text.trim().slice(0, 150)}`;
+}
+
+function _checkSendDuplicate(phone: string, text: string): boolean {
   const now = Date.now();
-  const last = _sentDedup.get(key);
-  if (last !== undefined && now - last < _SEND_DEDUP_TTL) return true;
-  _sentDedup.set(key, now);
+  const last = _sentDedup.get(_dedupKey(phone, text));
+  return last !== undefined && now - last < _SEND_DEDUP_TTL;
+}
+
+function _registerSendDedup(phone: string, text: string): void {
+  const now = Date.now();
+  _sentDedup.set(_dedupKey(phone, text), now);
   // Prune old entries
   if (_sentDedup.size > 200) {
     for (const [k, t] of _sentDedup) {
       if (now - t > _SEND_DEDUP_TTL) _sentDedup.delete(k);
     }
   }
-  return false;
 }
 
 export const evolutionService = {
@@ -238,11 +244,17 @@ export const evolutionService = {
   },
 
   async sendMessage(instanceName: string, recipient: string, text: string): Promise<SendMessageResponse> {
-    if (_isSendDuplicate(recipient, text)) {
+    if (_checkSendDuplicate(recipient, text)) {
       console.log(`[Evolution] Dedup: mensagem duplicada bloqueada para ${recipient.slice(-4)}`);
       return { success: true }; // already sent — silently succeed
     }
-    return this.sendToWhatsApp(instanceName, recipient, text);
+    const result = await this.sendToWhatsApp(instanceName, recipient, text);
+    if (result.success) {
+      // Only register dedup AFTER a confirmed successful send — prevents failed
+      // attempts from blocking legitimate retries (e.g. user retrying after reconnect)
+      _registerSendDedup(recipient, text);
+    }
+    return result;
   },
 
   async logoutInstance(instanceName: string): Promise<{ ok: boolean; status?: number; body?: any }> {
