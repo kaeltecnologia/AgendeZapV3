@@ -10,12 +10,13 @@ interface ProfessionalPortalProps {
   professionalId: string;
   professionalName: string;
   onLogout: () => void;
+  refreshTicker?: number;
 }
 
 type Tab = 'agenda' | 'dashboard';
 
 const ProfessionalPortal: React.FC<ProfessionalPortalProps> = ({
-  tenantId, tenantName, professionalId, professionalName, onLogout,
+  tenantId, tenantName, professionalId, professionalName, onLogout, refreshTicker = 0,
 }) => {
   const [tab, setTab] = useState<Tab>('agenda');
   const [canBook, setCanBook] = useState(true);
@@ -100,6 +101,7 @@ const ProfessionalPortal: React.FC<ProfessionalPortalProps> = ({
               tenantId={tenantId}
               defaultProfessionalId={professionalId}
               readOnly={!canBook}
+              refreshTicker={refreshTicker}
             />
           </Suspense>
         ) : (

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/mockDb';
 import { Customer, Plan, PlanStatus, Service, FollowUpNamedMode, Professional, RecurringEntry, RecurringFrequency, AppointmentStatus } from '../types';
 
-const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [activeTab, setActiveTab] = useState<'lista' | 'retencao'>('lista');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -93,7 +93,7 @@ const CustomersView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

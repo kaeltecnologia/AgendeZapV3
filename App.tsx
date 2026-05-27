@@ -243,6 +243,7 @@ const App: React.FC = () => {
   const impersonatedFromRole = React.useRef<Role>('SUPERADMIN');
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [tenantId, setTenantId] = useState<string>('');
+  const [refreshTicker, setRefreshTicker] = useState(0);
   const [tenantSlug, setTenantSlug] = useState<string>('');
   const [tenantName, setTenantName] = useState<string>('Carregando...');
   const [isReady, setIsReady] = useState(false);
@@ -710,6 +711,15 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [tenantId, role]);
 
+  // ── Supabase Realtime — invalidate cache + signal views when data changes ──
+  useEffect(() => {
+    if (!tenantId) return;
+    const unsub = db.subscribeToTenantChanges(tenantId, () => {
+      setRefreshTicker(t => t + 1);
+    });
+    return unsub;
+  }, [tenantId]);
+
   // ── Pending payment check — detects unpaid tenants ──────────────────
   useEffect(() => {
     if (!tenantId || !isAuthenticated || role !== 'TENANT') return;
@@ -1151,6 +1161,7 @@ const App: React.FC = () => {
             professionalId={professionalId}
             professionalName={professionalName}
             onLogout={handleLogout}
+            refreshTicker={refreshTicker}
           />
         </Suspense>
         <Toast toasts={toasts} onRemove={removeToast} />
@@ -1162,12 +1173,12 @@ const App: React.FC = () => {
     if (role === 'SUPERADMIN') return <SuperAdminView activeTab={superAdminTab} onTabChange={setSuperAdminTab} onImpersonate={handleImpersonate} />;
 
     switch (currentView) {
-      case View.DASHBOARD: return <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} />;
-      case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} />;
-      case View.SERVICOS: return <ServicesView tenantId={tenantId} />;
-      case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={effectivePlan} onNavigate={(v) => setCurrentView(v as View)} />;
-      case View.CLIENTES: return <CustomersView tenantId={tenantId} />;
-      case View.PERFIL: return <StoreProfile tenantId={tenantId} />;
+      case View.DASHBOARD: return <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} refreshTicker={refreshTicker} />;
+      case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} refreshTicker={refreshTicker} />;
+      case View.SERVICOS: return <ServicesView tenantId={tenantId} refreshTicker={refreshTicker} />;
+      case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={effectivePlan} onNavigate={(v) => setCurrentView(v as View)} refreshTicker={refreshTicker} />;
+      case View.CLIENTES: return <CustomersView tenantId={tenantId} refreshTicker={refreshTicker} />;
+      case View.PERFIL: return <StoreProfile tenantId={tenantId} refreshTicker={refreshTicker} />;
       case View.FINANCEIRO: return <FinancialView tenantId={tenantId} tenantPlan={effectivePlan} />;
       case View.CONEXOES: return <ConexoesView tenantId={tenantId} tenantSlug={tenantSlug} tenantPlan={effectivePlan} />;
       case View.FOLLOW_UP: return <FollowUpView tenantId={tenantId} tenantPlan={effectivePlan} onUpgrade={(f) => setUpgradeModal({ feature: f })} />;

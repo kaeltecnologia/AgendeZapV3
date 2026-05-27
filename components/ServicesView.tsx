@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { db } from '../services/mockDb';
 import { Service } from '../types';
 
-const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const ServicesView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -29,7 +29,7 @@ const ServicesView: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

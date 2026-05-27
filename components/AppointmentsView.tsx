@@ -951,7 +951,7 @@ function NavDayPicker({ selectedDate, apptDays, onSelect }: {
   );
 }
 
-const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string; readOnly?: boolean }> = ({ tenantId, onOpenComandas, defaultProfessionalId, readOnly = false }) => {
+const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string; readOnly?: boolean; refreshTicker?: number }> = ({ tenantId, onOpenComandas, defaultProfessionalId, readOnly = false, refreshTicker = 0 }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
     id: string; basePrice: number; extraValue?: number; extraNote?: string;
@@ -1141,7 +1141,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     if (filterProfId) data = data.filter(a => a.professional_id === filterProfId);
 
     setAppointments(data.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
-  }, [tenantId, startDate, endDate, presetPeriod, filterProfId]);
+  }, [tenantId, startDate, endDate, presetPeriod, filterProfId, refreshTicker]);
 
   useEffect(() => { refreshData(); }, [refreshData]);
 

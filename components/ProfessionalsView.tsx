@@ -13,7 +13,7 @@ function genId() {
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNavigate?: (view: string) => void }> = ({ tenantId, tenantPlan, onNavigate }) => {
+const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNavigate?: (view: string) => void; refreshTicker?: number }> = ({ tenantId, tenantPlan, onNavigate, refreshTicker = 0 }) => {
   const [pros, setPros] = useState<Professional[]>([]);
   const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
@@ -107,7 +107,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
     }
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
 

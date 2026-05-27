@@ -3571,6 +3571,59 @@ class DatabaseService {
       return result;
     } catch { return []; }
   }
+
+  // ─── Supabase Realtime ────────────────────────────────────────────────
+  private _rtCallbacks = new Map<string, Set<() => void>>();
+  private _rtChannels = new Map<string, any>();
+
+  /**
+   * Subscribe to any data change for `tenantId`.
+   * Returns an unsubscribe function.
+   *
+   * When a change arrives the relevant cache keys are invalidated and every
+   * registered callback is called so that React components can re-fetch.
+   */
+  subscribeToTenantChanges(tenantId: string, onAnyChange: () => void): () => void {
+    if (!this._rtCallbacks.has(tenantId)) {
+      this._rtCallbacks.set(tenantId, new Set());
+    }
+    this._rtCallbacks.get(tenantId)!.add(onAnyChange);
+
+    if (!this._rtChannels.has(tenantId)) {
+      const fire = () => {
+        this._rtCallbacks.get(tenantId)?.forEach(cb => { try { cb(); } catch {} });
+      };
+      const ch = supabase
+        .channel(`agz_rt_${tenantId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `tenant_id=eq.${tenantId}` }, () => {
+          _cache.invalidate(`getAppointments:${tenantId}`);
+          _cache.invalidate(`getFinancialSummary:${tenantId}`);
+          fire();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tenant_settings', filter: `tenant_id=eq.${tenantId}` }, () => {
+          _cache.invalidateTenant(tenantId);
+          fire();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'professionals', filter: `tenant_id=eq.${tenantId}` }, () => {
+          _cache.invalidate(`getProfessionals:${tenantId}`);
+          fire();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'services', filter: `tenant_id=eq.${tenantId}` }, () => {
+          _cache.invalidate(`getServices:${tenantId}`);
+          fire();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: `tenant_id=eq.${tenantId}` }, () => {
+          _cache.invalidate(`getCustomers:${tenantId}`);
+          fire();
+        })
+        .subscribe();
+      this._rtChannels.set(tenantId, ch);
+    }
+
+    return () => {
+      this._rtCallbacks.get(tenantId)?.delete(onAnyChange);
+    };
+  }
 }
 
 export const db = new DatabaseService();

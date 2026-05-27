@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDb';
 import { geocodeAddress } from '../services/geocodingService';
 
-const StoreProfile: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+const StoreProfile: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [themeColor, setThemeColor] = useState('#f97316');
   const [coverImage, setCoverImage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -42,7 +42,7 @@ const StoreProfile: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       setLoading(false);
     };
     load();
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   const saveMarketplace = async () => {
     setMpSaving(true);

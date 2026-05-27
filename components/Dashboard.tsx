@@ -117,7 +117,7 @@ const SHORTCUTS: { key: string; label: string; view: string }[] = [
   { key: 'E', label: 'Equipe', view: 'PROFISSIONAIS' },
 ];
 
-const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: (view: string) => void }> = ({ tenantId, tenantName, onNavigate }) => {
+const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: (view: string) => void; refreshTicker?: number }> = ({ tenantId, tenantName, onNavigate, refreshTicker = 0 }) => {
   const accent = useAccent();
   const isPink = accent.includes('ec4899') || accent.includes('pink');
   const DONUT_COLORS = isPink ? DONUT_COLORS_PINK : DONUT_COLORS_ORANGE;
@@ -184,7 +184,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
       }
     };
     load();
-  }, [tenantId]);
+  }, [tenantId, refreshTicker]);
 
   const now = new Date();
   const periodStart = new Date(now);
