@@ -235,6 +235,35 @@ export const evolutionService = {
         }
       }
 
+      // Retry once on 400 Connection Closed — transient socket drop even when instance is connected
+      if (response.status === 400) {
+        const errData400 = await response.json().catch(() => ({}));
+        const errMsg400 = JSON.stringify(errData400);
+        if (errMsg400.toLowerCase().includes('connection closed')) {
+          console.warn(`[Evolution] sendText 400 Connection Closed — aguardando 3s e reenviando | instance: ${instanceName}`);
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            const retry = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                number: cleanNumber,
+                text: text,
+                options: { delay: 1200, presence: 'composing', linkPreview: false }
+              })
+            });
+            if (retry.ok) return { success: true };
+            const retryErr = await retry.json().catch(() => ({}));
+            console.error(`[Evolution] sendText 400 retry ${retry.status}:`, JSON.stringify(retryErr).substring(0, 300));
+            return { success: false, error: retryErr.message || `HTTP ${retry.status}` };
+          } catch (e2: any) {
+            return { success: false, error: e2.message };
+          }
+        }
+        console.error(`[Evolution] sendText 400:`, errMsg400.substring(0, 500), '| instance:', instanceName, '| number:', cleanNumber.slice(0, 4) + '***');
+        return { success: false, error: errData400.message || 'HTTP 400' };
+      }
+
       const errData = await response.json().catch(() => ({}));
       console.error(`[Evolution] sendText ${response.status}:`, JSON.stringify(errData).substring(0, 500), '| instance:', instanceName, '| number:', cleanNumber.slice(0, 4) + '***');
       return { success: false, error: errData.message || `HTTP ${response.status}` };
