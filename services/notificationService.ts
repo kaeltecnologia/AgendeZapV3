@@ -36,8 +36,16 @@ export const sendApptConfirmationToClient = async (tenantId: string, appt: Appoi
       `_${tenant.name} — AgendeZap_`,
     ].filter(Boolean);
 
-    const instanceName = evolutionService.getInstanceName(tenant.slug);
+    const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
     const result = await evolutionService.sendMessage(instanceName, cust.phone, lines.join('\n'));
+    if (!result.success) {
+      // Sync connection status so the UI reflects the real state immediately
+      evolutionService.checkStatus(instanceName).then(liveStatus => {
+        if (liveStatus !== 'open') {
+          db.updateSettings(appt.tenant_id, { connectionStatus: liveStatus }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
     return result.success;
   } catch (err) {
     console.error('[sendApptConfirmationToClient]', err);
@@ -80,6 +88,6 @@ Olá *${prof.name}*, seu cliente está aguardando atendimento:
 _Comanda aberta automaticamente — AgendeZap_
   `.trim();
 
-  const instanceName = evolutionService.getInstanceName(tenant.slug);
+  const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
   await evolutionService.sendMessage(instanceName, prof.phone, message);
 };

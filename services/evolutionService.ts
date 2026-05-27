@@ -309,7 +309,13 @@ export const evolutionService = {
           headers
         });
       }
-      return res.ok;
+      if (!res.ok) return false;
+      // Guard against HTTP 200 with {error:true} in body (some Evolution API versions do this)
+      try {
+        const body = await res.clone().json();
+        if (body?.error === true || body?.status === 'error') return false;
+      } catch { /* body not JSON — treat as success */ }
+      return true;
     } catch {
       return false;
     }
@@ -340,6 +346,10 @@ export const evolutionService = {
         inst?.state ?? inst?.instance?.state ?? ''
       ).toString().toUpperCase();
       const trulyOpen = exists && ['OPEN', 'CONNECTED', 'ONLINE'].includes(connStatus);
+      // Stuck instance: has a disconnectionReasonCode (session terminated abnormally)
+      // These must be fully deleted+recreated — restart is unreliable in this state
+      const discCode = inst?.disconnectionReasonCode ?? inst?.instance?.disconnectionReasonCode;
+      const isStuck = !!discCode && !trulyOpen;
 
       // ── Step 2: fast-path for truly connected instances
       if (!forceQr && trulyOpen) {
@@ -348,15 +358,11 @@ export const evolutionService = {
 
       // ── Step 3: prepare the instance
       if (exists) {
-        if (forceQr) {
-          // Forced reset: logout to clear session, then restart for fresh QR
+        if (forceQr || isStuck) {
+          // Forced reset OR stuck session (disconnectionReasonCode set):
+          // logout + delete + recreate for a guaranteed clean slate
           await this.logoutInstance(instanceName);
-          await this.sleep(1500);
-        }
-        // Restart: if it fails (unsupported endpoint), delete + recreate as fallback
-        const restarted = await this.restartInstance(instanceName);
-        if (!restarted) {
-          // Restart endpoint not available on this Evolution API version — delete and recreate
+          await this.sleep(1000);
           await this.deleteInstance(instanceName);
           await this.sleep(1500);
           const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
@@ -372,6 +378,27 @@ export const evolutionService = {
           if (!createRes.ok && createRes.status !== 409) {
             const errData = await createRes.json().catch(() => ({}));
             throw new Error(`${errData.message || 'Erro ao recriar instância.'} (HTTP ${createRes.status})`);
+          }
+        } else {
+          // Normal disconnect: try restart first (faster), fall back to delete+create
+          const restarted = await this.restartInstance(instanceName);
+          if (!restarted) {
+            await this.deleteInstance(instanceName);
+            await this.sleep(1500);
+            const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                instanceName,
+                token: EVOLUTION_API_KEY,
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS"
+              })
+            });
+            if (!createRes.ok && createRes.status !== 409) {
+              const errData = await createRes.json().catch(() => ({}));
+              throw new Error(`${errData.message || 'Erro ao recriar instância.'} (HTTP ${createRes.status})`);
+            }
           }
         }
         await this.sleep(2000);

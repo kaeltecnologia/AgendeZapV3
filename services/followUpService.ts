@@ -72,6 +72,13 @@ export async function runFollowUp(tenant: any): Promise<void> {
     // No modes configured at all → skip
     if (!avisoModes.length && !lembreteModes.length && !reativacaoModes.length) return;
 
+    // Skip if instance is explicitly disconnected — prevents claiming+losing messages
+    const connStatus = (settings as any).connectionStatus as string | undefined;
+    if (connStatus === 'close' || connStatus === 'connecting') {
+      console.log(`[FollowUp] Instância ${connStatus} — follow-ups pausados até reconexão`);
+      return;
+    }
+
     const now    = new Date();
     const nowMs  = now.getTime();
     const nowDate = localDateStr(now);  // "YYYY-MM-DD"
@@ -150,19 +157,23 @@ export async function runFollowUp(tenant: any): Promise<void> {
       followUpSentMemory.add(custDayKey); // same-tab guard for subsequent cycles
 
       try {
-        await evolutionService.sendMessage(instance, cust.phone, msg);
-        newSent[sentKey]    = nowDate;
-        newSent[custDayKey] = nowDate;
-        anySent = true;
-        console.log(`[FollowUp] Aviso enviado (${daysBefore}d antes) → ${cust.name} (${maskPhone(cust.phone)})`);
-        registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
-          apptId: appt.id,
-          apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          serviceName: svc?.name || '',
-          clientName: cust.name,
-          professionalId: appt.professional_id,
-          serviceId: appt.service_id,
-        });
+        const sendResult = await evolutionService.sendMessage(instance, cust.phone, msg);
+        if (sendResult.success) {
+          newSent[sentKey]    = nowDate;
+          newSent[custDayKey] = nowDate;
+          anySent = true;
+          console.log(`[FollowUp] Aviso enviado (${daysBefore}d antes) → ${cust.name} (${maskPhone(cust.phone)})`);
+          registerFollowUpContext(tenantId, cust.phone, 'aviso', msg, {
+            apptId: appt.id,
+            apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            serviceName: svc?.name || '',
+            clientName: cust.name,
+            professionalId: appt.professional_id,
+            serviceId: appt.service_id,
+          });
+        } else {
+          console.warn(`[FollowUp] Aviso NÃO enviado (instância offline?) → ${maskPhone(cust.phone)}: ${sendResult.error || 'sem resposta'}`);
+        }
       } catch (e: any) {
         console.error(`[FollowUp] Erro ao enviar aviso para ${maskPhone(cust.phone)}:`, e.message);
       }
@@ -223,18 +234,22 @@ export async function runFollowUp(tenant: any): Promise<void> {
       followUpSentMemory.add(sentKey);
 
       try {
-        await evolutionService.sendMessage(instance, cust.phone, msg);
-        newSent[sentKey] = now.toISOString();
-        anySent = true;
-        console.log(`[FollowUp] Lembrete enviado → ${cust.name} (appt ${appt.id})`);
-        registerFollowUpContext(tenantId, cust.phone, 'lembrete', msg, {
-          apptId: appt.id,
-          apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          serviceName: svc?.name || '',
-          clientName: cust.name,
-          professionalId: appt.professional_id,
-          serviceId: appt.service_id,
-        });
+        const sendResult = await evolutionService.sendMessage(instance, cust.phone, msg);
+        if (sendResult.success) {
+          newSent[sentKey] = now.toISOString();
+          anySent = true;
+          console.log(`[FollowUp] Lembrete enviado → ${cust.name} (appt ${appt.id})`);
+          registerFollowUpContext(tenantId, cust.phone, 'lembrete', msg, {
+            apptId: appt.id,
+            apptTime: apptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            serviceName: svc?.name || '',
+            clientName: cust.name,
+            professionalId: appt.professional_id,
+            serviceId: appt.service_id,
+          });
+        } else {
+          console.warn(`[FollowUp] Lembrete NÃO enviado (instância offline?) → ${maskPhone(cust.phone)}: ${sendResult.error || 'sem resposta'}`);
+        }
       } catch (e: any) {
         console.error(`[FollowUp] Erro ao enviar lembrete para ${maskPhone(cust.phone)}:`, e.message);
       }
@@ -318,15 +333,19 @@ export async function runFollowUp(tenant: any): Promise<void> {
       followUpSentMemory.add(sentKey);
 
       try {
-        await evolutionService.sendMessage(instance, cust.phone, msg);
-        reativacaoSentThisRun++;
-        newSent[sentKey] = nowDate;
-        anySent = true;
-        console.log(`[FollowUp] Recuperação enviada → ${cust.name} (${daysSince.toFixed(1)} dias) [${reativacaoSentThisRun}/${MAX_REATIVACAO_PER_RUN}]`);
-        registerFollowUpContext(tenantId, cust.phone, 'reativacao', msg, {
-          serviceName: svc?.name || '',
-          clientName: cust.name,
-        });
+        const sendResult = await evolutionService.sendMessage(instance, cust.phone, msg);
+        if (sendResult.success) {
+          reativacaoSentThisRun++;
+          newSent[sentKey] = nowDate;
+          anySent = true;
+          console.log(`[FollowUp] Recuperação enviada → ${cust.name} (${daysSince.toFixed(1)} dias) [${reativacaoSentThisRun}/${MAX_REATIVACAO_PER_RUN}]`);
+          registerFollowUpContext(tenantId, cust.phone, 'reativacao', msg, {
+            serviceName: svc?.name || '',
+            clientName: cust.name,
+          });
+        } else {
+          console.warn(`[FollowUp] Recuperação NÃO enviada (instância offline?) → ${maskPhone(cust.phone)}: ${sendResult.error || 'sem resposta'}`);
+        }
       } catch (e: any) {
         console.error(`[FollowUp] Erro ao enviar recuperação para ${maskPhone(cust.phone)}:`, e.message);
       }
