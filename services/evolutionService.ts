@@ -328,12 +328,18 @@ export const evolutionService = {
       // ── Step 1: fetch instance info once (covers existence + state + disc code)
       const infoRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, { method: 'GET', headers });
       const infoList: any[] = infoRes.ok ? (await infoRes.json().catch(() => [])) : [];
-      const inst = Array.isArray(infoList) ? infoList[0] : null;
-      const exists = !!inst && (inst.name === instanceName || inst.instanceName === instanceName);
-      const connStatus = ((inst?.connectionStatus) || '').toUpperCase();
-      // Se connectionStatus=OPEN, a instância está conectada — ignora disconnectionReasonCode
-      // (pode ser resíduo de desconexão anterior e não indica estado atual)
-      const trulyOpen = exists && connStatus === 'OPEN';
+      // Normalise to array — some Evolution API versions return a single object instead of array
+      const list: any[] = Array.isArray(infoList) ? infoList : (infoList ? [infoList] : []);
+      const inst = list[0] ?? null;
+      // Support flat { name, instanceName } AND nested { instance: { name, instanceName } } formats
+      const instName = inst?.name ?? inst?.instanceName ?? inst?.instance?.name ?? inst?.instance?.instanceName ?? '';
+      const exists = !!inst && instName === instanceName;
+      // Check connectionStatus at root level AND nested inside inst.instance (varies by API version)
+      const connStatus = (
+        inst?.connectionStatus ?? inst?.instance?.connectionStatus ??
+        inst?.state ?? inst?.instance?.state ?? ''
+      ).toString().toUpperCase();
+      const trulyOpen = exists && ['OPEN', 'CONNECTED', 'ONLINE'].includes(connStatus);
 
       // ── Step 2: fast-path for truly connected instances
       if (!forceQr && trulyOpen) {

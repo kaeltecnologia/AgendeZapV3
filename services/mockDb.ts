@@ -1245,6 +1245,7 @@ class DatabaseService {
         _agentName: newS.agentName ?? curr.agentName ?? '',
         _agentGender: newS.agentGender ?? curr.agentGender ?? 'neutro',
         _calendarGridInterval: newS.calendarGridInterval ?? curr.calendarGridInterval ?? 30,
+        _bookingSlotInterval: newS.bookingSlotInterval ?? curr.bookingSlotInterval ?? 30,
         _openaiApiKey: newS.openaiApiKey ?? curr.openaiApiKey ?? '',
         _msgBufferSecs: newS.msgBufferSecs ?? curr.msgBufferSecs ?? 20,
         _trialStartDate: newS.trialStartDate !== undefined ? newS.trialStartDate : (curr.trialStartDate ?? null),

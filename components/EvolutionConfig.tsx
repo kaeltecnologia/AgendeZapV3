@@ -260,6 +260,10 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
       setInstanceStatus(status);
       if (status === 'open' && lastStatus !== 'open') {
         evolutionService.enableWebhook(name, WEBHOOK_URL).catch(() => {});
+        db.updateSettings(tenantId, { connectionStatus: 'open' }).catch(() => {});
+      }
+      if (status === 'close' && lastStatus === 'open') {
+        db.updateSettings(tenantId, { connectionStatus: 'close' }).catch(() => {});
       }
       lastStatus = status;
     };
@@ -288,6 +292,7 @@ const EvolutionConfig: React.FC<{ tenantId: string; tenantSlug?: string }> = ({ 
         setQrCode(null);
         addLog('SUCCESS', 'WhatsApp conectado!');
         evolutionService.enableWebhook(instanceName, WEBHOOK_URL).catch(() => {});
+        db.updateSettings(tenantId, { connectionStatus: 'open' }).catch(() => {});
         return;
       }
       setTimeout(poll, 3000);

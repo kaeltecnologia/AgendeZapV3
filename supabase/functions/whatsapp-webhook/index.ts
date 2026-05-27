@@ -264,6 +264,7 @@ async function getAvailableSlots(
   const isToday = date === todayLocal;
   const nowBrasiliaMinutes = nowBrasilia.getUTCHours() * 60 + nowBrasilia.getUTCMinutes();
   const slots: string[] = [];
+  const slotInterval: number = (settings.bookingSlotInterval as number) || 30;
   let cursor = startH * 60 + startM;
   const endCursor = endH * 60 + endM;
   // acceptLastSlot: permite iniciar no horário exato de fechamento
@@ -276,14 +277,14 @@ async function getAvailableSlots(
     const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
     const slotEndLabel = `${pad(slotEnd.getHours())}:${pad(slotEnd.getMinutes())}`;
 
-    if (isToday && (h * 60 + m) <= nowBrasiliaMinutes) { cursor += 30; continue; }
+    if (isToday && (h * 60 + m) <= nowBrasiliaMinutes) { cursor += slotInterval; continue; }
     const BUFFER_MS = 11 * 60 * 1000; // últimos 11 min do procedimento anterior são compartilháveis
     const conflict = (appts || []).some((a: any) => {
       const aStart = new Date(a.inicio), aEnd = new Date(a.fim);
       if (!(aStart < slotEnd && aEnd > slotStart)) return false;
       return slotStart.getTime() < aEnd.getTime() - BUFFER_MS;
     });
-    if (conflict) { cursor += 30; continue; }
+    if (conflict) { cursor += slotInterval; continue; }
     const brk = breaks.some((b: any) => {
       // Feriado: aplica a TODOS os profissionais
       if (b.type === 'holiday' && !b.professionalId && b.date === date) {
@@ -304,9 +305,9 @@ async function getAvailableSlots(
       if (b.dayOfWeek != null && b.dayOfWeek !== dayIndex) return false;
       return label < b.endTime && slotEndLabel > b.startTime;
     });
-    if (brk) { cursor += 30; continue; }
+    if (brk) { cursor += slotInterval; continue; }
     slots.push(label);
-    cursor += 30;
+    cursor += slotInterval;
   }
   return slots;
 }
@@ -4135,6 +4136,7 @@ Deno.serve(async (req) => {
           : { 0: { active: false, range: '09:00-18:00' }, 1: { active: true, range: '09:00-18:00' }, 2: { active: true, range: '09:00-18:00' }, 3: { active: true, range: '09:00-18:00' }, 4: { active: true, range: '09:00-18:00' }, 5: { active: true, range: '09:00-18:00' }, 6: { active: true, range: '09:00-18:00' } };
       })(),
       breaks: fu._breaks || [],
+      bookingSlotInterval: (fu._bookingSlotInterval as number) || 30,
       msgBufferSecs: fu._msgBufferSecs ?? 20,
       customerData: (fu._customerData || {}) as Record<string, { aiPaused?: boolean; planId?: string; planStatus?: string }>,
       plans: (fu._plans || []) as Array<{ id: string; active: boolean; quotas?: Array<{ serviceId: string; quantity: number }>; serviceId?: string; proceduresPerMonth?: number; price?: number }>,

@@ -29,6 +29,8 @@ let _aiWasActive = false;
 let _instanceNotFoundUntil = 0;
 // _lastConnCheck: throttle WhatsApp status check when AI is off (avoid hitting API every 4s)
 let _lastConnCheck = 0;
+// _lastEvoCheck: throttle periodic Evolution API verification even when DB says 'open' (every 2 min)
+let _lastEvoCheck = 0;
 
 // ── Status callback — shared with App.tsx for header badge ────────────
 let _statusCallback: ((connected: boolean, aiActive: boolean, instanceMissing?: boolean) => void) | null = null;
@@ -307,11 +309,29 @@ async function poll(tenantId: string) {
     const dbStatus = (settings as any).connectionStatus as string | null | undefined;
 
     let connectionStatus: 'open' | 'close' | 'connecting' | 'notfound';
+    const now = Date.now();
     if (dbStatus === 'open') {
-      // Trust DB status — set by webhook when Evolution API fires CONNECTION_UPDATE
-      connectionStatus = 'open';
-      _instanceNotFoundUntil = 0;
-    } else if (_instanceNotFoundUntil > Date.now()) {
+      // Trust DB status (set by webhook CONNECTION_UPDATE event).
+      // Periodically verify against Evolution API (every 2 min) to detect stale 'open' in DB
+      // when the webhook misses the disconnect event.
+      if (now - _lastEvoCheck >= 120_000) {
+        _lastEvoCheck = now;
+        const liveStatus = await evolutionService.checkStatus(instanceName);
+        if (liveStatus !== 'open') {
+          // Instance actually disconnected — update DB so next polls use the correct path
+          db.updateSettings(tenantId, { connectionStatus: liveStatus === 'notfound' ? 'close' : liveStatus }).catch(() => {});
+          connectionStatus = liveStatus;
+          _instanceNotFoundUntil = liveStatus === 'notfound' ? now + 60_000 : 0;
+        } else {
+          _lastEvoCheck = now;
+          connectionStatus = 'open';
+          _instanceNotFoundUntil = 0;
+        }
+      } else {
+        connectionStatus = 'open';
+        _instanceNotFoundUntil = 0;
+      }
+    } else if (_instanceNotFoundUntil > now) {
       // Backoff: instance was 'notfound' recently
       _statusCallback?.(false, true, true);
       return;
@@ -320,9 +340,14 @@ async function poll(tenantId: string) {
       connectionStatus = await evolutionService.checkStatus(instanceName);
       const instanceMissing = connectionStatus === 'notfound';
       if (instanceMissing) {
-        _instanceNotFoundUntil = Date.now() + 60_000;
+        _instanceNotFoundUntil = now + 60_000;
       } else {
         _instanceNotFoundUntil = 0;
+      }
+      // Sync 'open' to DB so future polls skip this expensive path
+      if (connectionStatus === 'open') {
+        _lastEvoCheck = now;
+        db.updateSettings(tenantId, { connectionStatus: 'open' }).catch(() => {});
       }
     }
 
