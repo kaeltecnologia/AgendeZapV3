@@ -2608,6 +2608,24 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                       }
                       return svcs;
                     })();
+
+                    // Conflict detection for edit modal (exclude the appointment being edited)
+                    const _em = (hhmm: string) => { const [h, m] = (hhmm || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+                    const eStartMin = row.startTime ? _em(row.startTime) : -1;
+                    const eEndMin   = row.endTime   ? _em(row.endTime)
+                      : (eStartMin >= 0 && rowSvc ? eStartMin + rowSvc.durationMinutes : -1);
+                    const editConflicts = (editProfId && editDate && eStartMin >= 0 && eEndMin > eStartMin)
+                      ? appointments.filter(a => {
+                          if (a.id === editAppt?.id) return false;
+                          if (a.status === AppointmentStatus.CANCELLED) return false;
+                          if (a.professional_id !== editProfId) return false;
+                          if (!a.startTime?.startsWith(editDate)) return false;
+                          const aS = _em(a.startTime.substring(11, 16));
+                          const aE = aS + (a.durationMinutes || 30);
+                          return eStartMin < aE && eEndMin > aS;
+                        })
+                      : [];
+
                     return (
                       <div key={row.rowId} style={{ background: '#F8FAFC', borderRadius: 12, padding: '10px 12px', border: '1.5px solid #E2E8F0' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
@@ -2641,7 +2659,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                                 ...r, startTime: e.target.value,
                                 endTime: rowSvc ? calcEnd(e.target.value, rowSvc.durationMinutes) : r.endTime,
                               }))}
-                              style={{ width: '100%', padding: '5px 6px', borderRadius: 8, border: '1.5px solid #CBD5E1', fontSize: 12, fontWeight: 700, background: '#fff', outline: 'none' }}
+                              style={{ width: '100%', padding: '5px 6px', borderRadius: 8, border: `1.5px solid ${editConflicts.length > 0 ? '#FCD34D' : '#CBD5E1'}`, fontSize: 12, fontWeight: 700, background: '#fff', outline: 'none' }}
                             />
                           </div>
                           <div style={{ flex: 1 }}>
@@ -2663,6 +2681,20 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                           <p style={{ fontSize: 9, color: '#94A3B8', margin: '6px 0 0', fontWeight: 600 }}>
                             {rowSvc.name} · {rowSvc.durationMinutes}min padrão
                           </p>
+                        )}
+                        {/* Conflict hint */}
+                        {editConflicts.length > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '6px 10px', marginTop: 6 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <p style={{ fontSize: 9, fontWeight: 700, color: '#92400E', margin: 0 }}>
+                              Encaixe{editConflicts.length > 1 ? ` (${editConflicts.length})` : ''} —{' '}
+                              {editConflicts.slice(0, 2).map(a => customers.find(c => c.id === a.customer_id)?.name || 'outro cliente').join(', ')}
+                              {editConflicts.length > 2 ? ` +${editConflicts.length - 2}` : ''} já neste horário
+                            </p>
+                          </div>
                         )}
                       </div>
                     );
@@ -2833,6 +2865,23 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 const rowSvcs = getServicesForRow(row, svcSearch);
                 const rowProfs = getProfsForRow(row);
                 const selectedSvc = services.find(s => s.id === row.svcId);
+
+                // Conflict detection — check if this professional already has an overlapping appointment
+                const _toMin = (hhmm: string) => { const [h, m] = (hhmm || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+                const rowStartMin = row.startTime ? _toMin(row.startTime) : -1;
+                const rowEndMin   = row.endTime   ? _toMin(row.endTime)
+                  : (rowStartMin >= 0 && selectedSvc ? rowStartMin + selectedSvc.durationMinutes : -1);
+                const conflictAppts = (row.profId && bookingDate && rowStartMin >= 0 && rowEndMin > rowStartMin)
+                  ? appointments.filter(a => {
+                      if (a.status === AppointmentStatus.CANCELLED) return false;
+                      if (a.professional_id !== row.profId) return false;
+                      if (!a.startTime?.startsWith(bookingDate)) return false;
+                      const aS = _toMin(a.startTime.substring(11, 16));
+                      const aE = aS + (a.durationMinutes || 30);
+                      return rowStartMin < aE && rowEndMin > aS;
+                    })
+                  : [];
+
                 return (
                   <div key={row.rowId} className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 space-y-3">
                     <div className="flex items-center justify-between mb-1">
@@ -2909,7 +2958,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                               endTime: selectedSvc && start ? calcEnd(start, selectedSvc.durationMinutes) : row.endTime,
                             });
                           }}
-                          className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-orange-400"
+                          className={`w-full p-2.5 bg-white border-2 rounded-xl text-xs font-bold outline-none focus:border-orange-400 ${conflictAppts.length > 0 ? 'border-amber-300' : 'border-slate-200'}`}
                         />
                       </div>
                       <div>
@@ -2933,6 +2982,21 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                         />
                       </div>
                     </div>
+
+                    {/* Conflict hint */}
+                    {conflictAppts.length > 0 && (
+                      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                        <svg className="w-3 h-3 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <p className="text-[10px] font-black text-amber-700 leading-tight">
+                          Encaixe{conflictAppts.length > 1 ? ` (${conflictAppts.length})` : ''} —{' '}
+                          {conflictAppts.slice(0, 2).map(a => customers.find(c => c.id === a.customer_id)?.name || 'outro cliente').join(', ')}
+                          {conflictAppts.length > 2 ? ` +${conflictAppts.length - 2}` : ''} já neste horário
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
