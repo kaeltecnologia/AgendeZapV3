@@ -408,7 +408,8 @@ class DatabaseService {
         fim,
         status: app.status || AppointmentStatus.PENDING,
         origem: app.source || BookingSource.WEB,
-        is_plan: app.isPlan ?? false
+        is_plan: app.isPlan ?? false,
+        extra_note: app.extraNote || null,
       };
 
       const insertOne = async (p: any) => {
@@ -567,10 +568,12 @@ class DatabaseService {
 
   async deleteAppointment(id: string): Promise<void> {
     try {
+      await supabase.from('comandas').delete().eq('appointment_id', id);
       const { error } = await supabase.from('appointments').delete().eq('id', id);
       if (error) throw error;
       _cache.invalidate('getAppointments:');
       _cache.invalidate('getFinancialSummary:');
+      _cache.invalidate('getComandas:');
     } catch (e) {
       console.error("Supabase Appointment Delete Error:", e);
       throw e;

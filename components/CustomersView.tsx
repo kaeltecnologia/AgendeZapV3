@@ -696,12 +696,17 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
                             const st = STATUS_LABELS[a.status] || { label: a.status, cls: 'bg-slate-100 text-slate-500' };
                             const dateStr = a.startTime ? new Date(a.startTime).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
                             return (
-                              <div key={a.id} className="grid grid-cols-[1fr_1.2fr_1fr_auto_auto] gap-2 items-center px-4 py-3 hover:bg-slate-50 transition-all">
+                              <div key={a.id} className="px-4 py-3 hover:bg-slate-50 transition-all">
+                                <div className="grid grid-cols-[1fr_1.2fr_1fr_auto_auto] gap-2 items-center">
                                 <span className="text-xs font-bold text-slate-700">{dateStr}</span>
                                 <span className="text-xs font-bold text-black truncate">{a.serviceName}</span>
                                 <span className="text-xs text-slate-500 truncate">{a.professionalName}</span>
                                 <span className="text-xs font-black text-right text-black">{a.amountPaid ? `R$\u00a0${a.amountPaid.toFixed(0)}` : '—'}</span>
                                 <span className={`text-[9px] font-black px-2 py-1 rounded-full whitespace-nowrap ${st.cls}`}>{st.label}</span>
+                                </div>
+                                {a.extraNote && (
+                                  <p className="mt-1 text-[10px] italic text-slate-400 leading-tight pl-0.5">{a.extraNote}</p>
+                                )}
                               </div>
                             );
                           })}

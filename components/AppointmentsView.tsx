@@ -1044,6 +1044,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [newCustPhone, setNewCustPhone] = useState('');
   const [creatingCust, setCreatingCust] = useState(false);
 
+  // booking note
+  const [bookingNote, setBookingNote] = useState('');
+
   // finish modal
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.PIX);
   const [extraValue, setExtraValue] = useState<number>(0);
@@ -1239,7 +1242,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const openBookingModal = () => {
     setErrorMsg(''); setCustomerId(''); setCustomerSearch('');
     setBookingRows([{ rowId: crypto.randomUUID(), category: '', svcId: '', profId: '', startTime: '', endTime: '', price: 0 }]);
-    setBookingDate(localDateStr()); setBookingDiscount(0);
+    setBookingDate(localDateStr()); setBookingDiscount(0); setBookingNote('');
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
     setShowBookingModal(true);
   };
@@ -1247,7 +1250,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const openBookingModalWithSlot = (date: string, time: string, slotProfId?: string) => {
     setErrorMsg(''); setCustomerId(''); setCustomerSearch('');
     setBookingRows([{ rowId: crypto.randomUUID(), category: '', svcId: '', profId: slotProfId ?? '', startTime: time, endTime: '', price: 0 }]);
-    setBookingDate(date); setBookingDiscount(0);
+    setBookingDate(date); setBookingDiscount(0); setBookingNote('');
     setShowNewCustForm(false); setNewCustName(''); setNewCustPhone('');
     setShowBookingModal(true);
   };
@@ -1319,6 +1322,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           status: AppointmentStatus.CONFIRMED,
           source: isPlanAppt ? BookingSource.PLAN : BookingSource.MANUAL,
           isPlan: isPlanAppt,
+          extraNote: bookingNote || undefined,
         });
         sendProfessionalNotification(newApp);
       }
@@ -1425,13 +1429,16 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   const handleDeleteAppointment = async () => {
     if (!deleteApptId) return;
+    const idToDelete = deleteApptId;
     setDeletingAppt(true);
+    setAppointments(prev => prev.filter(a => a.id !== idToDelete));
+    setDeleteApptId(null);
     try {
-      await db.deleteAppointment(deleteApptId);
-      setDeleteApptId(null);
+      await db.deleteAppointment(idToDelete);
       refreshData();
     } catch (e) {
       console.error('Erro ao excluir agendamento:', e);
+      refreshData();
     } finally {
       setDeletingAppt(false);
     }
@@ -3023,6 +3030,18 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</p>
                 <p className="text-xl font-black text-orange-500">R$ {bookingTotal.toFixed(2)}</p>
               </div>
+            </div>
+
+            {/* ── Observação ── */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Observação</label>
+              <textarea
+                rows={2}
+                placeholder="Anotação interna sobre este agendamento..."
+                value={bookingNote}
+                onChange={e => setBookingNote(e.target.value)}
+                className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs outline-none focus:border-orange-400 resize-none"
+              />
             </div>
 
             {/* ── Actions ── */}
