@@ -368,7 +368,7 @@ const PerformanceView: React.FC<{ tenantId: string; refreshTicker?: number }> = 
                   <h3 className="font-black text-sm text-black">Histórico de Atendimentos</h3>
                   <p className="text-xs text-slate-400">{range.label} · {selAppts.length} registros</p>
                 </div>
-                <div className="overflow-y-auto max-h-[400px]">
+                <div className="overflow-y-auto overflow-x-auto max-h-[400px]">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] sticky top-0">
                       <tr>

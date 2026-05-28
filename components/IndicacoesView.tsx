@@ -192,34 +192,36 @@ const IndicacoesView: React.FC<{ tenantId: string; refreshTicker?: number }> = (
             <p className="text-xs text-slate-400 mt-1">Compartilhe seu link e comece a ganhar descontos!</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50">
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Plano</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Mensalidade</th>
-                <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.referrals.map(r => (
-                <tr key={r.id} className="border-t border-slate-50 hover:bg-slate-50/50">
-                  <td className="p-4 font-bold">{r.name}</td>
-                  <td className="p-4">
-                    <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${statusBadge(r.status)}`}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td className="p-4 text-xs">{r.plan}</td>
-                  <td className="p-4 text-xs font-mono">
-                    {r.status === 'ATIVA' ? `R$${fmtBRL(r.monthlyFee)}` : '--'}
-                  </td>
-                  <td className="p-4 text-xs text-slate-400">{new Date(r.createdAt).toLocaleDateString('pt-BR')}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: 480 }}>
+              <thead>
+                <tr className="bg-slate-50">
+                  <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nome</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Plano</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Mensalidade</th>
+                  <th className="text-left p-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {d.referrals.map(r => (
+                  <tr key={r.id} className="border-t border-slate-50 hover:bg-slate-50/50">
+                    <td className="p-4 font-bold whitespace-nowrap">{r.name}</td>
+                    <td className="p-4">
+                      <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase whitespace-nowrap ${statusBadge(r.status)}`}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-xs whitespace-nowrap">{r.plan}</td>
+                    <td className="p-4 text-xs font-mono whitespace-nowrap">
+                      {r.status === 'ATIVA' ? `R$${fmtBRL(r.monthlyFee)}` : '--'}
+                    </td>
+                    <td className="p-4 text-xs text-slate-400 whitespace-nowrap">{new Date(r.createdAt).toLocaleDateString('pt-BR')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

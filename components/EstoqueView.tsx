@@ -258,6 +258,7 @@ const EstoqueView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ t
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-slate-50">
             <tr>
@@ -327,6 +328,7 @@ const EstoqueView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ t
             })}
           </tbody>
         </table>
+        </div>{/* overflow-x-auto */}
       </div>
 
       {/* ── STOCK ENTRY MODAL ──────────────────────────────────────── */}

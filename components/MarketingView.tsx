@@ -241,6 +241,7 @@ const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
           <div className="px-6 py-4 border-b border-slate-100">
             <h3 className="font-black text-sm text-black">Análise por Canal</h3>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">
               <tr>
@@ -282,6 +283,7 @@ const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
               ))}
             </tbody>
           </table>
+          </div>{/* overflow-x-auto */}
         </div>
       </div>
 

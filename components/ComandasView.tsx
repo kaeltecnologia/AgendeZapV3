@@ -571,6 +571,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
             </div>
           ) : (
             <div className="bg-white rounded-[28px] border-2 border-slate-100 overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-100">
@@ -689,6 +690,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                   </table>
                 </>
               )}
+              </div>{/* overflow-x-auto */}
             </div>
           )}
         </>
