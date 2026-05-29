@@ -270,6 +270,8 @@ const App: React.FC = () => {
   const [unreadConvCount, setUnreadConvCount] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showTutorials, setShowTutorials] = useState(false);
+  const [showSupportChat, setShowSupportChat] = useState(false);
+  const [supportUnread, setSupportUnread] = useState(0);
   // Referral: capture ?ref=<slug> or ?ref_c=<phone> from URL
   const [referralSlug] = useState(() => new URLSearchParams(window.location.search).get('ref') || '');
   const [referralCustomerPhone] = useState(() => new URLSearchParams(window.location.search).get('ref_c') || '');
@@ -726,12 +728,15 @@ const App: React.FC = () => {
   }, [tenantId, role]);
 
   // ── Supabase Realtime — invalidate cache + signal views when data changes ──
+  // Debounce: eventos rápidos (ex: múltiplas linhas salvas de uma vez) agrupados em 1 re-render
   useEffect(() => {
     if (!tenantId) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const unsub = db.subscribeToTenantChanges(tenantId, () => {
-      setRefreshTicker(t => t + 1);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => setRefreshTicker(t => t + 1), 400);
     });
-    return unsub;
+    return () => { unsub(); if (debounceTimer) clearTimeout(debounceTimer); };
   }, [tenantId]);
 
   // ── Pending payment check — detects unpaid tenants ──────────────────
@@ -1394,7 +1399,6 @@ const App: React.FC = () => {
                 {resellerAllows('comandas') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.COMANDAS} onClick={navTo(() => handleGatedNav(View.COMANDAS, 'caixaAvancado'))} icon={<IconNotebook />} label="Comandas" />}
                 {resellerAllows('conversas') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.CONVERSAS} onClick={navTo(() => setCurrentView(View.CONVERSAS))} icon={<IconChat />} label="WhatsApp" badge={unreadConvCount} />}
                 {resellerAllows('clientes') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.CLIENTES} onClick={navTo(() => setCurrentView(View.CLIENTES))} icon={<IconUserCircle />} label="Clientes" />}
-                <NavItem collapsed={effectiveCollapsed} active={currentView === View.ASSINATURAS} onClick={navTo(() => setCurrentView(View.ASSINATURAS))} icon={<IconCreditCard />} label="Assinaturas" />
               </div>
 
               {/* ── Operação ── */}
@@ -1403,7 +1407,7 @@ const App: React.FC = () => {
                 {resellerAllows('socialMidia') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.SOCIAL_MIDIA} onClick={navTo(() => handleGatedNav(View.SOCIAL_MIDIA, 'socialMidia'))} icon={<IconBroadcast />} label="Social Mídia" />}
                 {resellerAllows('follow_up') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.FOLLOW_UP} onClick={navTo(() => setCurrentView(View.FOLLOW_UP))} icon={<IconClock />} label="Lembretes" />}
                 {resellerAllows('estoque') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.ESTOQUE_PRODUTOS} onClick={navTo(() => handleGatedNav(View.ESTOQUE_PRODUTOS, 'financeiro'))} icon={<IconBox />} label="Estoque" />}
-                {!resellerProfile && resellerAllows('planos') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />}
+                <NavItem collapsed={effectiveCollapsed} active={currentView === View.ASSINATURAS} onClick={navTo(() => setCurrentView(View.ASSINATURAS))} icon={<IconCreditCard />} label="Assinaturas" />
                 {!resellerProfile && resellerAllows('indicacoes') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.INDICACOES} onClick={navTo(() => setCurrentView(View.INDICACOES))} icon={<IconGift />} label="Indicações" />}
               </div>
 
@@ -1411,17 +1415,15 @@ const App: React.FC = () => {
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!effectiveCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">💰 Financeiro & Vendas</p>}
                 {resellerAllows('financeiro') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.FINANCEIRO} onClick={navTo(() => handleGatedNav(View.FINANCEIRO, 'financeiro'))} icon={<IconFinance />} label="Financeiro" />}
-                {resellerAllows('notasFiscais') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />}
                 {resellerAllows('folhaPagamento') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.FOLHA_PAGAMENTO} onClick={navTo(() => handleGatedNav(View.FOLHA_PAGAMENTO, 'financeiro'))} icon={<IconWallet />} label="Folha Pgto." />}
-                {/* Relatórios — sempre visíveis */}
-                {resellerAllows('relatorios') && <>
-                  <NavItem collapsed={effectiveCollapsed} active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />
-                </>}
+                {resellerAllows('relatorios') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.PERFORMANCE} onClick={navTo(() => handleGatedNav(View.PERFORMANCE, 'performance'))} icon={<IconTrophy />} label="Performance" />}
+                {resellerAllows('notasFiscais') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.NOTAS_FISCAIS} onClick={navTo(() => handleGatedNav(View.NOTAS_FISCAIS, 'caixaAvancado'))} icon={<IconDoc />} label="Notas Fiscais" />}
               </div>
 
               {/* ── Base ── */}
               <div className="pt-3 mt-1 border-t border-slate-100 space-y-0.5">
                 {!effectiveCollapsed && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] px-4 pb-1">Base</p>}
+                {!resellerProfile && resellerAllows('planos') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.PLANOS} onClick={navTo(() => setCurrentView(View.PLANOS))} icon={<IconPlans />} label="Planos" />}
                 {resellerAllows('servicos') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.SERVICOS} onClick={navTo(() => setCurrentView(View.SERVICOS))} icon={<NichoIcon />} label="Serviços" />}
                 {resellerAllows('equipe') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />}
                 {resellerAllows('conexoes') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />}
@@ -1573,6 +1575,36 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
+            )}
+            {/* Tutorial button */}
+            {role === 'TENANT' && tenantId && (
+              <button
+                onClick={() => setShowTutorials(true)}
+                title="Tutoriais"
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-orange-400 hover:bg-orange-50 transition-all"
+              >
+                <svg className="w-4 h-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              </button>
+            )}
+            {/* Suporte button */}
+            {role === 'TENANT' && tenantId && !resellerProfile && (
+              <button
+                onClick={() => setShowSupportChat(true)}
+                title="Suporte AgendeZap"
+                className="relative w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-orange-400 hover:bg-orange-50 transition-all"
+              >
+                <svg className="w-4 h-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+                  <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+                </svg>
+                {supportUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">
+                    {supportUnread > 9 ? '9+' : supportUnread}
+                  </span>
+                )}
+              </button>
             )}
             {/* Theme picker */}
             <div className="relative" ref={themePickerRef}>
@@ -1821,44 +1853,16 @@ const App: React.FC = () => {
 
       {isAuthenticated && role === 'TENANT' && tenantId && (
         <>
-          {/* Floating Tutorials button + shortcut hints */}
-          <div className="fixed bottom-24 right-6 z-50">
-            {/* Tooltip only shows on button hover via group placed on the button */}
-            <div className="group/tut relative">
-              <button
-                onClick={() => setShowTutorials(true)}
-                title="Tutoriais"
-                className="w-14 h-14 bg-slate-800 rounded-full shadow-xl flex items-center justify-center hover:scale-105 hover:shadow-2xl transition-all cursor-pointer"
-              >
-                <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-              </button>
-              {/* Shortcut tooltip — only appears when hovering the button itself, desktop only */}
-              <div className="hidden md:block absolute bottom-full right-0 mb-2 pointer-events-none opacity-0 group-hover/tut:opacity-100 transition-opacity duration-150 delay-300">
-                <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-3 w-48">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Atalhos de Teclado</p>
-                  <div className="space-y-1.5">
-                    {[
-                      { key: 'D', label: 'Dashboard' },
-                      { key: 'A', label: 'Agenda' },
-                      { key: 'C', label: 'Clientes' },
-                      { key: 'F', label: 'Financeiro' },
-                      { key: 'M', label: 'Marketing' },
-                      { key: 'E', label: 'Equipe' },
-                    ].map(s => (
-                      <div key={s.key} className="flex items-center justify-between">
-                        <span className="text-[11px] text-slate-300">{s.label}</span>
-                        <kbd className="inline-flex items-center justify-center px-1.5 h-5 bg-slate-700 rounded text-[10px] font-black text-slate-200 tracking-tight">Alt+{s.key}</kbd>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
           <TutorialsPanel open={showTutorials} onClose={() => setShowTutorials(false)} />
-          {!resellerProfile && <SupportChat tenantId={tenantId} tenantName={tenantName} />}
+          {!resellerProfile && (
+            <SupportChat
+              tenantId={tenantId}
+              tenantName={tenantName}
+              open={showSupportChat}
+              onOpenChange={setShowSupportChat}
+              onUnreadCount={setSupportUnread}
+            />
+          )}
         </>
       )}
 
