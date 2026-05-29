@@ -1157,7 +1157,9 @@ class DatabaseService {
           },
           operatingHours: (data.operating_hours && Object.keys(data.operating_hours).length > 0)
             ? data.operating_hours
-            : defaults.operatingHours,
+            : (fu._operatingHoursBackup && Object.keys(fu._operatingHoursBackup).length > 0
+                ? fu._operatingHoursBackup
+                : defaults.operatingHours),
           aiActive: data.ai_active ?? false,
           themeColor: data.theme_color || '#f97316',
           whatsapp: fu._whatsapp || '',
@@ -1186,7 +1188,7 @@ class DatabaseService {
           bookingSlotInterval: fu._bookingSlotInterval || 30,
           connectionStatus: (fu._connectionStatus as 'open' | 'close' | 'connecting') || null,
           openaiApiKey: fu._openaiApiKey || '',
-          msgBufferSecs: fu._msgBufferSecs ?? 20,
+          msgBufferSecs: fu._msgBufferSecs ?? 8,
           trialStartDate: fu._trialStartDate ?? null,
           trialWarningSent: fu._trialWarningSent ?? false,
           focusNfeConfig: fu._focusNfeConfig ?? null,
@@ -1226,6 +1228,7 @@ class DatabaseService {
           subscriptionConfig: fu._subscriptionConfig ?? null,
           professionalOrder: fu._professionalOrder ?? [],
           breakColor: fu._breakColor ?? '#f97316',
+          funnelStagePrompts: fu._funnelStagePrompts ?? {},
         };
         _cache.set(ck, result, TTL_LONG);
         return result;
@@ -1323,18 +1326,30 @@ class DatabaseService {
         _subscriptionConfig: newS.subscriptionConfig !== undefined ? newS.subscriptionConfig : (curr.subscriptionConfig ?? null),
         _professionalOrder: newS.professionalOrder ?? curr.professionalOrder ?? [],
         _breakColor: newS.breakColor ?? curr.breakColor ?? '#f97316',
+        _funnelStagePrompts: newS.funnelStagePrompts ?? curr.funnelStagePrompts ?? {},
         // Preserve connection status written by webhook — not updatable via updateSettings
         // but must survive every upsert to avoid data loss
         _connectionStatus: newS.connectionStatus ?? curr.connectionStatus ?? null,
+        // Backup of operating_hours in JSONB — secondary protection against column loss
+        _operatingHoursBackup: (newS.operatingHours && Object.keys(newS.operatingHours).length > 0)
+          ? newS.operatingHours
+          : (curr.operatingHours && Object.keys(curr.operatingHours).length > 0 ? curr.operatingHours : undefined),
       };
 
-      // Always include operating_hours to prevent data loss on upsert (uses current value as fallback)
+      // Always include operating_hours to prevent data loss on upsert.
+      // Priority: update value → current DB value → JSONB backup → never write empty/null.
+      const _ohCandidate = 'operatingHours' in updates ? newS.operatingHours : curr.operatingHours;
+      const _ohSafe = (_ohCandidate && Object.keys(_ohCandidate).length > 0)
+        ? _ohCandidate
+        : (curr.operatingHours && Object.keys(curr.operatingHours).length > 0
+            ? curr.operatingHours
+            : undefined);
       const upsertData: any = {
         tenant_id: tenantId,
         follow_up: followUpWithMeta,
         ai_active: newS.aiActive,
         theme_color: newS.themeColor,
-        operating_hours: 'operatingHours' in updates ? newS.operatingHours : curr.operatingHours,
+        ...(_ohSafe ? { operating_hours: _ohSafe } : {}),
       };
       const { error } = await supabase.from('tenant_settings').upsert(
         upsertData,
