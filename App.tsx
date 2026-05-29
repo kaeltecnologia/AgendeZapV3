@@ -421,7 +421,6 @@ const App: React.FC = () => {
   type ApptAlert = { id: string; clientName: string; service: string; profName: string; time: string; professionalId: string; serviceId: string; customerId: string; inicio: string };
   const [apptAlert, setApptAlert] = useState<ApptAlert | null>(null);
   const [initialApptId, setInitialApptId] = useState<string | undefined>(undefined);
-  const [initialCustomerId, setInitialCustomerId] = useState<string | undefined>(undefined);
   const alertedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!tenantId || role !== 'TENANT') return;
@@ -1189,7 +1188,7 @@ const App: React.FC = () => {
 
     switch (currentView) {
       case View.DASHBOARD: return <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} refreshTicker={refreshTicker} />;
-      case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} onOpenComandaForCustomer={(custId) => { setInitialCustomerId(custId); setInitialApptId(undefined); setCurrentView(View.COMANDAS); }} refreshTicker={refreshTicker} />;
+      case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} onOpenComandaForAppt={(apptId) => { setInitialApptId(apptId); setCurrentView(View.COMANDAS); }} refreshTicker={refreshTicker} />;
       case View.SERVICOS: return <ServicesView tenantId={tenantId} refreshTicker={refreshTicker} />;
       case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={effectivePlan} onNavigate={(v) => setCurrentView(v as View)} refreshTicker={refreshTicker} />;
       case View.CLIENTES: return <CustomersView tenantId={tenantId} refreshTicker={refreshTicker} />;
@@ -1204,7 +1203,7 @@ const App: React.FC = () => {
       case View.ESTOQUE: return <EstoqueView tenantId={tenantId} refreshTicker={refreshTicker} />;
       case View.PRODUTOS: return <ProductsView tenantId={tenantId} refreshTicker={refreshTicker} />;
       case View.ESTOQUE_PRODUTOS: return <EstoqueProdutosView tenantId={tenantId} />;
-      case View.COMANDAS: return <ComandasView tenantId={tenantId} initialApptId={initialApptId} initialCustomerId={initialCustomerId} onApptOpened={() => { setInitialApptId(undefined); setInitialCustomerId(undefined); }} refreshTicker={refreshTicker} />;
+      case View.COMANDAS: return <ComandasView tenantId={tenantId} initialApptId={initialApptId} onApptOpened={() => setInitialApptId(undefined)} refreshTicker={refreshTicker} />;
       case View.PERFORMANCE: return <PerformanceView tenantId={tenantId} refreshTicker={refreshTicker} />;
       case View.MARKETING: return <MarketingView tenantId={tenantId} refreshTicker={refreshTicker} />;
       case View.NOTAS_FISCAIS: return <NotasFiscaisView tenantId={tenantId} refreshTicker={refreshTicker} />;

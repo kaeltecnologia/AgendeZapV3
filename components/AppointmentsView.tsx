@@ -953,7 +953,7 @@ function NavDayPicker({ selectedDate, apptDays, onSelect }: {
   );
 }
 
-const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; onOpenComandaForCustomer?: (customerId: string) => void; defaultProfessionalId?: string; readOnly?: boolean; refreshTicker?: number }> = ({ tenantId, onOpenComandas, onOpenComandaForCustomer, defaultProfessionalId, readOnly = false, refreshTicker = 0 }) => {
+const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; onOpenComandaForAppt?: (apptId: string) => void; defaultProfessionalId?: string; readOnly?: boolean; refreshTicker?: number }> = ({ tenantId, onOpenComandas, onOpenComandaForAppt, defaultProfessionalId, readOnly = false, refreshTicker = 0 }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
     id: string; basePrice: number; extraValue?: number; extraNote?: string;
@@ -1472,6 +1472,40 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     } finally {
       setDeletingAppt(false);
     }
+  };
+
+  const handleOpenComandaClick = async (appt: Appointment) => {
+    if (!onOpenComandaForAppt) return;
+    try {
+      const allCmdas = await db.getComandas(tenantId);
+      const existing = allCmdas.find(c => c.appointment_id === appt.id);
+      if (existing) {
+        if (existing.status === 'standby') await db.updateComanda(existing.id, { status: 'open' });
+        // closed → não reabre; só navega e mostra
+      } else {
+        const svcIds: string[] = (appt as any).serviceIds?.length
+          ? (appt as any).serviceIds
+          : appt.service_id ? [appt.service_id] : [];
+        const svcItems = svcIds.map(id => services.find(s => s.id === id)).filter(Boolean) as typeof services;
+        const items = svcItems.map(svc => ({
+          id: generateId(), type: 'service' as const, itemId: svc.id,
+          name: svc.name, qty: 1, unitPrice: svc.price,
+          discountType: 'value' as const, discount: 0,
+          professionalId: appt.professional_id,
+        }));
+        await db.createComanda({
+          tenant_id: tenantId,
+          appointment_id: appt.id,
+          professional_id: appt.professional_id!,
+          customer_id: appt.customer_id!,
+          items,
+          status: 'open',
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao abrir comanda pelo agendamento:', err);
+    }
+    onOpenComandaForAppt(appt.id);
   };
 
   const handleApptEstorno = async () => {
@@ -2557,9 +2591,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
               >
                 ✏️ Editar agendamento
               </button>
-              {ha.customer_id && onOpenComandaForCustomer && (
+              {ha.customer_id && onOpenComandaForAppt && (
                 <button
-                  onClick={() => { setHoverAppt(null); onOpenComandaForCustomer(ha.customer_id); }}
+                  onClick={() => { setHoverAppt(null); handleOpenComandaClick(ha); }}
                   style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: '1.5px solid #DBEAFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
                   📋 Abrir comanda
