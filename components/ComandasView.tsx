@@ -25,6 +25,7 @@ const comandaTotal = (c: Comanda) => c.items.reduce((s, i) => s + itemTotal(i), 
 
 const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptOpened?: () => void; refreshTicker?: number }> = ({ tenantId, initialApptId, onApptOpened, refreshTicker = 0 }) => {
   const [activeTab, setActiveTab] = useState<'abertas' | 'finalizadas'>('abertas');
+  const [searchTerm, setSearchTerm] = useState('');
   const [comandas, setComandas] = useState<Comanda[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -349,11 +350,20 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
     }
   };
 
+  const matchSearch = (c: Comanda) => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    return custName(c.customer_id).toLowerCase().includes(q) ||
+           profName(c.professional_id).toLowerCase().includes(q);
+  };
+
   const open = comandas
     .filter(c => c.status === 'open')
+    .filter(matchSearch)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const finished = comandas
     .filter(c => c.status === 'closed')
+    .filter(matchSearch)
     .sort((a, b) => new Date(b.closedAt || b.createdAt).getTime() - new Date(a.closedAt || a.createdAt).getTime());
 
   // Comanda criada nos últimos 90 segundos é marcada como "nova"
@@ -542,16 +552,40 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
         ))}
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+        <input
+          type="text"
+          placeholder="Buscar por cliente ou profissional..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold text-black placeholder-slate-300 outline-none focus:border-orange-400 transition-all"
+        />
+        {searchTerm && (
+          <button
+            onClick={() => setSearchTerm('')}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-black text-xs font-black"
+          >✕</button>
+        )}
+      </div>
+
       {/* ── Abertas ───────────────────────────────────────────────────── */}
       {activeTab === 'abertas' && (
         <>
           {open.length === 0 ? (
             <div className="bg-white rounded-[40px] border-2 border-dashed border-slate-200 p-20 text-center">
               <p className="text-4xl mb-4">🧾</p>
-              <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Nenhuma comanda aberta</p>
-              <p className="text-xs font-bold text-slate-300 mt-2">
-                Marque um agendamento como "Cliente Chegou" para abrir uma comanda
-              </p>
+              {searchTerm ? (
+                <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Nenhum resultado para "{searchTerm}"</p>
+              ) : (
+                <>
+                  <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Nenhuma comanda aberta</p>
+                  <p className="text-xs font-bold text-slate-300 mt-2">
+                    Marque um agendamento como "Cliente Chegou" para abrir uma comanda
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -567,7 +601,9 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
           {finished.length === 0 ? (
             <div className="bg-white rounded-[40px] border-2 border-dashed border-slate-200 p-20 text-center">
               <p className="text-4xl mb-4">✅</p>
-              <p className="font-black text-slate-300 uppercase tracking-widest text-sm">Nenhuma comanda finalizada</p>
+              <p className="font-black text-slate-300 uppercase tracking-widest text-sm">
+                {searchTerm ? `Nenhum resultado para "${searchTerm}"` : 'Nenhuma comanda finalizada'}
+              </p>
             </div>
           ) : (
             <div className="bg-white rounded-[28px] border-2 border-slate-100 overflow-hidden">
