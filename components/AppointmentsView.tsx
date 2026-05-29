@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
-import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod, parseServiceIds, encodeServiceIds } from '../types';
+import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod, ComandaItem, parseServiceIds, encodeServiceIds } from '../types';
 import { sendProfessionalNotification, sendClientArrivedNotification, sendApptConfirmationToClient } from '../services/notificationService';
 import { notifyWaitlistLeads } from '../services/waitlistService';
 
@@ -1478,22 +1478,38 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     if (!onOpenComandaForAppt) return;
     try {
       const allCmdas = await db.getComandas(tenantId);
-      // Ignorar comandas fechadas: se só existe 'closed', cria nova aberta
+      // Se já existe comanda aberta/standby para este agendamento, apenas garante status open
       const existing = allCmdas.find(c => c.appointment_id === appt.id && c.status !== 'closed');
       if (existing) {
         if (existing.status === 'standby') await db.updateComanda(existing.id, { status: 'open' });
-        // se já 'open', só navega
       } else {
-        const svcIds: string[] = (appt as any).serviceIds?.length
-          ? (appt as any).serviceIds
-          : appt.service_id ? [appt.service_id] : [];
-        const svcItems = svcIds.map(id => services.find(s => s.id === id)).filter(Boolean) as typeof services;
-        const items = svcItems.map(svc => ({
-          id: generateId(), type: 'service' as const, itemId: svc.id,
-          name: svc.name, qty: 1, unitPrice: svc.price,
-          discountType: 'value' as const, discount: 0,
-          professionalId: appt.professional_id,
-        }));
+        // Agrupa todos os agendamentos confirmados do mesmo cliente no mesmo dia
+        const apptDate = appt.startTime.substring(0, 10);
+        const sameDay = appointments.filter(a =>
+          a.id !== appt.id &&
+          a.customer_id === appt.customer_id &&
+          a.startTime?.substring(0, 10) === apptDate &&
+          (a.status === AppointmentStatus.PENDING || a.status === AppointmentStatus.CONFIRMED) &&
+          !allCmdas.some(c => c.appointment_id === a.id && c.status !== 'closed')
+        );
+        const allAppts = [appt, ...sameDay];
+
+        const items: ComandaItem[] = [];
+        for (const a of allAppts) {
+          const svcIds: string[] = (a as any).serviceIds?.length
+            ? (a as any).serviceIds
+            : a.service_id ? [a.service_id] : [];
+          for (const id of svcIds) {
+            const svc = services.find(s => s.id === id);
+            if (svc) items.push({
+              id: generateId(), type: 'service', itemId: svc.id,
+              name: svc.name, qty: 1, unitPrice: svc.price,
+              discountType: 'value', discount: 0,
+              professionalId: a.professional_id,
+            });
+          }
+        }
+
         await db.createComanda({
           tenant_id: tenantId,
           appointment_id: appt.id,
