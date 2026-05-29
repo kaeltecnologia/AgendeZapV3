@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../services/mockDb';
 import { Service } from '../types';
@@ -7,6 +7,7 @@ import { Service } from '../types';
 const ServicesView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
 
   // Modal de serviço
   const [modal, setModal] = useState<{ show: boolean; data: Partial<Service> | null }>({ show: false, data: null });
@@ -22,11 +23,12 @@ const ServicesView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ 
   const [catName, setCatName] = useState('');
 
   const loadData = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const data = await db.getServices(tenantId, { fresh: true });
       setServices(data || []);
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, refreshTicker]);

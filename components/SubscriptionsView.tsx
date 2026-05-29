@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { Customer, TenantSettings, SubscriptionPlan, SubscriptionConfig, SubscriptionStatus } from '../types';
 import { confirmSubscriptionPayment, interpolateSubMsg } from '../services/subscriptionService';
@@ -71,6 +71,7 @@ const SubscriptionsView: React.FC<{ tenantId: string; refreshTicker?: number }> 
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPlan, setFilterPlan] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,13 +94,14 @@ const SubscriptionsView: React.FC<{ tenantId: string; refreshTicker?: number }> 
   const [assocSearchTerm, setAssocSearchTerm] = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     const [s, c] = await Promise.all([db.getSettings(tenantId), db.getCustomers(tenantId)]);
     setSettings(s);
     setCustomers(c);
     if (s.subscriptionConfig) {
       setCfg({ ...DEFAULT_CONFIG, ...s.subscriptionConfig });
     }
+    firstLoad.current = false;
     setLoading(false);
   }, [tenantId, refreshTicker]);
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { emitirNfse } from '../services/focusNfeService';
 import {
@@ -62,6 +62,7 @@ const NotasFiscaisView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) => {
   const [commissionMap, setCommissionMap] = useState<Record<string, number>>({});
   const [loading, setLoading]             = useState(true);
   const [emitting, setEmitting]           = useState(false);
+  const firstLoad = useRef(true);
 
   const [selected, setSelected]         = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('todas');
@@ -84,7 +85,7 @@ const NotasFiscaisView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) => {
   // ── load data ────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     const [rawComandas, rawNotas, profs, custs, cfg, settings] = await Promise.all([
       db.getComandas(tenantId),
       db.getNotasFiscais(tenantId),
@@ -105,6 +106,7 @@ const NotasFiscaisView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) => {
       }
     }
     setCommissionMap(cMap);
+    firstLoad.current = false;
     setLoading(false);
   }, [tenantId, refreshTicker]);
 

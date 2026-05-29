@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { AppointmentStatus, BookingSource } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -48,13 +48,15 @@ const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
   const [prevPeriod] = useState<Period>('30d');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const apps = await db.getAppointments(tenantId);
       setAppointments(apps);
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, refreshTicker]);

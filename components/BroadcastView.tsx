@@ -57,10 +57,11 @@ const BroadcastView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
   const [progress, setProgress] = useState<BroadcastProgress | null>(null);
   const abortRef = useRef(false);
   const pauseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const firstLoad = useRef(true);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const [tenant, custs, appts] = await Promise.all([
         db.getTenant(tenantId),
@@ -76,6 +77,7 @@ const BroadcastView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
         evolutionService.checkStatus(inst).then(s => setConnected(s === 'open')).catch(() => {});
       }
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, refreshTicker]);

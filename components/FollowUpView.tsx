@@ -52,6 +52,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
   // Refs for variable insertion at cursor position
   const addMsgRef = useRef<HTMLTextAreaElement | null>(null);
   const editMsgRef = useRef<HTMLTextAreaElement | null>(null);
+  const firstLoad = useRef(true);
 
   function insertVar(
     variable: string,
@@ -72,7 +73,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
   }
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     const s = await db.getSettings(tenantId);
     setAvisoModes(s.avisoModes || []);
     setLembreteModes(s.lembreteModes || []);
@@ -80,8 +81,8 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
     setRatingEnabled((s as any).ratingEnabled ?? false);
     setRatingMessage((s as any).ratingMessage || '');
     setGooglePlaceId((s as any).googlePlaceId || '');
-    // Load reviews
     db.getReviews(tenantId).then(r => setReviews(r)).catch(() => {});
+    firstLoad.current = false;
     setLoading(false);
   }, [tenantId, refreshTicker]);
 

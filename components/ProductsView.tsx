@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { Product } from '../types';
 
@@ -18,6 +18,7 @@ const ProductsView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const firstLoad = useRef(true);
 
   // Add form
   const [showAddForm, setShowAddForm] = useState(false);
@@ -42,11 +43,12 @@ const ProductsView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ 
   const [filterCategory, setFilterCategory] = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const data = await db.getProducts(tenantId);
       setProducts(data);
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, refreshTicker]);

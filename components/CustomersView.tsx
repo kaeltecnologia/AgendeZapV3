@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { Customer, Plan, PlanStatus, Service, FollowUpNamedMode, Professional, RecurringEntry, RecurringFrequency, AppointmentStatus } from '../types';
 
@@ -11,6 +11,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
   const [saving, setSaving] = useState(false);
 
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -71,7 +72,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       const [data, plansData, svcData, profsData, settings, appts] = await Promise.all([
         db.getCustomers(tenantId),
         db.getPlans(tenantId),
@@ -91,6 +92,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
     } catch (err) {
       console.error("Erro ao carregar clientes", err);
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, refreshTicker]);

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { AppointmentStatus } from '../types';
 
@@ -45,9 +45,10 @@ const PerformanceView: React.FC<{ tenantId: string; refreshTicker?: number }> = 
   const [customers, setCustomers] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const [pros, apps, svcs, custs, st] = await Promise.all([
         db.getProfessionals(tenantId),
@@ -63,6 +64,7 @@ const PerformanceView: React.FC<{ tenantId: string; refreshTicker?: number }> = 
       setSettings(st);
       if (pros.length > 0 && !selectedProId) setSelectedProId(pros[0].id);
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, refreshTicker]);

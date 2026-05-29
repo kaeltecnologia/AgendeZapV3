@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { AppointmentStatus, Professional, Service, Customer } from '../types';
 import {
@@ -122,6 +122,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
   const isPink = accent.includes('ec4899') || accent.includes('pink');
   const DONUT_COLORS = isPink ? DONUT_COLORS_PINK : DONUT_COLORS_ORANGE;
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -140,7 +141,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
 
   useEffect(() => {
     const load = async () => {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       try {
         const [p, a, s, c, e, st, tenant] = await Promise.all([
           db.getProfessionals(tenantId),
@@ -180,6 +181,7 @@ const Dashboard: React.FC<{ tenantId: string; tenantName?: string; onNavigate?: 
       } catch (err) {
         console.error('Erro ao carregar dashboard:', err);
       } finally {
+        firstLoad.current = false;
         setLoading(false);
       }
     };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { TenantSettings, ConversationLog } from '../types';
 
@@ -19,9 +19,10 @@ export default function OtimizacaoView({ tenantId, refreshTicker = 0 }: Props) {
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [sinceDays, setSinceDays] = useState(7);
+  const firstLoad = useRef(true);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const [data, s] = await Promise.all([
         db.getConversationLogs(tenantId, sinceDays),
@@ -30,6 +31,7 @@ export default function OtimizacaoView({ tenantId, refreshTicker = 0 }: Props) {
       setLogs(data);
       setSettings(s);
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, sinceDays, refreshTicker]);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { evolutionService } from '../services/evolutionService';
 import {
@@ -75,6 +75,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
   const [commissionMap, setCommissionMap] = useState<Record<string, number>>({});
   const [cancelledApptIds, setCancelledApptIds] = useState<Set<string>>(new Set());
   const [loading, setLoading]             = useState(true);
+  const firstLoad = useRef(true);
 
   const [selectedProfId, setSelectedProfId] = useState('');
 
@@ -97,7 +98,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
   // ── load ─────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     const [profs, cmds, custs, svcs, adis, pgtos, settings, apps, exps] = await Promise.all([
       db.getProfessionals(tenantId),
       db.getComandas(tenantId),
@@ -144,6 +145,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
       (apps as Appointment[]).filter(a => a.status === AppointmentStatus.CANCELLED).map(a => a.id)
     ));
     if (!selectedProfId && profs.length > 0) setSelectedProfId(profs[0].id);
+    firstLoad.current = false;
     setLoading(false);
   }, [tenantId, refreshTicker]);
 

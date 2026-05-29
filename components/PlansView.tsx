@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { Plan, PlanQuota, Customer, Service } from '../types';
 
@@ -9,6 +9,7 @@ const PlansView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ ten
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const firstLoad = useRef(true);
 
   const [showModal, setShowModal] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
@@ -22,7 +23,7 @@ const PlansView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ ten
   const [formFeatures, setFormFeatures] = useState<string[]>([]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     const [p, c, s] = await Promise.all([
       db.getPlans(tenantId),
       db.getCustomers(tenantId),
@@ -31,6 +32,7 @@ const PlansView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ ten
     setPlans(p);
     setCustomers(c);
     setServices(s.filter(sv => sv.active));
+    firstLoad.current = false;
     setLoading(false);
   }, [tenantId, refreshTicker]);
 

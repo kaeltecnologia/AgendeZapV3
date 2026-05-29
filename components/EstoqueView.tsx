@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { db } from '../services/mockDb';
 import { InventoryItem } from '../types';
@@ -17,6 +17,7 @@ const EstoqueView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ t
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const firstLoad = useRef(true);
 
   // New item form
   const [showAddForm, setShowAddForm] = useState(false);
@@ -48,13 +49,14 @@ const EstoqueView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ t
   const [filterCategory, setFilterCategory] = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const inv = await db.getInventory(tenantId);
       setItems(inv);
     } catch (e) {
       console.error('Erro ao carregar estoque:', e);
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   }, [tenantId, refreshTicker]);
