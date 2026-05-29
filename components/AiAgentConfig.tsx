@@ -26,6 +26,15 @@ const Toggle = ({ checked, onChange, label, description }: {
 const DEFAULT_PROMPT = 'Você é o assistente oficial do estabelecimento. Use um tom amigável, moderno e focado na conversão de agendamentos. Pergunte o que o cliente deseja e guie-o até a confirmação de horário, profissional e serviço.';
 const DEFAULT_AGENT_NAME = 'Agente Inteligente AgendeZap';
 
+const DEFAULT_STAGE_PROMPTS: Record<string, string> = {
+  saudacao:     'Cumprimente o cliente com o horário do dia (bom dia / boa tarde / boa noite), apresente o estabelecimento pelo nome e inclua o link de agendamento online na saudação. Pergunte como pode ajudar.',
+  servico:      'Pergunte qual procedimento o cliente deseja sem listar todos os serviços de uma vez. Se o cliente hesitar, peça que descreva o que procura e sugira o mais adequado.',
+  profissional: 'Apresente os profissionais disponíveis para o serviço escolhido e aguarde a escolha. Se o cliente não tiver preferência, diga que qualquer um atende muito bem.',
+  data:         'Pergunte se o cliente tem preferência de dia. Se não tiver preferência, sugira o próximo dia disponível. Para "hoje", verifique se há horários antes de avançar.',
+  horario:      'Ofereça horários disponíveis somente após ter profissional e dia definidos. Se o horário pedido estiver ocupado, ofereça o mais próximo anterior e posterior. Se recusar ambos, liste todos os horários do dia.',
+  confirmacao:  'Exiba um resumo com serviço, profissional, data e horário. Aguarde o cliente confirmar com "sim", "ok", "pode" ou similar antes de registrar o agendamento.',
+};
+
 const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
   const [active, setActive] = useState(false);
   const [aiLeadActive, setAiLeadActive] = useState(true);
@@ -58,7 +67,10 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       setOpenaiApiKey(settings.openaiApiKey || '');
       setMsgBufferSecs(settings.msgBufferSecs ?? 20);
       setSharedOpenAiKey((globalCfg['shared_openai_key'] || '').trim());
-      setFunnelStagePrompts((settings.funnelStagePrompts as Record<string, string>) || {});
+      const saved = (settings.funnelStagePrompts as Record<string, string>) || {};
+      // Pre-fill with defaults for any stage that was never customized
+      const merged = { ...DEFAULT_STAGE_PROMPTS, ...saved };
+      setFunnelStagePrompts(merged);
       setLoadingSettings(false);
     };
     load();
@@ -268,47 +280,18 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
               <p className="text-[10px] font-bold text-slate-400 ml-2 mt-0.5">Personalize o comportamento do agente em cada etapa — funciona como base de orientação, não como regra absoluta.</p>
             </div>
             {([
-              {
-                key: 'saudacao', emoji: '🌅', label: 'Saudação e Abertura',
-                desc: 'Primeiro contato e abertura da conversa',
-                placeholder: 'Ex: Seja caloroso e mencione as promoções do dia logo na abertura. Convide o cliente a conhecer nossos pacotes.',
-                base: 'Por padrão o agente cumprimenta com o horário do dia (bom dia/boa tarde), apresenta o estabelecimento e pergunta como pode ajudar.'
-              },
-              {
-                key: 'servico', emoji: '✂️', label: 'Identificar Serviço',
-                desc: 'Como o agente conduz a escolha do serviço',
-                placeholder: 'Ex: Se o cliente hesitar, sugira os serviços mais populares primeiro. Destaque o valor de cada um.',
-                base: 'Por padrão o agente pergunta "Qual procedimento você gostaria?" sem listar todos os serviços.'
-              },
-              {
-                key: 'profissional', emoji: '👤', label: 'Escolher Profissional',
-                desc: 'Como o agente apresenta os profissionais disponíveis',
-                placeholder: 'Ex: Quando o cliente não tiver preferência, sugira o profissional com mais disponibilidade no dia.',
-                base: 'Por padrão o agente lista os profissionais disponíveis e aguarda a escolha do cliente.'
-              },
-              {
-                key: 'data', emoji: '📅', label: 'Definir Data',
-                desc: 'Como o agente conduz a escolha do dia',
-                placeholder: 'Ex: Se o cliente não souber quando quer, sugira o próximo dia útil disponível proativamente.',
-                base: 'Por padrão o agente pergunta "Tem algum dia de preferência?" e processa a resposta.'
-              },
-              {
-                key: 'horario', emoji: '⏰', label: 'Oferecer Horário',
-                desc: 'Como o agente apresenta os horários disponíveis',
-                placeholder: 'Ex: Sempre ofereça 2 ou 3 opções de horário lado a lado para facilitar a escolha.',
-                base: 'Por padrão o agente oferece o horário mais próximo ao desejado e alternativas se estiver ocupado.'
-              },
-              {
-                key: 'confirmacao', emoji: '✅', label: 'Confirmação Final',
-                desc: 'Como o agente resume e confirma o agendamento',
-                placeholder: 'Ex: Após confirmar, informe também o endereço do estabelecimento e peça para chegar 5 minutos antes.',
-                base: 'Por padrão o agente exibe um resumo completo (serviço + profissional + data + horário) e aguarda confirmação do cliente.'
-              },
-            ] as { key: string; emoji: string; label: string; desc: string; placeholder: string; base: string }[]).map(stage => {
+              { key: 'saudacao',     emoji: '🌅', label: 'Saudação e Abertura',    desc: 'Primeiro contato e abertura da conversa' },
+              { key: 'servico',      emoji: '✂️', label: 'Identificar Serviço',    desc: 'Como o agente conduz a escolha do serviço' },
+              { key: 'profissional', emoji: '👤', label: 'Escolher Profissional',  desc: 'Como o agente apresenta os profissionais' },
+              { key: 'data',         emoji: '📅', label: 'Definir Data',           desc: 'Como o agente conduz a escolha do dia' },
+              { key: 'horario',      emoji: '⏰', label: 'Oferecer Horário',       desc: 'Como o agente apresenta os horários disponíveis' },
+              { key: 'confirmacao',  emoji: '✅', label: 'Confirmação Final',      desc: 'Como o agente resume e confirma o agendamento' },
+            ].map(stage => {
               const isOpen = expandedStage === stage.key;
-              const hasValue = !!(funnelStagePrompts[stage.key] || '').trim();
+              const currentVal = funnelStagePrompts[stage.key] || '';
+              const isEdited = currentVal.trim() !== (DEFAULT_STAGE_PROMPTS[stage.key] || '').trim();
               return (
-                <div key={stage.key} className={`rounded-[20px] border-2 transition-all overflow-hidden ${hasValue ? 'border-orange-200 bg-orange-50/50' : 'border-slate-100 bg-slate-50'}`}>
+                <div key={stage.key} className={`rounded-[20px] border-2 transition-all overflow-hidden ${isEdited ? 'border-orange-200 bg-orange-50/40' : 'border-slate-100 bg-slate-50'}`}>
                   <button
                     type="button"
                     onClick={() => setExpandedStage(isOpen ? null : stage.key)}
@@ -322,36 +305,32 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {hasValue && <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-100 px-2 py-0.5 rounded-full">personalizado</span>}
-                      <span className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} style={{ fontSize: 12 }}>▼</span>
+                      {isEdited && <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-100 px-2 py-0.5 rounded-full">editado</span>}
+                      <span className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} style={{ fontSize: 12 }}>▼</span>
                     </div>
                   </button>
                   {isOpen && (
-                    <div className="px-5 pb-5 space-y-3">
-                      <p className="text-[10px] font-bold text-slate-400 bg-white border border-slate-100 rounded-xl p-3 leading-relaxed">
-                        <span className="font-black text-slate-500">Comportamento base: </span>{stage.base}
-                      </p>
+                    <div className="px-5 pb-5 space-y-2">
                       <textarea
-                        rows={3}
-                        value={funnelStagePrompts[stage.key] || ''}
+                        rows={4}
+                        value={currentVal}
                         onChange={e => setFunnelStagePrompts(prev => ({ ...prev, [stage.key]: e.target.value }))}
-                        placeholder={stage.placeholder}
                         className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none focus:border-orange-500 transition-all text-xs font-bold leading-relaxed text-black resize-none"
                       />
-                      {(funnelStagePrompts[stage.key] || '').trim() && (
+                      {isEdited && (
                         <button
                           type="button"
-                          onClick={() => setFunnelStagePrompts(prev => { const n = { ...prev }; delete n[stage.key]; return n; })}
-                          className="text-[9px] font-black text-red-400 uppercase hover:text-red-600 transition-colors"
+                          onClick={() => setFunnelStagePrompts(prev => ({ ...prev, [stage.key]: DEFAULT_STAGE_PROMPTS[stage.key] }))}
+                          className="text-[9px] font-black text-slate-400 uppercase hover:text-orange-500 transition-colors"
                         >
-                          ✕ Remover personalização desta etapa
+                          ↩ Restaurar texto padrão
                         </button>
                       )}
                     </div>
                   )}
                 </div>
               );
-            })}
+            }))}
           </div>
 
           <div className="flex justify-end pt-4">
