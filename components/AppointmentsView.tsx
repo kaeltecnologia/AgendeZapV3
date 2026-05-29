@@ -1478,10 +1478,11 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     if (!onOpenComandaForAppt) return;
     try {
       const allCmdas = await db.getComandas(tenantId);
-      const existing = allCmdas.find(c => c.appointment_id === appt.id);
+      // Ignorar comandas fechadas: se só existe 'closed', cria nova aberta
+      const existing = allCmdas.find(c => c.appointment_id === appt.id && c.status !== 'closed');
       if (existing) {
         if (existing.status === 'standby') await db.updateComanda(existing.id, { status: 'open' });
-        // closed → não reabre; só navega e mostra
+        // se já 'open', só navega
       } else {
         const svcIds: string[] = (appt as any).serviceIds?.length
           ? (appt as any).serviceIds
@@ -1496,14 +1497,16 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         await db.createComanda({
           tenant_id: tenantId,
           appointment_id: appt.id,
-          professional_id: appt.professional_id!,
-          customer_id: appt.customer_id!,
+          professional_id: appt.professional_id || '',
+          customer_id: appt.customer_id || '',
           items,
           status: 'open',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao abrir comanda pelo agendamento:', err);
+      alert(`Erro ao criar comanda: ${err?.message || 'Tente novamente.'}`);
+      return;
     }
     onOpenComandaForAppt(appt.id);
   };

@@ -135,7 +135,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
 
   // Auto-open customer popup when arriving via appointment alert
   useEffect(() => {
-    if (!initialApptId || loading || comandas.length === 0) return;
+    if (!initialApptId || loading) return;
     const target = comandas.find(c => c.appointment_id === initialApptId && c.status === 'open');
     if (target) {
       setActiveTab('abertas');
