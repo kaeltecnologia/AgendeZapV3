@@ -80,7 +80,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [agentGender, setAgentGender] = useState<'neutro' | 'masculino' | 'feminino'>('neutro');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
-  const [msgBufferSecs, setMsgBufferSecs] = useState(20);
+  const [msgBufferSecs, setMsgBufferSecs] = useState(8);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [sharedOpenAiKey, setSharedOpenAiKey] = useState('');
@@ -101,7 +101,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       setWelcomeMessage(settings.welcomeMessage || '');
       setAgentGender((settings.agentGender as 'neutro' | 'masculino' | 'feminino') || 'neutro');
       setOpenaiApiKey(settings.openaiApiKey || '');
-      setMsgBufferSecs(settings.msgBufferSecs ?? 20);
+      setMsgBufferSecs(settings.msgBufferSecs ?? 8);
       setSharedOpenAiKey((globalCfg['shared_openai_key'] || '').trim());
       const saved = (settings.funnelStagePrompts as Record<string, string>) || {};
       // Pre-fill with defaults for any stage that was never customized

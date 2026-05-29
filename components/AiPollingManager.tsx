@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { evolutionService } from '../services/evolutionService';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
-import { handleMessage } from '../services/agentService';
+import { handleMessage, checkShouldGreet } from '../services/agentService';
 import { handleProfessionalMessage } from '../services/professionalAgentService';
 import { runFollowUp, runDailyProfessionalAgenda } from '../services/followUpService';
 import { runSubscriptionCycle } from '../services/subscriptionService';
@@ -29,6 +29,7 @@ let _aiWasActive = false;
 let _instanceNotFoundUntil = 0;
 // _lastConnCheck: throttle WhatsApp status check when AI is off (avoid hitting API every 4s)
 let _lastConnCheck = 0;
+let _lastSettingsRefresh = 0; // throttle getSettings fresh fetch to once every 30s
 // _lastEvoCheck: throttle periodic Evolution API verification even when DB says 'open' (every 2 min)
 let _lastEvoCheck = 0;
 
@@ -231,6 +232,8 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
 
   try {
     console.log(`[AiPolling] processarMensagem: phone=${maskPhone(cleanPhone)} text="${text.substring(0, 50)}" geminiKey=${!!(tenant as any).gemini_api_key}`);
+    // Check before processing so we can send disclaimer on first message of the day
+    const isFirstToday = checkShouldGreet(tenant.id, cleanPhone);
     const profReply = await handleProfessionalMessage(tenant, cleanPhone, text);
     const reply = profReply !== null
       ? profReply
@@ -238,7 +241,17 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
     console.log(`[AiPolling] reply: ${reply ? `"${reply.substring(0, 60)}..."` : 'null'}`);
     if (reply) {
       const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
-      await evolutionService.sendMessage(instanceName, cleanPhone, reply);
+      // Send disclaimer as a separate message before the first AI reply of the day
+      if (isFirstToday && profReply === null) {
+        await evolutionService.sendMessage(
+          instanceName, cleanPhone,
+          '⚙️ _Esse atendimento é automatizado para melhor atender._'
+        );
+      }
+      const sendResult = await evolutionService.sendMessage(instanceName, cleanPhone, reply);
+      if (!sendResult.success) {
+        console.error(`[AiPolling] Falha ao enviar mensagem para ${maskPhone(cleanPhone)}: ${sendResult.error}`);
+      }
     }
   } catch (e: any) {
     console.error('[AiPolling] Erro ao processar mensagem:', e.message, e.stack);
@@ -258,7 +271,10 @@ async function poll(tenantId: string) {
   }, 20_000);
 
   try {
-    const settings = await db.getSettings(tenantId, { fresh: true });
+    const now = Date.now();
+    const needFreshSettings = now - _lastSettingsRefresh > 30_000;
+    if (needFreshSettings) _lastSettingsRefresh = now;
+    const settings = await db.getSettings(tenantId, needFreshSettings ? { fresh: true } : undefined);
     if (!settings.aiActive) {
       // Advance _processAfter while AI is off so that when it's re-enabled,
       // all messages received during the off period are treated as "already past"
@@ -267,8 +283,7 @@ async function poll(tenantId: string) {
       _aiWasActive = false;
 
       // ── Checar status WhatsApp mesmo com IA desativada (página de agendamento precisa) ──
-      // Throttle: verifica a cada 30s para não chamar a API a cada 4s desnecessariamente
-      const now = Date.now();
+      // Throttle: verifica a cada 30s para não chamar a API a cada 8s desnecessariamente
       if (now - _lastConnCheck >= 30_000 && _instanceNotFoundUntil <= now) {
         _lastConnCheck = now;
         try {
@@ -309,21 +324,21 @@ async function poll(tenantId: string) {
     const dbStatus = (settings as any).connectionStatus as string | null | undefined;
 
     let connectionStatus: 'open' | 'close' | 'connecting' | 'notfound';
-    const now = Date.now();
+    const nowMs = Date.now();
     if (dbStatus === 'open') {
       // Trust DB status (set by webhook CONNECTION_UPDATE event).
       // Periodically verify against Evolution API (every 2 min) to detect stale 'open' in DB
       // when the webhook misses the disconnect event.
-      if (now - _lastEvoCheck >= 120_000) {
-        _lastEvoCheck = now;
+      if (nowMs - _lastEvoCheck >= 120_000) {
+        _lastEvoCheck = nowMs;
         const liveStatus = await evolutionService.checkStatus(instanceName);
         if (liveStatus !== 'open') {
           // Instance actually disconnected — update DB so next polls use the correct path
           db.updateSettings(tenantId, { connectionStatus: liveStatus === 'notfound' ? 'close' : liveStatus }).catch(() => {});
           connectionStatus = liveStatus;
-          _instanceNotFoundUntil = liveStatus === 'notfound' ? now + 60_000 : 0;
+          _instanceNotFoundUntil = liveStatus === 'notfound' ? nowMs + 60_000 : 0;
         } else {
-          _lastEvoCheck = now;
+          _lastEvoCheck = nowMs;
           connectionStatus = 'open';
           _instanceNotFoundUntil = 0;
         }
@@ -331,7 +346,7 @@ async function poll(tenantId: string) {
         connectionStatus = 'open';
         _instanceNotFoundUntil = 0;
       }
-    } else if (_instanceNotFoundUntil > now) {
+    } else if (_instanceNotFoundUntil > nowMs) {
       // Backoff: instance was 'notfound' recently
       _statusCallback?.(false, true, true);
       return;
@@ -340,13 +355,13 @@ async function poll(tenantId: string) {
       connectionStatus = await evolutionService.checkStatus(instanceName);
       const instanceMissing = connectionStatus === 'notfound';
       if (instanceMissing) {
-        _instanceNotFoundUntil = now + 60_000;
+        _instanceNotFoundUntil = nowMs + 60_000;
       } else {
         _instanceNotFoundUntil = 0;
       }
       // Sync 'open' to DB so future polls skip this expensive path
       if (connectionStatus === 'open') {
-        _lastEvoCheck = now;
+        _lastEvoCheck = nowMs;
         db.updateSettings(tenantId, { connectionStatus: 'open' }).catch(() => {});
       }
     }
@@ -368,19 +383,18 @@ async function poll(tenantId: string) {
     }
 
     // ── Pre-filter: skip messages already handled by Edge Function webhook ──
-    // The Edge Function claims "wh::<msgId>" in msg_dedup for every message it processes.
-    // If found, add to _processedIds so Phase 1 skips them (and future polls too).
+    // Run in parallel with Phase 1 — don't block the buffer accumulation.
     const candidateIds = newMsgs.map(m => m.key?.id as string).filter(Boolean);
     if (candidateIds.length > 0) {
-      try {
-        const fps = candidateIds.map(id => `wh::${id}`);
-        const { data: handled } = await supabase.from('msg_dedup').select('fp').in('fp', fps);
+      Promise.resolve(
+        supabase.from('msg_dedup').select('fp').in('fp', candidateIds.map(id => `wh::${id}`))
+      ).then(({ data: handled }) => {
         for (const row of (handled || [])) {
           const msgId = (row.fp as string).replace(/^wh::/, '');
           _persistId(msgId);
           broadcastProcessed(msgId);
         }
-      } catch { /* non-fatal — polling continues normally if check fails */ }
+      }).catch(() => { /* non-fatal */ });
     }
 
     // ── Phase 1: accumulate new messages into the per-phone buffer ──
@@ -427,7 +441,7 @@ async function poll(tenantId: string) {
         // Text message goes into the silence buffer
         if (!_pendingMsgs.has(phone)) _pendingMsgs.set(phone, []);
         _pendingMsgs.get(phone)!.push(msg);
-        _lastMsgTime.set(phone, now);
+        _lastMsgTime.set(phone, nowMs);
         broadcastPending(phone); // tell other tabs this phone has pending msgs
       }
     }
@@ -447,7 +461,7 @@ async function poll(tenantId: string) {
 
     // ── Phase 2b: for each phone whose text buffer has been silent long enough,
     //             process the LAST (most recent) accumulated text message ──────
-    const bufferMs = (settings.msgBufferSecs ?? 20) * 1_000;
+    const bufferMs = (settings.msgBufferSecs ?? 8) * 1_000;
     for (const [phone, msgs] of Array.from(_pendingMsgs.entries())) {
       const lastTime = _lastMsgTime.get(phone) ?? 0;
       if (now - lastTime < bufferMs) continue; // still within silence window
@@ -575,7 +589,7 @@ const AiPollingManager: React.FC<{
     };
 
     activateWebhook();
-    const interval = setInterval(activateWebhook, 5 * 60 * 1000); // re-register every 5 min
+    const interval = setInterval(activateWebhook, 2 * 60 * 1000); // re-register every 2 min
     return () => clearInterval(interval);
   }, [tenantId]);
 
