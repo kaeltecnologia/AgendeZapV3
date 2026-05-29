@@ -68,6 +68,14 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
   const [expProfId, setExpProfId]               = useState('');
   const [expPaymentMethod, setExpPaymentMethod] = useState<PaymentMethod>(PaymentMethod.MONEY);
 
+  // ── Adiantamento modal ────────────────────────────────────────────────────
+  const [showAdiantModal,  setShowAdiantModal]  = useState(false);
+  const [adiantProfId,     setAdiantProfId]     = useState('');
+  const [adiantAmount,     setAdiantAmount]     = useState('');
+  const [adiantDesc,       setAdiantDesc]       = useState('');
+  const [adiantDate,       setAdiantDate]       = useState(() => todayStr());
+  const [adiantSaving,     setAdiantSaving]     = useState(false);
+
   const loadData = useCallback(async () => {
     if (firstLoad.current) setLoading(true);
     const [pros, apps, exps, svcs, custs, st, coms] = await Promise.all([
@@ -187,16 +195,32 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
       professional_id: expCategory === 'PROFESSIONAL' ? expProfId : undefined,
       date: today, paymentMethod: expPaymentMethod,
     });
-    if (expCategory === 'PROFESSIONAL' && expProfId) {
-      await db.addAdiantamento(tenantId, {
-        professionalId: expProfId, amount: expAmount,
-        date: today.slice(0, 10), description: expDesc,
-      });
-    }
     setExpDesc(''); setExpAmount(0); setExpCategory('COMPANY'); setExpProfId('');
     setExpPaymentMethod(PaymentMethod.MONEY);
     setShowExpModal(false);
     loadData();
+  };
+
+  const handleAddAdiantamento = async () => {
+    const amount = parseFloat(adiantAmount.replace(',', '.'));
+    if (!adiantProfId || !amount || amount <= 0) return;
+    setAdiantSaving(true);
+    try {
+      await db.addAdiantamento(tenantId, {
+        professionalId: adiantProfId,
+        amount,
+        date: adiantDate,
+        description: adiantDesc || undefined,
+      });
+      setAdiantProfId(''); setAdiantAmount(''); setAdiantDesc('');
+      setAdiantDate(todayStr());
+      setShowAdiantModal(false);
+      loadData();
+    } catch (e: any) {
+      alert(`Erro ao registrar adiantamento: ${e?.message || 'Tente novamente.'}`);
+    } finally {
+      setAdiantSaving(false);
+    }
   };
 
   if (loading || !professionals) {
@@ -232,10 +256,16 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
           <h1 className="text-2xl font-black text-black">Financeiro</h1>
           <p className="text-xs text-slate-400 mt-0.5">Resumo do período selecionado.</p>
         </div>
-        <button onClick={() => setShowExpModal(true)}
-          className="bg-black text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-500 transition-all whitespace-nowrap">
-          − Registrar Despesa
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setShowExpModal(true)}
+            className="bg-black text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-500 transition-all whitespace-nowrap">
+            − Registrar Despesa
+          </button>
+          <button onClick={() => { setAdiantDate(todayStr()); setShowAdiantModal(true); }}
+            className="bg-blue-600 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-blue-700 transition-all whitespace-nowrap">
+            + Adiantamento
+          </button>
+        </div>
       </div>
 
       {/* ── Filtros ─────────────────────────────────────────────────────────── */}
@@ -693,6 +723,48 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
           </div>
         );
       })()}
+
+      {/* ── Adiantamento Modal ──────────────────────────────────────────────── */}
+      {showAdiantModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[40px] w-full max-w-md p-10 space-y-7 animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-black uppercase">Adiantamento</h2>
+                <p className="text-xs text-slate-400 mt-0.5 font-bold">Pagamento antecipado ao profissional</p>
+              </div>
+              <button onClick={() => setShowAdiantModal(false)} className="text-slate-400 hover:text-black text-xl font-black">✕</button>
+            </div>
+            <div className="space-y-4">
+              <select value={adiantProfId} onChange={e => setAdiantProfId(e.target.value)}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-blue-500">
+                <option value="">Selecionar profissional...</option>
+                {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <input type="text" inputMode="decimal" value={adiantAmount}
+                onChange={e => setAdiantAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                placeholder="Valor (R$)"
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-xl focus:border-blue-500" />
+              <input value={adiantDesc} onChange={e => setAdiantDesc(e.target.value)}
+                placeholder="Descrição (opcional)"
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-blue-500" />
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Data</p>
+                <input type="date" value={adiantDate} onChange={e => setAdiantDate(e.target.value)}
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-blue-500" />
+              </div>
+            </div>
+            <div className="flex gap-4 pt-1">
+              <button onClick={() => setShowAdiantModal(false)}
+                className="flex-1 py-4 font-black text-slate-400 uppercase text-xs tracking-widest">Cancelar</button>
+              <button onClick={handleAddAdiantamento} disabled={adiantSaving || !adiantProfId || !adiantAmount}
+                className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-50">
+                {adiantSaving ? 'Salvando...' : 'Registrar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Expense Modal ────────────────────────────────────────────────────── */}
       {showExpModal && (
