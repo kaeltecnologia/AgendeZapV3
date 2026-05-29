@@ -1047,9 +1047,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   // booking note
   const [bookingNote, setBookingNote] = useState('');
 
-  // finish modal
+  // finish modal (comanda)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.PIX);
   const [extraValue, setExtraValue] = useState<number>(0);
+  const [finishDiscount, setFinishDiscount] = useState<number>(0);
   const [extraNote, setExtraNote] = useState('');
   const [editStatus, setEditStatus] = useState<AppointmentStatus>(AppointmentStatus.FINISHED);
 
@@ -1147,6 +1148,18 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   }, [tenantId, startDate, endDate, presetPeriod, filterProfId, refreshTicker]);
 
   useEffect(() => { refreshData(); }, [refreshData]);
+
+  // Reset campos do modal de finalização ao abrir
+  useEffect(() => {
+    if (showFinishModal) {
+      setEditStatus(AppointmentStatus.FINISHED);
+      setPaymentMethod(PaymentMethod.PIX);
+      setExtraValue(0);
+      setFinishDiscount(0);
+      setExtraNote(showFinishModal.extraNote || '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFinishModal?.id]);
 
   // Auto-refresh a cada 2min para mostrar agendamentos criados pela IA
   useEffect(() => {
@@ -1340,87 +1353,85 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     }
   };
 
-  const handleFinish = async () => {
+  const handleFinish = async (statusOverride?: AppointmentStatus) => {
     if (!showFinishModal) return;
+    const effectiveStatus = statusOverride ?? editStatus;
+
+    const svcIds: string[] = (showFinishModal as any).serviceIds?.length
+      ? (showFinishModal as any).serviceIds
+      : showFinishModal.service_id ? [showFinishModal.service_id] : [];
+    const svcItems = svcIds.map(id => services.find(s => s.id === id)).filter(Boolean) as typeof services;
+    const baseTotal = svcItems.reduce((s, sv) => s + sv.price, 0) || showFinishModal.basePrice;
+    const amountPaid = Math.max(0, baseTotal + (extraValue || 0) - (finishDiscount || 0));
+
     try {
-      await db.updateAppointmentStatus(showFinishModal.id, editStatus, {
-        paymentMethod, amountPaid: showFinishModal.basePrice + extraValue, extraNote, extraValue
+      await db.updateAppointmentStatus(showFinishModal.id, effectiveStatus, {
+        paymentMethod, amountPaid, extraNote, extraValue
       });
     } catch (err) {
       console.error('Erro ao atualizar status:', err);
     }
 
-    // When client arrives: notify + create comanda (best-effort, independent)
-    if (editStatus === AppointmentStatus.ARRIVED) {
-      // Notificar sempre, independente da comanda
+    // ARRIVED: cria comanda aberta e redireciona para caixa
+    if (effectiveStatus === AppointmentStatus.ARRIVED) {
       const fullApp = appointments.find(a => a.id === showFinishModal.id);
       if (fullApp) sendClientArrivedNotification(fullApp).catch(err =>
         console.warn('Notificação ARRIVED falhou:', err)
       );
-      // Criar comanda (suporta múltiplos serviços)
       try {
-        const svcIds: string[] = (showFinishModal as any).serviceIds?.length
-          ? (showFinishModal as any).serviceIds
-          : showFinishModal.service_id ? [showFinishModal.service_id] : [];
-        const items = svcIds.map((svcId: string) => {
-          const svc = services.find(s => s.id === svcId);
-          return svc ? {
-            id: generateId(), type: 'service' as const, itemId: svc.id,
-            name: svc.name, qty: 1, unitPrice: svc.price,
-            discountType: 'value' as const, discount: 0,
-            professionalId: showFinishModal.professional_id,
-          } : null;
-        }).filter((x): x is NonNullable<typeof x> => x !== null);
+        const items = svcItems.map(svc => ({
+          id: generateId(), type: 'service' as const, itemId: svc.id,
+          name: svc.name, qty: 1, unitPrice: svc.price,
+          discountType: 'value' as const, discount: 0,
+          professionalId: showFinishModal.professional_id,
+        }));
         await db.createComanda({
           tenant_id: tenantId,
           appointment_id: showFinishModal.id,
           professional_id: showFinishModal.professional_id!,
           customer_id: showFinishModal.customer_id!,
-          items,
-          status: 'open',
+          items, status: 'open',
         });
-      } catch (err) {
-        console.error('Erro ao criar comanda:', err);
-      }
+      } catch (err) { console.error('Erro ao criar comanda ARRIVED:', err); }
     }
 
-    // When finished directly (not via comanda flow): create closed comanda record
-    if (editStatus === AppointmentStatus.FINISHED) {
+    // FINISHED: sempre salva comanda fechada
+    if (effectiveStatus === AppointmentStatus.FINISHED) {
       try {
         const existingComandas = await db.getComandas(tenantId);
-        const alreadyHas = existingComandas.some(c => c.appointment_id === showFinishModal.id);
-        if (!alreadyHas) {
-          const svcIds = (showFinishModal as any).serviceIds?.length
-            ? (showFinishModal as any).serviceIds
-            : showFinishModal.service_id ? [showFinishModal.service_id] : [];
-          const items = (svcIds as string[]).map((svcId: string) => {
-            const svc = services.find(s => s.id === svcId);
-            return svc ? {
-              id: generateId(), type: 'service' as const, itemId: svc.id,
-              name: svc.name, qty: 1, unitPrice: svc.price,
-              discountType: 'value' as const, discount: 0,
-              professionalId: showFinishModal.professional_id,
-            } : null;
-          }).filter((x): x is NonNullable<typeof x> => x !== null);
+        const existing = existingComandas.find(c => c.appointment_id === showFinishModal.id);
+        const now = new Date().toISOString();
+        const itemsForComanda = svcItems.map(svc => ({
+          id: generateId(), type: 'service' as const, itemId: svc.id,
+          name: svc.name, qty: 1, unitPrice: svc.price,
+          discountType: 'value' as const, discount: 0,
+          professionalId: showFinishModal.professional_id,
+        }));
+        if (existing) {
+          // Fecha comanda existente (aberta ou reprocessa fechada)
+          await db.updateComanda(existing.id, {
+            status: 'closed', closedAt: now,
+            paymentMethod, notes: extraNote || existing.notes,
+            finalAmount: finishDiscount > 0 || extraValue > 0 ? amountPaid : undefined,
+          });
+        } else {
           await db.createComanda({
             tenant_id: tenantId,
             appointment_id: showFinishModal.id,
             professional_id: showFinishModal.professional_id!,
             customer_id: showFinishModal.customer_id!,
-            items,
-            status: 'closed',
-            paymentMethod,
+            items: itemsForComanda,
+            status: 'closed', paymentMethod,
             notes: extraNote || undefined,
-            closedAt: new Date().toISOString(),
+            closedAt: now,
+            finalAmount: finishDiscount > 0 || extraValue > 0 ? amountPaid : undefined,
           });
         }
-      } catch (err) {
-        console.error('Erro ao criar comanda ao finalizar:', err);
-      }
+      } catch (err) { console.error('Erro ao salvar comanda:', err); }
     }
 
     setShowFinishModal(null);
-    if (editStatus === AppointmentStatus.ARRIVED) {
+    if (effectiveStatus === AppointmentStatus.ARRIVED) {
       onOpenComandas?.();
     } else {
       refreshData();
@@ -3054,103 +3065,179 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         </div>
       )}
 
-      {/* ─── Finish / Manage Modal ────────────────── */}
-      {showFinishModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
-          <div className="flex justify-center items-start min-h-full p-6 pt-10 pb-10">
-          <div className="bg-white rounded-[40px] w-full max-w-md p-12 space-y-8 animate-scaleUp border-4 border-orange-500">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-black text-black uppercase">Gerenciar Agendamento</h2>
-              <span className={`text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${
-                showFinishModal.source === BookingSource.AI ? 'bg-orange-100 text-orange-600' :
-                (showFinishModal.isPlan || showFinishModal.source === BookingSource.PLAN) ? 'bg-blue-100 text-blue-600' :
-                'bg-slate-100 text-slate-500'
-              }`}>
-                {showFinishModal.source === BookingSource.AI ? '⚡ Agente IA' :
-                 (showFinishModal.isPlan || showFinishModal.source === BookingSource.PLAN) ? '📦 Plano' :
-                 '✏️ Manual'}
-              </span>
-            </div>
+      {/* ─── Comanda / Finalizar Modal ───────────── */}
+      {showFinishModal && (() => {
+        const svcIds: string[] = (showFinishModal as any).serviceIds?.length
+          ? (showFinishModal as any).serviceIds
+          : showFinishModal.service_id ? [showFinishModal.service_id] : [];
+        const svcItems = svcIds.map(id => services.find(s => s.id === id)).filter(Boolean) as typeof services;
+        const baseTotal = svcItems.reduce((s, sv) => s + sv.price, 0) || showFinishModal.basePrice;
+        const finalTotal = Math.max(0, baseTotal + (extraValue || 0) - (finishDiscount || 0));
+        const custName = customers.find(c => c.id === showFinishModal.customer_id)?.name || '—';
+        const profName = professionals.find(p => p.id === showFinishModal.professional_id)?.name || '—';
+        const isPlan   = showFinishModal.isPlan || showFinishModal.source === BookingSource.PLAN;
 
-            <div className="bg-slate-50 rounded-3xl p-6 space-y-3">
-              {showFinishModal.startTime && (
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Data / Hora</span>
-                  <span className="text-sm font-black text-orange-500">
-                    {new Date(showFinishModal.startTime).toLocaleDateString('pt-BR')} às{' '}
-                    {new Date(showFinishModal.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              )}
-              {showFinishModal.service_id && (
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Serviço</span>
-                  <span className="text-sm font-black text-black">{services.find(s => s.id === showFinishModal.service_id)?.name || '—'}</span>
-                </div>
-              )}
-              {showFinishModal.professional_id && (
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Profissional</span>
-                  <span className="text-sm font-black text-black">{professionals.find(p => p.id === showFinishModal.professional_id)?.name || '—'}</span>
-                </div>
-              )}
-              {showFinishModal.customer_id && (
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</span>
-                  <span className="text-sm font-black text-black">{customers.find(c => c.id === showFinishModal.customer_id)?.name || '—'}</span>
-                </div>
-              )}
-            </div>
+        const PM_OPTS = [
+          { val: PaymentMethod.PIX,    icon: '📱', label: 'PIX' },
+          { val: PaymentMethod.MONEY,  icon: '💵', label: 'Dinheiro' },
+          { val: PaymentMethod.DEBIT,  icon: '💳', label: 'Débito' },
+          { val: PaymentMethod.CREDIT, icon: '💳', label: 'Crédito' },
+        ] as const;
 
-            <div className="space-y-5">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Status</label>
-                <select value={editStatus} onChange={e => setEditStatus(e.target.value as AppointmentStatus)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black">
-                  <option value={AppointmentStatus.PENDING}>PENDENTE</option>
-                  <option value={AppointmentStatus.CONFIRMED}>CONFIRMADO</option>
-                  <option value={AppointmentStatus.ARRIVED}>CLIENTE CHEGOU</option>
-                  <option value={AppointmentStatus.FINISHED}>FINALIZADO</option>
-                  <option value={AppointmentStatus.NO_SHOW}>FALTOU</option>
-                  <option value={AppointmentStatus.CANCELLED}>CANCELADO</option>
-                </select>
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] overflow-y-auto">
+            <div className="flex justify-center items-start min-h-full p-4 pt-8 pb-10">
+            <div className="bg-white rounded-[32px] w-full max-w-sm animate-scaleUp overflow-hidden shadow-2xl">
+
+              {/* ── Cabeçalho da comanda ── */}
+              <div className="bg-black px-8 py-6 text-center relative">
+                <span className={`absolute top-4 left-4 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest ${
+                  showFinishModal.source === BookingSource.AI ? 'bg-orange-500 text-white' :
+                  isPlan ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-300'
+                }`}>
+                  {showFinishModal.source === BookingSource.AI ? '⚡ IA' : isPlan ? '📦 Plano' : '✏️ Manual'}
+                </span>
+                <button onClick={() => setShowFinishModal(null)}
+                  className="absolute top-4 right-4 text-slate-500 hover:text-white text-lg font-black transition-colors">✕</button>
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] mb-1">Comanda</p>
+                <p className="text-2xl font-black text-white uppercase tracking-tight">Finalizar Atendimento</p>
               </div>
 
-              {!(showFinishModal.isPlan || showFinishModal.source === BookingSource.PLAN) && (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Forma de Pagamento</label>
-                    <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black">
-                      {Object.values(PaymentMethod).map(pm => <option key={pm} value={pm}>{pm}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Acréscimo (Opcional)</label>
-                    <input type="number" value={extraValue} onChange={e => setExtraValue(Number(e.target.value))} placeholder="Valor Extra" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black" />
-                  </div>
-                  <div className="bg-black p-8 rounded-[30px] text-center">
-                    <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Total do Atendimento</p>
-                    <p className="text-4xl font-black text-white">R$ {(showFinishModal.basePrice + (extraValue || 0)).toFixed(2)}</p>
-                  </div>
-                </>
-              )}
+              {/* ── Corpo do cupom ── */}
+              <div className="px-6 py-5 space-y-4">
 
-              {(showFinishModal.isPlan || showFinishModal.source === BookingSource.PLAN) && (
-                <div className="bg-blue-50 border-2 border-blue-100 p-6 rounded-[24px] text-center">
-                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Cobertura do Plano</p>
-                  <p className="text-lg font-black text-blue-600">Atendimento incluso no plano do cliente</p>
-                  <p className="text-[9px] font-bold text-blue-400 mt-1 uppercase">Sem cobrança — não somado ao financeiro</p>
+                {/* Info do agendamento */}
+                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-4 space-y-2">
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Cliente</span>
+                    <span className="text-xs font-black text-black text-right">{custName}</span>
+                  </div>
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Profissional</span>
+                    <span className="text-xs font-bold text-slate-700 text-right">{profName}</span>
+                  </div>
+                  {showFinishModal.startTime && (
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Data / Hora</span>
+                      <span className="text-xs font-bold text-orange-500 text-right">
+                        {new Date(showFinishModal.startTime).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(showFinishModal.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div className="flex gap-4">
-              <button onClick={() => setShowFinishModal(null)} className="flex-1 py-4 font-black text-slate-400 uppercase text-xs">Sair</button>
-              <button onClick={handleFinish} className="flex-1 py-4 bg-orange-500 text-white rounded-2xl font-black uppercase text-xs">Gravar Alterações</button>
+                {/* Serviços */}
+                <div className="space-y-1">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Serviços</p>
+                  {svcItems.length > 0 ? svcItems.map(svc => (
+                    <div key={svc.id} className="flex justify-between items-center bg-slate-50 rounded-xl px-3 py-2">
+                      <span className="text-xs font-bold text-black">{svc.name}</span>
+                      <span className="text-xs font-black text-black tabular-nums">R$&nbsp;{svc.price.toFixed(2)}</span>
+                    </div>
+                  )) : (
+                    <div className="flex justify-between items-center bg-slate-50 rounded-xl px-3 py-2">
+                      <span className="text-xs font-bold text-black">Serviço</span>
+                      <span className="text-xs font-black text-black tabular-nums">R$&nbsp;{showFinishModal.basePrice.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Observação do agendamento */}
+                {showFinishModal.extraNote && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                    <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Observação</p>
+                    <p className="text-xs text-slate-600 italic">{showFinishModal.extraNote}</p>
+                  </div>
+                )}
+
+                {/* Plano: sem cobrança */}
+                {isPlan ? (
+                  <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-4 text-center">
+                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Cobertura do Plano</p>
+                    <p className="text-sm font-black text-blue-600">Sem cobrança — incluso no plano</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Desconto / Acréscimo */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Desconto (R$)</label>
+                        <input type="number" min="0" value={finishDiscount || ''}
+                          onChange={e => setFinishDiscount(parseFloat(e.target.value) || 0)}
+                          placeholder="0,00"
+                          className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-sm outline-none focus:border-orange-400" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Acréscimo (R$)</label>
+                        <input type="number" min="0" value={extraValue || ''}
+                          onChange={e => setExtraValue(parseFloat(e.target.value) || 0)}
+                          placeholder="0,00"
+                          className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-sm outline-none focus:border-orange-400" />
+                      </div>
+                    </div>
+
+                    {/* Total */}
+                    <div className="bg-black rounded-2xl px-6 py-4 flex justify-between items-center">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</p>
+                      <p className="text-2xl font-black text-white tabular-nums">R$&nbsp;{finalTotal.toFixed(2)}</p>
+                    </div>
+
+                    {/* Forma de pagamento */}
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Forma de Pagamento</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {PM_OPTS.map(({ val, icon, label }) => (
+                          <button key={val} onClick={() => setPaymentMethod(val)}
+                            className={`py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest border-2 transition-all ${
+                              paymentMethod === val
+                                ? 'bg-orange-500 text-white border-orange-500'
+                                : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-orange-300'
+                            }`}>
+                            {icon} {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Notas adicionais */}
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Notas da Comanda</label>
+                      <textarea rows={2} value={extraNote}
+                        onChange={e => setExtraNote(e.target.value)}
+                        placeholder="Observações para esta comanda..."
+                        className="w-full p-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-xs outline-none focus:border-orange-400 resize-none" />
+                    </div>
+                  </>
+                )}
+
+                {/* Ações secundárias */}
+                <div className="flex gap-2">
+                  <button onClick={() => handleFinish(AppointmentStatus.NO_SHOW)}
+                    className="flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all">
+                    Faltou
+                  </button>
+                  <button onClick={() => handleFinish(AppointmentStatus.CANCELLED)}
+                    className="flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest bg-slate-100 text-slate-500 hover:bg-red-100 hover:text-red-600 transition-all">
+                    Cancelar
+                  </button>
+                  <button onClick={() => handleFinish(AppointmentStatus.ARRIVED)}
+                    className="flex-1 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all">
+                    Chegou
+                  </button>
+                </div>
+
+                {/* Botão principal */}
+                <button onClick={() => handleFinish(AppointmentStatus.FINISHED)}
+                  className="w-full py-4 bg-orange-500 text-white rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl shadow-orange-200 hover:bg-black transition-all">
+                  ✓ Finalizar e Emitir Comanda
+                </button>
+              </div>
+            </div>
             </div>
           </div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ─── Break Period Modal ───────────────────── */}
       {showBreakModal && (
