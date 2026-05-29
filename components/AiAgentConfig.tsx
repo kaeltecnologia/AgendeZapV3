@@ -35,6 +35,42 @@ const DEFAULT_STAGE_PROMPTS: Record<string, string> = {
   confirmacao:  'Exiba um resumo com serviço, profissional, data e horário. Aguarde o cliente confirmar com "sim", "ok", "pode" ou similar antes de registrar o agendamento.',
 };
 
+type ChatMsg = { role: 'agent' | 'client'; text: string };
+const STAGE_EXAMPLES: Record<string, ChatMsg[]> = {
+  saudacao: [
+    { role: 'agent',  text: 'Boa tarde! 😊 Seja bem-vinda ao Studio Bella!\n\nVocê também pode agendar pelo link:\nagendezap.com/agendar/studio-bella 🔗\n\nComo posso te ajudar?' },
+  ],
+  servico: [
+    { role: 'client', text: 'Olá, quero marcar um horário' },
+    { role: 'agent',  text: 'Claro! Qual procedimento você gostaria?' },
+    { role: 'client', text: 'Manicure' },
+    { role: 'agent',  text: 'Ótimo! Com qual profissional você prefere?' },
+  ],
+  profissional: [
+    { role: 'agent',  text: 'Temos a Ana e a Bruna disponíveis. Com qual você prefere?' },
+    { role: 'client', text: 'Sem preferência' },
+    { role: 'agent',  text: 'Combinado! As duas atendem muito bem 😊 Tem algum dia de preferência?' },
+  ],
+  data: [
+    { role: 'agent',  text: 'Tem algum dia de preferência?' },
+    { role: 'client', text: 'Sexta-feira' },
+    { role: 'agent',  text: 'Ótimo! Prefere de manhã ou à tarde?' },
+    { role: 'client', text: 'Tarde' },
+    { role: 'agent',  text: 'Certo! Na sexta à tarde temos às 14h e às 16h. Qual prefere?' },
+  ],
+  horario: [
+    { role: 'agent',  text: 'Com a Ana na sexta às 14h pode ser? 😊' },
+    { role: 'client', text: 'Tem um pouco antes?' },
+    { role: 'agent',  text: 'Às 14h é o mais cedo disponível, mas temos às 15h ou 16h também. Qual prefere?' },
+    { role: 'client', text: 'Então 14h mesmo' },
+  ],
+  confirmacao: [
+    { role: 'agent',  text: 'Vou confirmar: Manicure com Ana, sexta-feira dia 20/06 às 14h. Confirma?' },
+    { role: 'client', text: 'Sim!' },
+    { role: 'agent',  text: 'Agendado! Manicure com Ana, 20/06 às 14h. Te esperamos! 😊' },
+  ],
+};
+
 const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ tenantId, tenantPlan }) => {
   const [active, setActive] = useState(false);
   const [aiLeadActive, setAiLeadActive] = useState(true);
@@ -310,21 +346,49 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
                     </div>
                   </button>
                   {isOpen && (
-                    <div className="px-5 pb-5 space-y-2">
-                      <textarea
-                        rows={4}
-                        value={currentVal}
-                        onChange={e => setFunnelStagePrompts(prev => ({ ...prev, [stage.key]: e.target.value }))}
-                        className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none focus:border-orange-500 transition-all text-xs font-bold leading-relaxed text-black resize-none"
-                      />
-                      {isEdited && (
-                        <button
-                          type="button"
-                          onClick={() => setFunnelStagePrompts(prev => ({ ...prev, [stage.key]: DEFAULT_STAGE_PROMPTS[stage.key] }))}
-                          className="text-[9px] font-black text-slate-400 uppercase hover:text-orange-500 transition-colors"
-                        >
-                          ↩ Restaurar texto padrão
-                        </button>
+                    <div className="px-5 pb-5 space-y-4">
+                      {/* Instrução editável */}
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Instrução para o agente</p>
+                        <textarea
+                          rows={3}
+                          value={currentVal}
+                          onChange={e => setFunnelStagePrompts(prev => ({ ...prev, [stage.key]: e.target.value }))}
+                          className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none focus:border-orange-500 transition-all text-xs font-bold leading-relaxed text-black resize-none"
+                        />
+                        {isEdited && (
+                          <button
+                            type="button"
+                            onClick={() => setFunnelStagePrompts(prev => ({ ...prev, [stage.key]: DEFAULT_STAGE_PROMPTS[stage.key] }))}
+                            className="text-[9px] font-black text-slate-400 uppercase hover:text-orange-500 transition-colors ml-1"
+                          >
+                            ↩ Restaurar texto padrão
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Exemplo prático */}
+                      {STAGE_EXAMPLES[stage.key] && (
+                        <div className="space-y-1">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Exemplo na prática</p>
+                          <div className="bg-[#ECE5DD] rounded-[16px] p-3 space-y-2">
+                            {STAGE_EXAMPLES[stage.key].map((msg, i) => (
+                              <div key={i} className={`flex ${msg.role === 'agent' ? 'justify-end' : 'justify-start'}`}>
+                                <div
+                                  className={`max-w-[80%] px-3 py-2 rounded-[12px] shadow-sm ${
+                                    msg.role === 'agent'
+                                      ? 'bg-[#DCF8C6] text-black rounded-tr-none'
+                                      : 'bg-white text-black rounded-tl-none'
+                                  }`}
+                                  style={{ fontSize: 10, fontWeight: 600, lineHeight: 1.5, whiteSpace: 'pre-line' }}
+                                >
+                                  {msg.text}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[8px] font-bold text-slate-300 ml-1">Branco = cliente · Verde = agente</p>
+                        </div>
                       )}
                     </div>
                   )}
