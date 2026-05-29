@@ -568,9 +568,27 @@ class DatabaseService {
 
   async deleteAppointment(id: string): Promise<void> {
     try {
+      // Fetch first to find companion rows (multi-service appointments create one row per service)
+      const { data: appt } = await supabase.from('appointments')
+        .select('tenant_id, customer_id, professional_id, inicio')
+        .eq('id', id)
+        .maybeSingle();
+
       await supabase.from('comandas').delete().eq('appointment_id', id);
-      const { error } = await supabase.from('appointments').delete().eq('id', id);
-      if (error) throw error;
+
+      if (appt) {
+        // Delete primary + all companion rows (same customer/prof/time slot)
+        const { error } = await supabase.from('appointments').delete()
+          .eq('tenant_id', appt.tenant_id)
+          .eq('customer_id', appt.customer_id)
+          .eq('professional_id', appt.professional_id)
+          .eq('inicio', appt.inicio);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('appointments').delete().eq('id', id);
+        if (error) throw error;
+      }
+
       _cache.invalidate('getAppointments:');
       _cache.invalidate('getFinancialSummary:');
       _cache.invalidate('getComandas:');
@@ -1957,24 +1975,47 @@ class DatabaseService {
   }
 
   // ── Comanda (ordem de serviço) ─────────────────────────────────────
-  // Supabase-first with localStorage fallback (key: agz_comandas_<tenantId>)
+  // 100% Supabase — sem fallback localStorage para dados de negócio.
+  // _lsGetComandas é mantido apenas como READ durante a transição (dados antigos
+  // que existam no browser são mostrados até se sincronizarem ou expirarem).
 
-  private _lsComandaKey(tenantId: string) { return `agz_comandas_${tenantId}`; }
+  // In-memory counter per tenant — inicializado do MAX(number) do Supabase na
+  // primeira criação e incrementado em memória; sobrevive à limpeza de cache.
+  private _comandaCounters = new Map<string, number>();
 
-  private _nextComandaNumber(tenantId: string): number {
-    const key = `agz_comanda_counter_${tenantId}`;
-    const n = parseInt(localStorage.getItem(key) || '0') + 1;
-    try { localStorage.setItem(key, String(n)); } catch {}
-    return n;
+  private async _nextComandaNumber(tenantId: string): Promise<number> {
+    if (!this._comandaCounters.has(tenantId)) {
+      // Initialize from Supabase MAX to survive page reloads and multi-device
+      try {
+        const { data } = await supabase
+          .from('comandas')
+          .select('number')
+          .eq('tenant_id', tenantId)
+          .order('number', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const supabaseMax = data?.number ?? 0;
+        // Also honour any existing localStorage counter during the transition period
+        const lsMax = parseInt(typeof localStorage !== 'undefined'
+          ? localStorage.getItem(`agz_comanda_counter_${tenantId}`) || '0' : '0');
+        this._comandaCounters.set(tenantId, Math.max(supabaseMax, lsMax));
+      } catch {
+        const lsMax = parseInt(typeof localStorage !== 'undefined'
+          ? localStorage.getItem(`agz_comanda_counter_${tenantId}`) || '0' : '0');
+        this._comandaCounters.set(tenantId, lsMax);
+      }
+    }
+    const next = (this._comandaCounters.get(tenantId) ?? 0) + 1;
+    this._comandaCounters.set(tenantId, next);
+    return next;
   }
 
+  // READ-ONLY durante transição: exibe comandas criadas offline antes desta versão
   private _lsGetComandas(tenantId: string): Comanda[] {
-    try { return JSON.parse(localStorage.getItem(this._lsComandaKey(tenantId)) || '[]'); }
-    catch { return []; }
-  }
-
-  private _lsSaveComandas(tenantId: string, list: Comanda[]) {
-    try { localStorage.setItem(this._lsComandaKey(tenantId), JSON.stringify(list)); } catch {}
+    try {
+      if (typeof localStorage === 'undefined') return [];
+      return JSON.parse(localStorage.getItem(`agz_comandas_${tenantId}`) || '[]');
+    } catch { return []; }
   }
 
   private _rowToComanda(r: any): Comanda {
@@ -1991,34 +2032,28 @@ class DatabaseService {
       createdAt: r.created_at || r.createdAt,
       closedAt: r.closed_at ?? r.closedAt ?? undefined,
       number: r.number ?? undefined,
+      finalAmount: r.final_amount ?? undefined,
     } as Comanda;
   }
 
   async createComanda(data: Omit<Comanda, 'id' | 'createdAt'>): Promise<Comanda> {
-    const number = this._nextComandaNumber(data.tenant_id);
+    const number = await this._nextComandaNumber(data.tenant_id);
     const comanda: Comanda = { ...data, id: generateId(), createdAt: new Date().toISOString(), number };
-    try {
-      const { error } = await supabase.from('comandas').insert({
-        id: comanda.id,
-        tenant_id: comanda.tenant_id,
-        appointment_id: comanda.appointment_id,
-        professional_id: comanda.professional_id,
-        customer_id: comanda.customer_id,
-        items: comanda.items,
-        status: comanda.status,
-        payment_method: comanda.paymentMethod ?? null,
-        notes: comanda.notes ?? null,
-        created_at: comanda.createdAt,
-        closed_at: comanda.closedAt ?? null,
-        number: comanda.number ?? null,
-      });
-      if (error) throw new Error(error.message);
-    } catch (err) {
-      console.warn('[Comandas] Supabase insert failed, using localStorage:', err);
-      const list = this._lsGetComandas(comanda.tenant_id);
-      list.unshift(comanda);
-      this._lsSaveComandas(comanda.tenant_id, list);
-    }
+    const { error } = await supabase.from('comandas').insert({
+      id: comanda.id,
+      tenant_id: comanda.tenant_id,
+      appointment_id: comanda.appointment_id,
+      professional_id: comanda.professional_id,
+      customer_id: comanda.customer_id,
+      items: comanda.items,
+      status: comanda.status,
+      payment_method: comanda.paymentMethod ?? null,
+      notes: comanda.notes ?? null,
+      created_at: comanda.createdAt,
+      closed_at: comanda.closedAt ?? null,
+      number: comanda.number ?? null,
+    });
+    if (error) throw new Error(`[Comandas] Falha ao salvar no banco: ${error.message}`);
     _cache.invalidate(`getComandas:${comanda.tenant_id}`);
     return comanda;
   }
@@ -2026,92 +2061,55 @@ class DatabaseService {
   async getComandas(tenantId: string, opts?: { fresh?: boolean }): Promise<Comanda[]> {
     const ck = `getComandas:${tenantId}`;
     if (!opts?.fresh) { const c = _cache.get<Comanda[]>(ck); if (c) return c; }
-    try {
-      const { data, error } = await supabase
-        .from('comandas')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
-      const supabaseList = (data || []).map((r: any) => this._rowToComanda(r));
-      const local = this._lsGetComandas(tenantId);
-      const supabaseIds = new Set(supabaseList.map(c => c.id));
-      const onlyLocal = local.filter(c => !supabaseIds.has(c.id));
-      const result = [...onlyLocal, ...supabaseList];
-      _cache.set(ck, result, TTL_FAST);
-      return result;
-    } catch (err) {
-      console.warn('[Comandas] Supabase fetch failed, using localStorage:', err);
-      return this._lsGetComandas(tenantId);
-    }
+    const { data, error } = await supabase
+      .from('comandas')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(`[Comandas] Falha ao buscar do banco: ${error.message}`);
+    const supabaseList = (data || []).map((r: any) => this._rowToComanda(r));
+    // Transition safety net: include any old comandas still in localStorage that
+    // haven't been synced yet (pre-refactor data). These disappear naturally as
+    // they are closed and the browser cache clears over time.
+    const local = this._lsGetComandas(tenantId);
+    const supabaseIds = new Set(supabaseList.map(c => c.id));
+    const onlyLocal = local.filter(c => !supabaseIds.has(c.id));
+    const result = [...onlyLocal, ...supabaseList];
+    _cache.set(ck, result, TTL_FAST);
+    return result;
   }
 
   async getComanda(id: string): Promise<Comanda | null> {
-    try {
-      const { data } = await supabase.from('comandas').select('*').eq('id', id).maybeSingle();
-      if (data) return this._rowToComanda(data);
-    } catch {}
-    // Fallback: search localStorage across all tenants
-    const keys = Object.keys(localStorage).filter(k => k.startsWith('agz_comandas_'));
-    for (const k of keys) {
-      try {
-        const list: Comanda[] = JSON.parse(localStorage.getItem(k) || '[]');
-        const found = list.find(c => c.id === id);
-        if (found) return found;
-      } catch {}
+    const { data } = await supabase.from('comandas').select('*').eq('id', id).maybeSingle();
+    if (data) return this._rowToComanda(data);
+    // Transition safety net: search old localStorage data
+    if (typeof localStorage !== 'undefined') {
+      for (const k of Object.keys(localStorage).filter(k => k.startsWith('agz_comandas_'))) {
+        try {
+          const found = (JSON.parse(localStorage.getItem(k) || '[]') as Comanda[]).find(c => c.id === id);
+          if (found) return found;
+        } catch {}
+      }
     }
     return null;
   }
 
   async updateComanda(id: string, updates: Partial<Comanda>): Promise<void> {
-    // Update in localStorage first (works offline)
-    const keys = Object.keys(localStorage).filter(k => k.startsWith('agz_comandas_'));
-    for (const k of keys) {
-      try {
-        const list: Comanda[] = JSON.parse(localStorage.getItem(k) || '[]');
-        const idx = list.findIndex(c => c.id === id);
-        if (idx !== -1) {
-          list[idx] = { ...list[idx], ...updates };
-          localStorage.setItem(k, JSON.stringify(list));
-        }
-      } catch {}
-    }
-    // Try Supabase
-    try {
-      const patch: Record<string, any> = {};
-      if (updates.items !== undefined)         patch.items          = updates.items;
-      if (updates.status !== undefined)        patch.status         = updates.status;
-      if (updates.paymentMethod !== undefined) patch.payment_method = updates.paymentMethod;
-      if (updates.notes !== undefined)         patch.notes          = updates.notes;
-      if (updates.closedAt !== undefined)      patch.closed_at      = updates.closedAt;
-      if (updates.finalAmount !== undefined)   patch.final_amount   = updates.finalAmount;
-      const { error } = await supabase.from('comandas').update(patch).eq('id', id);
-      if (error) throw new Error(error.message);
-    } catch (err) {
-      console.warn('[Comandas] Supabase update failed, localStorage updated only:', err);
-    }
+    const patch: Record<string, any> = {};
+    if (updates.items !== undefined)         patch.items          = updates.items;
+    if (updates.status !== undefined)        patch.status         = updates.status;
+    if (updates.paymentMethod !== undefined) patch.payment_method = updates.paymentMethod;
+    if (updates.notes !== undefined)         patch.notes          = updates.notes;
+    if (updates.closedAt !== undefined)      patch.closed_at      = updates.closedAt;
+    if (updates.finalAmount !== undefined)   patch.final_amount   = updates.finalAmount;
+    const { error } = await supabase.from('comandas').update(patch).eq('id', id);
+    if (error) throw new Error(`[Comandas] Falha ao atualizar: ${error.message}`);
     _cache.invalidate('getComandas:');
   }
 
   async deleteComanda(id: string): Promise<void> {
-    // Remove from localStorage across all tenant keys
-    const keys = Object.keys(localStorage).filter(k => k.startsWith('agz_comandas_'));
-    for (const k of keys) {
-      try {
-        const list: Comanda[] = JSON.parse(localStorage.getItem(k) || '[]');
-        const idx = list.findIndex(c => c.id === id);
-        if (idx !== -1) {
-          list.splice(idx, 1);
-          localStorage.setItem(k, JSON.stringify(list));
-        }
-      } catch {}
-    }
-    try {
-      const { error } = await supabase.from('comandas').delete().eq('id', id);
-      if (error) throw new Error(error.message);
-    } catch (err) {
-      console.warn('[Comandas] Supabase delete failed:', err);
-    }
+    const { error } = await supabase.from('comandas').delete().eq('id', id);
+    if (error) throw new Error(`[Comandas] Falha ao excluir: ${error.message}`);
     _cache.invalidate('getComandas:');
   }
 
