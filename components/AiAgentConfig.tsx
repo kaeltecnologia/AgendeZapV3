@@ -39,6 +39,8 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [sharedOpenAiKey, setSharedOpenAiKey] = useState('');
+  const [funnelStagePrompts, setFunnelStagePrompts] = useState<Record<string, string>>({});
+  const [expandedStage, setExpandedStage] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -56,6 +58,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       setOpenaiApiKey(settings.openaiApiKey || '');
       setMsgBufferSecs(settings.msgBufferSecs ?? 20);
       setSharedOpenAiKey((globalCfg['shared_openai_key'] || '').trim());
+      setFunnelStagePrompts((settings.funnelStagePrompts as Record<string, string>) || {});
       setLoadingSettings(false);
     };
     load();
@@ -79,7 +82,7 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
 
   const handleSavePrompt = async () => {
     setSavingPrompt(true);
-    await db.updateSettings(tenantId, { systemPrompt, agentName, agentGender, openaiApiKey, msgBufferSecs, welcomeMessage });
+    await db.updateSettings(tenantId, { systemPrompt, agentName, agentGender, openaiApiKey, msgBufferSecs, welcomeMessage, funnelStagePrompts });
     setSavingPrompt(false);
   };
 
@@ -256,6 +259,99 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
               onChange={e => setSystemPrompt(e.target.value)}
               className="w-full p-8 bg-slate-50 border-2 border-slate-100 rounded-[30px] outline-none focus:border-orange-500 transition-all text-sm font-bold leading-relaxed text-black"
             />
+          </div>
+
+          {/* ─── Etapas do Funil ─── */}
+          <div className="space-y-3">
+            <div>
+              <label className="text-[10px] font-black text-black uppercase tracking-[0.2em] ml-2">Etapas do Funil de Atendimento</label>
+              <p className="text-[10px] font-bold text-slate-400 ml-2 mt-0.5">Personalize o comportamento do agente em cada etapa — funciona como base de orientação, não como regra absoluta.</p>
+            </div>
+            {([
+              {
+                key: 'saudacao', emoji: '🌅', label: 'Saudação e Abertura',
+                desc: 'Primeiro contato e abertura da conversa',
+                placeholder: 'Ex: Seja caloroso e mencione as promoções do dia logo na abertura. Convide o cliente a conhecer nossos pacotes.',
+                base: 'Por padrão o agente cumprimenta com o horário do dia (bom dia/boa tarde), apresenta o estabelecimento e pergunta como pode ajudar.'
+              },
+              {
+                key: 'servico', emoji: '✂️', label: 'Identificar Serviço',
+                desc: 'Como o agente conduz a escolha do serviço',
+                placeholder: 'Ex: Se o cliente hesitar, sugira os serviços mais populares primeiro. Destaque o valor de cada um.',
+                base: 'Por padrão o agente pergunta "Qual procedimento você gostaria?" sem listar todos os serviços.'
+              },
+              {
+                key: 'profissional', emoji: '👤', label: 'Escolher Profissional',
+                desc: 'Como o agente apresenta os profissionais disponíveis',
+                placeholder: 'Ex: Quando o cliente não tiver preferência, sugira o profissional com mais disponibilidade no dia.',
+                base: 'Por padrão o agente lista os profissionais disponíveis e aguarda a escolha do cliente.'
+              },
+              {
+                key: 'data', emoji: '📅', label: 'Definir Data',
+                desc: 'Como o agente conduz a escolha do dia',
+                placeholder: 'Ex: Se o cliente não souber quando quer, sugira o próximo dia útil disponível proativamente.',
+                base: 'Por padrão o agente pergunta "Tem algum dia de preferência?" e processa a resposta.'
+              },
+              {
+                key: 'horario', emoji: '⏰', label: 'Oferecer Horário',
+                desc: 'Como o agente apresenta os horários disponíveis',
+                placeholder: 'Ex: Sempre ofereça 2 ou 3 opções de horário lado a lado para facilitar a escolha.',
+                base: 'Por padrão o agente oferece o horário mais próximo ao desejado e alternativas se estiver ocupado.'
+              },
+              {
+                key: 'confirmacao', emoji: '✅', label: 'Confirmação Final',
+                desc: 'Como o agente resume e confirma o agendamento',
+                placeholder: 'Ex: Após confirmar, informe também o endereço do estabelecimento e peça para chegar 5 minutos antes.',
+                base: 'Por padrão o agente exibe um resumo completo (serviço + profissional + data + horário) e aguarda confirmação do cliente.'
+              },
+            ] as { key: string; emoji: string; label: string; desc: string; placeholder: string; base: string }[]).map(stage => {
+              const isOpen = expandedStage === stage.key;
+              const hasValue = !!(funnelStagePrompts[stage.key] || '').trim();
+              return (
+                <div key={stage.key} className={`rounded-[20px] border-2 transition-all overflow-hidden ${hasValue ? 'border-orange-200 bg-orange-50/50' : 'border-slate-100 bg-slate-50'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedStage(isOpen ? null : stage.key)}
+                    className="w-full flex items-center justify-between px-5 py-4 text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{stage.emoji}</span>
+                      <div>
+                        <p className="text-[11px] font-black text-black uppercase tracking-wide">{stage.label}</p>
+                        <p className="text-[10px] font-bold text-slate-400">{stage.desc}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {hasValue && <span className="text-[9px] font-black text-orange-500 uppercase bg-orange-100 px-2 py-0.5 rounded-full">personalizado</span>}
+                      <span className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} style={{ fontSize: 12 }}>▼</span>
+                    </div>
+                  </button>
+                  {isOpen && (
+                    <div className="px-5 pb-5 space-y-3">
+                      <p className="text-[10px] font-bold text-slate-400 bg-white border border-slate-100 rounded-xl p-3 leading-relaxed">
+                        <span className="font-black text-slate-500">Comportamento base: </span>{stage.base}
+                      </p>
+                      <textarea
+                        rows={3}
+                        value={funnelStagePrompts[stage.key] || ''}
+                        onChange={e => setFunnelStagePrompts(prev => ({ ...prev, [stage.key]: e.target.value }))}
+                        placeholder={stage.placeholder}
+                        className="w-full p-4 bg-white border-2 border-slate-100 rounded-[16px] outline-none focus:border-orange-500 transition-all text-xs font-bold leading-relaxed text-black resize-none"
+                      />
+                      {(funnelStagePrompts[stage.key] || '').trim() && (
+                        <button
+                          type="button"
+                          onClick={() => setFunnelStagePrompts(prev => { const n = { ...prev }; delete n[stage.key]; return n; })}
+                          className="text-[9px] font-black text-red-400 uppercase hover:text-red-600 transition-colors"
+                        >
+                          ✕ Remover personalização desta etapa
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="flex justify-end pt-4">

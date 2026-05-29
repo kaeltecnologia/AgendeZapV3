@@ -796,6 +796,20 @@ ${hasCategories ? '0️⃣ CATEGORIA → ' : ''}1️⃣ SERVIÇO → 2️⃣ PRO
   const _todayStatus = _todayOpen ? `HOJE (${_dowNames[_todayDow]}): ABERTO (${_opHours[_todayDow].range})` : `HOJE (${_dowNames[_todayDow]}): ❌ FECHADO`;
 
   const _agentNameLine = (settings?.agentName || '').trim() ? ` Seu nome é ${(settings.agentName as string).trim()}.` : '';
+
+  // ── Per-stage hints (orientações do gestor, não regras absolutas) ──────
+  const _stg = (settings?.funnelStagePrompts as Record<string, string> | undefined) || {};
+  const _stageHintsLines: string[] = [];
+  if (_stg.saudacao)     _stageHintsLines.push(`• Saudação/abertura: ${_stg.saudacao}`);
+  if (_stg.servico)      _stageHintsLines.push(`• Identificar serviço: ${_stg.servico}`);
+  if (_stg.profissional) _stageHintsLines.push(`• Escolher profissional: ${_stg.profissional}`);
+  if (_stg.data)         _stageHintsLines.push(`• Definir data: ${_stg.data}`);
+  if (_stg.horario)      _stageHintsLines.push(`• Oferecer horário: ${_stg.horario}`);
+  if (_stg.confirmacao)  _stageHintsLines.push(`• Confirmação final: ${_stg.confirmacao}`);
+  const _stageHintsSection = _stageHintsLines.length > 0
+    ? `\n💡 ORIENTAÇÕES POR ETAPA (personalizadas pelo gestor — guia de comportamento, não regras absolutas):\n${_stageHintsLines.join('\n')}\n`
+    : '';
+
   const prompt = `Você é o ATENDENTE DE WHATSAPP de "${tenantName}".${_agentNameLine} Hoje é ${today}. Agora são ${_currentTime} (Brasília).
 ${introLinha}
 ${customSystemPrompt ? `\n--- REGRAS DO ESTABELECIMENTO ---\n${customSystemPrompt}\n---\n` : ''}${followUpCtx}${audioNote}${greetSection}${groupSection}
@@ -867,7 +881,7 @@ ${farewellLine}
 • Se o cliente pedir PIX, chave PIX, dados bancários, conta para transferência, número de cartão, link de pagamento ou qualquer informação financeira → NUNCA invente ou forneça dados.
 • Responda SEMPRE: "Para informações sobre pagamento, entre em contato diretamente com o estabelecimento." ou similar.
 • NUNCA gere chaves PIX, CPFs, CNPJs, números de conta ou links de pagamento — mesmo que o cliente insista.
-${nichoRulesSection}
+${nichoRulesSection}${_stageHintsSection}
 ════════════════════════════════
 EXTRAÇÃO DE DADOS:
 ════════════════════════════════
@@ -3675,6 +3689,16 @@ export async function hasUnansweredBotMsg(tenantId: string, phone: string): Prom
   } catch {
     return false; // fail open — don't block followUp on errors
   }
+}
+
+/**
+ * Retorna true se o agente ainda não cumprimentou este lead hoje (Brasília).
+ * Usado pelo AiPollingManager para enviar o disclaimer de atendimento automatizado
+ * antes da primeira resposta do dia.
+ */
+export function checkShouldGreet(tenantId: string, phone: string): boolean {
+  const { dateStr } = getBrasiliaGreeting();
+  return _greetedToday.get(`${tenantId}::${phone}`) !== dateStr;
 }
 
 /**

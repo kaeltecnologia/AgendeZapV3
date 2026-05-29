@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod, ComandaItem, parseServiceIds, encodeServiceIds } from '../types';
-import { sendProfessionalNotification, sendClientArrivedNotification, sendApptConfirmationToClient } from '../services/notificationService';
+import { sendProfessionalNotification, sendClientArrivedNotification, sendApptConfirmationToClient, sendMultiApptConfirmationToClient } from '../services/notificationService';
 import { notifyWaitlistLeads } from '../services/waitlistService';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -1076,6 +1076,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [deleteApptId, setDeleteApptId] = useState<string | null>(null);
   const [deletingAppt, setDeletingAppt] = useState(false);
 
+  // ── Enviar agendamento ao cliente ─────────────────────────────────
+  const [sendApptModal, setSendApptModal] = useState<{ appts: Appointment[]; custName: string } | null>(null);
+  const [sendingAppt, setSendingAppt] = useState(false);
+
   // edit appointment (reschedule)
   const [editAppt, setEditAppt] = useState<Appointment | null>(null);
   const [editProfId, setEditProfId] = useState('');
@@ -1473,6 +1477,29 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       setDeletingAppt(false);
     }
   };
+
+  // ── Enviar agendamento ao cliente ─────────────────────────────────
+  const handleSendApptToClient = (appt: Appointment) => {
+    const apptDay = appt.startTime?.substring(0, 10);
+    const sameDay = appointments.filter(a =>
+      a.customer_id === appt.customer_id &&
+      a.startTime?.substring(0, 10) === apptDay &&
+      a.status !== AppointmentStatus.CANCELLED
+    );
+    const cust = customers.find(c => c.id === appt.customer_id);
+    const custName = cust?.name ?? 'Cliente';
+    if (sameDay.length <= 1) {
+      // Só um agendamento no dia — envia direto
+      setSendingAppt(true);
+      sendApptConfirmationToClient(tenantId, appt)
+        .then(ok => alert(ok ? '✅ Mensagem enviada ao cliente!' : '❌ Falha ao enviar. Verifique se a instância WhatsApp está conectada.'))
+        .finally(() => setSendingAppt(false));
+    } else {
+      // Múltiplos agendamentos no dia — mostra popup de seleção
+      setSendApptModal({ appts: sameDay, custName });
+    }
+  };
+
 
   const handleOpenComandaClick = async (appt: Appointment) => {
     if (!onOpenComandaForAppt) return;
@@ -2121,11 +2148,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                                 const newStatus = e.target.value as AppointmentStatus;
                                 setEditingStatusId(null);
                                 if (newStatus === AppointmentStatus.FINISHED) {
-                                  setShowFinishModal({ id: a.id, basePrice: svc?.price || 0, ...a });
-                                  setEditStatus(AppointmentStatus.FINISHED);
-                                  setPaymentMethod(a.paymentMethod || PaymentMethod.PIX);
-                                  setExtraValue(a.extraValue || 0);
-                                  setExtraNote(a.extraNote || '');
+                                  setEditingStatusId(null);
+                                  handleOpenComandaClick(a);
                                 } else if (newStatus === AppointmentStatus.ARRIVED) {
                                   // 1. Atualizar status
                                   try {
@@ -2493,19 +2517,10 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                     Editar
                   </button>
                   <button
-                    onClick={() => {
-                      setInfoAppt(null);
-                      setShowFinishModal({
-                        id: ia.id, basePrice: iaSvcs.reduce((s, v) => s + v.price, 0) || 0,
-                        professional_id: ia.professional_id, service_id: ia.service_id,
-                        customer_id: ia.customer_id, startTime: ia.startTime,
-                        source: ia.source, isPlan: ia.isPlan,
-                        ...((ia as any).serviceIds?.length ? { serviceIds: (ia as any).serviceIds } : {}),
-                      } as any);
-                    }}
+                    onClick={() => { setInfoAppt(null); handleOpenComandaClick(ia); }}
                     style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: iaColor, fontSize: 13, fontWeight: 700, color: '#ffffff', cursor: 'pointer' }}
                   >
-                    Finalizar
+                    Ir para Comanda
                   </button>
                 </div>
               )}
@@ -2593,9 +2608,14 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 <button
                   key={opt.key}
                   onClick={async () => {
-                    await db.updateAppointmentStatus(ha.id, opt.key, {});
-                    setHoverAppt(null);
-                    refreshData();
+                    if (opt.key === AppointmentStatus.FINISHED) {
+                      setHoverAppt(null);
+                      handleOpenComandaClick(ha);
+                    } else {
+                      await db.updateAppointmentStatus(ha.id, opt.key, {});
+                      setHoverAppt(null);
+                      refreshData();
+                    }
                   }}
                   style={{ padding: '4px 8px', borderRadius: 8, border: 'none', background: opt.bg, color: opt.color, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
                 >
@@ -2616,6 +2636,14 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                   style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: '1.5px solid #DBEAFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
                   📋 Abrir comanda
+                </button>
+              )}
+              {ha.customer_id && (
+                <button
+                  onClick={() => { setHoverAppt(null); handleSendApptToClient(ha); }}
+                  style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: '1.5px solid #D1FAE5', background: '#ECFDF5', color: '#065F46', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  📤 Enviar agendamento ao cliente
                 </button>
               )}
             </div>
@@ -3303,9 +3331,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 </div>
 
                 {/* Botão principal */}
-                <button onClick={() => handleFinish(AppointmentStatus.FINISHED)}
+                <button onClick={() => { setShowFinishModal(null); handleOpenComandaClick(showFinishModal as any); }}
                   className="w-full py-4 bg-orange-500 text-white rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl shadow-orange-200 hover:bg-black transition-all">
-                  ✓ Finalizar e Emitir Comanda
+                  📋 Ir para Comanda
                 </button>
               </div>
             </div>
@@ -3484,6 +3512,69 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                   {estornoSaving ? 'Salvando...' : '✅ Confirmar Estorno'}
                 </button>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── Modal: Enviar agendamento ao cliente ────────────────── */}
+      {sendApptModal && (() => {
+        const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        return (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
+            onClick={() => setSendApptModal(null)}
+          >
+            <div
+              className="bg-white rounded-[32px] w-full max-w-sm p-8 space-y-5 border-4 border-black"
+              onClick={e => e.stopPropagation()}
+            >
+              <div>
+                <h2 className="text-lg font-black text-black uppercase tracking-tight">Enviar ao Cliente</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  <span className="font-bold text-black">{sendApptModal.custName}</span> tem {sendApptModal.appts.length} agendamentos neste dia. O que deseja enviar?
+                </p>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    const appts = sendApptModal.appts;
+                    setSendApptModal(null);
+                    setSendingAppt(true);
+                    const ok = await sendMultiApptConfirmationToClient(tenantId, appts);
+                    setSendingAppt(false);
+                    alert(ok ? '✅ Mensagem enviada ao cliente!' : '❌ Falha ao enviar. Verifique se a instância WhatsApp está conectada.');
+                  }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 12, border: '2px solid #6366F1', background: '#EEF2FF', color: '#3730A3', fontSize: 12, fontWeight: 800, cursor: 'pointer', textAlign: 'left' }}
+                >
+                  📅 Enviar todos os agendamentos do dia
+                </button>
+                {sendApptModal.appts.map(a => {
+                  const svcIds = a.serviceIds?.length ? a.serviceIds : [a.service_id];
+                  const svcNames = services.filter(s => svcIds.includes(s.id)).map(s => s.name).join(', ') || '—';
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={async () => {
+                        setSendApptModal(null);
+                        setSendingAppt(true);
+                        const ok = await sendApptConfirmationToClient(tenantId, a);
+                        setSendingAppt(false);
+                        alert(ok ? '✅ Mensagem enviada ao cliente!' : '❌ Falha ao enviar. Verifique se a instância WhatsApp está conectada.');
+                      }}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: 12, border: '2px solid #D1FAE5', background: '#F0FDF4', color: '#065F46', fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      ✂️ {svcNames} — {fmtTime(a.startTime)}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setSendApptModal(null)}
+                style={{ width: '100%', padding: '8px 0', borderRadius: 12, border: '2px solid #E2E8F0', background: 'transparent', color: '#94A3B8', fontSize: 11, fontWeight: 800, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1 }}
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         );
