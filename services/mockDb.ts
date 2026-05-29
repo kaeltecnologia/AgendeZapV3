@@ -70,7 +70,7 @@ const _cache = new TtlCache();
 const TTL_LONG = 300_000;    // 5 min — settings, tenant, breaks, plans, modes
 const TTL_MED = 180_000;     // 3 min — services, professionals, inventory, products, reviews
 const TTL_SHORT = 120_000;   // 2 min — customers, expenses, financial
-const TTL_FAST = 30_000;     // 30s   — appointments, comandas
+const TTL_FAST = 90_000;     // 90s   — appointments, comandas (mutações invalidam explicitamente)
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -87,6 +87,11 @@ function toLocalISO(d: Date): string {
     `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+
+// Serializes updateSettings per tenant — prevents race conditions where two
+// concurrent read-modify-write cycles clobber each other's fields (e.g. poll
+// writing connectionStatus while agenda writes profAgendaSent).
+const _settingsQueue = new Map<string, Promise<void>>();
 
 class DatabaseService {
   private connectionStatus: 'online' | 'offline' | 'checking' = 'checking';
@@ -1233,9 +1238,19 @@ class DatabaseService {
   }
 
   async updateSettings(tenantId: string, updates: any) {
+    // Serialize per-tenant: each call waits for the previous to complete before
+    // running its own read-modify-write, preventing concurrent clobbers.
+    const prev = _settingsQueue.get(tenantId) ?? Promise.resolve();
+    const next: Promise<void> = prev.then(() => this._doUpdateSettings(tenantId, updates)).catch(e => { throw e; });
+    _settingsQueue.set(tenantId, next.catch(() => {}).finally(() => {
+      if (_settingsQueue.get(tenantId) === next) _settingsQueue.delete(tenantId);
+    }));
+    return next;
+  }
+
+  private async _doUpdateSettings(tenantId: string, updates: any) {
     try {
-      // Invalidate cache BEFORE reading to ensure fresh data (prevents stale reads
-      // when multiple updateSettings calls happen in quick succession)
+      // Invalidate cache BEFORE reading to ensure fresh data
       _cache.invalidate(`getSettings:${tenantId}`);
       const curr = await this.getSettings(tenantId);
       const newS = { ...curr, ...updates };
@@ -1268,7 +1283,7 @@ class DatabaseService {
         _calendarGridInterval: newS.calendarGridInterval ?? curr.calendarGridInterval ?? 30,
         _bookingSlotInterval: newS.bookingSlotInterval ?? curr.bookingSlotInterval ?? 30,
         _openaiApiKey: newS.openaiApiKey ?? curr.openaiApiKey ?? '',
-        _msgBufferSecs: newS.msgBufferSecs ?? curr.msgBufferSecs ?? 20,
+        _msgBufferSecs: newS.msgBufferSecs ?? curr.msgBufferSecs ?? 8,
         _trialStartDate: newS.trialStartDate !== undefined ? newS.trialStartDate : (curr.trialStartDate ?? null),
         _trialWarningSent: newS.trialWarningSent ?? curr.trialWarningSent ?? false,
         _focusNfeConfig: newS.focusNfeConfig !== undefined ? newS.focusNfeConfig : (curr.focusNfeConfig ?? null),
@@ -1326,16 +1341,13 @@ class DatabaseService {
         { onConflict: 'tenant_id' }  // required to avoid duplicate key error
       );
       if (error) throw error;
-      // Invalidate settings and all derived caches
+      // Invalidate only caches derived from tenant_settings JSONB.
+      // customers/professionals/products/inventory are in separate tables — não mudam com settings.
       _cache.invalidate(`getSettings:${tenantId}`);
       _cache.invalidate(`getBreaks:${tenantId}`);
       _cache.invalidate(`getPlans:${tenantId}`);
       _cache.invalidate(`getAllPlans:${tenantId}`);
       _cache.invalidate(`getNamedModes:${tenantId}`);
-      _cache.invalidate(`getInventory:${tenantId}`);
-      _cache.invalidate(`getProducts:${tenantId}`);
-      _cache.invalidate(`getCustomers:${tenantId}`);
-      _cache.invalidate(`getProfessionals:${tenantId}`);
     } catch (e) {
       console.error("Error updating settings:", e);
       throw e;
@@ -3702,7 +3714,12 @@ class DatabaseService {
           fire();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tenant_settings', filter: `tenant_id=eq.${tenantId}` }, () => {
-          _cache.invalidateTenant(tenantId);
+          // Invalidação cirúrgica — só caches derivados de tenant_settings JSONB
+          _cache.invalidate(`getSettings:${tenantId}`);
+          _cache.invalidate(`getBreaks:${tenantId}`);
+          _cache.invalidate(`getPlans:${tenantId}`);
+          _cache.invalidate(`getAllPlans:${tenantId}`);
+          _cache.invalidate(`getNamedModes:${tenantId}`);
           fire();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'professionals', filter: `tenant_id=eq.${tenantId}` }, () => {
