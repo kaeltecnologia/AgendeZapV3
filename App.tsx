@@ -1548,6 +1548,11 @@ const App: React.FC = () => {
                                 <p className={`text-[10px] font-bold ${isArrived ? 'text-emerald-600' : isPast ? 'text-red-400' : 'text-slate-400'}`}>{hhmm}{!isArrived && isPast ? ' · atrasado' : ''}</p>
                                 {(a as any).professionalName && <p className="text-[10px] text-slate-400">{(a as any).professionalName}</p>}
                               </div>
+                              <button
+                                onClick={() => setArrivingAppts(prev => prev.filter(x => x.id !== a.id))}
+                                className="shrink-0 w-5 h-5 flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all text-xs"
+                                title="Dispensar"
+                              >✕</button>
                             </div>
                             {!isArrived && (
                               <button
