@@ -1483,12 +1483,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       if (existing) {
         if (existing.status === 'standby') await db.updateComanda(existing.id, { status: 'open' });
       } else {
-        // Agrupa todos os agendamentos confirmados do mesmo cliente no mesmo dia
-        const apptDate = appt.startTime.substring(0, 10);
+        // Agrupa todos os agendamentos confirmados do cliente de hoje para trás
+        const today = localDateStr();
         const sameDay = appointments.filter(a =>
           a.id !== appt.id &&
           a.customer_id === appt.customer_id &&
-          a.startTime?.substring(0, 10) === apptDate &&
+          a.startTime?.substring(0, 10) <= today &&
           (a.status === AppointmentStatus.PENDING || a.status === AppointmentStatus.CONFIRMED) &&
           !allCmdas.some(c => c.appointment_id === a.id && c.status !== 'closed')
         );
