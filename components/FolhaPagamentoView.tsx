@@ -72,7 +72,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
   const [services, setServices]           = useState<Service[]>([]);
   const [adiantamentos, setAdiantamentos] = useState<Adiantamento[]>([]);
   const [pagamentos, setPagamentos]       = useState<PagamentoPro[]>([]);
-  const [commissionMap, setCommissionMap] = useState<Record<string, number>>({});
+  const [profMeta, setProfMeta] = useState<Record<string, any>>({});
   const [cancelledApptIds, setCancelledApptIds] = useState<Set<string>>(new Set());
   const [loading, setLoading]             = useState(true);
   const firstLoad = useRef(true);
@@ -93,7 +93,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
   const [pagarNotes, setPagarNotes]         = useState('');
   const [paying, setPaying]                 = useState(false);
 
-  const commRate = selectedProfId ? (commissionMap[selectedProfId] ?? 0) : 0;
+  const commRate = selectedProfId ? (profMeta[selectedProfId]?.commissionRate ?? 0) : 0;
 
   // ── load ─────────────────────────────────────────────────────────────────
 
@@ -134,13 +134,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
 
     setAdiantamentos([...adis, ...expAsAdis]);
     setPagamentos(pgtos);
-    const cMap: Record<string, number> = {};
-    if (settings.professionalMeta) {
-      for (const [id, meta] of Object.entries(settings.professionalMeta)) {
-        cMap[id] = meta.commissionRate ?? 0;
-      }
-    }
-    setCommissionMap(cMap);
+    setProfMeta(settings.professionalMeta ?? {});
     setCancelledApptIds(new Set(
       (apps as Appointment[]).filter(a => a.status === AppointmentStatus.CANCELLED).map(a => a.id)
     ));
