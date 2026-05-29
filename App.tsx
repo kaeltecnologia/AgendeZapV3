@@ -289,17 +289,31 @@ const App: React.FC = () => {
     });
   }, [affiliateSlug]);
 
-  // ── Fila de presença: todos agendamentos de hoje PENDING/CONFIRMED ────
+  // ── Fila de presença: todos agendamentos de hoje PENDING/CONFIRMED/ARRIVED ────
   useEffect(() => {
     if (!tenantId || role !== 'TENANT') return;
     const checkArrivals = async () => {
       try {
-        const appts = await db.getAppointments(tenantId, { fresh: true });
-        const today = new Date().toISOString().slice(0, 10);
-        const pending = appts.filter(a =>
-          (a.status === AppointmentStatus.CONFIRMED || a.status === AppointmentStatus.PENDING) &&
-          a.startTime.slice(0, 10) === today
-        ).sort((a, b) => a.startTime.localeCompare(b.startTime));
+        const [appts, customers, professionals] = await Promise.all([
+          db.getAppointments(tenantId, 1, { fresh: true }),
+          db.getCustomers(tenantId),
+          db.getProfessionals(tenantId),
+        ]);
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+        const pending = appts
+          .filter(a =>
+            (a.status === AppointmentStatus.CONFIRMED ||
+             a.status === AppointmentStatus.PENDING ||
+             a.status === AppointmentStatus.ARRIVED) &&
+            a.startTime.slice(0, 10) === today
+          )
+          .map(a => ({
+            ...a,
+            customerName: customers.find(c => c.id === a.customer_id)?.name || 'Cliente',
+            professionalName: professionals.find(p => p.id === a.professional_id)?.name || '',
+          }))
+          .sort((a, b) => a.startTime.localeCompare(b.startTime));
         setArrivingAppts(pending);
       } catch { /* silently */ }
     };
@@ -1519,29 +1533,35 @@ const App: React.FC = () => {
                         const hhmm = `${String(start.getHours()).padStart(2,'0')}:${String(start.getMinutes()).padStart(2,'0')}`;
                         const now = new Date();
                         const isPast = start < now;
+                        const isArrived = a.status === AppointmentStatus.ARRIVED;
                         return (
-                          <div key={a.id} className="p-3 border-b border-slate-50">
+                          <div key={a.id} className={`p-3 border-b border-slate-50 ${isArrived ? 'bg-emerald-50' : ''}`}>
                             <div className="flex items-start gap-2 mb-2">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isPast ? 'bg-red-100' : 'bg-orange-100'}`}>
-                                <span className={`text-xs font-black ${isPast ? 'text-red-500' : 'text-orange-500'}`}>{(a.customerName || '?').charAt(0).toUpperCase()}</span>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isArrived ? 'bg-emerald-200' : isPast ? 'bg-red-100' : 'bg-orange-100'}`}>
+                                <span className={`text-xs font-black ${isArrived ? 'text-emerald-700' : isPast ? 'text-red-500' : 'text-orange-500'}`}>{((a as any).customerName || '?').charAt(0).toUpperCase()}</span>
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs font-black text-slate-800 truncate">{a.customerName || 'Cliente'}</p>
-                                <p className={`text-[10px] font-bold ${isPast ? 'text-red-400' : 'text-slate-400'}`}>{hhmm}{isPast ? ' · atrasado' : ''} · {a.serviceName || 'Serviço'}</p>
-                                {a.professionalName && <p className="text-[10px] text-slate-400">Prof: {a.professionalName}</p>}
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-xs font-black text-slate-800 truncate">{(a as any).customerName || 'Cliente'}</p>
+                                  {isArrived && <span className="text-[8px] font-black bg-emerald-500 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">Chegou!</span>}
+                                </div>
+                                <p className={`text-[10px] font-bold ${isArrived ? 'text-emerald-600' : isPast ? 'text-red-400' : 'text-slate-400'}`}>{hhmm}{!isArrived && isPast ? ' · atrasado' : ''}</p>
+                                {(a as any).professionalName && <p className="text-[10px] text-slate-400">{(a as any).professionalName}</p>}
                               </div>
                             </div>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await db.updateAppointmentStatus(a.id, AppointmentStatus.ARRIVED, {});
-                                  setArrivingAppts(prev => prev.filter(x => x.id !== a.id));
-                                } catch { /* silently */ }
-                              }}
-                              className="w-full py-1.5 bg-orange-500 text-white text-[9px] font-black rounded-lg uppercase hover:bg-orange-600 transition-all"
-                            >
-                              ✓ Confirmar chegada
-                            </button>
+                            {!isArrived && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await db.updateAppointmentStatus(a.id, AppointmentStatus.ARRIVED, {});
+                                    setArrivingAppts(prev => prev.map(x => x.id === a.id ? { ...x, status: AppointmentStatus.ARRIVED } : x));
+                                  } catch { /* silently */ }
+                                }}
+                                className="w-full py-1.5 bg-orange-500 text-white text-[9px] font-black rounded-lg uppercase hover:bg-orange-600 transition-all"
+                              >
+                                ✓ Confirmar chegada
+                              </button>
+                            )}
                           </div>
                         );
                       })}
