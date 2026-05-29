@@ -245,6 +245,7 @@ export interface PagamentoPro {
   paidAt?: string;
   paidMethod?: string;
   notes?: string;
+  comandaIds?: string[];   // IDs das comandas incluídas neste pagamento
   createdAt: string;
 }
 
@@ -517,7 +518,7 @@ export interface Comanda {
   professional_id: string;
   customer_id: string;
   items: ComandaItem[];
-  status: 'open' | 'closed';
+  status: 'standby' | 'open' | 'closed';
   paymentMethod?: PaymentMethod;
   notes?: string;
   createdAt: string;

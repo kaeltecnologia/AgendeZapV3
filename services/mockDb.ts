@@ -1254,8 +1254,8 @@ class DatabaseService {
         _trialStartDate: newS.trialStartDate !== undefined ? newS.trialStartDate : (curr.trialStartDate ?? null),
         _trialWarningSent: newS.trialWarningSent ?? curr.trialWarningSent ?? false,
         _focusNfeConfig: newS.focusNfeConfig !== undefined ? newS.focusNfeConfig : (curr.focusNfeConfig ?? null),
-        _adiantamentos: newS.adiantamentos ?? curr.adiantamentos ?? [],
-        _pagamentosPro: newS.pagamentosPro ?? curr.pagamentosPro ?? [],
+        // _adiantamentos e _pagamentosPro foram migrados para tabelas dedicadas
+        // — não persistir mais no JSONB para evitar dados inconsistentes
         _notasFiscais: newS.notasFiscais ?? curr.notasFiscais ?? [],
         _lastOptimizedAt: newS.lastOptimizedAt !== undefined ? newS.lastOptimizedAt : (curr.lastOptimizedAt ?? null),
         _lastOptimizationSummary: newS.lastOptimizationSummary !== undefined ? newS.lastOptimizationSummary : (curr.lastOptimizationSummary ?? null),
@@ -2194,43 +2194,143 @@ class DatabaseService {
     await this.updateSettings(tenantId, { notasFiscais: updated });
   }
 
-  // ─── ADIANTAMENTOS ──────────────────────────────────────────────────
+  // ─── ADIANTAMENTOS — tabela dedicada (não JSONB) ────────────────────
 
   async getAdiantamentos(tenantId: string): Promise<Adiantamento[]> {
-    const s = await this.getSettings(tenantId);
-    return s.adiantamentos ?? [];
+    try {
+      const { data, error } = await supabase
+        .from('adiantamentos')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('date', { ascending: false });
+      if (error) throw error;
+      return (data || []).map((r: any) => ({
+        id: r.id,
+        professionalId: r.professional_id,
+        amount: r.amount,
+        date: r.date,
+        description: r.description ?? undefined,
+        createdAt: r.created_at,
+      }));
+    } catch (e) {
+      console.error('[getAdiantamentos] error:', e);
+      return [];
+    }
   }
 
   async addAdiantamento(tenantId: string, a: Omit<Adiantamento, 'id' | 'createdAt'>): Promise<Adiantamento> {
-    const s = await this.getSettings(tenantId);
     const newA: Adiantamento = { ...a, id: generateId(), createdAt: new Date().toISOString() };
-    await this.updateSettings(tenantId, { adiantamentos: [...(s.adiantamentos ?? []), newA] });
+    try {
+      const { error } = await supabase.from('adiantamentos').insert({
+        id:              newA.id,
+        tenant_id:       tenantId,
+        professional_id: newA.professionalId,
+        amount:          newA.amount,
+        date:            newA.date,
+        description:     newA.description ?? null,
+        created_at:      newA.createdAt,
+      });
+      if (error) throw error;
+    } catch (e) {
+      console.error('[addAdiantamento] error:', e);
+      throw e;
+    }
     return newA;
   }
 
   async deleteAdiantamento(tenantId: string, id: string): Promise<void> {
-    const s = await this.getSettings(tenantId);
-    await this.updateSettings(tenantId, { adiantamentos: (s.adiantamentos ?? []).filter(a => a.id !== id) });
+    try {
+      const { error } = await supabase
+        .from('adiantamentos')
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    } catch (e) {
+      console.error('[deleteAdiantamento] error:', e);
+      throw e;
+    }
   }
 
-  // ─── PAGAMENTOS PROFISSIONAL ────────────────────────────────────────
+  // ─── PAGAMENTOS PROFISSIONAL — tabela dedicada (não JSONB) ──────────
 
   async getPagamentosPro(tenantId: string): Promise<PagamentoPro[]> {
-    const s = await this.getSettings(tenantId);
-    return s.pagamentosPro ?? [];
+    try {
+      const { data, error } = await supabase
+        .from('pagamentos_pro')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map((r: any) => ({
+        id:                 r.id,
+        professionalId:     r.professional_id,
+        periodoInicio:      r.periodo_inicio,
+        periodoFim:         r.periodo_fim,
+        comissaoTotal:      r.comissao_total,
+        adiantamentosTotal: r.adiantamentos_total,
+        liquido:            r.liquido,
+        status:             r.status,
+        paidAt:             r.paid_at ?? undefined,
+        paidMethod:         r.paid_method ?? undefined,
+        notes:              r.notes ?? undefined,
+        comandaIds:         r.comanda_ids ?? [],
+        createdAt:          r.created_at,
+      }));
+    } catch (e) {
+      console.error('[getPagamentosPro] error:', e);
+      return [];
+    }
   }
 
   async addPagamentoPro(tenantId: string, p: Omit<PagamentoPro, 'id' | 'createdAt'>): Promise<PagamentoPro> {
-    const s = await this.getSettings(tenantId);
     const newP: PagamentoPro = { ...p, id: generateId(), createdAt: new Date().toISOString() };
-    await this.updateSettings(tenantId, { pagamentosPro: [...(s.pagamentosPro ?? []), newP] });
+    try {
+      const { error } = await supabase.from('pagamentos_pro').insert({
+        id:                  newP.id,
+        tenant_id:           tenantId,
+        professional_id:     newP.professionalId,
+        periodo_inicio:      newP.periodoInicio,
+        periodo_fim:         newP.periodoFim,
+        comissao_total:      newP.comissaoTotal,
+        adiantamentos_total: newP.adiantamentosTotal,
+        liquido:             newP.liquido,
+        status:              newP.status,
+        paid_at:             newP.paidAt ?? null,
+        paid_method:         newP.paidMethod ?? null,
+        notes:               newP.notes ?? null,
+        comanda_ids:         newP.comandaIds ?? [],
+        created_at:          newP.createdAt,
+      });
+      if (error) throw error;
+    } catch (e) {
+      console.error('[addPagamentoPro] error:', e);
+      throw e;
+    }
     return newP;
   }
 
   async updatePagamentoPro(tenantId: string, id: string, updates: Partial<PagamentoPro>): Promise<void> {
-    const s = await this.getSettings(tenantId);
-    const updated = (s.pagamentosPro ?? []).map(p => p.id === id ? { ...p, ...updates } : p);
-    await this.updateSettings(tenantId, { pagamentosPro: updated });
+    try {
+      const payload: any = {};
+      if (updates.status       !== undefined) payload.status       = updates.status;
+      if (updates.paidAt       !== undefined) payload.paid_at      = updates.paidAt;
+      if (updates.paidMethod   !== undefined) payload.paid_method  = updates.paidMethod;
+      if (updates.notes        !== undefined) payload.notes        = updates.notes;
+      if (updates.comandaIds   !== undefined) payload.comanda_ids  = updates.comandaIds;
+      if (updates.liquido      !== undefined) payload.liquido      = updates.liquido;
+      if (updates.comissaoTotal !== undefined) payload.comissao_total = updates.comissaoTotal;
+      if (updates.adiantamentosTotal !== undefined) payload.adiantamentos_total = updates.adiantamentosTotal;
+      const { error } = await supabase
+        .from('pagamentos_pro')
+        .update(payload)
+        .eq('id', id)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    } catch (e) {
+      console.error('[updatePagamentoPro] error:', e);
+      throw e;
+    }
   }
 
   // ── Cross-process message deduplication ───────────────────────────

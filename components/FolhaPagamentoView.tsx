@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../services/mockDb';
 import { evolutionService } from '../services/evolutionService';
 import {
@@ -40,11 +40,6 @@ function fmtDateShort(iso: string): string {
   } catch { return iso; }
 }
 
-function toDateISO(s: string): string {
-  // Ensure YYYY-MM-DD
-  return s;
-}
-
 // ── interfaces ─────────────────────────────────────────────────────────────
 
 interface ProcedimentoRow {
@@ -53,10 +48,12 @@ interface ProcedimentoRow {
   closedAt: string;
   customerId: string;
   item: ComandaItem;
-  valor: number;       // valor pago pelo cliente (com desconto)
-  grossBase: number;   // valor original do serviço (sem desconto) — base de comissão
-  materialDeduction: number; // custo de material deduzido da comissão
-  comissao: number;    // comissão líquida = grossBase * commRate% - materialDeduction
+  valor: number;
+  grossBase: number;
+  materialDeduction: number;
+  comissao: number;
+  alreadyPaid: boolean;       // true se esta comanda já está em algum PagamentoPro
+  paidInPagamento?: string;   // ID do PagamentoPro que cobre esta comanda
 }
 
 interface Props {
@@ -81,7 +78,6 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
 
   const [selectedProfId, setSelectedProfId] = useState('');
 
-  // Period defaults: current month
   const today = new Date();
   const firstDay = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
   const lastDay  = new Date(today.getFullYear(), today.getMonth() + 1, 0)
@@ -90,27 +86,19 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
   const [periodoInicio, setPeriodoInicio] = useState(firstDay);
   const [periodoFim, setPeriodoFim]       = useState(lastDay);
 
-  // Add adiantamento form
-  const [showAddAdiant, setShowAddAdiant] = useState(false);
-  const [addAdiantValue, setAddAdiantValue] = useState('');
-  const [addAdiantDesc, setAddAdiantDesc]   = useState('');
-  const [addAdiantDate, setAddAdiantDate]   = useState(today.toISOString().slice(0, 10));
-  const [savingAdiant, setSavingAdiant]     = useState(false);
-
   // Pagar modal
   const [showPagarModal, setShowPagarModal] = useState(false);
   const [pagarMethod, setPagarMethod]       = useState(PAYMENT_METHODS[0]);
   const [pagarNotes, setPagarNotes]         = useState('');
   const [paying, setPaying]                 = useState(false);
 
-  // commission rate for selected professional
   const commRate = selectedProfId ? (commissionMap[selectedProfId] ?? 0) : 0;
 
   // ── load ─────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [profs, cmds, custs, svcs, adis, pgtos, settings, apps] = await Promise.all([
+    const [profs, cmds, custs, svcs, adis, pgtos, settings, apps, exps] = await Promise.all([
       db.getProfessionals(tenantId),
       db.getComandas(tenantId),
       db.getCustomers(tenantId),
@@ -119,12 +107,31 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
       db.getPagamentosPro(tenantId),
       db.getSettings(tenantId),
       db.getAppointments(tenantId),
+      db.getExpenses(tenantId),
     ]);
     setProfessionals(profs.filter(p => p.active));
     setComandas(cmds.filter(c => c.status === 'closed'));
     setCustomers(custs);
     setServices(svcs);
-    setAdiantamentos(adis);
+
+    // Merge adiantamentos from two sources:
+    // 1. Direct adiantamentos stored in follow_up._adiantamentos
+    // 2. Expenses registered as PROFESSIONAL in FinancialView (professional_id set)
+    //    — deduplicated by matching description+amount+date+professionalId
+    const adisSet = new Set(adis.map(a => `${a.professionalId}|${a.amount}|${a.date}|${a.description ?? ''}`));
+    const expAsAdis: typeof adis = (exps as any[])
+      .filter(e => e.professional_id && e.category === 'PROFESSIONAL')
+      .filter(e => !adisSet.has(`${e.professional_id}|${e.amount}|${(e.date || '').slice(0, 10)}|${e.description ?? ''}`))
+      .map(e => ({
+        id: e.id,
+        professionalId: e.professional_id,
+        amount: e.amount,
+        date: (e.date || '').slice(0, 10),
+        description: e.description,
+        createdAt: e.date || e.created_at || '',
+      }));
+
+    setAdiantamentos([...adis, ...expAsAdis]);
     setPagamentos(pgtos);
     const cMap: Record<string, number> = {};
     if (settings.professionalMeta) {
@@ -142,22 +149,35 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
 
   useEffect(() => { load(); }, [load]);
 
-  // ── derived data ──────────────────────────────────────────────────────────
+  // ── derived ───────────────────────────────────────────────────────────────
 
-  const procedimentos: ProcedimentoRow[] = comandas
+  // Set of comanda IDs already covered by a PagamentoPro
+  const paidComandaIds = useMemo(() => {
+    const set = new Set<string>();
+    pagamentos.forEach(p => (p.comandaIds ?? []).forEach(id => set.add(id)));
+    return set;
+  }, [pagamentos]);
+
+  // Map from comanda ID → pagamento ID (for showing which payment covered it)
+  const comandaToPagamentoId = useMemo(() => {
+    const map: Record<string, string> = {};
+    pagamentos.forEach(p => (p.comandaIds ?? []).forEach(id => { map[id] = p.id; }));
+    return map;
+  }, [pagamentos]);
+
+  const allProcedimentos: ProcedimentoRow[] = useMemo(() => comandas
     .filter(c => {
       if (!c.closedAt) return false;
-      // Bug 1 fix: pular comandas cujo agendamento foi cancelado posteriormente
       if (c.appointment_id && cancelledApptIds.has(c.appointment_id)) return false;
       const d = c.closedAt.slice(0, 10);
-      return d >= toDateISO(periodoInicio) && d <= toDateISO(periodoFim);
+      return d >= periodoInicio && d <= periodoFim;
     })
     .flatMap(c =>
       c.items
         .filter(i => (i.professionalId ?? c.professional_id) === selectedProfId)
         .map(i => {
           const val       = itemTotal(i);
-          const grossBase = i.qty * i.unitPrice; // valor original cadastrado, sem desconto
+          const grossBase = i.qty * i.unitPrice;
           const svc       = i.type === 'service' ? services.find(s => s.id === i.itemId) : undefined;
           const matPct    = svc?.materialCostPercent ?? 0;
           const materialDeduction = grossBase * matPct / 100;
@@ -174,10 +194,18 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
             grossBase,
             materialDeduction,
             comissao,
+            alreadyPaid: paidComandaIds.has(c.id),
+            paidInPagamento: comandaToPagamentoId[c.id],
           };
         })
     )
-    .sort((a, b) => a.closedAt.localeCompare(b.closedAt));
+    .sort((a, b) => a.closedAt.localeCompare(b.closedAt)),
+    [comandas, cancelledApptIds, periodoInicio, periodoFim, selectedProfId, services, commRate, paidComandaIds, comandaToPagamentoId]
+  );
+
+  // Unpaid only — these are what will be included in the next payment
+  const procedimentos = useMemo(() => allProcedimentos.filter(r => !r.alreadyPaid), [allProcedimentos]);
+  const paidProcedimentos = useMemo(() => allProcedimentos.filter(r => r.alreadyPaid), [allProcedimentos]);
 
   const comissaoTotal = procedimentos.reduce((s, p) => s + p.comissao, 0);
 
@@ -193,43 +221,10 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
     .filter(p => p.professionalId === selectedProfId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  const getCustomer  = (id: string) => customers.find(c => c.id === id);
-  const getServiceName = (itemId: string) => {
-    const svc = services.find(s => s.id === itemId);
-    return svc?.name ?? itemId;
-  };
+  const getCustomer    = (id: string) => customers.find(c => c.id === id);
+  const getServiceName = (itemId: string) => services.find(s => s.id === itemId)?.name ?? itemId;
 
   const selectedProf = professionals.find(p => p.id === selectedProfId);
-
-  // ── add adiantamento ─────────────────────────────────────────────────────
-
-  const handleAddAdiantamento = async () => {
-    const amount = parseFloat(addAdiantValue.replace(',', '.'));
-    if (!amount || amount <= 0) { alert('Informe um valor válido.'); return; }
-    if (!selectedProfId) return;
-    setSavingAdiant(true);
-    try {
-      await db.addAdiantamento(tenantId, {
-        professionalId: selectedProfId,
-        amount,
-        date: addAdiantDate,
-        description: addAdiantDesc || undefined,
-      });
-      setAddAdiantValue('');
-      setAddAdiantDesc('');
-      setAddAdiantDate(today.toISOString().slice(0, 10));
-      setShowAddAdiant(false);
-      await load();
-    } finally {
-      setSavingAdiant(false);
-    }
-  };
-
-  const handleDeleteAdiantamento = async (id: string) => {
-    if (!window.confirm('Remover adiantamento?')) return;
-    await db.deleteAdiantamento(tenantId, id);
-    await load();
-  };
 
   // ── marcar pago ───────────────────────────────────────────────────────────
 
@@ -237,6 +232,9 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
     if (!selectedProfId || !selectedProf) return;
     setPaying(true);
     try {
+      // Collect unique comanda IDs from the unpaid procedimentos
+      const comandaIdsToMark: string[] = Array.from(new Set(procedimentos.map(r => r.comandaId)));
+
       const pgto = await db.addPagamentoPro(tenantId, {
         professionalId: selectedProfId,
         periodoInicio,
@@ -248,9 +246,9 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
         paidAt: new Date().toISOString(),
         paidMethod: pagarMethod,
         notes: pagarNotes || undefined,
+        comandaIds: comandaIdsToMark,
       });
 
-      // Send WhatsApp to professional
       try {
         const tenant = await db.getTenant(tenantId);
         const instance = tenant?.evolution_instance;
@@ -259,6 +257,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
             `✅ *Pagamento Confirmado!*\n\n` +
             `Olá, ${selectedProf.name}! Seu pagamento foi processado com sucesso.\n\n` +
             `📅 *Período:* ${fmtDateShort(periodoInicio)} a ${fmtDateShort(periodoFim)}\n` +
+            `📊 *Procedimentos pagos:* ${comandaIdsToMark.length}\n` +
             `📊 *Comissão bruta:* ${fmtCurrency(comissaoTotal)}\n` +
             `➖ *Adiantamentos descontados:* ${fmtCurrency(adiantamentosTotal)}\n` +
             `💰 *Valor pago:* ${fmtCurrency(liquido)}\n` +
@@ -332,12 +331,15 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
         )}
       </div>
 
-      {/* Procedimentos */}
+      {/* Procedimentos a pagar */}
       <div className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden">
         <div className="px-8 py-5 border-b-2 border-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-black text-white rounded-xl flex items-center justify-center text-sm">📋</div>
-            <h3 className="font-black text-black uppercase tracking-widest text-sm">Procedimentos no Período</h3>
+            <div>
+              <h3 className="font-black text-black uppercase tracking-widest text-sm">Procedimentos a Pagar</h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">Não incluídos em pagamento anterior</p>
+            </div>
           </div>
           <span className="text-sm font-black text-slate-500">{procedimentos.length} item{procedimentos.length !== 1 ? 's' : ''}</span>
         </div>
@@ -354,7 +356,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
               {procedimentos.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-xs font-bold text-slate-300 uppercase">
-                    Nenhum procedimento no período
+                    Nenhum procedimento pendente no período
                   </td>
                 </tr>
               )}
@@ -388,7 +390,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
             {procedimentos.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-slate-100 bg-slate-50/50">
-                  <td colSpan={3} className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Total Comissão Bruta</td>
+                  <td colSpan={3} className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Total</td>
                   <td className="px-6 py-4 font-black text-base text-green-700">{fmtCurrency(procedimentos.reduce((a, p) => a + p.valor, 0))}</td>
                   <td className="px-6 py-4 font-black text-base text-orange-600">{fmtCurrency(comissaoTotal)}</td>
                   <td />
@@ -399,67 +401,75 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
         </div>
       </div>
 
-      {/* Adiantamentos */}
-      <div className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden">
-        <div className="px-8 py-5 border-b-2 border-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center text-sm">💸</div>
-            <h3 className="font-black text-black uppercase tracking-widest text-sm">Adiantamentos</h3>
+      {/* Procedimentos já pagos (no período) */}
+      {paidProcedimentos.length > 0 && (
+        <div className="bg-white rounded-[40px] border-2 border-green-100 shadow-xl shadow-slate-100/50 overflow-hidden">
+          <div className="px-8 py-5 border-b-2 border-green-50 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-green-500 text-white rounded-xl flex items-center justify-center text-sm">✓</div>
+              <div>
+                <h3 className="font-black text-black uppercase tracking-widest text-sm">Já Pagos no Período</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">Incluídos em pagamentos anteriores</p>
+              </div>
+            </div>
+            <span className="text-sm font-black text-green-600">{paidProcedimentos.length} item{paidProcedimentos.length !== 1 ? 's' : ''}</span>
           </div>
-          <button
-            onClick={() => setShowAddAdiant(v => !v)}
-            className="bg-black text-white text-xs font-black uppercase px-5 py-2.5 rounded-2xl hover:bg-orange-500 transition-all"
-          >
-            + Registrar
-          </button>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b-2 border-green-50">
+                  {['Data / Hora', 'Cliente', 'Serviço / Produto', 'Valor', `Comissão (${commRate}%)`, '# Comanda', 'Pagamento'].map(h => (
+                    <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y-2 divide-green-50">
+                {paidProcedimentos.map((row, idx) => {
+                  const cust = getCustomer(row.customerId);
+                  const pgto = row.paidInPagamento ? profHistorico.find(p => p.id === row.paidInPagamento) : undefined;
+                  return (
+                    <tr key={idx} className="bg-green-50/20 hover:bg-green-50/40 transition-colors opacity-75">
+                      <td className="px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">{fmtDate(row.closedAt)}</td>
+                      <td className="px-6 py-4 font-black text-sm">{cust?.name ?? '—'}</td>
+                      <td className="px-6 py-4 text-sm font-bold text-slate-700">
+                        {row.item.type === 'service' ? getServiceName(row.item.itemId) : row.item.name}
+                        {row.item.qty > 1 && <span className="text-slate-400 ml-1">×{row.item.qty}</span>}
+                      </td>
+                      <td className="px-6 py-4 font-black text-sm text-green-700">{fmtCurrency(row.valor)}</td>
+                      <td className="px-6 py-4 font-black text-sm text-orange-600">{fmtCurrency(row.comissao)}</td>
+                      <td className="px-6 py-4 text-xs font-bold text-slate-400">#{row.comandaNumber ?? row.comandaId.slice(0, 6)}</td>
+                      <td className="px-6 py-4">
+                        {pgto ? (
+                          <span className="text-[10px] font-black px-2.5 py-1 rounded-xl bg-green-100 text-green-700 whitespace-nowrap">
+                            {pgto.paidAt ? fmtDateShort(pgto.paidAt) : 'Pago'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-300">Pago</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
+      )}
 
-        {showAddAdiant && (
-          <div className="px-8 py-6 border-b-2 border-slate-50 bg-slate-50/50 flex flex-wrap gap-4 items-end">
-            <div className="space-y-1 flex-1 min-w-[120px]">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Valor (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={addAdiantValue}
-                onChange={e => setAddAdiantValue(e.target.value)}
-                placeholder="0,00"
-                className="w-full p-3 bg-white border-2 border-slate-200 rounded-2xl text-sm font-black outline-none focus:border-orange-500"
-              />
-            </div>
-            <div className="space-y-1 flex-1 min-w-[200px]">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Descrição <span className="text-slate-300">(opcional)</span></label>
-              <input
-                value={addAdiantDesc}
-                onChange={e => setAddAdiantDesc(e.target.value)}
-                placeholder="Ex: adiantamento semana 1"
-                className="w-full p-3 bg-white border-2 border-slate-200 rounded-2xl text-sm font-bold outline-none focus:border-orange-500"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Data</label>
-              <input
-                type="date"
-                value={addAdiantDate}
-                onChange={e => setAddAdiantDate(e.target.value)}
-                className="p-3 bg-white border-2 border-slate-200 rounded-2xl text-sm font-black outline-none focus:border-orange-500"
-              />
-            </div>
-            <button
-              onClick={handleAddAdiantamento}
-              disabled={savingAdiant}
-              className="bg-orange-500 text-white text-xs font-black uppercase px-6 py-3 rounded-2xl hover:bg-orange-400 disabled:opacity-50 transition-all"
-            >
-              {savingAdiant ? 'Salvando...' : 'Salvar'}
-            </button>
+      {/* Adiantamentos — somente leitura */}
+      <div className="bg-white rounded-[40px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 overflow-hidden">
+        <div className="px-8 py-5 border-b-2 border-slate-50 flex items-center gap-3">
+          <div className="w-9 h-9 bg-orange-500 text-white rounded-xl flex items-center justify-center text-sm">💸</div>
+          <div>
+            <h3 className="font-black text-black uppercase tracking-widest text-sm">Adiantamentos</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">Para registrar adiantamentos, acesse Financeiro</p>
           </div>
-        )}
-
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b-2 border-slate-50">
-                {['Data', 'Descrição', 'Valor', ''].map(h => (
+                {['Data', 'Descrição', 'Valor'].map(h => (
                   <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
                 ))}
               </tr>
@@ -467,7 +477,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
             <tbody className="divide-y-2 divide-slate-50">
               {profAdiantamentos.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-xs font-bold text-slate-300 uppercase">
+                  <td colSpan={3} className="px-6 py-10 text-center text-xs font-bold text-slate-300 uppercase">
                     Nenhum adiantamento no período
                   </td>
                 </tr>
@@ -477,14 +487,6 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
                   <td className="px-6 py-4 text-xs font-bold text-slate-500">{fmtDateShort(a.date)}</td>
                   <td className="px-6 py-4 text-sm font-bold text-slate-700">{a.description || '—'}</td>
                   <td className="px-6 py-4 font-black text-sm text-red-600">- {fmtCurrency(a.amount)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => handleDeleteAdiantamento(a.id)}
-                      className="text-red-400 hover:text-red-600 text-xs font-black uppercase transition-colors"
-                    >
-                      Excluir
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -493,7 +495,6 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
                 <tr className="border-t-2 border-slate-100 bg-slate-50/50">
                   <td colSpan={2} className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Total Adiantamentos</td>
                   <td className="px-6 py-4 font-black text-base text-red-600">- {fmtCurrency(adiantamentosTotal)}</td>
-                  <td />
                 </tr>
               </tfoot>
             )}
@@ -523,7 +524,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
         </div>
         <button
           onClick={() => setShowPagarModal(true)}
-          disabled={liquido <= 0 || !selectedProf}
+          disabled={procedimentos.length === 0 || !selectedProf}
           className="w-full bg-orange-500 text-white py-5 rounded-[24px] font-black text-sm uppercase tracking-[0.2em] hover:bg-orange-400 disabled:opacity-40 transition-all active:scale-[0.98] shadow-lg shadow-orange-200"
         >
           Marcar como Pago
@@ -540,7 +541,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
           <table className="w-full">
             <thead>
               <tr className="border-b-2 border-slate-50">
-                {['Data Pgto', 'Período', 'Comissão', 'Adiant.', 'Líquido', 'Forma', 'Status'].map(h => (
+                {['Data Pgto', 'Período', 'Procedimentos', 'Comissão', 'Adiant.', 'Líquido', 'Forma', 'Status'].map(h => (
                   <th key={h} className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -548,7 +549,7 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
             <tbody className="divide-y-2 divide-slate-50">
               {profHistorico.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-xs font-bold text-slate-300 uppercase">
+                  <td colSpan={8} className="px-6 py-12 text-center text-xs font-bold text-slate-300 uppercase">
                     Sem pagamentos registrados
                   </td>
                 </tr>
@@ -560,6 +561,9 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
                   </td>
                   <td className="px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">
                     {fmtDateShort(p.periodoInicio)} – {fmtDateShort(p.periodoFim)}
+                  </td>
+                  <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                    {p.comandaIds?.length ?? '—'}
                   </td>
                   <td className="px-6 py-4 font-black text-sm text-green-700">{fmtCurrency(p.comissaoTotal)}</td>
                   <td className="px-6 py-4 font-black text-sm text-red-500">- {fmtCurrency(p.adiantamentosTotal)}</td>
@@ -585,7 +589,6 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
           <div className="bg-white rounded-[40px] shadow-2xl p-10 w-full max-w-md space-y-6">
             <h2 className="text-xl font-black uppercase tracking-tight">Confirmar Pagamento</h2>
 
-            {/* Summary card */}
             <div className="bg-slate-50 rounded-2xl p-5 space-y-2 text-sm">
               <div className="flex justify-between font-bold text-slate-600">
                 <span>Profissional</span>
@@ -594,6 +597,10 @@ const FolhaPagamentoView: React.FC<Props> = ({ tenantId, refreshTicker = 0 }) =>
               <div className="flex justify-between font-bold text-slate-600">
                 <span>Período</span>
                 <span>{fmtDateShort(periodoInicio)} – {fmtDateShort(periodoFim)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-slate-600">
+                <span>Procedimentos</span>
+                <span>{procedimentos.length}</span>
               </div>
               <div className="flex justify-between font-bold text-slate-600">
                 <span>Comissão bruta</span>
