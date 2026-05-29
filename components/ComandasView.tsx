@@ -23,7 +23,7 @@ const itemTotal = (item: ComandaItem) => {
 
 const comandaTotal = (c: Comanda) => c.items.reduce((s, i) => s + itemTotal(i), 0);
 
-const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptOpened?: () => void; refreshTicker?: number }> = ({ tenantId, initialApptId, onApptOpened, refreshTicker = 0 }) => {
+const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; initialCustomerId?: string; onApptOpened?: () => void; refreshTicker?: number }> = ({ tenantId, initialApptId, initialCustomerId, onApptOpened, refreshTicker = 0 }) => {
   const [activeTab, setActiveTab] = useState<'abertas' | 'finalizadas'>('abertas');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStart, setFilterStart] = useState('');
@@ -145,6 +145,15 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
       onApptOpened?.();
     }
   }, [initialApptId, loading, comandas, onApptOpened]);
+
+  // Auto-open customer popup when navigating from right-click "Abrir comanda"
+  useEffect(() => {
+    if (!initialCustomerId || loading) return;
+    setActiveTab('abertas');
+    setCustomerPopupId(initialCustomerId);
+    setSelectedInPopup(new Set());
+    onApptOpened?.();
+  }, [initialCustomerId, loading, onApptOpened]);
 
   const profName = (id: string) => professionals.find(p => p.id === id)?.name ?? '—';
   const custName = (id: string) => customers.find(c => c.id === id)?.name ?? '—';

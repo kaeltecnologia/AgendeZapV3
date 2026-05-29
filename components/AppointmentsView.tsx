@@ -207,7 +207,7 @@ function useNow() {
 }
 
 function WeekCalendar({
-  days, appointments, customers, professionals, services, filterProfId, gridInterval = 30, onApptClick, onSlotClick,
+  days, appointments, customers, professionals, services, filterProfId, gridInterval = 30, onApptClick, onSlotClick, onApptRightClick,
 }: {
   days: Date[];
   appointments: Appointment[];
@@ -218,6 +218,7 @@ function WeekCalendar({
   gridInterval?: number;
   onApptClick: (a: Appointment) => void;
   onSlotClick: (date: string, time: string) => void;
+  onApptRightClick?: (appt: Appointment, x: number, y: number) => void;
 }) {
   const todayStr = localDateStr();
   const now = useNow();
@@ -388,6 +389,7 @@ function WeekCalendar({
                         key={a.id}
                         data-appt="1"
                         onClick={(e) => { e.stopPropagation(); onApptClick(a); }}
+                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onApptRightClick?.(a, e.clientX, e.clientY); }}
                         style={{
                           position: 'absolute',
                           top: `${topPx}px`, height: `${heightPx}px`,
@@ -951,7 +953,7 @@ function NavDayPicker({ selectedDate, apptDays, onSelect }: {
   );
 }
 
-const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; defaultProfessionalId?: string; readOnly?: boolean; refreshTicker?: number }> = ({ tenantId, onOpenComandas, defaultProfessionalId, readOnly = false, refreshTicker = 0 }) => {
+const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void; onOpenComandaForCustomer?: (customerId: string) => void; defaultProfessionalId?: string; readOnly?: boolean; refreshTicker?: number }> = ({ tenantId, onOpenComandas, onOpenComandaForCustomer, defaultProfessionalId, readOnly = false, refreshTicker = 0 }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState<{
     id: string; basePrice: number; extraValue?: number; extraNote?: string;
@@ -2038,7 +2040,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                     const isAI = a.source === BookingSource.AI;
                     const isPlan = a.isPlan || a.source === BookingSource.PLAN;
                     return (
-                      <tr key={a.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                      <tr key={a.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors" onContextMenu={e => { e.preventDefault(); setHoverAppt({ appt: a, x: e.clientX + 12, y: e.clientY - 10 }); }}>
                         <td className="px-8 py-6">
                           <div className="flex flex-col gap-1">
                             <span className="text-xs font-black text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 uppercase transition-colors">{appDate.toLocaleDateString('pt-BR')}</span>
@@ -2548,13 +2550,21 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                 </button>
               ))}
             </div>
-            <div style={{ padding: '4px 8px 10px' }}>
+            <div style={{ padding: '4px 8px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               <button
                 onClick={() => { setHoverAppt(null); openEditModal(ha); }}
                 style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: '1.5px solid #E2E8F0', background: '#F8FAFC', color: '#1E293B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
               >
                 ✏️ Editar agendamento
               </button>
+              {ha.customer_id && onOpenComandaForCustomer && (
+                <button
+                  onClick={() => { setHoverAppt(null); onOpenComandaForCustomer(ha.customer_id); }}
+                  style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: '1.5px solid #DBEAFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  📋 Abrir comanda
+                </button>
+              )}
             </div>
           </div>
         );
