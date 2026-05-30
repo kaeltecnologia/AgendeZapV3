@@ -55,6 +55,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
   const [commRate,         setCommRate]         = useState(0);
   const [professionalMeta, setProfessionalMeta] = useState<Record<string, any>>({});
   const [selectedComanda,  setSelectedComanda]  = useState<Comanda | null>(null);
+  const [pmDetailModal,    setPmDetailModal]    = useState<{ key: string; label: string; icon: string } | null>(null);
 
   const firstLoad = useRef(true);
   const retroactiveDone = useRef(false);
@@ -325,7 +326,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
 
         <div className="bg-white rounded-[28px] border-2 border-slate-100 p-6 sm:p-8 space-y-3 hover:border-black transition-all">
           <div className="flex items-center justify-between">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Despesas Pagas</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{selectedProfId ? 'Adiantamentos Feitos' : 'Despesas Pagas'}</p>
             <span className="text-lg">📉</span>
           </div>
           <p className="text-3xl sm:text-4xl font-black text-black tabular-nums">R$&nbsp;{fmtBRL(totalExpenses)}</p>
@@ -355,8 +356,10 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
           {PAYMENT_METHODS.map(pm => {
             const val = byMethod[pm.key] || 0;
             const pct = totalRevenue > 0 ? (val / totalRevenue * 100) : 0;
+            const count = profAppts.filter(a => a.paymentMethod === pm.key).length;
             return (
-              <div key={pm.key} className={`bg-white rounded-[24px] border-2 ${pm.bgClass} p-5 space-y-4`}>
+              <div key={pm.key} onClick={() => setPmDetailModal({ key: pm.key, label: pm.label, icon: pm.icon })}
+                className={`bg-white rounded-[24px] border-2 ${pm.bgClass} p-5 space-y-4 cursor-pointer hover:shadow-md transition-all`}>
                 <div className="flex items-center justify-between">
                   <span className="text-2xl">{pm.icon}</span>
                   <span className="text-[10px] font-black px-2 py-1 rounded-full bg-white" style={{ color: pm.textColor }}>
@@ -371,6 +374,11 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
                   <div className="h-full rounded-full transition-all duration-500"
                     style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: pm.barColor }} />
                 </div>
+                {count > 0 && (
+                  <p className="text-[9px] font-black text-slate-400 -mt-1">
+                    {count} atendimento{count !== 1 ? 's' : ''}
+                  </p>
+                )}
               </div>
             );
           })}
@@ -602,7 +610,14 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
         }, 0);
         const total   = c.finalAmount !== undefined ? c.finalAmount : subtotal;
         const desconto = subtotal - total;
-        const comissao = cRate > 0 ? total * cRate / 100 : 0;
+        const comissao = c.items
+          .filter(i => i.type === 'service')
+          .reduce((s, i) => {
+            if (i.commissionOverride !== undefined) return s + i.commissionOverride;
+            const profId = (i as any).professionalId ?? c.professional_id;
+            const rate = professionalMeta[profId]?.commissionRate ?? 0;
+            return s + (i.qty * i.unitPrice) * rate / 100;
+          }, 0);
         const dateOpen   = new Date(c.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
         const dateClosed = c.closedAt ? new Date(c.closedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
         return (
@@ -716,6 +731,84 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
                 )}
                 <button onClick={() => setSelectedComanda(null)}
                   className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black hover:text-white transition-all mt-2">
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Payment Method Detail Modal ──────────────────────────────────────── */}
+      {pmDetailModal && (() => {
+        const pmAppts = profAppts.filter(a => a.paymentMethod === pmDetailModal.key);
+        const pmTotal = pmAppts.reduce((s, a) => s + (a.amountPaid || 0), 0);
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+            onClick={() => setPmDetailModal(null)}>
+            <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl animate-scaleUp flex flex-col max-h-[85vh]"
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div className="bg-black rounded-t-[32px] px-7 pt-7 pb-6 shrink-0">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{pmDetailModal.icon}</span>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Forma de Pagamento</p>
+                      <p className="text-xl font-black text-white">{pmDetailModal.label}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setPmDetailModal(null)}
+                    className="text-slate-500 hover:text-white text-lg font-black transition-colors">✕</button>
+                </div>
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-4">
+                  <div>
+                    <p className="text-[8px] text-slate-500 uppercase tracking-widest">Total recebido</p>
+                    <p className="text-lg font-black text-white tabular-nums">R$&nbsp;{fmtBRL(pmTotal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[8px] text-slate-500 uppercase tracking-widest">Atendimentos</p>
+                    <p className="text-lg font-black text-white">{pmAppts.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista */}
+              <div className="overflow-y-auto flex-1 px-7 py-5 space-y-2">
+                {pmAppts.length === 0 ? (
+                  <div className="py-10 text-center">
+                    <p className="text-sm font-black text-slate-300 uppercase tracking-widest">Nenhum atendimento</p>
+                    <p className="text-xs text-slate-300 mt-1">no período selecionado</p>
+                  </div>
+                ) : pmAppts.map(a => {
+                  const svc  = services.find(s => s.id === a.service_id);
+                  const cust = customers.find(c => c.id === a.customer_id);
+                  const prof = professionals.find(p => p.id === a.professional_id);
+                  const dateStr = new Date(a.startTime).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                  const timeStr = new Date(a.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                  return (
+                    <div key={a.id} className="flex items-center justify-between gap-3 bg-slate-50 rounded-2xl px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-black text-black truncate">{cust?.name ?? '—'}</p>
+                        <p className="text-[10px] font-bold text-slate-500 truncate">{svc?.name ?? '—'}</p>
+                        {!selectedProfId && prof && (
+                          <p className="text-[9px] text-orange-500 font-bold truncate">{prof.name}</p>
+                        )}
+                        <p className="text-[9px] text-slate-400">{dateStr} · {timeStr}</p>
+                      </div>
+                      <p className="text-sm font-black text-black tabular-nums shrink-0">
+                        R$&nbsp;{fmtBRL(a.amountPaid || 0)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer */}
+              <div className="px-7 pb-7 shrink-0">
+                <button onClick={() => setPmDetailModal(null)}
+                  className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black hover:text-white transition-all">
                   Fechar
                 </button>
               </div>
