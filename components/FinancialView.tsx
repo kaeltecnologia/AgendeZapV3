@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../services/mockDb';
 import { PaymentMethod, AppointmentStatus, Professional, Appointment, Service, Customer, Comanda, ComandaItem } from '../types';
 
@@ -740,11 +741,11 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
       })()}
 
       {/* ── Payment Method Detail Modal ──────────────────────────────────────── */}
-      {pmDetailModal && (() => {
+      {pmDetailModal && createPortal((() => {
         const pmAppts = profAppts.filter(a => a.paymentMethod === pmDetailModal.key);
         const pmTotal = pmAppts.reduce((s, a) => s + (a.amountPaid || 0), 0);
         return (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
             onClick={() => setPmDetailModal(null)}>
             <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl animate-scaleUp flex flex-col max-h-[85vh]"
               onClick={e => e.stopPropagation()}>
@@ -815,7 +816,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
 
       {/* ── Adiantamento Modal ──────────────────────────────────────────────── */}
       {showAdiantModal && (
