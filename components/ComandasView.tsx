@@ -69,6 +69,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
   const [closePayment, setClosePayment] = useState<PaymentMethod>(PaymentMethod.PIX);
   const [closeNotes, setCloseNotes] = useState('');
   const [closing, setClosing] = useState(false);
+  const [closeSelectedItems, setCloseSelectedItems] = useState<Set<string>>(new Set());
 
   // ── NFS-e on close ────────────────────────────────────────────────
   const [focusNfeConfig, setFocusNfeConfig] = useState<FocusNfeConfig | null>(null);
@@ -132,6 +133,13 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
   }, [tenantId, refreshTicker]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Initialize all items as selected when opening the close modal
+  useEffect(() => {
+    if (closeComanda) {
+      setCloseSelectedItems(new Set(closeComanda.items.map(i => i.id)));
+    }
+  }, [closeComanda?.id]);
 
   // Auto-open customer popup when arriving via appointment alert
   useEffect(() => {
@@ -201,20 +209,27 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
     if (!closeComanda) return;
     setClosing(true);
     try {
-      const total = comandaTotal(closeComanda);
+      const itemsToClose = closeComanda.items.filter(i => closeSelectedItems.has(i.id));
+      const itemsToKeep = closeComanda.items.filter(i => !closeSelectedItems.has(i.id));
+      const isFullClose = itemsToKeep.length === 0;
+      const total = itemsToClose.reduce((s, i) => s + itemTotal(i), 0);
       const closedAt = new Date().toISOString();
-      for (const item of closeComanda.items) {
+      for (const item of itemsToClose) {
         if (item.type === 'product') await db.decrementProduct(tenantId, item.itemId, item.qty);
       }
-      await db.updateComanda(closeComanda.id, {
-        status: 'closed', paymentMethod: closePayment,
-        notes: closeNotes || undefined, closedAt,
-      });
-      await db.updateAppointmentStatus(closeComanda.appointment_id, AppointmentStatus.FINISHED, {
-        paymentMethod: closePayment, amountPaid: total,
-      });
+      if (isFullClose) {
+        await db.updateComanda(closeComanda.id, {
+          status: 'closed', paymentMethod: closePayment,
+          notes: closeNotes || undefined, closedAt,
+        });
+        await db.updateAppointmentStatus(closeComanda.appointment_id, AppointmentStatus.FINISHED, {
+          paymentMethod: closePayment, amountPaid: total,
+        });
+      } else {
+        await db.updateComanda(closeComanda.id, { items: itemsToKeep });
+      }
 
-      if (emitNfseOnClose && focusNfeConfig?.token) {
+      if (isFullClose && emitNfseOnClose && focusNfeConfig?.token) {
         const declaravel = calcDeclaravel(closeComanda);
         const notaId = generateId();
         const nota: NotaFiscal = {
@@ -301,9 +316,13 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
     setEstornoSaving(true);
     try {
       const newAmount = estornoValor !== '' ? parseFloat(estornoValor.replace(',', '.')) : undefined;
+      const zeroedItems = estornoComanda.items.map(item =>
+        item.type === 'service' ? { ...item, commissionOverride: 0 } : item
+      );
       await db.updateComanda(estornoComanda.id, {
         paymentMethod: estornoPagamento,
         notes: estornoObs || estornoComanda.notes,
+        items: zeroedItems,
         ...(newAmount !== undefined && !isNaN(newAmount) ? { finalAmount: newAmount } : {}),
       });
       await db.updateAppointmentStatus(estornoComanda.appointment_id, AppointmentStatus.FINISHED, {
@@ -1140,7 +1159,10 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
 
       {/* ── Modal: Fechar Comanda (individual) ───────────────────────── */}
       {closeComanda && (() => {
-        const proRevenue = buildProRevenue(closeComanda);
+        const multiProf = new Set(closeComanda.items.map(i => i.professionalId).filter(Boolean)).size > 1;
+        const selectedItems = closeComanda.items.filter(i => closeSelectedItems.has(i.id));
+        const selectedTotal = selectedItems.reduce((s, i) => s + itemTotal(i), 0);
+        const proRevenue = buildProRevenue({ ...closeComanda, items: selectedItems });
         return (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
             <div className="bg-white rounded-[40px] w-full max-w-md max-h-[90vh] overflow-y-auto p-8 space-y-5 animate-scaleUp border-4 border-black">
@@ -1149,27 +1171,53 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                 {custName(closeComanda.customer_id)} · {profName(closeComanda.professional_id)}
               </p>
 
+              {multiProf && (
+                <p className="text-[10px] font-black text-orange-500 uppercase tracking-wide">
+                  Selecione os serviços finalizados para fechar agora
+                </p>
+              )}
+
               <div className="bg-slate-50 rounded-2xl px-4 py-3 space-y-0">
                 {closeComanda.items.map(item => {
                   const discountDisplay = item.discount > 0
                     ? item.discountType === 'percent' ? `-${item.discount}%` : `-${fmt(item.discount)}`
                     : null;
+                  const checked = closeSelectedItems.has(item.id);
                   return (
-                    <div key={item.id} className="flex justify-between py-1.5 border-b border-slate-100 last:border-0">
-                      <div>
-                        <span className="text-xs font-bold text-black">{item.name}</span>
+                    <div key={item.id}
+                      className={`flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 gap-2 ${multiProf ? 'cursor-pointer' : ''}`}
+                      onClick={multiProf ? () => {
+                        setCloseSelectedItems(prev => {
+                          const next = new Set(prev);
+                          next.has(item.id) ? next.delete(item.id) : next.add(item.id);
+                          return next;
+                        });
+                      } : undefined}
+                    >
+                      {multiProf && (
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {}}
+                          className="accent-emerald-500 w-4 h-4 shrink-0 cursor-pointer"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <span className={`text-xs font-bold ${checked || !multiProf ? 'text-black' : 'text-slate-400'}`}>{item.name}</span>
                         <span className="ml-2 text-[10px] text-slate-400">{item.qty}x {fmt(item.unitPrice)}</span>
                         {discountDisplay && <span className="ml-1 text-[10px] text-red-400">{discountDisplay}</span>}
                       </div>
-                      <span className="text-xs font-black text-black">{fmt(itemTotal(item))}</span>
+                      <span className={`text-xs font-black ${checked || !multiProf ? 'text-black' : 'text-slate-300'}`}>{fmt(itemTotal(item))}</span>
                     </div>
                   );
                 })}
               </div>
 
               <div className="bg-black rounded-2xl px-6 py-5 text-center">
-                <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Total a Cobrar</p>
-                <p className="text-3xl font-black text-white">{fmt(comandaTotal(closeComanda))}</p>
+                <p className="text-[9px] font-black text-slate-500 uppercase mb-1">
+                  {multiProf && closeSelectedItems.size < closeComanda.items.length ? 'Total dos Itens Selecionados' : 'Total a Cobrar'}
+                </p>
+                <p className="text-3xl font-black text-white">{fmt(selectedTotal)}</p>
               </div>
 
               {Object.keys(proRevenue).length > 0 && (
@@ -1235,10 +1283,10 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
 
               <div className="flex gap-3">
                 <button onClick={() => setCloseComanda(null)} className="flex-1 py-3 text-slate-400 font-black text-xs uppercase">Cancelar</button>
-                <button onClick={handleClose} disabled={closing}
+                <button onClick={handleClose} disabled={closing || closeSelectedItems.size === 0}
                   className="flex-1 py-3 bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase disabled:opacity-50 hover:bg-emerald-600 transition-all"
                 >
-                  {closing ? 'Fechando...' : '✅ Confirmar Fechamento'}
+                  {closing ? 'Fechando...' : closeSelectedItems.size > 0 && closeSelectedItems.size < closeComanda.items.length ? '✅ Fechar Selecionados' : '✅ Confirmar Fechamento'}
                 </button>
               </div>
             </div>

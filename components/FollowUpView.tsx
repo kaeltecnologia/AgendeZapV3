@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
-import { FollowUpNamedMode, Review } from '../types';
+import { FollowUpNamedMode } from '../types';
 import { FeatureKey, hasFeature } from '../config/planConfig';
 
 type ModeTab = 'aviso' | 'lembrete' | 'reativacao';
-type MainTab = ModeTab | 'avaliacao';
+type MainTab = ModeTab;
 
 function generateId(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID
@@ -19,18 +19,72 @@ const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoM
   reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId' }
 };
 
+const PRESET_TEMPLATES: Record<ModeTab, { name: string; message: string; timing: number; fixedTime?: string; daysBefore?: number }[]> = {
+  aviso: [
+    {
+      name: 'Confirmação do Dia',
+      message: 'Oi {nome}! 👋\n\nPassando para confirmar seu agendamento de hoje:\n📅 {dia} às {hora}\n✂️ {servico} com {profissional}\n\nVocê confirma presença? Responda *SIM* ✅ ou nos avise se precisar cancelar 🙏',
+      timing: 0,
+      fixedTime: '08:00',
+      daysBefore: 0,
+    },
+    {
+      name: 'Lembrete Véspera',
+      message: 'Olá {nome}! 😊\n\nLembrando que amanhã você tem:\n📅 {dia} às {hora}\n✂️ {servico} com {profissional}\n\nConfirma sua presença? Responda *SIM* para confirmar! ✅',
+      timing: 0,
+      fixedTime: '18:00',
+      daysBefore: 1,
+    },
+    {
+      name: 'Check-in Matinal',
+      message: 'Bom dia, {nome}! ☀️\n\nSeu horário hoje é às {hora} para {servico} com {profissional}.\n\nEsperamos você! 🙌',
+      timing: 0,
+      fixedTime: '07:30',
+      daysBefore: 0,
+    },
+  ],
+  lembrete: [
+    {
+      name: 'Lembrete 1h Antes',
+      message: 'Oi {nome}! 🕒\n\nSeu horário está chegando!\nDaqui a pouco é hora do seu {servico} com {profissional}.\n\nTe esperamos às {hora}! 😊',
+      timing: 60,
+    },
+    {
+      name: 'Lembrete 2h Antes',
+      message: 'Oi {nome}! ⏰\n\nFaltam 2 horas para o seu agendamento:\n📅 {dia} às {hora}\n✂️ {servico} com {profissional}\n\nTe esperamos! 🙌',
+      timing: 120,
+    },
+    {
+      name: 'Lembrete 30min',
+      message: 'Oi {nome}! 🔔\n\nSeu {servico} começa em 30 minutinhos!\nTe esperamos com {profissional} às {hora}! 😄',
+      timing: 30,
+    },
+  ],
+  reativacao: [
+    {
+      name: 'Saudades do Cliente',
+      message: 'Oi {nome}! 😊\n\nFaz um tempinho que não te vemos por aqui!\n\nQue tal agendar um horário esta semana? Temos disponibilidade para você.\n\nMe fala qual dia fica melhor! 🗓️',
+      timing: 30,
+    },
+    {
+      name: 'Oferta de Retorno',
+      message: 'Olá {nome}! 👋\n\nEstamos com saudades! Notamos que faz um tempo que você não passa aqui.\n\nQuer marcar um horário? Responda esta mensagem e te atendemos na hora! 🚀',
+      timing: 60,
+    },
+    {
+      name: 'Reativação Suave',
+      message: 'Oi {nome}! 🌟\n\nTudo bem com você?\n\nSempre é bom ter você por aqui. Quando quiser retomar seus cuidados, é só chamar! 😊',
+      timing: 90,
+    },
+  ],
+};
+
 const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?: (feature: FeatureKey) => void; refreshTicker?: number }> = ({ tenantId, tenantPlan, onUpgrade, refreshTicker = 0 }) => {
   const [activeTab, setActiveTab] = useState<MainTab>('aviso');
 
   const [avisoModes, setAvisoModes] = useState<FollowUpNamedMode[]>([]);
   const [lembreteModes, setLembreteModes] = useState<FollowUpNamedMode[]>([]);
   const [reativacaoModes, setReativacaoModes] = useState<FollowUpNamedMode[]>([]);
-
-  // Rating tab state
-  const [ratingEnabled, setRatingEnabled] = useState(false);
-  const [ratingMessage, setRatingMessage] = useState('');
-  const [googlePlaceId, setGooglePlaceId] = useState('');
-  const [reviews, setReviews] = useState<Review[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,10 +132,6 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
     setAvisoModes(s.avisoModes || []);
     setLembreteModes(s.lembreteModes || []);
     setReativacaoModes(s.reativacaoModes || []);
-    setRatingEnabled((s as any).ratingEnabled ?? false);
-    setRatingMessage((s as any).ratingMessage || '');
-    setGooglePlaceId((s as any).googlePlaceId || '');
-    db.getReviews(tenantId).then(r => setReviews(r)).catch(() => {});
     firstLoad.current = false;
     setLoading(false);
   }, [tenantId, refreshTicker]);
@@ -175,6 +225,25 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
     }
   };
 
+  const handleUseTemplate = async (tab: ModeTab, tpl: typeof PRESET_TEMPLATES[ModeTab][number]) => {
+    setSaving(true);
+    const cfg = TAB_CONFIG[tab];
+    const mode: FollowUpNamedMode = {
+      id: generateId(),
+      name: tpl.name,
+      active: true,
+      message: tpl.message,
+      timing: cfg.timingType === 'fixed' ? 0 : tpl.timing,
+      fixedTime: cfg.timingType === 'fixed' ? (tpl.fixedTime || '08:00') : undefined,
+      ...(cfg.timingType === 'fixed' ? { daysBefore: tpl.daysBefore ?? 0 } : {}),
+    };
+    const current = tab === 'aviso' ? avisoModes : tab === 'lembrete' ? lembreteModes : reativacaoModes;
+    const updated = [...current, mode];
+    await db.updateSettings(tenantId, { [cfg.tabKey]: updated });
+    setModes(tab, updated);
+    setSaving(false);
+  };
+
   if (loading) return <div className="p-20 text-center font-black animate-pulse">CARREGANDO...</div>;
 
   const cfg = TAB_CONFIG[activeTab];
@@ -203,132 +272,10 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
             }} label={c.label} icon={c.icon} />
           );
         })}
-        <Tab key="avaliacao" active={activeTab === 'avaliacao'} onClick={() => {
-          if (!hasFeature(tenantPlan, 'reativacao')) {
-            setActiveTab('avaliacao');
-            onUpgrade?.('reativacao');
-            return;
-          }
-          setActiveTab('avaliacao');
-        }} label="Avaliação" icon="⭐" />
       </div>
 
-      {/* ── Rating tab content ─────────────────────────────────────── */}
-      {activeTab === 'avaliacao' && (
-        <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3 sm:gap-6">
-              <div className="w-12 h-12 sm:w-20 sm:h-20 bg-black text-white rounded-xl sm:rounded-[28px] flex items-center justify-center text-2xl sm:text-4xl shadow-xl shrink-0">⭐</div>
-              <div>
-                <h3 className="text-lg sm:text-2xl font-black text-black uppercase tracking-tight">Avaliação</h3>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                  Pedido automático de nota pós-atendimento
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={async () => {
-                const next = !ratingEnabled;
-                setRatingEnabled(next);
-                await db.updateSettings(tenantId, { ratingEnabled: next } as any);
-              }}
-              className={`px-5 sm:px-8 py-3 sm:py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl w-full sm:w-auto ${ratingEnabled ? 'bg-green-500 text-white hover:bg-red-500' : 'bg-slate-200 text-slate-500 hover:bg-green-500 hover:text-white'}`}
-            >
-              {ratingEnabled ? 'Ativo' : 'Desativado'}
-            </button>
-          </div>
-
-          {/* Message template */}
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Mensagem de avaliação</label>
-            <textarea
-              value={ratingMessage}
-              onChange={e => setRatingMessage(e.target.value)}
-              placeholder="Olá {nome}! Como foi seu {servico} hoje? Dê uma nota de 0 a 10!"
-              className="w-full border-2 border-slate-100 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-orange-400 resize-none"
-              rows={3}
-            />
-            <div className="flex gap-2 flex-wrap">
-              <Tag label="{nome}" onClick={() => setRatingMessage(v => v + '{nome}')} />
-              <Tag label="{servico}" onClick={() => setRatingMessage(v => v + '{servico}')} />
-              <Tag label="{profissional}" onClick={() => setRatingMessage(v => v + '{profissional}')} />
-            </div>
-            <button
-              onClick={async () => {
-                setSaving(true);
-                await db.updateSettings(tenantId, { ratingMessage, googlePlaceId } as any);
-                setSaving(false);
-              }}
-              className="px-6 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all"
-            >
-              {saving ? 'Salvando...' : 'Salvar Mensagem'}
-            </button>
-          </div>
-
-          {/* Google Reviews redirect */}
-          <div className="space-y-3 p-4 bg-slate-50 rounded-2xl">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Google Reviews — Redirect automático</label>
-            <p className="text-[10px] text-slate-400">Clientes que derem nota 8+ recebem automaticamente um link para avaliar no Google.</p>
-            <input
-              value={googlePlaceId}
-              onChange={e => setGooglePlaceId(e.target.value.trim())}
-              placeholder="Google Place ID (ex: ChIJx8uNn...)"
-              className="w-full border-2 border-slate-100 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:border-orange-400"
-            />
-            {googlePlaceId && (
-              <div className="text-[10px] text-slate-400 space-y-1">
-                <p className="font-bold text-green-600">Link que será enviado ao cliente:</p>
-                <p className="break-all bg-white px-3 py-2 rounded-xl border border-slate-100 font-mono text-[9px]">
-                  https://search.google.com/local/writereview?placeid={googlePlaceId}
-                </p>
-              </div>
-            )}
-            <p className="text-[9px] text-slate-400">
-              Para encontrar seu Place ID, pesquise seu negócio no{' '}
-              <a href="https://developers.google.com/maps/documentation/places/web-service/place-id-finder" target="_blank" rel="noopener noreferrer" className="text-orange-500 underline">
-                Google Place ID Finder
-              </a>
-            </p>
-            <button
-              onClick={async () => {
-                setSaving(true);
-                await db.updateSettings(tenantId, { googlePlaceId } as any);
-                setSaving(false);
-              }}
-              className="px-6 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all"
-            >
-              {saving ? 'Salvando...' : 'Salvar Place ID'}
-            </button>
-          </div>
-
-          {/* Reviews list */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-black text-black uppercase tracking-tight">Avaliações Recentes ({reviews.length})</h4>
-            {reviews.length === 0 && (
-              <p className="text-xs text-slate-400 font-bold">Nenhuma avaliação recebida ainda.</p>
-            )}
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {reviews.slice(0, 50).map(r => (
-                <div key={r.id} className="bg-slate-50 rounded-2xl p-4 flex items-start gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black shrink-0 ${r.rating >= 8 ? 'bg-green-100 text-green-700' : r.rating >= 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                    {r.rating}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-black">{r.customerName || r.customerPhone}</p>
-                    {r.comment && <p className="text-xs text-slate-500 font-bold mt-1 truncate">{r.comment}</p>}
-                    <p className="text-[10px] text-slate-400 font-bold mt-1">
-                      {new Date(r.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Tab content (named modes) */}
-      {activeTab !== 'avaliacao' && <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
+      <div className="bg-white p-4 sm:p-8 md:p-12 rounded-[50px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-6 sm:space-y-8">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -421,12 +368,44 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
           </div>
         )}
 
-        {/* Modes list */}
+        {/* Pre-defined templates — shown when no modes exist and add form is hidden */}
         {modes.length === 0 && !showAddForm && (
-          <div className="text-center py-10">
-            <p className="text-4xl mb-3">{cfg.icon}</p>
-            <p className="text-slate-300 font-black uppercase tracking-widest text-sm">Nenhum modo criado ainda</p>
-            <p className="text-slate-200 text-xs font-bold mt-1">Clique em "+ Adicionar Modo" para criar estratégias personalizadas</p>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Modelos pré-definidos — clique para usar</span>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            {PRESET_TEMPLATES[activeTab as ModeTab].map((tpl, i) => (
+              <div key={i} className="rounded-2xl border-2 border-dashed border-slate-100 bg-slate-50 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 hover:border-orange-200 hover:bg-orange-50 transition-all group">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span className="font-black text-sm text-black">{tpl.name}</span>
+                    {cfg.timingType === 'fixed' && (
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-full">
+                        ⏰ {tpl.daysBefore ? `${tpl.daysBefore}d antes, ` : 'Dia do agend., '}{tpl.fixedTime}
+                      </span>
+                    )}
+                    {cfg.timingType === 'minutes' && (
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-full">
+                        ⏰ {tpl.timing}min antes
+                      </span>
+                    )}
+                    {cfg.timingType === 'days' && (
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-full">
+                        📆 {tpl.timing} dias ausência
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 font-bold whitespace-pre-line leading-relaxed line-clamp-3">{tpl.message}</p>
+                </div>
+                <button
+                  onClick={() => handleUseTemplate(activeTab as ModeTab, tpl)}
+                  disabled={saving}
+                  className="px-5 py-2.5 bg-black text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-orange-500 transition-all disabled:opacity-40 shrink-0 group-hover:bg-orange-500">
+                  {saving ? '...' : '+ Usar Modelo'}
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -554,7 +533,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
             </div>
           ))}
         </div>
-      </div>}
+      </div>
     </div>
   );
 };

@@ -43,7 +43,7 @@ function getPeriodRange(p: Period): { start: string; end: string; label: string 
   return { start: iso(d), end: today, label: 'Últimos 30 dias' };
 }
 
-const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
+const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number; embedded?: boolean }> = ({ tenantId, refreshTicker = 0, embedded = false }) => {
   const [period, setPeriod] = useState<Period>('this_month');
   const [prevPeriod] = useState<Period>('30d');
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -163,9 +163,9 @@ const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
   }
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className={`space-y-6 ${!embedded ? 'animate-fadeIn' : ''}`}>
+      {/* Header — hidden when embedded inside PerformanceView */}
+      {!embedded && <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-black">Marketing</h1>
           <p className="text-xs text-slate-400 mt-0.5">Origem dos agendamentos e conversão por canal.</p>
@@ -183,7 +183,24 @@ const MarketingView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
+
+      {/* Seletor de período quando embedded (sem o header completo) */}
+      {embedded && (
+        <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5 w-fit">
+          {([
+            { v: '7d', l: '7d' },
+            { v: 'this_month', l: 'Mês' },
+            { v: '30d', l: '30d' },
+            { v: '90d', l: '90d' },
+          ] as { v: Period; l: string }[]).map(o => (
+            <button key={o.v} onClick={() => setPeriod(o.v)}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${period === o.v ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}>
+              {o.l}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

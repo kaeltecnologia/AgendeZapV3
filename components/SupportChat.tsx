@@ -5,6 +5,9 @@ import { SupportMessage } from '../types';
 interface Props {
   tenantId: string;
   tenantName: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onUnreadCount?: (count: number) => void;
 }
 
 function formatTime(iso: string): string {
@@ -14,8 +17,10 @@ function formatTime(iso: string): string {
   } catch { return ''; }
 }
 
-export default function SupportChat({ tenantId, tenantName }: Props) {
-  const [open, setOpen] = useState(false);
+export default function SupportChat({ tenantId, tenantName, open: externalOpen, onOpenChange, onUnreadCount }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  const setOpen = (v: boolean) => { setInternalOpen(v); onOpenChange?.(v); };
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -29,6 +34,8 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const unreadCount = messages.filter(m => m.sender === 'support' && !m.read).length;
+
+  useEffect(() => { onUnreadCount?.(unreadCount); }, [unreadCount, onUnreadCount]);
 
   const load = useCallback(async () => {
     const msgs = await db.getSupportMessages(tenantId);
@@ -144,36 +151,35 @@ export default function SupportChat({ tenantId, tenantName }: Props) {
           <span className="text-lg shrink-0">💬</span>
           <div className="flex-1">
             <p className="font-black text-[11px] uppercase tracking-widest">Nova mensagem do suporte</p>
-            <p className="text-[10px] text-white/60 mt-0.5">Clique no ícone abaixo para ver</p>
+            <p className="text-[10px] text-white/60 mt-0.5">Clique no ícone de suporte para ver</p>
           </div>
           <button onClick={() => setShowToast(false)} className="text-white/40 hover:text-white/80 shrink-0 text-sm leading-none">✕</button>
         </div>
       )}
 
-      {/* Floating button */}
-      <div className="fixed bottom-6 right-6 z-50">
-        {unreadCount > 0 && (
-          <>
-            {/* Pulsing ring */}
-            <span className="absolute inset-0 rounded-full bg-orange-400 animate-ping opacity-60 pointer-events-none" />
-            {/* Badge count */}
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center z-10">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          </>
-        )}
-        <button
-          onClick={() => { setOpen(true); setShowToast(false); }}
-          title="Suporte AgendeZap"
-          className="relative w-14 h-14 bg-orange-500 rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-all"
-        >
-          {/* Headset icon */}
-          <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-          </svg>
-        </button>
-      </div>
+      {/* Floating button — only when not controlled externally */}
+      {externalOpen === undefined && (
+        <div className="fixed bottom-6 right-6 z-50">
+          {unreadCount > 0 && (
+            <>
+              <span className="absolute inset-0 rounded-full bg-orange-400 animate-ping opacity-60 pointer-events-none" />
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center z-10">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            </>
+          )}
+          <button
+            onClick={() => { setOpen(true); setShowToast(false); }}
+            title="Suporte AgendeZap"
+            className="relative w-14 h-14 bg-orange-500 rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-all"
+          >
+            <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Slide-in panel */}
       <div

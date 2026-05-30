@@ -1,7 +1,9 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { db } from '../services/mockDb';
 import { AppointmentStatus } from '../types';
+
+const MarketingView = lazy(() => import('./MarketingView'));
 
 const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -35,7 +37,7 @@ function getPeriodRange(p: Period): { start: string; end: string; label: string 
 }
 
 const PerformanceView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ tenantId, refreshTicker = 0 }) => {
-  const [activeTab, setActiveTab] = useState<'geral' | 'individual'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'individual' | 'marketing'>('geral');
   const [period, setPeriod] = useState<Period>('this_month');
   const [selectedProId, setSelectedProId] = useState<string>('');
 
@@ -169,6 +171,7 @@ const PerformanceView: React.FC<{ tenantId: string; refreshTicker?: number }> = 
         {[
           { key: 'geral', label: 'Geral' },
           { key: 'individual', label: 'Individual' },
+          { key: 'marketing', label: 'Marketing' },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key as any)}
             className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === t.key ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:text-black'}`}>
@@ -416,6 +419,12 @@ const PerformanceView: React.FC<{ tenantId: string; refreshTicker?: number }> = 
             </>
           )}
         </div>
+      )}
+      {/* ── ABA: MARKETING ──────────────────────────────────────────────── */}
+      {activeTab === 'marketing' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-20"><div className="w-8 h-8 border-4 border-slate-100 border-t-black rounded-full animate-spin" /></div>}>
+          <MarketingView tenantId={tenantId} refreshTicker={refreshTicker} embedded />
+        </Suspense>
       )}
     </div>
   );
