@@ -315,7 +315,8 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
     if (!estornoComanda) return;
     setEstornoSaving(true);
     try {
-      const newAmount = estornoValor !== '' ? parseFloat(estornoValor.replace(',', '.')) : undefined;
+      const rawVal = estornoValor !== '' ? parseFloat(estornoValor.replace(',', '.')) : 0;
+      const newAmount = isNaN(rawVal) ? 0 : Math.max(0, rawVal);
       const zeroedItems = estornoComanda.items.map(item =>
         item.type === 'service' ? { ...item, commissionOverride: 0 } : item
       );
@@ -323,12 +324,12 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
         paymentMethod: estornoPagamento,
         notes: estornoObs || estornoComanda.notes,
         items: zeroedItems,
-        ...(newAmount !== undefined && !isNaN(newAmount) ? { finalAmount: newAmount } : {}),
+        finalAmount: newAmount,
       });
       if (estornoComanda.appointment_id) {
         await db.updateAppointmentStatus(estornoComanda.appointment_id, AppointmentStatus.FINISHED, {
           paymentMethod: estornoPagamento,
-          amountPaid: newAmount !== undefined && !isNaN(newAmount) ? newAmount : comandaTotal(estornoComanda),
+          amountPaid: newAmount,
         });
       }
       setEstornoComanda(null); setEstornoValor(''); setEstornoObs('');
@@ -728,7 +729,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                                 onClick={() => {
                                   setEstornoComanda(c);
                                   setEstornoPagamento(c.paymentMethod ?? PaymentMethod.PIX);
-                                  setEstornoValor(c.finalAmount !== undefined ? String(c.finalAmount) : String(comandaTotal(c).toFixed(2)));
+                                  setEstornoValor('0');
                                   setEstornoObs(c.notes ?? '');
                                 }}
                                 className="text-[10px] font-black text-red-400 uppercase hover:text-red-600 transition-all"
@@ -1410,7 +1411,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
           <div className="bg-white rounded-[40px] w-full max-w-md max-h-[90vh] overflow-y-auto p-8 space-y-5 animate-scaleUp border-4 border-red-400">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-black text-black uppercase tracking-tight">Estorno / Ajuste</h2>
+                <h2 className="text-xl font-black text-black uppercase tracking-tight">Estorno de Pagamento</h2>
                 <p className="text-xs font-bold text-slate-400 mt-0.5">
                   {custName(estornoComanda.customer_id)} · {profName(estornoComanda.professional_id)}
                 </p>
@@ -1424,9 +1425,9 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Novo Valor (R$)</label>
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor Devolvido (R$) — 0 = estorno total</label>
               <input type="number" min={0} step="0.01" value={estornoValor}
-                onChange={e => setEstornoValor(e.target.value)} placeholder="Ex: 80,00"
+                onChange={e => setEstornoValor(e.target.value)} placeholder="0,00"
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-lg outline-none focus:border-red-400 transition-all"
               />
             </div>

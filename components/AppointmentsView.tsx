@@ -2173,7 +2173,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                                 setEditingStatusId(null);
                                 if (newStatus === AppointmentStatus.FINISHED) {
                                   setEditingStatusId(null);
-                                  handleOpenComandaClick(a);
+                                  const aSvcIds = a.serviceIds?.length ? a.serviceIds : [a.service_id].filter(Boolean) as string[];
+                                  const aSvcItems = aSvcIds.map(id => services.find(s => s.id === id)).filter(Boolean);
+                                  const aBase = aSvcItems.reduce((s, sv) => s + (sv?.price || 0), 0);
+                                  setShowFinishModal({ id: a.id, basePrice: aBase, ...a });
+                                  setEditStatus(AppointmentStatus.FINISHED);
+                                  setPaymentMethod(a.paymentMethod || PaymentMethod.PIX);
                                 } else if (newStatus === AppointmentStatus.ARRIVED) {
                                   // 1. Atualizar status
                                   try {
@@ -2634,7 +2639,12 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
                   onClick={async () => {
                     if (opt.key === AppointmentStatus.FINISHED) {
                       setHoverAppt(null);
-                      handleOpenComandaClick(ha);
+                      const haSvcIds = ha.serviceIds?.length ? ha.serviceIds : [ha.service_id].filter(Boolean) as string[];
+                      const haSvcItems = haSvcIds.map(id => services.find(s => s.id === id)).filter(Boolean);
+                      const haBase = haSvcItems.reduce((s, sv) => s + (sv?.price || 0), 0);
+                      setShowFinishModal({ id: ha.id, basePrice: haBase, ...ha });
+                      setEditStatus(AppointmentStatus.FINISHED);
+                      setPaymentMethod(ha.paymentMethod || PaymentMethod.PIX);
                     } else {
                       await db.updateAppointmentStatus(ha.id, opt.key, {});
                       setHoverAppt(null);
