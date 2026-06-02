@@ -573,16 +573,26 @@ class DatabaseService {
 
   async deleteAppointment(id: string): Promise<void> {
     try {
-      // Fetch first to find companion rows (multi-service appointments create one row per service)
+      // Fetch the target to identify all companion rows (same customer/prof/inicio)
       const { data: appt } = await supabase.from('appointments')
         .select('tenant_id, customer_id, professional_id, inicio')
         .eq('id', id)
         .maybeSingle();
 
-      await supabase.from('comandas').delete().eq('appointment_id', id);
-
       if (appt) {
-        // Delete primary + all companion rows (same customer/prof/time slot)
+        // Find all companion appointment IDs so we can delete their comandas too
+        const { data: companions } = await supabase.from('appointments')
+          .select('id')
+          .eq('tenant_id', appt.tenant_id)
+          .eq('customer_id', appt.customer_id)
+          .eq('professional_id', appt.professional_id)
+          .eq('inicio', appt.inicio);
+        const allIds = (companions || []).map(c => c.id);
+        // Delete all linked comandas (primary + companions)
+        if (allIds.length > 0) {
+          await supabase.from('comandas').delete().in('appointment_id', allIds);
+        }
+        // Delete all appointment rows for this booking
         const { error } = await supabase.from('appointments').delete()
           .eq('tenant_id', appt.tenant_id)
           .eq('customer_id', appt.customer_id)
@@ -590,6 +600,8 @@ class DatabaseService {
           .eq('inicio', appt.inicio);
         if (error) throw error;
       } else {
+        // Fallback: delete by ID only
+        await supabase.from('comandas').delete().eq('appointment_id', id);
         const { error } = await supabase.from('appointments').delete().eq('id', id);
         if (error) throw error;
       }

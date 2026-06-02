@@ -325,10 +325,12 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
         items: zeroedItems,
         ...(newAmount !== undefined && !isNaN(newAmount) ? { finalAmount: newAmount } : {}),
       });
-      await db.updateAppointmentStatus(estornoComanda.appointment_id, AppointmentStatus.FINISHED, {
-        paymentMethod: estornoPagamento,
-        amountPaid: newAmount !== undefined && !isNaN(newAmount) ? newAmount : comandaTotal(estornoComanda),
-      });
+      if (estornoComanda.appointment_id) {
+        await db.updateAppointmentStatus(estornoComanda.appointment_id, AppointmentStatus.FINISHED, {
+          paymentMethod: estornoPagamento,
+          amountPaid: newAmount !== undefined && !isNaN(newAmount) ? newAmount : comandaTotal(estornoComanda),
+        });
+      }
       setEstornoComanda(null); setEstornoValor(''); setEstornoObs('');
       load();
     } catch (e: any) {

@@ -1150,7 +1150,22 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
     if (filterProfId) data = data.filter(a => a.professional_id === filterProfId);
 
-    setAppointments(data.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
+    // Merge companion rows: multi-service appointments create one DB row per service
+    // (same customer/professional/startTime). Group them into a single display entry
+    // so the calendar and table don't show "duplicate" slots for the same booking.
+    const grouped = new Map<string, Appointment>();
+    for (const a of data.sort((x, y) => (x.startTime || '').localeCompare(y.startTime || ''))) {
+      const key = `${a.customer_id}|${a.professional_id}|${(a.startTime || '').substring(0, 16)}`;
+      if (grouped.has(key)) {
+        const ex = grouped.get(key)!;
+        const exIds = ex.serviceIds?.length ? ex.serviceIds : [ex.service_id].filter(Boolean) as string[];
+        const newIds = a.serviceIds?.length ? a.serviceIds : [a.service_id].filter(Boolean) as string[];
+        grouped.set(key, { ...ex, serviceIds: [...new Set([...exIds, ...newIds])] });
+      } else {
+        grouped.set(key, { ...a, serviceIds: a.serviceIds?.length ? a.serviceIds : [a.service_id].filter(Boolean) as string[] });
+      }
+    }
+    setAppointments(Array.from(grouped.values()));
   }, [tenantId, startDate, endDate, presetPeriod, filterProfId, refreshTicker]);
 
   useEffect(() => { refreshData(); }, [refreshData]);
@@ -1465,13 +1480,22 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     if (!deleteApptId) return;
     const idToDelete = deleteApptId;
     setDeletingAppt(true);
-    setAppointments(prev => prev.filter(a => a.id !== idToDelete));
+    setAppointments(prev => {
+      const target = prev.find(a => a.id === idToDelete);
+      if (!target) return prev.filter(a => a.id !== idToDelete);
+      const tKey = `${target.customer_id}|${target.professional_id}|${(target.startTime || '').substring(0, 16)}`;
+      return prev.filter(a => {
+        const aKey = `${a.customer_id}|${a.professional_id}|${(a.startTime || '').substring(0, 16)}`;
+        return aKey !== tKey;
+      });
+    });
     setDeleteApptId(null);
     try {
       await db.deleteAppointment(idToDelete);
       refreshData();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Erro ao excluir agendamento:', e);
+      alert(`Erro ao excluir agendamento: ${e?.message || 'Verifique o console.'}`);
       refreshData();
     } finally {
       setDeletingAppt(false);
