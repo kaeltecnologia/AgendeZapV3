@@ -1,0 +1,1 @@
+ALTER TABLE comandas ADD COLUMN IF NOT EXISTS payment_splits JSONB;

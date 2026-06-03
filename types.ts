@@ -506,6 +506,11 @@ export interface Customer {
 
 // ── Comanda (ordem de serviço) ─────────────────────────────────────────────
 
+export interface PaymentSplit {
+  method: PaymentMethod;
+  amount: number;
+}
+
 export interface ComandaItem {
   id: string;
   type: 'service' | 'product';
@@ -533,6 +538,7 @@ export interface Comanda {
   closedAt?: string;
   number?: number;  // sequential comanda number per tenant (#001, #002…)
   finalAmount?: number; // valor ajustado após estorno (sobrepõe total dos itens)
+  paymentSplits?: PaymentSplit[]; // divisão do pagamento entre múltiplas formas
 }
 
 export interface SupportMessage {

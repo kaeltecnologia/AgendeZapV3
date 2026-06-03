@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { emitirNfse } from '../services/focusNfeService';
 import {
-  Comanda, ComandaItem, PaymentMethod, AppointmentStatus,
+  Comanda, ComandaItem, PaymentMethod, PaymentSplit, AppointmentStatus,
   Professional, Customer, Service, Product, Appointment,
   FocusNfeConfig, NotaFiscal,
 } from '../types';
@@ -66,7 +66,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
 
   // ── Close single comanda modal ────────────────────────────────────
   const [closeComanda, setCloseComanda] = useState<Comanda | null>(null);
-  const [closePayment, setClosePayment] = useState<PaymentMethod>(PaymentMethod.PIX);
+  const [closeSplits, setCloseSplits] = useState<{ method: PaymentMethod; amount: string }[]>([{ method: PaymentMethod.PIX, amount: '' }]);
   const [closeNotes, setCloseNotes] = useState('');
   const [closing, setClosing] = useState(false);
   const [closeSelectedItems, setCloseSelectedItems] = useState<Set<string>>(new Set());
@@ -138,6 +138,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
   useEffect(() => {
     if (closeComanda) {
       setCloseSelectedItems(new Set(closeComanda.items.map(i => i.id)));
+      setCloseSplits([{ method: PaymentMethod.PIX, amount: '' }]);
     }
   }, [closeComanda?.id]);
 
@@ -214,16 +215,36 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
       const isFullClose = itemsToKeep.length === 0;
       const total = itemsToClose.reduce((s, i) => s + itemTotal(i), 0);
       const closedAt = new Date().toISOString();
+
+      // Build payment splits
+      const isSingleEmpty = closeSplits.length === 1 && closeSplits[0].amount === '';
+      const splits: PaymentSplit[] = isSingleEmpty
+        ? [{ method: closeSplits[0].method, amount: total }]
+        : closeSplits.map(s => ({ method: s.method, amount: parseFloat(s.amount.replace(',', '.')) || 0 }));
+
+      if (!isSingleEmpty && closeSplits.length > 1) {
+        const splitSum = splits.reduce((s, sp) => s + sp.amount, 0);
+        if (Math.abs(splitSum - total) > 0.02) {
+          alert(`Os valores informados somam ${fmt(splitSum)}, mas o total é ${fmt(total)}. Ajuste os valores.`);
+          setClosing(false);
+          return;
+        }
+      }
+
+      const primaryMethod = splits.reduce((a, b) => a.amount >= b.amount ? a : b).method;
+      const hasMultipleSplits = splits.length > 1;
+
       for (const item of itemsToClose) {
         if (item.type === 'product') await db.decrementProduct(tenantId, item.itemId, item.qty);
       }
       if (isFullClose) {
         await db.updateComanda(closeComanda.id, {
-          status: 'closed', paymentMethod: closePayment,
+          status: 'closed', paymentMethod: primaryMethod,
+          paymentSplits: hasMultipleSplits ? splits : undefined,
           notes: closeNotes || undefined, closedAt,
         });
         await db.updateAppointmentStatus(closeComanda.appointment_id, AppointmentStatus.FINISHED, {
-          paymentMethod: closePayment, amountPaid: total,
+          paymentMethod: primaryMethod, amountPaid: total,
         });
       } else {
         await db.updateComanda(closeComanda.id, { items: itemsToKeep });
@@ -690,7 +711,11 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                           <td className="px-6 py-4 text-xs font-bold text-slate-500">{profName(c.professional_id)}</td>
                           <td className="px-6 py-4 text-xs font-bold text-slate-500">{c.items.length} item{c.items.length !== 1 ? 's' : ''}</td>
                           <td className="px-6 py-4">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">{c.paymentMethod ?? '—'}</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase">
+                              {c.paymentSplits && c.paymentSplits.length > 1
+                                ? c.paymentSplits.map(s => s.method).join(' + ')
+                                : c.paymentMethod ?? '—'}
+                            </span>
                           </td>
                           <td className="px-6 py-4 text-right">
                             <span className="text-sm font-black text-black">{fmt(effectiveTotal(c))}</span>
@@ -1248,13 +1273,49 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Forma de Pagamento</label>
-                <select value={closePayment} onChange={e => setClosePayment(e.target.value as PaymentMethod)}
-                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black"
-                >
-                  {Object.values(PaymentMethod).map(pm => <option key={pm} value={pm}>{pm}</option>)}
-                </select>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Forma de Pagamento</label>
+                  {closeSplits.length < 4 && (
+                    <button
+                      onClick={() => setCloseSplits(prev => [...prev, { method: PaymentMethod.PIX, amount: '' }])}
+                      className="text-[9px] font-black text-orange-500 hover:text-orange-700 uppercase tracking-widest transition-colors">
+                      + Dividir Pagamento
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {closeSplits.map((split, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select value={split.method}
+                        onChange={e => setCloseSplits(prev => prev.map((s, i) => i === idx ? { ...s, method: e.target.value as PaymentMethod } : s))}
+                        className="flex-1 p-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-xs outline-none focus:border-black">
+                        {Object.values(PaymentMethod).map(pm => <option key={pm} value={pm}>{pm}</option>)}
+                      </select>
+                      <input type="text" inputMode="decimal"
+                        value={split.amount}
+                        onChange={e => setCloseSplits(prev => prev.map((s, i) => i === idx ? { ...s, amount: e.target.value.replace(/[^0-9.,]/g, '') } : s))}
+                        placeholder={closeSplits.length === 1 ? 'Total completo' : 'Valor...'}
+                        className="w-28 p-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-black text-xs outline-none focus:border-black text-right"
+                      />
+                      {closeSplits.length > 1 && (
+                        <button onClick={() => setCloseSplits(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-slate-300 hover:text-red-500 font-black text-sm transition-colors shrink-0">✕</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {closeSplits.length > 1 && (() => {
+                  const splitSum = closeSplits.reduce((s, sp) => s + (parseFloat(sp.amount.replace(',', '.')) || 0), 0);
+                  const diff = selectedTotal - splitSum;
+                  const ok = Math.abs(diff) < 0.02;
+                  return (
+                    <div className={`flex justify-between text-xs font-black px-1 ${ok ? 'text-emerald-600' : 'text-orange-500'}`}>
+                      <span>Conferência</span>
+                      <span>{fmt(splitSum)}&nbsp;{ok ? '✓ OK' : `— faltam ${fmt(Math.abs(diff))}`}</span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="space-y-1">

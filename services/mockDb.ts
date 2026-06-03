@@ -2100,6 +2100,7 @@ class DatabaseService {
       closedAt: r.closed_at ?? r.closedAt ?? undefined,
       number: r.number ?? undefined,
       finalAmount: r.final_amount ?? undefined,
+      paymentSplits: r.payment_splits ?? undefined,
     } as Comanda;
   }
 
@@ -2119,6 +2120,7 @@ class DatabaseService {
       created_at: comanda.createdAt,
       closed_at: comanda.closedAt ?? null,
       number: comanda.number ?? null,
+      payment_splits: comanda.paymentSplits ?? null,
     });
     if (error) throw new Error(`[Comandas] Falha ao salvar no banco: ${error.message}`);
     _cache.invalidate(`getComandas:${comanda.tenant_id}`);
@@ -2163,12 +2165,13 @@ class DatabaseService {
 
   async updateComanda(id: string, updates: Partial<Comanda>): Promise<void> {
     const patch: Record<string, any> = {};
-    if (updates.items !== undefined)         patch.items          = updates.items;
-    if (updates.status !== undefined)        patch.status         = updates.status;
-    if (updates.paymentMethod !== undefined) patch.payment_method = updates.paymentMethod;
-    if (updates.notes !== undefined)         patch.notes          = updates.notes;
-    if (updates.closedAt !== undefined)      patch.closed_at      = updates.closedAt;
-    if (updates.finalAmount !== undefined)   patch.final_amount   = updates.finalAmount;
+    if (updates.items !== undefined)          patch.items           = updates.items;
+    if (updates.status !== undefined)         patch.status          = updates.status;
+    if (updates.paymentMethod !== undefined)  patch.payment_method  = updates.paymentMethod;
+    if (updates.notes !== undefined)          patch.notes           = updates.notes;
+    if (updates.closedAt !== undefined)       patch.closed_at       = updates.closedAt;
+    if (updates.finalAmount !== undefined)    patch.final_amount    = updates.finalAmount;
+    if (updates.paymentSplits !== undefined)  patch.payment_splits  = updates.paymentSplits ?? null;
     const { error } = await supabase.from('comandas').update(patch).eq('id', id);
     if (error) throw new Error(`[Comandas] Falha ao atualizar: ${error.message}`);
     _cache.invalidate('getComandas:');
