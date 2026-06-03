@@ -241,14 +241,12 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
     console.log(`[AiPolling] reply: ${reply ? `"${reply.substring(0, 60)}..."` : 'null'}`);
     if (reply) {
       const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
-      // Send disclaimer as a separate message before the first AI reply of the day
-      if (isFirstToday && profReply === null) {
-        await evolutionService.sendMessage(
-          instanceName, cleanPhone,
-          '⚙️ _Esse atendimento é automatizado para melhor atender._'
-        );
-      }
-      const sendResult = await evolutionService.sendMessage(instanceName, cleanPhone, reply);
+      // Embed disclaimer as prefix of the first AI reply of the day (not a separate message)
+      // so it always appears at the correct position and never "floats" into mid-conversation.
+      const disclaimerPrefix = (isFirstToday && profReply === null)
+        ? '⚙️ _Esse atendimento é automatizado para melhor atender._\n\n'
+        : '';
+      const sendResult = await evolutionService.sendMessage(instanceName, cleanPhone, disclaimerPrefix + reply);
       if (!sendResult.success) {
         console.error(`[AiPolling] Falha ao enviar mensagem para ${maskPhone(cleanPhone)}: ${sendResult.error}`);
       }
@@ -383,18 +381,24 @@ async function poll(tenantId: string) {
     }
 
     // ── Pre-filter: skip messages already handled by Edge Function webhook ──
-    // Run in parallel with Phase 1 — don't block the buffer accumulation.
+    // SYNCHRONOUS — must complete BEFORE Phase 1 so that _processedIds is
+    // populated before the loop checks it. The previous async/parallel approach
+    // was a no-op: it resolved AFTER Phase 1+2 already ran, never preventing dups.
+    // Requires anon SELECT on msg_dedup (run: CREATE POLICY "anon_msg_dedup_read"
+    // ON msg_dedup FOR SELECT TO anon USING (true);)
     const candidateIds = newMsgs.map(m => m.key?.id as string).filter(Boolean);
     if (candidateIds.length > 0) {
-      Promise.resolve(
-        supabase.from('msg_dedup').select('fp').in('fp', candidateIds.map(id => `wh::${id}`))
-      ).then(({ data: handled }) => {
+      try {
+        const { data: handled } = await supabase
+          .from('msg_dedup')
+          .select('fp')
+          .in('fp', candidateIds.map(id => `wh::${id}`));
         for (const row of (handled || [])) {
           const msgId = (row.fp as string).replace(/^wh::/, '');
-          _persistId(msgId);
+          _persistId(msgId);       // now in _processedIds BEFORE Phase 1 checks it
           broadcastProcessed(msgId);
         }
-      }).catch(() => { /* non-fatal */ });
+      } catch { /* non-fatal: if anon can't read msg_dedup, silently fall back */ }
     }
 
     // ── Phase 1: accumulate new messages into the per-phone buffer ──
