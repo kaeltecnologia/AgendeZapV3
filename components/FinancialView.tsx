@@ -65,6 +65,13 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
   // ── Expense filter ───────────────────────────────────────────────────────
   const [expFilterMethod, setExpFilterMethod] = useState<string>('ALL');
 
+  // ── Expense edit modal ───────────────────────────────────────────────────
+  const [editExp,        setEditExp]        = useState<any | null>(null);
+  const [editExpDesc,    setEditExpDesc]    = useState('');
+  const [editExpAmount,  setEditExpAmount]  = useState('');
+  const [editExpPm,      setEditExpPm]      = useState<string>(PaymentMethod.MONEY);
+  const [editExpSaving,  setEditExpSaving]  = useState(false);
+
   // ── Expense modal ─────────────────────────────────────────────────────────
   const [showExpModal, setShowExpModal]         = useState(false);
   const [expDesc, setExpDesc]                   = useState('');
@@ -204,6 +211,41 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
     setExpPaymentMethod(PaymentMethod.MONEY);
     setShowExpModal(false);
     loadData();
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!window.confirm('Excluir esta despesa?')) return;
+    try {
+      await db.deleteExpense(tenantId, id);
+      loadData();
+    } catch (e: any) {
+      alert(`Erro ao excluir: ${e?.message || 'Tente novamente.'}`);
+    }
+  };
+
+  const openEditExp = (e: any) => {
+    setEditExp(e);
+    setEditExpDesc(e.description || '');
+    setEditExpAmount(String(e.amount ?? ''));
+    setEditExpPm(e.paymentMethod || PaymentMethod.MONEY);
+  };
+
+  const handleSaveEditExp = async () => {
+    if (!editExp) return;
+    const amt = parseFloat(editExpAmount.replace(',', '.'));
+    if (!editExpDesc.trim() || isNaN(amt) || amt <= 0) return;
+    setEditExpSaving(true);
+    try {
+      await db.updateExpense(tenantId, editExp.id, {
+        description: editExpDesc.trim(),
+        amount: amt,
+        paymentMethod: editExpPm,
+      });
+      setEditExp(null);
+      loadData();
+    } catch (e: any) {
+      alert(`Erro ao salvar: ${e?.message || 'Tente novamente.'}`);
+    } finally { setEditExpSaving(false); }
   };
 
   const handleAddAdiantamento = async () => {
@@ -415,7 +457,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
         const periodExps = allExps.filter(e => inRange(e.date));
         const filteredExps = expFilterMethod === 'ALL'
           ? periodExps
-          : periodExps.filter(e => (e.payment_method || '') === expFilterMethod);
+          : periodExps.filter(e => (e.paymentMethod || '') === expFilterMethod);
         const filteredTotal = filteredExps.reduce((s: number, e: any) => s + (e.amount || 0), 0);
         const pmFilters = [
           { key: 'ALL',                  icon: '📋', label: 'Todas' },
@@ -439,7 +481,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
             {/* Filter chips */}
             <div className="flex flex-wrap gap-2">
               {pmFilters.map(f => {
-                const cnt = f.key === 'ALL' ? periodExps.length : periodExps.filter(e => (e.payment_method || '') === f.key).length;
+                const cnt = f.key === 'ALL' ? periodExps.length : periodExps.filter(e => (e.paymentMethod || '') === f.key).length;
                 if (f.key !== 'ALL' && cnt === 0) return null;
                 return (
                   <button key={f.key} onClick={() => setExpFilterMethod(f.key)}
@@ -470,9 +512,9 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
                       .map((e: any) => {
                         const prof = professionals.find(p => p.id === e.professional_id);
                         const dateStr = new Date(e.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-                        const pm = e.payment_method;
+                        const pm = e.paymentMethod;
                         return (
-                          <div key={e.id} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-slate-50 transition-all">
+                          <div key={e.id} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-slate-50 transition-all group">
                             <div className="flex items-center gap-3 min-w-0">
                               <span className="text-[9px] font-black text-slate-400 tabular-nums whitespace-nowrap">{dateStr}</span>
                               <div className="min-w-0">
@@ -480,13 +522,19 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
                                 {prof && <p className="text-[9px] text-slate-400">{prof.name}</p>}
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 shrink-0">
+                            <div className="flex items-center gap-2 shrink-0">
                               {pm && (
                                 <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-2 py-1 rounded-full whitespace-nowrap">
                                   {PM_LABEL[pm] || pm}
                                 </span>
                               )}
                               <p className="text-sm font-black text-red-500 tabular-nums">− R$&nbsp;{fmtBRL(e.amount || 0)}</p>
+                              <button onClick={() => openEditExp(e)}
+                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-black transition-all ml-1 text-xs font-black"
+                                title="Editar">✏️</button>
+                              <button onClick={() => handleDeleteExpense(e.id)}
+                                className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all text-xs font-black"
+                                title="Excluir">🗑</button>
                             </div>
                           </div>
                         );
@@ -953,6 +1001,53 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
               <button onClick={handleAddAdiantamento} disabled={adiantSaving || !adiantProfId || !adiantAmount}
                 className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-50">
                 {adiantSaving ? 'Salvando...' : 'Registrar'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Edit Expense Modal ──────────────────────────────────────────────── */}
+      {editExp && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[40px] w-full max-w-md p-10 space-y-7 animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black text-black uppercase">Editar Despesa</h2>
+              <button onClick={() => setEditExp(null)} className="text-slate-400 hover:text-black text-xl font-black">✕</button>
+            </div>
+            <div className="space-y-5">
+              <input value={editExpDesc} onChange={e => setEditExpDesc(e.target.value)} placeholder="Descrição da despesa..."
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-black" />
+              <input type="text" inputMode="decimal" value={editExpAmount}
+                onChange={e => setEditExpAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                placeholder="Valor (R$)"
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-xl focus:border-black" />
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Forma de pagamento</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { val: PaymentMethod.MONEY,  icon: '💵', label: 'Dinheiro' },
+                    { val: PaymentMethod.PIX,    icon: '📱', label: 'PIX'      },
+                    { val: PaymentMethod.DEBIT,  icon: '💳', label: 'Débito'   },
+                    { val: PaymentMethod.CREDIT, icon: '💳', label: 'Crédito'  },
+                  ] as const).map(({ val, icon, label }) => (
+                    <button key={val} onClick={() => setEditExpPm(val)}
+                      className={`py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest border-2 transition-all ${
+                        editExpPm === val ? 'bg-black text-white border-black' : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-slate-300'
+                      }`}>
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-4 pt-1">
+              <button onClick={() => setEditExp(null)}
+                className="flex-1 py-4 font-black text-slate-400 uppercase text-xs tracking-widest">Cancelar</button>
+              <button onClick={handleSaveEditExp} disabled={editExpSaving || !editExpDesc.trim()}
+                className="flex-1 py-4 bg-orange-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-orange-100 hover:bg-black transition-all disabled:opacity-50">
+                {editExpSaving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>

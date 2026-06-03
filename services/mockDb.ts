@@ -1969,6 +1969,34 @@ class DatabaseService {
     }
   }
 
+  async updateExpense(tenantId: string, id: string, updates: { description?: string; amount?: number; paymentMethod?: string }) {
+    try {
+      const patch: any = {};
+      if (updates.description !== undefined) patch.description   = updates.description;
+      if (updates.amount      !== undefined) patch.amount        = updates.amount;
+      if (updates.paymentMethod !== undefined) patch.payment_method = updates.paymentMethod || null;
+      const { error } = await supabase.from('expenses').update(patch).eq('id', id).eq('tenant_id', tenantId);
+      if (error) throw error;
+      _cache.invalidate(`getExpenses:${tenantId}`);
+      _cache.invalidate(`getFinancialSummary:${tenantId}`);
+    } catch (e) {
+      console.error("Error updating expense:", e);
+      throw e;
+    }
+  }
+
+  async deleteExpense(tenantId: string, id: string) {
+    try {
+      const { error } = await supabase.from('expenses').delete().eq('id', id).eq('tenant_id', tenantId);
+      if (error) throw error;
+      _cache.invalidate(`getExpenses:${tenantId}`);
+      _cache.invalidate(`getFinancialSummary:${tenantId}`);
+    } catch (e) {
+      console.error("Error deleting expense:", e);
+      throw e;
+    }
+  }
+
   async getCoverImage(_tenantId: string): Promise<string> { return ''; }
   async setCoverImage(_tenantId: string, _url: string) {}
 
