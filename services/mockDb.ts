@@ -700,23 +700,39 @@ class DatabaseService {
 
   async deleteProfessional(tenantId: string, id: string): Promise<void> {
     try {
-      // Remove appointments linked to this professional first (FK constraint)
+      // 1. Remove comandas linked to appointments of this professional
+      const { data: appts } = await supabase.from('appointments')
+        .select('id').eq('professional_id', id).eq('tenant_id', tenantId);
+      const apptIds = (appts || []).map((a: any) => a.id);
+      if (apptIds.length > 0) {
+        await supabase.from('comandas').delete().in('appointment_id', apptIds);
+      }
+      // Also delete comandas where professional_id matches directly
+      await supabase.from('comandas').delete().eq('professional_id', id).eq('tenant_id', tenantId);
+
+      // 2. Remove appointments
       const { error: apptErr } = await supabase.from('appointments')
         .delete().eq('professional_id', id).eq('tenant_id', tenantId);
       if (apptErr) throw apptErr;
 
-      // Remove breaks linked to this professional from settings JSONB
+      // 3. Remove adiantamentos and pagamentos_pro
+      await supabase.from('adiantamentos').delete().eq('professional_id', id).eq('tenant_id', tenantId);
+      await supabase.from('pagamentos_pro').delete().eq('professional_id', id).eq('tenant_id', tenantId);
+
+      // 4. Remove breaks and meta from settings JSONB
       const s = await this.getSettings(tenantId);
       const meta = { ...(s.professionalMeta || {}) };
       delete meta[id];
       const breaks = (s.breaks || []).filter((b: any) => b.professionalId !== id);
       await this.updateSettings(tenantId, { professionalMeta: meta, breaks });
 
-      // Now safe to delete the professional row
+      // 5. Delete the professional row
       const { error } = await supabase.from('professionals').delete().eq('id', id).eq('tenant_id', tenantId);
       if (error) throw error;
+
       _cache.invalidate(`getProfessionals:${tenantId}`);
       _cache.invalidate(`getAppointments:${tenantId}`);
+      _cache.invalidate(`getComandas:${tenantId}`);
     } catch (e) {
       console.error("Supabase Professional Delete Error:", e);
       throw e;
