@@ -62,6 +62,9 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
   const retroactiveDone = useRef(false);
   const [loading, setLoading] = useState(true);
 
+  // ── Expense filter ───────────────────────────────────────────────────────
+  const [expFilterMethod, setExpFilterMethod] = useState<string>('ALL');
+
   // ── Expense modal ─────────────────────────────────────────────────────────
   const [showExpModal, setShowExpModal]         = useState(false);
   const [expDesc, setExpDesc]                   = useState('');
@@ -405,6 +408,102 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
           </div>
         </div>
       </div>
+
+      {/* ── Despesas Registradas ────────────────────────────────────────────── */}
+      {(() => {
+        const inRange = (d: string) => { const s = d?.substring(0, 10); return s >= startDate && s <= endDate; };
+        const periodExps = allExps.filter(e => inRange(e.date));
+        const filteredExps = expFilterMethod === 'ALL'
+          ? periodExps
+          : periodExps.filter(e => (e.payment_method || '') === expFilterMethod);
+        const filteredTotal = filteredExps.reduce((s: number, e: any) => s + (e.amount || 0), 0);
+        const pmFilters = [
+          { key: 'ALL',                  icon: '📋', label: 'Todas' },
+          { key: PaymentMethod.MONEY,    icon: '💵', label: 'Dinheiro' },
+          { key: PaymentMethod.PIX,      icon: '📱', label: 'PIX' },
+          { key: PaymentMethod.DEBIT,    icon: '💳', label: 'Débito' },
+          { key: PaymentMethod.CREDIT,   icon: '💳', label: 'Crédito' },
+        ];
+        if (periodExps.length === 0) return null;
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Despesas Registradas</h2>
+              <div className="flex-1 h-px bg-slate-100" />
+              <button onClick={() => setShowExpModal(true)}
+                className="text-[9px] font-black text-orange-500 hover:text-orange-700 uppercase tracking-widest">
+                + Nova
+              </button>
+            </div>
+
+            {/* Filter chips */}
+            <div className="flex flex-wrap gap-2">
+              {pmFilters.map(f => {
+                const cnt = f.key === 'ALL' ? periodExps.length : periodExps.filter(e => (e.payment_method || '') === f.key).length;
+                if (f.key !== 'ALL' && cnt === 0) return null;
+                return (
+                  <button key={f.key} onClick={() => setExpFilterMethod(f.key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border-2 transition-all ${
+                      expFilterMethod === f.key
+                        ? 'bg-black text-white border-black'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+                    }`}>
+                    {f.icon} {f.label}
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${expFilterMethod === f.key ? 'bg-white/20' : 'bg-slate-100'}`}>{cnt}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Expense list */}
+            <div className="bg-white rounded-[24px] border-2 border-slate-100 overflow-hidden">
+              {filteredExps.length === 0 ? (
+                <p className="p-8 text-center text-[11px] font-black text-slate-300 uppercase tracking-widest">
+                  Nenhuma despesa com esse filtro
+                </p>
+              ) : (
+                <>
+                  <div className="divide-y divide-slate-50">
+                    {filteredExps
+                      .slice()
+                      .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))
+                      .map((e: any) => {
+                        const prof = professionals.find(p => p.id === e.professional_id);
+                        const dateStr = new Date(e.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                        const pm = e.payment_method;
+                        return (
+                          <div key={e.id} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-slate-50 transition-all">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-[9px] font-black text-slate-400 tabular-nums whitespace-nowrap">{dateStr}</span>
+                              <div className="min-w-0">
+                                <p className="text-xs font-black text-black truncate">{e.description || '—'}</p>
+                                {prof && <p className="text-[9px] text-slate-400">{prof.name}</p>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              {pm && (
+                                <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-2 py-1 rounded-full whitespace-nowrap">
+                                  {PM_LABEL[pm] || pm}
+                                </span>
+                              )}
+                              <p className="text-sm font-black text-red-500 tabular-nums">− R$&nbsp;{fmtBRL(e.amount || 0)}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                  <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {filteredExps.length} despesa{filteredExps.length !== 1 ? 's' : ''}{expFilterMethod !== 'ALL' ? ` · ${PM_LABEL[expFilterMethod] || expFilterMethod}` : ''}
+                    </span>
+                    <span className="text-sm font-black text-red-600 tabular-nums">− R$&nbsp;{fmtBRL(filteredTotal)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Seção do Profissional ────────────────────────────────────────────── */}
       {selectedProfId && selectedProf && (
