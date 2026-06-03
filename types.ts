@@ -366,6 +366,8 @@ export interface TenantSettings {
   manualColabsReleased?: number;                   // extra team slots released manually by superadmin (START plan)
   bookingTheme?: BookingTheme | null;              // visual customization for the web booking page
   comoConheceu?: string | null;                    // channel/source where the lead found AgendeZap
+  hideBookingLink?: boolean;                       // suppress booking link in AI agent messages
+  hideAiDisclaimer?: boolean;                      // suppress automated disclaimer on first AI message
 }
 
 export interface BookingTheme {

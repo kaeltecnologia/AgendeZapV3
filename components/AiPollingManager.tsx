@@ -243,7 +243,7 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
       const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);
       // Embed disclaimer as prefix of the first AI reply of the day (not a separate message)
       // so it always appears at the correct position and never "floats" into mid-conversation.
-      const disclaimerPrefix = (isFirstToday && profReply === null)
+      const disclaimerPrefix = (isFirstToday && profReply === null && !settings?.hideAiDisclaimer)
         ? '⚙️ _Esse atendimento é automatizado para melhor atender._\n\n'
         : '';
       const sendResult = await evolutionService.sendMessage(instanceName, cleanPhone, disclaimerPrefix + reply);

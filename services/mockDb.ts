@@ -1257,6 +1257,8 @@ class DatabaseService {
           professionalOrder: fu._professionalOrder ?? [],
           breakColor: fu._breakColor ?? '#f97316',
           funnelStagePrompts: fu._funnelStagePrompts ?? {},
+          hideBookingLink: fu._hideBookingLink ?? false,
+          hideAiDisclaimer: fu._hideAiDisclaimer ?? false,
         };
         _cache.set(ck, result, TTL_LONG);
         return result;
@@ -1355,6 +1357,8 @@ class DatabaseService {
         _professionalOrder: newS.professionalOrder ?? curr.professionalOrder ?? [],
         _breakColor: newS.breakColor ?? curr.breakColor ?? '#f97316',
         _funnelStagePrompts: newS.funnelStagePrompts ?? curr.funnelStagePrompts ?? {},
+        _hideBookingLink: newS.hideBookingLink ?? curr.hideBookingLink ?? false,
+        _hideAiDisclaimer: newS.hideAiDisclaimer ?? curr.hideAiDisclaimer ?? false,
         // Preserve connection status written by webhook — not updatable via updateSettings
         // but must survive every upsert to avoid data loss
         _connectionStatus: newS.connectionStatus ?? curr.connectionStatus ?? null,

@@ -86,6 +86,8 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const [sharedOpenAiKey, setSharedOpenAiKey] = useState('');
   const [funnelStagePrompts, setFunnelStagePrompts] = useState<Record<string, string>>({});
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
+  const [hideBookingLink, setHideBookingLink] = useState(false);
+  const [hideAiDisclaimer, setHideAiDisclaimer] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -102,6 +104,8 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
       setAgentGender((settings.agentGender as 'neutro' | 'masculino' | 'feminino') || 'neutro');
       setOpenaiApiKey(settings.openaiApiKey || '');
       setMsgBufferSecs(settings.msgBufferSecs ?? 8);
+      setHideBookingLink(!!settings.hideBookingLink);
+      setHideAiDisclaimer(!!settings.hideAiDisclaimer);
       setSharedOpenAiKey((globalCfg['shared_openai_key'] || '').trim());
       const saved = (settings.funnelStagePrompts as Record<string, string>) || {};
       // Pre-fill with defaults for any stage that was never customized
@@ -126,6 +130,16 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
   const handleToggleProfessional = async (val: boolean) => {
     setAiProfessionalActive(val);
     await db.updateSettings(tenantId, { aiProfessionalActive: val });
+  };
+
+  const handleToggleHideBookingLink = async (val: boolean) => {
+    setHideBookingLink(val);
+    await db.updateSettings(tenantId, { hideBookingLink: val });
+  };
+
+  const handleToggleHideAiDisclaimer = async (val: boolean) => {
+    setHideAiDisclaimer(val);
+    await db.updateSettings(tenantId, { hideAiDisclaimer: val });
   };
 
   const handleSavePrompt = async () => {
@@ -251,6 +265,23 @@ const AiAgentConfig: React.FC<{ tenantId: string; tenantPlan?: string }> = ({ te
                 <span>120s</span>
               </div>
             </div>
+          </div>
+
+          {/* Comportamento do agente */}
+          <div className="bg-white p-8 rounded-[32px] border-2 border-slate-100 shadow-xl shadow-slate-100/50 space-y-4">
+            <h3 className="font-black text-black text-xs uppercase tracking-widest mb-2">Comportamento</h3>
+            <Toggle
+              checked={hideBookingLink}
+              onChange={handleToggleHideBookingLink}
+              label="Ocultar Link de Agendamento"
+              description="Remove o link online das mensagens do agente (para quem não usa agendamento pelo site)"
+            />
+            <Toggle
+              checked={hideAiDisclaimer}
+              onChange={handleToggleHideAiDisclaimer}
+              label="Ocultar Aviso de Automação"
+              description='Não envia "Atendimento automatizado" no primeiro contato do dia'
+            />
           </div>
         </div>
 

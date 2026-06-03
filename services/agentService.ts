@@ -631,7 +631,7 @@ async function callBrain(
     ? `\n⚡ ATENÇÃO: Sua última mensagem foi uma PERGUNTA. A mensagem atual do cliente É A RESPOSTA. Extraia a informação diretamente — NÃO repita a pergunta.\n`
     : '';
 
-  const _bookingLink = tenantSlug
+  const _bookingLink = (!settings?.hideBookingLink && tenantSlug)
     ? `${typeof window !== 'undefined' ? window.location.origin : 'https://agendezap.com'}/agendar/${tenantSlug}`
     : '';
   const greetSection = shouldGreet
