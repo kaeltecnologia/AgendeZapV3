@@ -966,7 +966,7 @@ const ComandasView: React.FC<{ tenantId: string; initialApptId?: string; onApptO
                         className="flex-1 py-2 bg-orange-50 text-orange-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-100 transition-all"
                       >✂️ Serviço</button>
                       <button
-                        onClick={() => { setClosePayment(PaymentMethod.PIX); setCloseNotes(''); setCloseComanda(c); }}
+                        onClick={() => { setCloseNotes(''); setCloseComanda(c); }}
                         className="flex-1 py-2 bg-black text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all"
                       >✅ Fechar</button>
                     </div>
