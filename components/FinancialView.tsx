@@ -819,8 +819,8 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
       })(), document.body)}
 
       {/* ── Adiantamento Modal ──────────────────────────────────────────────── */}
-      {showAdiantModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      {showAdiantModal && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] w-full max-w-md p-10 space-y-7 animate-scaleUp">
             <div className="flex items-center justify-between">
               <div>
@@ -857,12 +857,13 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Expense Modal ────────────────────────────────────────────────────── */}
-      {showExpModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      {showExpModal && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] w-full max-w-md p-10 space-y-7 animate-scaleUp">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-black text-black uppercase">Registrar Despesa</h2>
@@ -918,7 +919,8 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
