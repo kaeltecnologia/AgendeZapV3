@@ -2306,6 +2306,20 @@ class DatabaseService {
     return newA;
   }
 
+  async updateAdiantamento(tenantId: string, id: string, updates: { amount?: number; description?: string; date?: string }): Promise<void> {
+    try {
+      const patch: any = {};
+      if (updates.amount      !== undefined) patch.amount      = updates.amount;
+      if (updates.description !== undefined) patch.description = updates.description;
+      if (updates.date        !== undefined) patch.date        = updates.date;
+      const { error } = await supabase.from('adiantamentos').update(patch).eq('id', id).eq('tenant_id', tenantId);
+      if (error) throw error;
+    } catch (e) {
+      console.error('[updateAdiantamento] error:', e);
+      throw e;
+    }
+  }
+
   async deleteAdiantamento(tenantId: string, id: string): Promise<void> {
     try {
       const { error } = await supabase

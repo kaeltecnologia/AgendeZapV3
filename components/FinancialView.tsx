@@ -66,6 +66,12 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
   // ── Expense filter ───────────────────────────────────────────────────────
   const [expFilterMethod, setExpFilterMethod] = useState<string>('ALL');
 
+  // ── Adiantamento edit modal ──────────────────────────────────────────────
+  const [editAdiant,       setEditAdiant]       = useState<Adiantamento | null>(null);
+  const [editAdiantDesc,   setEditAdiantDesc]   = useState('');
+  const [editAdiantAmount, setEditAdiantAmount] = useState('');
+  const [editAdiantSaving, setEditAdiantSaving] = useState(false);
+
   // ── Expense edit modal ───────────────────────────────────────────────────
   const [editExp,        setEditExp]        = useState<any | null>(null);
   const [editExpDesc,    setEditExpDesc]    = useState('');
@@ -259,6 +265,39 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
     } catch (e: any) {
       alert(`Erro ao salvar: ${e?.message || 'Tente novamente.'}`);
     } finally { setEditExpSaving(false); }
+  };
+
+  const openEditAdiant = (a: Adiantamento) => {
+    setEditAdiant(a);
+    setEditAdiantDesc(a.description || '');
+    setEditAdiantAmount(String(a.amount ?? ''));
+  };
+
+  const handleSaveEditAdiant = async () => {
+    if (!editAdiant) return;
+    const amt = parseFloat(editAdiantAmount.replace(',', '.'));
+    if (isNaN(amt) || amt <= 0) return;
+    setEditAdiantSaving(true);
+    try {
+      await db.updateAdiantamento(tenantId, editAdiant.id, {
+        description: editAdiantDesc.trim() || undefined,
+        amount: amt,
+      });
+      setEditAdiant(null);
+      loadData();
+    } catch (e: any) {
+      alert(`Erro ao salvar: ${e?.message || 'Tente novamente.'}`);
+    } finally { setEditAdiantSaving(false); }
+  };
+
+  const handleDeleteAdiant = async (id: string) => {
+    if (!window.confirm('Excluir este adiantamento?')) return;
+    try {
+      await db.deleteAdiantamento(tenantId, id);
+      loadData();
+    } catch (e: any) {
+      alert(`Erro ao excluir: ${e?.message || 'Tente novamente.'}`);
+    }
   };
 
   const handleAddAdiantamento = async () => {
@@ -587,7 +626,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
                   const prof = professionals.find(p => p.id === a.professionalId);
                   const dateStr = new Date(a.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
                   return (
-                    <div key={a.id} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-slate-50 transition-all">
+                    <div key={a.id} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-slate-50 transition-all group">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="text-[9px] font-black text-slate-400 tabular-nums whitespace-nowrap">{dateStr}</span>
                         <div className="min-w-0">
@@ -595,7 +634,15 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
                           {prof && <p className="text-[9px] text-orange-500 font-bold">{prof.name}</p>}
                         </div>
                       </div>
-                      <p className="text-sm font-black text-red-500 tabular-nums shrink-0">− R$&nbsp;{fmtBRL(a.amount)}</p>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <p className="text-sm font-black text-red-500 tabular-nums">− R$&nbsp;{fmtBRL(a.amount)}</p>
+                        <button onClick={() => openEditAdiant(a)}
+                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-black transition-all text-xs font-black"
+                          title="Editar">✏️</button>
+                        <button onClick={() => handleDeleteAdiant(a.id)}
+                          className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all text-xs font-black"
+                          title="Excluir">🗑</button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1022,6 +1069,36 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
           </div>
         );
       })(), document.body)}
+
+      {/* ── Edit Adiantamento Modal ─────────────────────────────────────────── */}
+      {editAdiant && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[40px] w-full max-w-md p-10 space-y-7 animate-scaleUp">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black text-black uppercase">Editar Adiantamento</h2>
+              <button onClick={() => setEditAdiant(null)} className="text-slate-400 hover:text-black text-xl font-black">✕</button>
+            </div>
+            <div className="space-y-5">
+              <input value={editAdiantDesc} onChange={e => setEditAdiantDesc(e.target.value)}
+                placeholder="Descrição (opcional)"
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-bold text-sm focus:border-black" />
+              <input type="text" inputMode="decimal" value={editAdiantAmount}
+                onChange={e => setEditAdiantAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                placeholder="Valor (R$)"
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none font-black text-xl focus:border-black" />
+            </div>
+            <div className="flex gap-4 pt-1">
+              <button onClick={() => setEditAdiant(null)}
+                className="flex-1 py-4 font-black text-slate-400 uppercase text-xs tracking-widest">Cancelar</button>
+              <button onClick={handleSaveEditAdiant} disabled={editAdiantSaving || !editAdiantAmount}
+                className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-50">
+                {editAdiantSaving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* ── Adiantamento Modal ──────────────────────────────────────────────── */}
       {showAdiantModal && createPortal(
