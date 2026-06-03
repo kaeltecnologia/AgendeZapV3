@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../services/mockDb';
-import { PaymentMethod, AppointmentStatus, Professional, Appointment, Service, Customer, Comanda, ComandaItem } from '../types';
+import { PaymentMethod, AppointmentStatus, Professional, Appointment, Service, Customer, Comanda, ComandaItem, Adiantamento } from '../types';
 
 const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const todayStr    = () => new Date().toISOString().slice(0, 10);
@@ -50,6 +50,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [allAppts,      setAllAppts]      = useState<Appointment[]>([]);
   const [allExps,       setAllExps]       = useState<any[]>([]);
+  const [allAdiants,    setAllAdiants]    = useState<Adiantamento[]>([]);
   const [services,      setServices]      = useState<Service[]>([]);
   const [customers,     setCustomers]     = useState<Customer[]>([]);
   const [allComandas,      setAllComandas]      = useState<Comanda[]>([]);
@@ -90,7 +91,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
 
   const loadData = useCallback(async () => {
     if (firstLoad.current) setLoading(true);
-    const [pros, apps, exps, svcs, custs, st, coms] = await Promise.all([
+    const [pros, apps, exps, svcs, custs, st, coms, adiants] = await Promise.all([
       db.getProfessionals(tenantId),
       db.getAppointments(tenantId),
       db.getExpenses(tenantId),
@@ -98,10 +99,12 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
       db.getCustomers(tenantId),
       db.getSettings(tenantId),
       db.getComandas(tenantId),
+      db.getAdiantamentos(tenantId),
     ]);
     setProfessionals(pros);
     setAllAppts(apps);
     setAllExps(exps);
+    setAllAdiants(adiants);
     setServices(svcs);
     setCustomers(custs);
     setAllComandas(coms);
@@ -169,7 +172,17 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
       : finishedAppts;
 
     const rev  = profFiltered.reduce((s, a) => s + (a.amountPaid || 0), 0);
-    const exps = allExps.filter(e => inRange(e.date)).reduce((s: number, e: any) => s + e.amount, 0);
+
+    const periodAdiants = allAdiants.filter(a => inRange(a.date));
+    const adiantsByProf = selectedProfId
+      ? periodAdiants.filter(a => a.professionalId === selectedProfId)
+      : periodAdiants;
+    const adiantsTotal = adiantsByProf.reduce((s, a) => s + a.amount, 0);
+
+    const exps = selectedProfId
+      ? adiantsTotal
+      : allExps.filter(e => inRange(e.date)).reduce((s: number, e: any) => s + e.amount, 0) + adiantsTotal;
+
     const byM: Record<string, number> = {};
     profFiltered.forEach(a => {
       if (a.paymentMethod) byM[a.paymentMethod] = (byM[a.paymentMethod] ?? 0) + (a.amountPaid || 0);
@@ -178,7 +191,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
       new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
     return { totalRevenue: rev, totalExpenses: exps, byMethod: byM, profAppts: sorted };
-  }, [allAppts, allExps, startDate, endDate, selectedProfId]);
+  }, [allAppts, allExps, allAdiants, startDate, endDate, selectedProfId]);
 
   // ── Comandas derivadas ────────────────────────────────────────────────────
   const { openComandas, closedComandas } = useMemo(() => {
@@ -372,7 +385,7 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
 
         <div className="bg-white rounded-[28px] border-2 border-slate-100 p-6 sm:p-8 space-y-3 hover:border-black transition-all">
           <div className="flex items-center justify-between">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{selectedProfId ? 'Adiantamentos Feitos' : 'Despesas Pagas'}</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{selectedProfId ? 'Adiantamentos Feitos' : 'Despesas + Adiantamentos'}</p>
             <span className="text-lg">📉</span>
           </div>
           <p className="text-3xl sm:text-4xl font-black text-black tabular-nums">R$&nbsp;{fmtBRL(totalExpenses)}</p>
@@ -548,6 +561,51 @@ const FinancialView: React.FC<{ tenantId: string; tenantPlan?: string; refreshTi
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Adiantamentos ───────────────────────────────────────────────────── */}
+      {(() => {
+        const inRange = (d: string) => { const s = d?.substring(0, 10); return s >= startDate && s <= endDate; };
+        const periodAdiants = allAdiants
+          .filter(a => inRange(a.date) && (!selectedProfId || a.professionalId === selectedProfId))
+          .slice()
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        if (periodAdiants.length === 0) return null;
+        const adiantsTotal = periodAdiants.reduce((s, a) => s + a.amount, 0);
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adiantamentos a Profissionais</h2>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            <div className="bg-white rounded-[24px] border-2 border-slate-100 overflow-hidden">
+              <div className="divide-y divide-slate-50">
+                {periodAdiants.map(a => {
+                  const prof = professionals.find(p => p.id === a.professionalId);
+                  const dateStr = new Date(a.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                  return (
+                    <div key={a.id} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-slate-50 transition-all">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-[9px] font-black text-slate-400 tabular-nums whitespace-nowrap">{dateStr}</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-black truncate">{a.description || 'Adiantamento'}</p>
+                          {prof && <p className="text-[9px] text-orange-500 font-bold">{prof.name}</p>}
+                        </div>
+                      </div>
+                      <p className="text-sm font-black text-red-500 tabular-nums shrink-0">− R$&nbsp;{fmtBRL(a.amount)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {periodAdiants.length} adiantamento{periodAdiants.length !== 1 ? 's' : ''}
+                </span>
+                <span className="text-sm font-black text-red-600 tabular-nums">− R$&nbsp;{fmtBRL(adiantsTotal)}</span>
+              </div>
             </div>
           </div>
         );
