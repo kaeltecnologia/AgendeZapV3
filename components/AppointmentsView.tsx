@@ -1610,12 +1610,25 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     }
   };
 
-  const openEditModal = (a: Appointment) => {
+  const openEditModal = async (a: Appointment) => {
     const d = new Date(a.startTime);
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
     const startHHMM = `${hh}:${mm}`;
     const svcIds = a.serviceIds?.length ? a.serviceIds : (a.service_id ? parseServiceIds(a.service_id) : []);
+
+    // Load actual prices from the open comanda (may differ from service default)
+    const comandaPrices: Record<string, number> = {};
+    try {
+      const allCmdas = await db.getComandas(tenantId);
+      const comanda = allCmdas.find(c => c.appointment_id === a.id && c.status !== 'closed');
+      if (comanda) {
+        for (const item of comanda.items) {
+          if (item.type === 'service' && item.itemId) comandaPrices[item.itemId] = item.unitPrice;
+        }
+      }
+    } catch { /* non-fatal — fall back to service default */ }
+
     let cumMin = 0;
     const rows: EditRow[] = svcIds.map(svcId => {
       const svc = services.find(s => s.id === svcId);
@@ -1623,7 +1636,8 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       const rs = calcEnd(startHHMM, cumMin);
       const re = calcEnd(startHHMM, cumMin + dur);
       cumMin += dur;
-      return { rowId: crypto.randomUUID(), svcId, startTime: rs, endTime: re, price: svc?.price || 0 };
+      const price = comandaPrices[svcId] ?? svc?.price ?? 0;
+      return { rowId: crypto.randomUUID(), svcId, startTime: rs, endTime: re, price };
     });
     setEditAppt(a);
     setEditProfId(a.professional_id);
@@ -1726,6 +1740,32 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       const [eh, em] = r0.endTime.split(':').map(Number);
       const dur0 = Math.max(1, (eh * 60 + em) - (sh * 60 + sm));
       await db.updateAppointmentSchedule(editAppt.id, editProfId, [r0.svcId], `${editDate}T${r0.startTime}:00`, dur0);
+      // Sync edited prices to the open comanda
+      try {
+        const allCmdas = await db.getComandas(tenantId);
+        const comanda = allCmdas.find(c => c.appointment_id === editAppt.id && c.status !== 'closed');
+        if (comanda) {
+          const svcItems = comanda.items.filter(i => i.type === 'service');
+          let changed = false;
+          const updatedItems = comanda.items.map(item => {
+            if (item.type !== 'service') return item;
+            const idx = svcItems.indexOf(item);
+            const matchRow = editRows[idx];
+            if (!matchRow) return item;
+            const newSvc = services.find(s => s.id === matchRow.svcId);
+            const newItem = {
+              ...item,
+              unitPrice: matchRow.price,
+              ...(matchRow.svcId && matchRow.svcId !== item.itemId
+                ? { itemId: matchRow.svcId, name: newSvc?.name ?? item.name }
+                : {}),
+            };
+            if (newItem.unitPrice !== item.unitPrice || newItem.itemId !== item.itemId) changed = true;
+            return newItem;
+          });
+          if (changed) await db.updateComanda(comanda.id, { items: updatedItems });
+        }
+      } catch { /* non-fatal */ }
       // Additional rows: create new appointments
       for (const row of editRows.slice(1)) {
         const [rsh, rsm] = row.startTime.split(':').map(Number);
