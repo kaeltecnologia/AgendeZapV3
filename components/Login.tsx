@@ -170,7 +170,15 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, initialSignUp, refer
               <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: '#1a1a2e' }}>Senha</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className={inputCls} style={inputStyle} autoComplete="current-password" />
             </div>
-            {error && <p className="text-[10px] font-black text-center uppercase tracking-widest p-3 rounded-xl animate-pulse" style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2' }}>{error}</p>}
+            {error && (error.includes('bloqueada') ? (
+              <div className="rounded-2xl p-5 text-center space-y-2 animate-fadeIn" style={{ background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', border: '2px solid #fca5a5' }}>
+                <p className="text-lg">🔒</p>
+                <p className="text-xs font-black uppercase tracking-widest text-red-700">Acesso Bloqueado</p>
+                <p className="text-[11px] font-bold text-red-600 leading-relaxed">Entre em contato com o setor comercial para regularizar o acesso.</p>
+              </div>
+            ) : (
+              <p className="text-[10px] font-black text-center uppercase tracking-widest p-3 rounded-xl animate-pulse" style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2' }}>{error}</p>
+            ))}
             <button type="submit" disabled={loading}
               className={`w-full py-6 rounded-[24px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-orange-500 transition-all active:scale-[0.98] ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
               style={{ background: 'linear-gradient(180deg, #38384e 0%, #2a2a40 20%, #1a1a2e 60%, #222238 100%)', color: '#fff', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.3), 0 25px 50px -12px rgba(30,30,50,0.35)' }}>

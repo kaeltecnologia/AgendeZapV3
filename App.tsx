@@ -911,30 +911,32 @@ const App: React.FC = () => {
 
       if (userSlug) {
         // Use secure RPC for tenant login (password validated server-side)
+        let _rpcBlocked = false;
         try {
           const { data, error } = await supabase.rpc('tenant_login', {
             p_email: userEmail || '',
             p_password: userPassword || '',
           });
           if (!error && data && !data.error) {
-            setTenantId(data.id);
-            setTenantSlug(data.slug);
-            setTenantName(data.name);
-            setTenantPlan(data.plan || 'START');
-            setRole('TENANT');
-            setIsAuthenticated(true);
-            // Check if tenant still needs to pay + load nicho
             const loginTenant = await db.getTenant(data.id);
-            if (loginTenant?.nicho) setTenantNicho(loginTenant.nicho);
-            if (loginTenant?.status === TenantStatus.PENDING_PAYMENT) {
-              setPendingPayment(true);
+            if (loginTenant?.status === TenantStatus.BLOCKED) {
+              _rpcBlocked = true;
+            } else {
+              setTenantId(data.id);
+              setTenantSlug(data.slug);
+              setTenantName(data.name);
+              setTenantPlan(data.plan || 'START');
+              setRole('TENANT');
+              setIsAuthenticated(true);
+              if (loginTenant?.nicho) setTenantNicho(loginTenant.nicho);
+              if (loginTenant?.status === TenantStatus.PENDING_PAYMENT) setPendingPayment(true);
+              supabase.from('tenants').update({ last_login_at: new Date().toISOString() }).eq('id', data.id).then(() => {});
+              setCurrentView(View.DASHBOARD);
+              return;
             }
-            // Save last login timestamp
-            supabase.from('tenants').update({ last_login_at: new Date().toISOString() }).eq('id', data.id).then(() => {});
-            setCurrentView(View.DASHBOARD);
-            return;
           }
         } catch { /* RPC not available — fallback below */ }
+        if (_rpcBlocked) throw new Error('Sua conta está bloqueada. Entre em contato com o setor comercial para regularizar o acesso.');
 
         // Fallback: direct DB query (for when RPC migration hasn't been run yet)
         const targetSlug = userSlug.toLowerCase().trim();
@@ -952,6 +954,9 @@ const App: React.FC = () => {
           alert("Senha incorreta.");
           return;
         }
+        if (myTenant.status === TenantStatus.BLOCKED) {
+          throw new Error('Sua conta está bloqueada. Entre em contato com o setor comercial para regularizar o acesso.');
+        }
         setTenantId(myTenant.id);
         setTenantSlug(myTenant.slug);
         setTenantName(myTenant.name);
@@ -968,7 +973,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Login Error:", err);
-      alert("Falha crítica na conexão com o Supabase.");
+      throw err; // propagate to Login.tsx error display
     }
   };
 
