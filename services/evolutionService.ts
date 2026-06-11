@@ -411,7 +411,6 @@ export const evolutionService = {
             headers,
             body: JSON.stringify({
               instanceName,
-              token: EVOLUTION_API_KEY,
               qrcode: true,
               integration: "WHATSAPP-BAILEYS"
             })
@@ -431,7 +430,6 @@ export const evolutionService = {
               headers,
               body: JSON.stringify({
                 instanceName,
-                token: EVOLUTION_API_KEY,
                 qrcode: true,
                 integration: "WHATSAPP-BAILEYS"
               })
@@ -445,18 +443,18 @@ export const evolutionService = {
         await this.sleep(2000);
       } else {
         // Instance doesn't exist → create it
+        // 403 treated same as 409: instance may already exist in Evolution but fetchInstances
+        // returned empty (API inconsistency or token mismatch) — safe to skip to connect step
         const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             instanceName,
-            token: EVOLUTION_API_KEY,
             qrcode: true,
             integration: "WHATSAPP-BAILEYS"
           })
         });
-        // 409 = already exists (race condition) — safe to continue
-        if (!createRes.ok && createRes.status !== 409) {
+        if (!createRes.ok && createRes.status !== 409 && createRes.status !== 403) {
           const errData = await createRes.json().catch(() => ({}));
           const httpInfo = `HTTP ${createRes.status}`;
           throw new Error(`${errData.message || 'Erro ao criar instância no servidor Evolution.'} (${httpInfo})`);
