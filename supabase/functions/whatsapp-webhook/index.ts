@@ -4067,10 +4067,11 @@ Deno.serve(async (req) => {
             tenantRow = data;
           }
           if (tenantRow?.id) {
-            const { data: s } = await supabase.from('tenant_settings').select('follow_up').eq('tenant_id', tenantRow.id).maybeSingle();
-            const fu = (s?.follow_up as Record<string, unknown>) || {};
-            fu._connectionStatus = state;
-            await supabase.from('tenant_settings').upsert({ tenant_id: tenantRow.id, follow_up: fu }, { onConflict: 'tenant_id' });
+            await supabase.rpc('set_follow_up_key', {
+              p_tenant_id: tenantRow.id,
+              p_key: '_connectionStatus',
+              p_value: state,
+            });
             console.log(`[connection.update] ${instanceName} → ${state}`);
           }
         } catch (e) { console.error('[connection.update] error:', e); }
