@@ -20,6 +20,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refresh
   const [instagram, setInstagram] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   // NFS-e config
   const [nfeCfg, setNfeCfg] = useState<FocusNfeConfig>(DEFAULT_NFE);
@@ -28,6 +29,8 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refresh
   const dayNames = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
   useEffect(() => {
+    // Don't overwrite user's unsaved changes when realtime events fire
+    if (dirty) return;
     const load = async () => {
       const [settings, tenant, cfgNfe] = await Promise.all([
         db.getSettings(tenantId),
@@ -45,7 +48,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refresh
       setLoading(false);
     };
     load();
-  }, [tenantId, refreshTicker]);
+  }, [tenantId, refreshTicker, dirty]);
 
   // Split "HH:mm-HH:mm" into { start, end }
   const parseRange = (range: string) => {
@@ -54,6 +57,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refresh
   };
 
   const handleToggleDay = (dayIndex: number) => {
+    setDirty(true);
     setOperatingHours(prev => ({
       ...prev,
       [dayIndex]: { ...prev[dayIndex], active: !prev[dayIndex].active }
@@ -61,6 +65,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refresh
   };
 
   const handleToggleLastSlot = (dayIndex: number) => {
+    setDirty(true);
     setOperatingHours(prev => ({
       ...prev,
       [dayIndex]: { ...prev[dayIndex], acceptLastSlot: !prev[dayIndex].acceptLastSlot }
@@ -68,6 +73,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refresh
   };
 
   const handleTimeChange = (dayIndex: number, field: 'start' | 'end', value: string) => {
+    setDirty(true);
     const { start, end } = parseRange(operatingHours[dayIndex]?.range || '09:00-18:00');
     const newRange = field === 'start' ? `${value}-${end}` : `${start}-${value}`;
     setOperatingHours(prev => ({
@@ -91,6 +97,7 @@ const GeneralSettings: React.FC<{ tenantId: string; tenantPlan?: string; refresh
         db.updateTenant(tenantId, tenantUpdates),
         db.updateSettings(tenantId, { operatingHours, whatsapp, heroImage, instagramUsername: instagram.replace(/^@/, '') } as any)
       ]);
+      setDirty(false);
       alert('Configurações salvas com sucesso!');
     } catch (e: any) {
       alert('Erro ao salvar: ' + (e.message || 'Tente novamente.'));
