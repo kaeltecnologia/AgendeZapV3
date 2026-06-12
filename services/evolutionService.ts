@@ -442,9 +442,7 @@ export const evolutionService = {
         }
         await this.sleep(2000);
       } else {
-        // Instance doesn't exist → create it
-        // 403 treated same as 409: instance may already exist in Evolution but fetchInstances
-        // returned empty (API inconsistency or token mismatch) — safe to skip to connect step
+        // Instance not found by fetchInstances → try to create it
         const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
           method: 'POST',
           headers,
@@ -454,10 +452,31 @@ export const evolutionService = {
             integration: "WHATSAPP-BAILEYS"
           })
         });
-        if (!createRes.ok && createRes.status !== 409 && createRes.status !== 403) {
-          const errData = await createRes.json().catch(() => ({}));
-          const httpInfo = `HTTP ${createRes.status}`;
-          throw new Error(`${errData.message || 'Erro ao criar instância no servidor Evolution.'} (${httpInfo})`);
+        if (!createRes.ok) {
+          if (createRes.status === 409) {
+            // Already exists (race condition) — safe to continue
+          } else if (createRes.status === 403) {
+            // 403 = instance likely exists in Evolution but fetchInstances couldn't see it
+            // (stale token, API inconsistency). Force-delete by name then recreate.
+            await this.deleteInstance(instanceName);
+            await this.sleep(1500);
+            const retryRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                instanceName,
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS"
+              })
+            });
+            if (!retryRes.ok && retryRes.status !== 409) {
+              const errData = await retryRes.json().catch(() => ({}));
+              throw new Error(`${errData.message || 'Erro ao criar instância no servidor Evolution.'} (HTTP ${retryRes.status})`);
+            }
+          } else {
+            const errData = await createRes.json().catch(() => ({}));
+            throw new Error(`${errData.message || 'Erro ao criar instância no servidor Evolution.'} (HTTP ${createRes.status})`);
+          }
         }
         await this.sleep(1500);
       }
