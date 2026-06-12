@@ -1362,27 +1362,25 @@ class DatabaseService {
         // Preserve connection status written by webhook — not updatable via updateSettings
         // but must survive every upsert to avoid data loss
         _connectionStatus: newS.connectionStatus ?? curr.connectionStatus ?? null,
-        // Backup of operating_hours in JSONB — secondary protection against column loss
-        _operatingHoursBackup: (newS.operatingHours && Object.keys(newS.operatingHours).length > 0)
-          ? newS.operatingHours
-          : (curr.operatingHours && Object.keys(curr.operatingHours).length > 0 ? curr.operatingHours : undefined),
+        // Only write backup when operatingHours is explicitly in this update —
+        // prevents accidental overwrite from stale curr values during unrelated updates
+        ...('operatingHours' in updates && newS.operatingHours && Object.keys(newS.operatingHours).length > 0
+          ? { _operatingHoursBackup: newS.operatingHours }
+          : {}),
       };
 
-      // Always include operating_hours to prevent data loss on upsert.
-      // Priority: update value → current DB value → JSONB backup → never write empty/null.
-      const _ohCandidate = 'operatingHours' in updates ? newS.operatingHours : curr.operatingHours;
-      const _ohSafe = (_ohCandidate && Object.keys(_ohCandidate).length > 0)
-        ? _ohCandidate
-        : (curr.operatingHours && Object.keys(curr.operatingHours).length > 0
-            ? curr.operatingHours
-            : undefined);
+      // Only write operating_hours column when explicitly provided.
+      // Writing it on every unrelated updateSettings call (e.g. connectionStatus) means a
+      // stale/default curr.operatingHours can silently destroy the saved custom hours.
       const upsertData: any = {
         tenant_id: tenantId,
         follow_up: followUpWithMeta,
         ai_active: newS.aiActive,
         theme_color: newS.themeColor,
-        ...(_ohSafe ? { operating_hours: _ohSafe } : {}),
       };
+      if ('operatingHours' in updates && newS.operatingHours && Object.keys(newS.operatingHours).length > 0) {
+        upsertData.operating_hours = newS.operatingHours;
+      }
       const { error } = await supabase.from('tenant_settings').upsert(
         upsertData,
         { onConflict: 'tenant_id' }  // required to avoid duplicate key error
