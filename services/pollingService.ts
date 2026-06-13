@@ -171,7 +171,7 @@ async function _transcribeWithGemini(
 ): Promise<string | null> {
   // WhatsApp sends audio/ogg (Opus codec) — Gemini needs the codec hint
   const normalizedMime = mimeType === 'audio/ogg' ? 'audio/ogg; codecs=opus' : mimeType;
-  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
   for (const model of models) {
     let attempt = await _callGeminiTranscribe(apiKey, base64, normalizedMime, model);
@@ -183,9 +183,8 @@ async function _transcribeWithGemini(
       attempt = await _callGeminiTranscribe(apiKey, base64, normalizedMime, model);
       if (attempt.ok) return attempt.text;
       console.warn(`[transcribeAudio] Ainda 429 em ${model} — tentando próximo modelo...`);
-      continue;
     }
-    break; // non-recoverable error
+    // continue to next model on any failure (rate limit or other)
   }
   return null;
 }

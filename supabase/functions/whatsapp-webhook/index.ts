@@ -176,22 +176,28 @@ async function transcribeAudio(apiKey: string, base64: string, mimeType: string)
       return (await res.json()).text?.trim() || null;
     } catch { return null; }
   } else {
-    // Gemini
-    try {
-      const mime = mimeType === 'audio/ogg' ? 'audio/ogg; codecs=opus' : mimeType;
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [
-            { inline_data: { mime_type: mime, data: base64 } },
-            { text: 'Transcreva exatamente o que foi dito em português. Retorne APENAS o texto transcrito.' }
-          ]}],
-        }),
-      });
-      if (!res.ok) return null;
-      return (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
-    } catch { return null; }
+    // Gemini — try models in order until one succeeds
+    const mime = mimeType === 'audio/ogg' ? 'audio/ogg; codecs=opus' : mimeType;
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [
+              { inline_data: { mime_type: mime, data: base64 } },
+              { text: 'Transcreva exatamente o que foi dito em português. Retorne APENAS o texto transcrito.' }
+            ]}],
+          }),
+        });
+        if (res.status === 429) { console.warn(`[transcribeAudio] 429 em ${model}`); continue; }
+        if (!res.ok) { console.warn(`[transcribeAudio] HTTP ${res.status} em ${model}`); continue; }
+        const text = (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+        if (text) return text;
+      } catch (e: any) { console.warn(`[transcribeAudio] erro em ${model}:`, e?.message); }
+    }
+    return null;
   }
 }
 
