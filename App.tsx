@@ -249,7 +249,7 @@ const App: React.FC = () => {
   const [isReady, setIsReady] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('dashboard');
-  const [tenantPlan, setTenantPlan] = useState<string>('START');
+  const [tenantPlan, setTenantPlan] = useState<string>('PROFISSIONAL');
   const [tenantNicho, setTenantNicho] = useState<string>('');
   const [colorTheme, setColorTheme] = useState<keyof typeof THEMES>(() => {
     const saved = localStorage.getItem('agz_theme');
@@ -774,7 +774,7 @@ const App: React.FC = () => {
             setTenantId(s.tenantId || '');
             setTenantSlug(s.tenantSlug || '');
             setTenantName(s.tenantName || '');
-            setTenantPlan(s.tenantPlan || 'START');
+            setTenantPlan(s.tenantPlan || 'PROFISSIONAL');
             if (s.tenantNicho) setTenantNicho(s.tenantNicho);
             setProfessionalId(s.professionalId || '');
             setProfessionalName(s.professionalName || '');
@@ -809,7 +809,7 @@ const App: React.FC = () => {
             setTenantId(s.tenantId || '');
             setTenantSlug(s.tenantSlug || '');
             setTenantName(s.tenantName || '');
-            setTenantPlan(s.tenantPlan || 'START');
+            setTenantPlan(s.tenantPlan || 'PROFISSIONAL');
             if (s.tenantNicho) setTenantNicho(s.tenantNicho);
             if (s.isImpersonating) {
               // Restore affiliate context so "Sair da conta" works after F5
@@ -854,7 +854,7 @@ const App: React.FC = () => {
         setTenantId(professionalData.tenant_id || '');
         setTenantSlug(professionalData.tenant_slug || '');
         setTenantName(professionalData.tenant_name || '');
-        setTenantPlan(professionalData.tenant_plan || 'START');
+        setTenantPlan(professionalData.tenant_plan || 'PROFISSIONAL');
         if (professionalData.tenant_nicho) setTenantNicho(professionalData.tenant_nicho);
         setProfessionalId(professionalData.professional_id || '');
         setProfessionalName(professionalData.professional_name || '');
@@ -925,7 +925,7 @@ const App: React.FC = () => {
               setTenantId(data.id);
               setTenantSlug(data.slug);
               setTenantName(data.name);
-              setTenantPlan(data.plan || 'START');
+              setTenantPlan(data.plan || 'PROFISSIONAL');
               setRole('TENANT');
               setIsAuthenticated(true);
               if (loginTenant?.nicho) setTenantNicho(loginTenant.nicho);
@@ -960,7 +960,7 @@ const App: React.FC = () => {
         setTenantId(myTenant.id);
         setTenantSlug(myTenant.slug);
         setTenantName(myTenant.name);
-        setTenantPlan(myTenant.plan || 'START');
+        setTenantPlan(myTenant.plan || 'PROFISSIONAL');
         if (myTenant.nicho) setTenantNicho(myTenant.nicho);
         setRole('TENANT');
         setIsAuthenticated(true);
@@ -1001,7 +1001,7 @@ const App: React.FC = () => {
         email: email,
         password: pass,
         phone: phone,
-        plan: 'START',
+        plan: 'PROFISSIONAL',
         status: TenantStatus.PENDING_PAYMENT,
         monthlyFee: 0,
         referred_by: referredById,
@@ -1033,7 +1033,7 @@ const App: React.FC = () => {
         setTenantId(newTenant.id);
         setTenantSlug(newTenant.slug);
         setTenantName(newTenant.name);
-        setTenantPlan(newTenant.plan || 'START');
+        setTenantPlan(newTenant.plan || 'PROFISSIONAL');
         if (newTenant.nicho) setTenantNicho(newTenant.nicho);
         setRole('TENANT');
         setIsAuthenticated(true);
@@ -1069,7 +1069,7 @@ const App: React.FC = () => {
     setTenantId(id);
     setTenantSlug(slug);
     setTenantName(name);
-    setTenantPlan(plan || 'START');
+    setTenantPlan(plan || 'PROFISSIONAL');
     setRole('TENANT');
     setIsImpersonating(true);
     setCurrentView(View.DASHBOARD);

@@ -1211,9 +1211,6 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
       {/* ═══ Upsell Popup ═══ */}
       {showUpsell && (() => {
         const planCfg = getPlanConfig(tenantPlan);
-        const isStart = (tenantPlan || 'START') === 'START';
-        const canAddMore = isStart && (planCfg.maxProfessionals + extraPros) < 2;
-        const addonPrice = planCfg.additionalProfessionalPrice || 19.90;
         const proPlan = PLAN_CONFIGS.PROFISSIONAL;
 
         return (
@@ -1229,36 +1226,7 @@ const ProfessionalsView: React.FC<{ tenantId: string; tenantPlan?: string; onNav
               </div>
 
               <div className="space-y-3">
-                {/* Option 1: Add professional addon (only for START, max 2 total) */}
-                {isStart && canAddMore && (
-                  <div className="border-2 border-green-200 bg-green-50/50 rounded-2xl p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-black text-sm text-black">+1 Profissional</p>
-                        <p className="text-xs text-slate-500">Adicione mais um acesso ao seu plano</p>
-                      </div>
-                      <p className="text-lg font-black text-green-600">R$ {addonPrice.toFixed(2).replace('.', ',')}<span className="text-[10px] font-bold text-slate-400">/mês</span></p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleAddonPurchase('PIX')}
-                        disabled={upsellLoading}
-                        className="flex-1 py-3 bg-green-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all disabled:opacity-50"
-                      >
-                        {upsellLoading ? '...' : '💠 Pagar com PIX'}
-                      </button>
-                      <button
-                        onClick={() => handleAddonPurchase('CREDIT_CARD')}
-                        disabled={upsellLoading}
-                        className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all disabled:opacity-50"
-                      >
-                        {upsellLoading ? '...' : '💳 Cartão'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Option 2: Upgrade to PROFISSIONAL */}
+                {/* Upgrade to PROFISSIONAL */}
                 <div className="border-2 border-blue-200 bg-blue-50/50 rounded-2xl p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>

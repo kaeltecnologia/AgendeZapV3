@@ -35,7 +35,6 @@ const FEATURE_KEYS = [
 ];
 
 const PLAN_LABELS: Record<string, string> = {
-  START: 'Start',
   PROFISSIONAL: 'Profissional',
   ELITE: 'Elite',
 };
@@ -74,7 +73,6 @@ const ResellerView: React.FC<Props> = ({
   const [colorEditMode, setColorEditMode] = useState<'light' | 'dark'>('light');
 
   // Pricing form
-  const [priceStart, setPriceStart] = useState<string>(String(resellerProfile?.plan_pricing?.START || ''));
   const [pricePro, setPricePro] = useState<string>(String(resellerProfile?.plan_pricing?.PROFISSIONAL || ''));
   const [priceElite, setPriceElite] = useState<string>(String(resellerProfile?.plan_pricing?.ELITE || ''));
 
@@ -93,12 +91,12 @@ const ResellerView: React.FC<Props> = ({
   const [newEmail, setNewEmail] = useState('');
   const [newPass, setNewPass] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [newPlan, setNewPlan] = useState('START');
+  const [newPlan, setNewPlan] = useState('PROFISSIONAL');
   const [creatingClient, setCreatingClient] = useState(false);
 
   // Edit client modal
   const [editTenant, setEditTenant] = useState<any | null>(null);
-  const [editPlan, setEditPlan] = useState('START');
+  const [editPlan, setEditPlan] = useState('PROFISSIONAL');
   const [editFee, setEditFee] = useState('');
   const [editAllFeatures, setEditAllFeatures] = useState(true);
   const [editFeatures, setEditFeatures] = useState<string[]>(FEATURE_KEYS.map(f => f.key));
@@ -138,7 +136,6 @@ const ResellerView: React.FC<Props> = ({
     setDarkCardBgColor(resellerProfile.dark_card_bg_color || '');
     setDarkTextColor(resellerProfile.dark_text_color || '');
     setCustomDomain(resellerProfile.custom_domain || '');
-    setPriceStart(String(resellerProfile.plan_pricing?.START || ''));
     setPricePro(String(resellerProfile.plan_pricing?.PROFISSIONAL || ''));
     setPriceElite(String(resellerProfile.plan_pricing?.ELITE || ''));
     const hasFlags = resellerProfile.visible_features !== null && resellerProfile.visible_features !== undefined;
@@ -190,7 +187,6 @@ const ResellerView: React.FC<Props> = ({
 
   const handleSavePricing = () => saveProfile({
     plan_pricing: {
-      START: priceStart ? parseFloat(priceStart) : undefined,
       PROFISSIONAL: pricePro ? parseFloat(pricePro) : undefined,
       ELITE: priceElite ? parseFloat(priceElite) : undefined,
     },
@@ -231,7 +227,7 @@ const ResellerView: React.FC<Props> = ({
       });
       if (tenant) {
         await db.updateSettings(tenant.id, { aiActive: false });
-        setNewName(''); setNewEmail(''); setNewPass(''); setNewPhone(''); setNewPlan('START');
+        setNewName(''); setNewEmail(''); setNewPass(''); setNewPhone(''); setNewPlan('PROFISSIONAL');
         setShowNewClient(false);
         loadTenants();
       }
@@ -244,7 +240,7 @@ const ResellerView: React.FC<Props> = ({
 
   const openEditModal = async (t: any) => {
     setEditTenant(t);
-    setEditPlan(t.plan || 'START');
+    setEditPlan(t.plan || 'PROFISSIONAL');
     setEditFee(t.mensalidade ? String(t.mensalidade) : '');
     // Load per-tenant feature overrides from settings
     try {
@@ -868,9 +864,8 @@ const ResellerView: React.FC<Props> = ({
             <h2 className="text-lg font-black text-slate-800">Preços dos Planos</h2>
             <p className="text-sm text-slate-500">Defina o valor mensal que seus clientes pagam em cada plano. Você cobra diretamente, sem intermediários.</p>
             <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {[
-                  { key: 'START', label: 'Start', state: priceStart, setter: setPriceStart },
                   { key: 'PROFISSIONAL', label: 'Profissional', state: pricePro, setter: setPricePro },
                   { key: 'ELITE', label: 'Elite', state: priceElite, setter: setPriceElite },
                 ].map(p => (

@@ -42,10 +42,9 @@ export const SITE_DEFAULTS: SiteContent = {
     { value: '4.9 ★', label: 'Avaliação Média' },
   ],
   pricingTitle: 'Planos a partir de',
-  pricingBasePrice: '39,90',
-  pricingSubtitle: 'Comece com o plano Start e evolua conforme cresce',
+  pricingBasePrice: '89,90',
+  pricingSubtitle: 'Comece com o plano Profissional e evolua conforme cresce',
   plans: [
-    { name: 'Start', price: '39,90', features: ['1 profissional', 'Agenda inteligente', 'Lembretes automáticos'], highlight: false },
     { name: 'Profissional', price: '89,90', features: ['🤖 Agente IA WhatsApp', 'Até 5 profissionais', 'Relatórios e follow-up'], highlight: true },
     { name: 'Elite', price: '149,90', features: ['Ilimitado', 'Assistente Admin', 'Todas as features'], highlight: false },
   ],

@@ -33,20 +33,17 @@ function json(data: unknown, status = 200) {
 
 // Plan monthly prices (must match planConfig.ts)
 const PLAN_PRICES: Record<string, number> = {
-  START: 39.90,
   PROFISSIONAL: 89.90,
   ELITE: 149.90,
 };
 
 const PLAN_NAMES: Record<string, string> = {
-  START: 'AgendeZap Start',
   PROFISSIONAL: 'AgendeZap Profissional',
   ELITE: 'AgendeZap Elite',
 };
 
 // Exact billing totals per plan per cycle (Asaas charges this amount per billing period)
 const PLAN_CYCLE_TOTALS: Record<string, Partial<Record<string, number>>> = {
-  START:        { SEMIANNUALLY: 197.40, YEARLY: 334.80  },
   PROFISSIONAL: { SEMIANNUALLY: 437.40, YEARLY: 754.80  },
   ELITE:        { SEMIANNUALLY: 749.40, YEARLY: 1258.80 },
 };
@@ -63,7 +60,7 @@ function calcCycleValue(planId: string, cycle: string): number {
   const exact = PLAN_CYCLE_TOTALS[planId]?.[cycle];
   if (exact !== undefined) return exact;
   // Fallback to monthly price (e.g. for MONTHLY cycle)
-  return PLAN_PRICES[planId] || 39.90;
+  return PLAN_PRICES[planId] || 89.90;
 }
 
 /**
@@ -151,7 +148,7 @@ Deno.serve(async (req) => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const dueDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
-      const value = (t.mensalidade && t.mensalidade > 0) ? t.mensalidade : (PLAN_PRICES[t.plan] || 39.90);
+      const value = (t.mensalidade && t.mensalidade > 0) ? t.mensalidade : (PLAN_PRICES[t.plan] || 89.90);
 
       const charge = await asaasFetch('/payments', {
         method: 'POST',
@@ -299,8 +296,8 @@ Deno.serve(async (req) => {
         { onConflict: 'tenant_id' }
       );
 
-      const currentPlan = fup._asaasPlanId || 'START';
-      const baseMensalidade = PLAN_PRICES[currentPlan] || 39.90;
+      const currentPlan = fup._asaasPlanId || 'PROFISSIONAL';
+      const baseMensalidade = PLAN_PRICES[currentPlan] || 89.90;
       await supabase.from('tenants').update({
         mensalidade: baseMensalidade + (extraPros * ADDON_PRICE),
       }).eq('id', tenantId);

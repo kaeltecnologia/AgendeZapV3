@@ -5,10 +5,10 @@ import { NICHOS } from '../config/nichoConfigs';
 
 import { projectUrl as SUPABASE_URL, anonKey as SUPABASE_ANON_KEY } from '../services/supabase';
 
-const PLANS: PlanId[] = ['START', 'PROFISSIONAL', 'ELITE'];
+const PLANS: PlanId[] = ['PROFISSIONAL', 'ELITE'];
 
 type Cycle = 'MONTHLY' | 'SEMIANNUALLY' | 'YEARLY';
-type Step = 'info' | 'plan' | 'procount' | 'cycle' | 'cpf' | 'payment' | 'loading' | 'waiting';
+type Step = 'info' | 'plan' | 'cycle' | 'cpf' | 'payment' | 'loading' | 'waiting';
 
 const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; tag?: string }[] = [
   { id: 'MONTHLY',      label: 'Mensal',    months: 1  },
@@ -18,14 +18,12 @@ const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; tag?: string }[
 
 // Exact billing total per plan per cycle (= what Asaas charges each billing period)
 const PLAN_CYCLE_TOTALS: Record<string, Partial<Record<string, number>>> = {
-  START:        { SEMIANNUALLY: 197.40, YEARLY: 334.80  },
   PROFISSIONAL: { SEMIANNUALLY: 437.40, YEARLY: 754.80  },
   ELITE:        { SEMIANNUALLY: 749.40, YEARLY: 1258.80 },
 };
 
 // Monthly equivalent displayed inside each cycle card
 const PLAN_CYCLE_MONTHLY: Record<string, Partial<Record<string, number>>> = {
-  START:        { SEMIANNUALLY: 32.90,  YEARLY: 27.90  },
   PROFISSIONAL: { SEMIANNUALLY: 72.90,  YEARLY: 62.90  },
   ELITE:        { SEMIANNUALLY: 124.90, YEARLY: 104.90 },
 };
@@ -76,7 +74,7 @@ const TrialExpiredView: React.FC<{
   const [selectedComoConheceu, setSelectedComoConheceu] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [selectedCycle, setSelectedCycle] = useState<Cycle>('MONTHLY');
-  const [proCount, setProCount] = useState(1);
+
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -105,12 +103,7 @@ const TrialExpiredView: React.FC<{
   const handleSelectPlan = (planId: PlanId) => {
     setSelectedPlan(planId);
     setSelectedCycle('MONTHLY');
-    setProCount(1);
-    if (planId === 'START') {
-      setStep('procount' as Step);
-    } else {
-      setStep('cycle');
-    }
+    setStep('cycle');
     setError(null);
   };
 
@@ -150,7 +143,6 @@ const TrialExpiredView: React.FC<{
           billingType,
           cycle: selectedCycle,
           cpfCnpj: cpfCnpj.replace(/\D/g, ''),
-          extraProfessionals: selectedPlan === 'START' ? Math.max(0, proCount - 1) : 0,
         }),
       });
 
@@ -243,11 +235,7 @@ const TrialExpiredView: React.FC<{
     setError(null);
     if (step === 'payment') { setStep('cpf'); }
     else if (step === 'cpf') { setStep('cycle'); }
-    else if (step === 'cycle') {
-      if (selectedPlan === 'START') { setStep('procount'); }
-      else { setStep('plan'); setSelectedPlan(null); }
-    }
-    else if (step === 'procount') { setStep('plan'); setSelectedPlan(null); }
+    else if (step === 'cycle') { setStep('plan'); setSelectedPlan(null); }
     else if (step === 'plan') { setStep('info'); }
     else { setStep('info'); }
   };
@@ -263,7 +251,6 @@ const TrialExpiredView: React.FC<{
   const headerTitle =
     step === 'waiting' ? 'Aguardando pagamento'
     : step === 'loading' ? 'Gerando assinatura...'
-    : step === 'procount' ? 'Quantos profissionais?'
     : step === 'payment' ? 'Forma de pagamento'
     : step === 'cpf' ? 'Dados para cobranca'
     : step === 'cycle' ? 'Periodo de assinatura'
@@ -408,64 +395,10 @@ const TrialExpiredView: React.FC<{
           </div>
         )}
 
-        {/* ── Step 1.5: Professional Count (START only) ── */}
-        {step === 'procount' && (
-          <div className="space-y-6 max-w-md mx-auto">
-            <div className="text-center space-y-2">
-              <p className="text-sm font-black uppercase tracking-widest" style={{ color: '#475569' }}>Quantos profissionais?</p>
-              <p className="text-xs font-bold" style={{ color: '#94a3b8' }}>O plano Start inclui 1 profissional. Você pode adicionar mais 1 por R$ 19,90/mês.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {[1, 2].map(n => {
-                const addonPrice = PLAN_CONFIGS.START.additionalProfessionalPrice || 19.90;
-                const total = PLAN_CONFIGS.START.price + (n - 1) * addonPrice;
-                return (
-                  <button
-                    key={n}
-                    onClick={() => {
-                      setProCount(n);
-                      setStep('cycle');
-                    }}
-                    className="rounded-[24px] p-6 space-y-2 text-center transition-all hover:shadow-lg hover:border-orange-300"
-                    style={{ background: '#fff', border: '2px solid #f1f5f9' }}
-                  >
-                    <p className="text-4xl font-black" style={{ color: '#000' }}>{n}</p>
-                    <p className="text-xs font-black uppercase tracking-widest" style={{ color: '#475569' }}>
-                      {n === 1 ? 'profissional' : 'profissionais'}
-                    </p>
-                    <p className="text-xl font-black" style={{ color: '#000' }}>
-                      R$ {fmt(total)}
-                      <span className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>/mês</span>
-                    </p>
-                    {n === 2 && (
-                      <p className="text-[10px] font-bold text-orange-500">+R$ {fmt(addonPrice)} profissional adicional</p>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              onClick={() => { setStep('plan'); setSelectedPlan(null); }}
-              className="w-full py-3 text-slate-400 font-bold text-xs uppercase tracking-widest"
-            >
-              ← Voltar aos planos
-            </button>
-          </div>
-        )}
-
         {/* ── Step 2: Cycle Selection ── */}
         {step === 'cycle' && planCfg && (() => {
-          const extraPros = selectedPlan === 'START' ? Math.max(0, proCount - 1) : 0;
-          const addonMonthly = extraPros * (PLAN_CONFIGS.START.additionalProfessionalPrice || 19.90);
           return (
           <div className="space-y-6">
-            {extraPros > 0 && (
-              <div className="bg-green-50 border border-green-200 rounded-2xl p-3 text-center">
-                <p className="text-xs font-bold text-green-700">
-                  +R$ {fmt(addonMonthly)}/mês pelo profissional adicional (cobrado separado)
-                </p>
-              </div>
-            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
               {CYCLE_OPTIONS.map(opt => {
                 const total = PLAN_CYCLE_TOTALS[selectedPlan!]?.[opt.id] ?? planCfg.price;

@@ -186,7 +186,7 @@ const AffiliateDashboard: React.FC<Props> = ({ affiliate, onLogout }) => {
                       <td className="p-4">
                         <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${statusColor}`}>{t.status}</span>
                       </td>
-                      <td className="p-4 text-slate-400">{t.plan || 'START'}</td>
+                      <td className="p-4 text-slate-400">{t.plan || 'PROFISSIONAL'}</td>
                       <td className="p-4 text-slate-300 font-mono">R${fee.toFixed(2)}</td>
                       <td className="p-4 font-mono font-bold">
                         <span className={bonusActive && isNewThisMonth && t.status === 'ATIVA' ? 'text-green-400' : 'text-orange-400'}>R${comm.toFixed(2)}</span>

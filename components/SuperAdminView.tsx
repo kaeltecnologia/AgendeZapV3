@@ -141,7 +141,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [newPhone, setNewPhone] = useState('');
   const [newDueDay, setNewDueDay] = useState('');
   const [newNicho, setNewNicho] = useState('Barbearia');
-  const [newSubscriptionPlan, setNewSubscriptionPlan] = useState('START');
+  const [newSubscriptionPlan, setNewSubscriptionPlan] = useState('PROFISSIONAL');
   const [newProCount, setNewProCount] = useState(1);
   const [newIsDemo, setNewIsDemo] = useState(false);
 
@@ -541,7 +541,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
       // Also inject the shared OpenAI key if one is configured globally
       const globalCfg = await db.getGlobalConfig().catch(() => ({} as Record<string, string>));
       const inheritedKey = (globalCfg['shared_openai_key'] || '').trim();
-      const extraProsCount = newSubscriptionPlan === 'START' ? Math.max(0, newProCount - 1) : 0;
+      const extraProsCount = 0;
       await db.updateSettings(t.id, {
         themeColor: '#f97316',
         aiActive: false,
@@ -558,7 +558,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
       } catch { /* Evolution timeout is non-fatal */ }
 
       setSuccessData({ email, pass, slug, isDemo: newIsDemo });
-      setNewName(''); setNewEmail(''); setNewPass(''); setNewFee('0'); setNewPhone(''); setNewDueDay(''); setNewNicho('Barbearia'); setNewSubscriptionPlan('START'); setNewProCount(1); setNewIsDemo(false);
+      setNewName(''); setNewEmail(''); setNewPass(''); setNewFee('0'); setNewPhone(''); setNewDueDay(''); setNewNicho('Barbearia'); setNewSubscriptionPlan('PROFISSIONAL'); setNewProCount(1); setNewIsDemo(false);
       saveAdminLog('TENANT_CREATED', `${newName} (${email})${newIsDemo ? ' [DEMO]' : ''}`);
       setLogs(loadAdminLogs());
       load();
@@ -2281,10 +2281,8 @@ CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH 
                             type="button"
                             onClick={() => {
                               setNewSubscriptionPlan(p.id);
-                              if (p.id !== 'START' && p.id !== 'GRATIS') setNewProCount(1);
-                              // Auto-update fee
-                              const extra = (p.id === 'START' || p.id === 'GRATIS') ? Math.max(0, newProCount - 1) : 0;
-                              setNewFee(String((p.price + extra * (p.additionalProfessionalPrice || 0)).toFixed(2)));
+                              setNewProCount(1);
+                              setNewFee(String(p.price.toFixed(2)));
                             }}
                             className={`p-3 rounded-2xl border-2 text-center transition-all ${newSubscriptionPlan === p.id ? `${p.bgClass} ${p.borderClass}` : 'bg-white border-slate-100 hover:border-slate-300'}`}
                           >
@@ -2295,45 +2293,6 @@ CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH 
                         ))}
                       </div>
                     </div>
-                    {/* Professional count for START */}
-                    {newSubscriptionPlan === 'START' && (
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Quantidade de Profissionais</label>
-                        <div className="grid grid-cols-2 gap-3">
-                          {[1, 2].map(n => {
-                            const addonPrice = PLAN_CONFIGS.START.additionalProfessionalPrice || 19.90;
-                            const total = PLAN_CONFIGS.START.price + (n - 1) * addonPrice;
-                            return (
-                              <button
-                                key={n}
-                                type="button"
-                                onClick={() => {
-                                  setNewProCount(n);
-                                  setNewFee(String(total.toFixed(2)));
-                                }}
-                                className={`p-4 rounded-2xl border-2 text-center transition-all ${
-                                  newProCount === n
-                                    ? 'bg-green-50 border-green-300'
-                                    : 'bg-white border-slate-100 hover:border-slate-300'
-                                }`}
-                              >
-                                <p className="text-2xl font-black">{n}</p>
-                                <p className={`text-[10px] font-black uppercase ${newProCount === n ? 'text-green-700' : 'text-slate-500'}`}>
-                                  {n === 1 ? 'profissional' : 'profissionais'}
-                                </p>
-                                <p className={`text-xs font-black mt-1 ${newProCount === n ? 'text-green-600' : 'text-slate-400'}`}>
-                                  R$ {total.toFixed(2).replace('.', ',')}
-                                  <span className="text-[9px] font-bold">/mês</span>
-                                </p>
-                                {n === 2 && (
-                                  <p className="text-[8px] font-bold text-orange-500 mt-0.5">+R$ {addonPrice.toFixed(2).replace('.', ',')} adicional</p>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
                     {/* Demo / Trial toggle */}
                     <button
                       type="button"
@@ -2501,37 +2460,6 @@ CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH 
                     })}
                   </div>
                 </div>
-                {/* START plan: manual collaborator slot release */}
-                {getPlanConfig(editingTenant?.plan).id === 'START' && (
-                  <div className="space-y-1 border-t-2 border-slate-100 pt-4">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 block">
-                      Colaboradores Liberados Manualmente
-                    </label>
-                    <p className="text-[10px] text-slate-400 ml-4 mb-2">
-                      Slots adicionais liberados sem pagamento (plano Start inclui 1 profissional por padrão).
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setEditColabsReleased(Math.max(0, editColabsReleased - 1))}
-                        className="w-10 h-10 rounded-xl bg-slate-100 font-black text-slate-600 hover:bg-slate-200 transition-all text-lg flex items-center justify-center"
-                      >−</button>
-                      <div className="flex-1 p-3 bg-green-50 border-2 border-green-200 rounded-2xl text-center">
-                        <span className="text-xl font-black text-green-700">{editColabsReleased}</span>
-                        <span className="text-xs font-bold text-green-500 ml-2">slot{editColabsReleased !== 1 ? 's' : ''} extra{editColabsReleased !== 1 ? 's' : ''}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setEditColabsReleased(editColabsReleased + 1)}
-                        className="w-10 h-10 rounded-xl bg-green-500 font-black text-white hover:bg-green-600 transition-all text-lg flex items-center justify-center"
-                      >+</button>
-                    </div>
-                    <p className="text-[10px] text-green-600 font-bold ml-4 mt-1">
-                      Total permitido: {1 + editColabsReleased} profissional{1 + editColabsReleased !== 1 ? 'is' : ''}
-                    </p>
-                  </div>
-                )}
-
                 {/* Per-tenant feature overrides */}
                 <div className="space-y-2 border-t-2 border-slate-100 pt-4">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 block">Recursos Personalizados</label>

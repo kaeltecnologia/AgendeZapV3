@@ -4,7 +4,7 @@
  * START | PROFISSIONAL | ELITE
  */
 
-export type PlanId = 'GRATIS' | 'START' | 'PROFISSIONAL' | 'ELITE';
+export type PlanId = 'GRATIS' | 'PROFISSIONAL' | 'ELITE';
 
 export type FeatureKey =
   | 'agenteIA'            // Agente IA de agendamento via WhatsApp — PROFISSIONAL+
@@ -60,56 +60,6 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
       'Faturamento bruto básico',
       'Relatório de agendamentos',
       'Link de agendamento online',
-    ],
-    notIncluded: [
-      'Agente IA de agendamento via WhatsApp',
-      'Despesas e lucro líquido',
-      'Comissão automática',
-      'Ranking e metas de equipe',
-      'Caixa diário e taxas de cartão',
-      'Disparador de mensagens',
-      'Reativação automática',
-      'Social Mídia (calendário e roteiros)',
-      'Assistente admin via WhatsApp',
-    ],
-    permissions: {
-      agenteIA: false,
-      financeiro: false,
-      performance: false,
-      caixaAvancado: false,
-      relatorios: false,
-      relatoriosAvancados: false,
-      reativacao: false,
-      disparo: false,
-      socialMidia: false,
-      assistenteAdmin: false,
-    },
-  },
-
-  // ─── START ─────────────────────────────────────────────────────────
-  START: {
-    id: 'START',
-    name: 'Start',
-    subtitle: 'Plano Operacional',
-    price: 39.90,
-    additionalProfessionalPrice: 19.90,
-    maxProfessionals: 1,
-    color: '#16a34a',
-    bgClass: 'bg-green-50',
-    textClass: 'text-green-700',
-    borderClass: 'border-green-200',
-    emoji: '🟢',
-    badge: '🟢 Start',
-    features: [
-      'Confirmação automática',
-      '1 profissional incluído',
-      'Lembretes automáticos',
-      'Agenda inteligente',
-      'Faturamento bruto básico',
-      'Relatório de agendamentos',
-      'Quantidade de procedimentos',
-      'Origem dos agendamentos (visão simples)',
-      '+R$19,90 por profissional adicional',
     ],
     notIncluded: [
       'Agente IA de agendamento via WhatsApp',
@@ -231,7 +181,7 @@ export const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
   },
 };
 
-/** Resolve plan config — unknown/legacy values fallback to START. */
+/** Resolve plan config — unknown/legacy values fallback to PROFISSIONAL. */
 export function getPlanConfig(planId?: string | null): PlanConfig {
   if (planId === 'GRATIS') return PLAN_CONFIGS.GRATIS;
   if (planId === 'PROFISSIONAL') return PLAN_CONFIGS.PROFISSIONAL;
@@ -239,8 +189,9 @@ export function getPlanConfig(planId?: string | null): PlanConfig {
   // Legacy aliases
   if (planId === 'PRO') return PLAN_CONFIGS.PROFISSIONAL;
   if (planId === 'ENTERPRISE') return PLAN_CONFIGS.ELITE;
-  if (planId === 'basico') return PLAN_CONFIGS.PROFISSIONAL; // plano legado = PROFISSIONAL
-  return PLAN_CONFIGS.START;
+  if (planId === 'basico') return PLAN_CONFIGS.PROFISSIONAL;
+  if (planId === 'START') return PLAN_CONFIGS.PROFISSIONAL; // plano descontinuado
+  return PLAN_CONFIGS.PROFISSIONAL;
 }
 
 /** Check if a given plan has access to a feature. */
@@ -253,7 +204,7 @@ export function hasFeature(planId: string | null | undefined, feature: FeatureKe
  * Used in upgrade prompts.
  */
 export function cheapestUpgradePlan(feature: FeatureKey): PlanConfig {
-  const order: PlanId[] = ['GRATIS', 'START', 'PROFISSIONAL', 'ELITE'];
+  const order: PlanId[] = ['GRATIS', 'PROFISSIONAL', 'ELITE'];
   for (const id of order) {
     if (PLAN_CONFIGS[id].permissions[feature]) return PLAN_CONFIGS[id];
   }

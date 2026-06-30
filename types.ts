@@ -427,7 +427,7 @@ export interface Tenant {
   due_day?: number;         // payment due day of month (1-31)
   evolution_instance?: string;
   nicho?: string;           // business niche e.g. 'Barbearia', 'Salão de Beleza'
-  plan: string; // 'START' | 'PROFISSIONAL' | 'ELITE' (legacy: 'BASIC' | 'PRO' | 'ENTERPRISE')
+  plan: string; // 'PROFISSIONAL' | 'ELITE' | 'GRATIS' (legacy: 'START' | 'BASIC' | 'PRO' | 'ENTERPRISE')
   status: TenantStatus;
   monthlyFee: number;
   createdAt: string;

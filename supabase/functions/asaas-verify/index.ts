@@ -29,7 +29,6 @@ function json(data: unknown, status = 200) {
 }
 
 const PLAN_PRICES: Record<string, number> = {
-  START: 39.90,
   PROFISSIONAL: 89.90,
   ELITE: 149.90,
 };
@@ -78,7 +77,7 @@ Deno.serve(async (req) => {
     );
 
     if (paidPayment) {
-      const planId = fup._asaasPlanId || 'START';
+      const planId = fup._asaasPlanId || 'PROFISSIONAL';
 
       // Activate tenant
       await supabase.from('tenants').update({

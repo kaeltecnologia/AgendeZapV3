@@ -42,14 +42,12 @@ const CYCLE_OPTIONS: { id: Cycle; label: string; months: number; tag?: string }[
 
 // Exact billing total per plan per cycle
 const PLAN_CYCLE_TOTALS: Record<string, Partial<Record<string, number>>> = {
-  START:        { SEMIANNUALLY: 197.40, YEARLY: 334.80  },
   PROFISSIONAL: { SEMIANNUALLY: 437.40, YEARLY: 754.80  },
   ELITE:        { SEMIANNUALLY: 749.40, YEARLY: 1258.80 },
 };
 
 // Monthly equivalent price per plan per cycle (for display)
 const PLAN_CYCLE_MONTHLY: Record<string, Partial<Record<string, number>>> = {
-  START:        { SEMIANNUALLY: 32.90,  YEARLY: 27.90  },
   PROFISSIONAL: { SEMIANNUALLY: 72.90,  YEARLY: 62.90  },
   ELITE:        { SEMIANNUALLY: 124.90, YEARLY: 104.90 },
 };

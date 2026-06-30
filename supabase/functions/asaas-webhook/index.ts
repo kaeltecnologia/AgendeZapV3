@@ -40,7 +40,6 @@ function parseRef(ref?: string): { planId: string | null; cycle: string | null }
 
 // Plan prices (must match planConfig.ts)
 const PLAN_PRICES: Record<string, number> = {
-  START: 39.90,
   PROFISSIONAL: 89.90,
   ELITE: 149.90,
 };
@@ -109,7 +108,7 @@ Deno.serve(async (req) => {
     tenantId = rows[0].tenant_id;
     fup = rows[0].follow_up || {};
     const ref = parseRef(extRef);
-    const planId = ref.planId || fup._asaasPlanId || 'START';
+    const planId = ref.planId || fup._asaasPlanId || 'PROFISSIONAL';
     const cycle = ref.cycle || fup._asaasCycle || 'MONTHLY';
 
     console.log(`[asaas-webhook] Tenant: ${tenantId}, plan: ${planId}, cycle: ${cycle}, event: ${event}`);

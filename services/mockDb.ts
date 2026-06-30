@@ -149,7 +149,7 @@ class DatabaseService {
         due_day: t.due_day ? Number(t.due_day) : undefined,
         evolution_instance: t.evolution_instance,
         nicho: t.nicho || 'Barbearia',
-        plan: t.plan || 'START',
+        plan: t.plan || 'PROFISSIONAL',
         status: t.status as TenantStatus,
         monthlyFee: Number(t.mensalidade || 0),
         createdAt: t.created_at,
@@ -187,7 +187,7 @@ class DatabaseService {
         due_day: data.due_day ? Number(data.due_day) : undefined,
         evolution_instance: data.evolution_instance,
         nicho: data.nicho ?? undefined,
-        plan: data.plano || data.plan || 'START',
+        plan: data.plano || data.plan || 'PROFISSIONAL',
         status: data.status as TenantStatus,
         monthlyFee: Number(data.mensalidade || 0),
         createdAt: data.created_at,
@@ -226,7 +226,7 @@ class DatabaseService {
         due_day: data.due_day ? Number(data.due_day) : undefined,
         evolution_instance: data.evolution_instance,
         nicho: data.nicho ?? undefined,
-        plan: data.plano || data.plan || 'START',
+        plan: data.plano || data.plan || 'PROFISSIONAL',
         status: data.status as TenantStatus,
         monthlyFee: Number(data.mensalidade || 0),
         createdAt: data.created_at,
@@ -256,7 +256,7 @@ class DatabaseService {
         email: tenant.email,
         password: tenant.password,
         phone: tenant.phone,
-        plan: tenant.subscriptionPlan || tenant.plan || 'START',
+        plan: tenant.subscriptionPlan || tenant.plan || 'PROFISSIONAL',
         status: tenant.status || TenantStatus.ACTIVE,
         mensalidade: tenant.monthlyFee || 0,
         nicho: tenant.nicho || 'Barbearia',
@@ -1424,13 +1424,13 @@ class DatabaseService {
         supabase.from('tenant_settings').select('tenant_id, follow_up'),
         supabase.from('tenants').select('id, nome, plan')
       ]);
-      const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, { name: t.nome || 'Sem Nome', plan: t.plan || 'START' }]));
+      const tenantMap = Object.fromEntries((tenants || []).map(t => [t.id, { name: t.nome || 'Sem Nome', plan: t.plan || 'PROFISSIONAL' }]));
       return (settings || [])
         .filter(s => s.follow_up?._supportRequest?.status === 'pending')
         .map(s => ({
           tenantId: s.tenant_id,
           tenantName: tenantMap[s.tenant_id]?.name || 'Desconhecido',
-          plan: tenantMap[s.tenant_id]?.plan || 'START',
+          plan: tenantMap[s.tenant_id]?.plan || 'PROFISSIONAL',
           request: s.follow_up._supportRequest
         }));
     } catch (e) { console.error('Error getting support requests:', e); return []; }
@@ -1461,7 +1461,7 @@ class DatabaseService {
       slug,
       email,
       password,
-      plan: 'START',
+      plan: 'PROFISSIONAL',
       status: TenantStatus.ACTIVE,
       monthlyFee: 0
     });
@@ -2906,7 +2906,7 @@ class DatabaseService {
         pixBonus: active.length >= 5 ? totalRev * 0.10 : 0,
         referrals: all.map(t => ({
           id: t.id, name: t.nome || 'Sem Nome', status: t.status,
-          plan: t.plan || 'START', monthlyFee: Number(t.mensalidade || 0), createdAt: t.created_at,
+          plan: t.plan || 'PROFISSIONAL', monthlyFee: Number(t.mensalidade || 0), createdAt: t.created_at,
         })),
       };
       _cache.set(ck, result, TTL_MED);
@@ -2937,7 +2937,7 @@ class DatabaseService {
       }
       return (data || []).map(t => ({
         referredId: t.id, referredName: t.nome || 'Sem Nome', referredStatus: t.status,
-        referredPlan: t.plan || 'START', referredFee: Number(t.mensalidade || 0),
+        referredPlan: t.plan || 'PROFISSIONAL', referredFee: Number(t.mensalidade || 0),
         referredCreatedAt: t.created_at, referrerId: t.referred_by,
         referrerName: referrerMap[t.referred_by] || 'Desconhecido',
       }));

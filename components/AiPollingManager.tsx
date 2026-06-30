@@ -642,7 +642,7 @@ const AiPollingManager: React.FC<{
               await evolutionService.sendMessage(
                 instanceName,
                 tenant.phone,
-                `⏰ *Seu teste gratuito termina amanhã!*\n\nEscolha um plano para continuar:\n\n🟢 *Start* — R$ 39,90/mês · Agenda + lembretes\n🔵 *Profissional* — R$ 89,90/mês · 🤖 Agente IA + relatórios\n🟣 *Elite* — R$ 149,90/mês · Tudo ilimitado\n\nAcesse o sistema e clique em "Ver planos" para continuar. 🚀`
+                `⏰ *Seu teste gratuito termina amanhã!*\n\nEscolha um plano para continuar:\n\n🔵 *Profissional* — R$ 89,90/mês · 🤖 Agente IA + relatórios\n🟣 *Elite* — R$ 149,90/mês · Tudo ilimitado\n\nAcesse o sistema e clique em "Ver planos" para continuar. 🚀`
               );
               await db.updateSettings(tenantId, { trialWarningSent: true });
               console.log('[Trial] Aviso do dia 6 enviado para', maskPhone(tenant.phone));

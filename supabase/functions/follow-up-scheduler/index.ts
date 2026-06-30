@@ -1364,7 +1364,7 @@ Deno.serve(async (_req) => {
       if (gNow.getUTCDate() === 1 && gHHMM >= '03:00' && gHHMM < '03:10') {
         const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY') || '';
         const ASAAS_API_URL = Deno.env.get('ASAAS_API_URL') || 'https://api.asaas.com/v3';
-        const PLAN_PRICES: Record<string, number> = { START: 39.90, PROFISSIONAL: 89.90, ELITE: 149.90 };
+        const PLAN_PRICES: Record<string, number> = { PROFISSIONAL: 89.90, ELITE: 149.90 };
         const CYCLE_CFG: Record<string, { m: number; d: number }> = {
           MONTHLY: { m: 1, d: 0 }, QUARTERLY: { m: 3, d: 0.10 },
           SEMIANNUALLY: { m: 6, d: 0.15 }, YEARLY: { m: 12, d: 0.25 },
@@ -1508,7 +1508,7 @@ Deno.serve(async (_req) => {
 
           const msg = `🔔 *Nova venda pelo seu link!*\n\n` +
             `*${as_.nome}* acabou de se cadastrar no AgendeZap!\n\n` +
-            `📋 Plano: *${as_.plan || 'START'}*\n` +
+            `📋 Plano: *${as_.plan || 'PROFISSIONAL'}*\n` +
             `📊 Status: *${as_.status}*\n` +
             `💰 Sua comissão: *${affLink.commission_percent}%*\n\n` +
             `Obrigado pela parceria! 🤝`;
