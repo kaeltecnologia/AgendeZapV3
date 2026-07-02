@@ -1172,6 +1172,7 @@ class DatabaseService {
       inventory: [],
       products: []
     };
+    let fetchFailed = false;
     try {
       const { data, error } = await supabase.from('tenant_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
       if (error) throw error;
@@ -1265,8 +1266,12 @@ class DatabaseService {
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
+      fetchFailed = true;
     }
-    _cache.set(ck, defaults, TTL_LONG);
+    // Only cache defaults when tenant truly has no settings row.
+    // On fetch error: skip cache so the next call retries the DB read
+    // instead of reading stale defaults and overwriting real data via updateSettings.
+    if (!fetchFailed) _cache.set(ck, defaults, TTL_LONG);
     return defaults;
   }
 
