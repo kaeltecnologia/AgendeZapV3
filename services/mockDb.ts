@@ -93,6 +93,10 @@ function toLocalISO(d: Date): string {
 // writing connectionStatus while agenda writes profAgendaSent).
 const _settingsQueue = new Map<string, Promise<void>>();
 
+// Tracks tenants whose last getSettings DB read failed. updateSettings checks
+// this before writing to avoid overwriting real data with empty defaults.
+const _settingsFetchFailed = new Set<string>();
+
 class DatabaseService {
   private connectionStatus: 'online' | 'offline' | 'checking' = 'checking';
 
@@ -1172,7 +1176,6 @@ class DatabaseService {
       inventory: [],
       products: []
     };
-    let fetchFailed = false;
     try {
       const { data, error } = await supabase.from('tenant_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
       if (error) throw error;
@@ -1262,16 +1265,18 @@ class DatabaseService {
           hideAiDisclaimer: fu._hideAiDisclaimer ?? false,
         };
         _cache.set(ck, result, TTL_LONG);
+        _settingsFetchFailed.delete(tenantId);
         return result;
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
-      fetchFailed = true;
+      // Mark failure so _doUpdateSettings aborts the write and protects existing data.
+      _settingsFetchFailed.add(tenantId);
+      return defaults;
     }
-    // Only cache defaults when tenant truly has no settings row.
-    // On fetch error: skip cache so the next call retries the DB read
-    // instead of reading stale defaults and overwriting real data via updateSettings.
-    if (!fetchFailed) _cache.set(ck, defaults, TTL_LONG);
+    // No row in DB — tenant has no settings yet. Cache defaults and clear any old failure flag.
+    _settingsFetchFailed.delete(tenantId);
+    _cache.set(ck, defaults, TTL_LONG);
     return defaults;
   }
 
@@ -1291,6 +1296,15 @@ class DatabaseService {
       // Invalidate cache BEFORE reading to ensure fresh data
       _cache.invalidate(`getSettings:${tenantId}`);
       const curr = await this.getSettings(tenantId);
+
+      // Guard: if the DB read failed, curr is empty defaults — abort the write
+      // to avoid overwriting breaks, intervals, follow-up modes, etc. with blank values.
+      if (_settingsFetchFailed.has(tenantId)) {
+        console.warn(`[mockDb] updateSettings aborted for ${tenantId} — DB read failed, existing data protected`);
+        _settingsFetchFailed.delete(tenantId);
+        return;
+      }
+
       const newS = { ...curr, ...updates };
 
       // Merge ALL metadata back into follow_up JSONB so nothing is lost
