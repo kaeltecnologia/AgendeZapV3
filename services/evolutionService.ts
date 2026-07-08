@@ -351,11 +351,8 @@ export const evolutionService = {
         });
       }
       if (!res.ok) return false;
-      // Guard against HTTP 200 with {error:true} in body (some Evolution API versions do this)
-      try {
-        const body = await res.clone().json();
-        if (body?.error === true || body?.status === 'error') return false;
-      } catch { /* body not JSON — treat as success */ }
+      // Evolution API 2.3.7: POST /restart returns HTTP 200 + {error:true,"message":"[object Object]"}
+      // even when the restart was accepted. Treat HTTP 2xx as success regardless of body.
       return true;
     } catch {
       return false;
@@ -420,23 +417,37 @@ export const evolutionService = {
             throw new Error(`${errData.message || 'Erro ao recriar instância.'} (HTTP ${createRes.status})`);
           }
         } else {
-          // Normal disconnect: try restart first (faster), fall back to delete+create
-          const restarted = await this.restartInstance(instanceName);
-          if (!restarted) {
-            await this.deleteInstance(instanceName);
-            await this.sleep(1500);
-            const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                instanceName,
-                qrcode: true,
-                integration: "WHATSAPP-BAILEYS"
-              })
-            });
-            if (!createRes.ok && createRes.status !== 409) {
-              const errData = await createRes.json().catch(() => ({}));
-              throw new Error(`${errData.message || 'Erro ao recriar instância.'} (HTTP ${createRes.status})`);
+          // If already waiting for QR (connecting), go straight to connect — no restart needed.
+          // Restarting a 'connecting' instance is a no-op at best and deletes session data at worst.
+          const alreadyConnecting = connStatus === 'CONNECTING';
+          if (!alreadyConnecting) {
+            // Normal disconnect: try restart first (faster), fall back to delete+create.
+            // Evolution API 2.3.7 bug: POST /restart returns HTTP 200 + {error:true} even when
+            // the restart actually succeeded. Verify real status before deciding to delete.
+            const restarted = await this.restartInstance(instanceName);
+            if (!restarted) {
+              // Double-check: if instance moved to connecting/open the restart did work despite
+              // the error body — skip delete to preserve the WhatsApp session.
+              await this.sleep(1500);
+              const postRestartStatus = await this.checkStatus(instanceName);
+              const restartActuallyWorked = postRestartStatus === 'open' || postRestartStatus === 'connecting';
+              if (!restartActuallyWorked) {
+                await this.deleteInstance(instanceName);
+                await this.sleep(1500);
+                const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify({
+                    instanceName,
+                    qrcode: true,
+                    integration: "WHATSAPP-BAILEYS"
+                  })
+                });
+                if (!createRes.ok && createRes.status !== 409) {
+                  const errData = await createRes.json().catch(() => ({}));
+                  throw new Error(`${errData.message || 'Erro ao recriar instância.'} (HTTP ${createRes.status})`);
+                }
+              }
             }
           }
         }
