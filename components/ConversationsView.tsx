@@ -423,7 +423,10 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
   );
 
   const transcribeMsg = useCallback(async (msg: ConvMessage) => {
-    if (!msg.rawMsg || !apiKey || !instanceName) return;
+    if (!msg.rawMsg || !apiKey || !instanceName) {
+      console.warn('[transcribeMsg] Abortado — rawMsg:', !!msg.rawMsg, '| apiKey:', !!apiKey, '| instanceName:', !!instanceName);
+      return;
+    }
     if (transcriptions[msg.id] || transcribing.has(msg.id)) return;
     setTranscribing(prev => new Set(prev).add(msg.id));
     try {
