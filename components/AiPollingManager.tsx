@@ -4,7 +4,7 @@ import { db } from '../services/mockDb';
 import { supabase } from '../services/supabase';
 import { handleMessage, checkShouldGreet } from '../services/agentService';
 import { handleProfessionalMessage } from '../services/professionalAgentService';
-import { runFollowUp, runDailyProfessionalAgenda } from '../services/followUpService';
+import { runFollowUp, runDailyProfessionalAgenda, runBirthdayMessages } from '../services/followUpService';
 import { runSubscriptionCycle } from '../services/subscriptionService';
 import { runRatingRequests } from '../services/ratingService';
 import { fetchAudioBase64, transcribeAudio } from '../services/pollingService';
@@ -622,6 +622,7 @@ const AiPollingManager: React.FC<{
         const tenant = await db.getTenant(tenantId);
         if (tenant) await runFollowUp(tenant);
         if (tenant) await runDailyProfessionalAgenda(tenant);
+        if (tenant) await runBirthdayMessages(tenant);
         if (tenant) await runRatingRequests(tenant);
 
         // ── Subscription cycle ──────────────────────────────────────

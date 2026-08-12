@@ -33,7 +33,9 @@ function interpolate(template: string, vars: Record<string, string>): string {
     .replace(/\{dia\}/gi, vars.dia || '')
     .replace(/\{hora\}/gi, vars.hora || '')
     .replace(/\{servico\}/gi, vars.servico || '')
-    .replace(/\{profissional\}/gi, vars.profissional || '');
+    .replace(/\{profissional\}/gi, vars.profissional || '')
+    .replace(/\{telefone\}/gi, vars.telefone || '')
+    .replace(/\{idade\}/gi, vars.idade || '');
 }
 
 function pad(n: number) {
@@ -481,5 +483,137 @@ export async function runDailyProfessionalAgenda(tenant: any): Promise<void> {
     }
   } finally {
     runningAgenda.delete(tenantId);
+  }
+}
+
+// ─── Birthday messages ──────────────────────────────────────────────────
+// Sends a WhatsApp message to each customer whose birthday matches today
+// (adjusted by the mode's daysBefore). Dedup is per customer per YEAR, not
+// per day, since this only needs to fire once a year.
+const runningBirthday = new Set<string>();
+
+// Dedup: persisted in localStorage so page reloads don't re-send. This is
+// only a race-condition backstop — the real yearly dedup lives in
+// settings.aniversarioSent (DB), so a short TTL is enough here.
+const birthdaySentMemory = new Set<string>(); // "tenantId::custId::YYYY"
+const _BIRTHDAY_LS_KEY = 'agz_birthday_sent';
+const _BIRTHDAY_LS_TTL = 48 * 60 * 60 * 1000; // 48h
+
+function _loadBirthdaySentLS(): void {
+  try {
+    const raw = localStorage.getItem(_BIRTHDAY_LS_KEY);
+    if (!raw) return;
+    const items: Array<[string, number]> = JSON.parse(raw);
+    const cutoff = Date.now() - _BIRTHDAY_LS_TTL;
+    for (const [key, ts] of items) {
+      if (ts > cutoff) birthdaySentMemory.add(key);
+    }
+  } catch { /* ignore */ }
+}
+
+function _persistBirthdaySent(key: string): void {
+  birthdaySentMemory.add(key);
+  try {
+    const raw = localStorage.getItem(_BIRTHDAY_LS_KEY);
+    const items: Array<[string, number]> = raw ? JSON.parse(raw) : [];
+    const cutoff = Date.now() - _BIRTHDAY_LS_TTL;
+    const fresh = items.filter(([, ts]) => ts > cutoff);
+    fresh.push([key, Date.now()]);
+    localStorage.setItem(_BIRTHDAY_LS_KEY, JSON.stringify(fresh.slice(-500)));
+  } catch { /* ignore storage errors */ }
+}
+
+_loadBirthdaySentLS();
+
+function getCustAniversarioModeId(customerData: Record<string, any>, custId: string, modes: any[]): string {
+  const cd = customerData[custId] || {};
+  const stored = cd.aniversarioModeId;
+  if (stored && stored !== 'standard') return stored;
+  return modes.find((m: any) => m.active)?.id || stored || 'standard';
+}
+
+// "YYYY-MM-DD" birthDate → { month, day } for this year, folding 29/fev onto
+// 28/fev in non-leap years so those customers still get a message.
+function birthdayOccurrenceThisYear(birthDate: string, year: number): { month: number; day: number } | null {
+  const [, bm, bd] = birthDate.split('-').map(Number);
+  if (!bm || !bd) return null;
+  if (bm === 2 && bd === 29) {
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    if (!isLeap) return { month: 2, day: 28 };
+  }
+  return { month: bm, day: bd };
+}
+
+export async function runBirthdayMessages(tenant: any): Promise<void> {
+  const tenantId: string = tenant.id;
+  const instance: string = tenant.evolution_instance;
+  if (!instance) return;
+  if (runningBirthday.has(tenantId)) return;
+  runningBirthday.add(tenantId);
+
+  try {
+    const [settings, customers] = await Promise.all([
+      db.getSettings(tenantId),
+      db.getCustomers(tenantId),
+    ]);
+
+    const modes = settings.aniversarioModes || [];
+    if (!modes.length) return;
+
+    const connStatus = (settings as any).connectionStatus as string | undefined;
+    if (connStatus === 'close' || connStatus === 'connecting') return;
+
+    const now = new Date();
+    const nowDate = localDateStr(now);
+    const nowHHMM = localHHMM(now);
+    const nowYear = now.getFullYear();
+
+    const newSent: Record<string, string> = { ...(settings.aniversarioSent || {}) };
+    let anySent = false;
+    const customerData = settings.customerData || {};
+
+    for (const cust of customers) {
+      if (!cust.active || !cust.phone || !cust.birthDate) continue;
+
+      const occ = birthdayOccurrenceThisYear(cust.birthDate, nowYear);
+      if (!occ) continue;
+
+      const mode = modes.find((m: any) => m.id === getCustAniversarioModeId(customerData, cust.id, modes) && m.active);
+      if (!mode) continue;
+
+      const daysBefore = mode.daysBefore || 0;
+      const sendDateObj = new Date(nowYear, occ.month - 1, occ.day);
+      sendDateObj.setDate(sendDateObj.getDate() - daysBefore);
+      const sendDate = localDateStr(sendDateObj);
+      if (sendDate !== nowDate) continue;
+
+      const fixedHHMM = mode.fixedTime || '09:00';
+      if (nowHHMM < fixedHHMM) continue;
+
+      const sentKey = `${cust.id}::${nowYear}`;
+      const memKey = `${tenantId}::${sentKey}`;
+      if (birthdaySentMemory.has(memKey) || newSent[sentKey]) continue;
+
+      const birthYear = Number(cust.birthDate.split('-')[0]) || undefined;
+      const idade = birthYear ? String(nowYear - birthYear) : '';
+
+      const msg = interpolate(mode.message, { nome: cust.name, telefone: cust.phone, idade });
+
+      try {
+        await evolutionService.sendMessage(instance, cust.phone, msg);
+        newSent[sentKey] = nowDate;
+        _persistBirthdaySent(memKey);
+        anySent = true;
+        console.log(`[Aniversario] Enviado para ${cust.name} (${maskPhone(cust.phone)})`);
+      } catch (e: any) {
+        console.error(`[Aniversario] Erro ao enviar para ${maskPhone(cust.phone)}:`, e.message);
+      }
+    }
+
+    if (anySent) {
+      await db.updateSettings(tenantId, { aniversarioSent: newSent });
+    }
+  } finally {
+    runningBirthday.delete(tenantId);
   }
 }

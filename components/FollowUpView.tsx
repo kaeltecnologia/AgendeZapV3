@@ -4,7 +4,7 @@ import { db } from '../services/mockDb';
 import { FollowUpNamedMode } from '../types';
 import { FeatureKey, hasFeature } from '../config/planConfig';
 
-type ModeTab = 'aviso' | 'lembrete' | 'reativacao';
+type ModeTab = 'aviso' | 'lembrete' | 'reativacao' | 'aniversario';
 type MainTab = ModeTab;
 
 function generateId(): string {
@@ -13,10 +13,11 @@ function generateId(): string {
     : Math.random().toString(36).substring(2, 11);
 }
 
-const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days'; customerModeField: 'avisoModeId' | 'lembreteModeId' | 'reativacaoModeId' }> = {
-  aviso: { label: 'Check-in Diário', icon: '📢', tabKey: 'avisoModes', timingLabel: 'Horário de envio', timingType: 'fixed', customerModeField: 'avisoModeId' },
-  lembrete: { label: 'Lembrete Próximo', icon: '🕒', tabKey: 'lembreteModes', timingLabel: 'Antecipar em (minutos)', timingType: 'minutes', customerModeField: 'lembreteModeId' },
-  reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId' }
+const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes' | 'aniversarioModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days'; customerModeField: 'avisoModeId' | 'lembreteModeId' | 'reativacaoModeId' | 'aniversarioModeId'; variables: string[] }> = {
+  aviso: { label: 'Check-in Diário', icon: '📢', tabKey: 'avisoModes', timingLabel: 'Horário de envio', timingType: 'fixed', customerModeField: 'avisoModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'] },
+  lembrete: { label: 'Lembrete Próximo', icon: '🕒', tabKey: 'lembreteModes', timingLabel: 'Antecipar em (minutos)', timingType: 'minutes', customerModeField: 'lembreteModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'] },
+  reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'] },
+  aniversario: { label: 'Aniversário', icon: '🎂', tabKey: 'aniversarioModes', timingLabel: 'Quando enviar', timingType: 'fixed', customerModeField: 'aniversarioModeId', variables: ['{nome}', '{telefone}', '{idade}'] },
 };
 
 const PRESET_TEMPLATES: Record<ModeTab, { name: string; message: string; timing: number; fixedTime?: string; daysBefore?: number }[]> = {
@@ -77,6 +78,29 @@ const PRESET_TEMPLATES: Record<ModeTab, { name: string; message: string; timing:
       timing: 90,
     },
   ],
+  aniversario: [
+    {
+      name: 'Feliz Aniversário',
+      message: 'Feliz Aniversário, {nome}! 🎉🎂\n\nToda a nossa equipe deseja um dia incrível, cheio de alegria e saúde!\n\nPassa aqui pra gente comemorar juntos! 🥳',
+      timing: 0,
+      fixedTime: '09:00',
+      daysBefore: 0,
+    },
+    {
+      name: 'Aniversário com Desconto',
+      message: 'Parabéns, {nome}! 🎂🎉\n\nHoje é seu dia e queremos celebrar com você! De presente, preparamos *10% de desconto* em qualquer procedimento essa semana. 🎁\n\nBora agendar? Estamos te esperando! 💫',
+      timing: 0,
+      fixedTime: '09:00',
+      daysBefore: 0,
+    },
+    {
+      name: 'Carinho e Gratidão',
+      message: '{nome}, hoje o dia é seu! 🎈\n\nQueremos deixar registrado nosso carinho e desejar um ano novo cheio de conquistas. Obrigado por fazer parte da nossa história! 🙏💛',
+      timing: 0,
+      fixedTime: '09:00',
+      daysBefore: 0,
+    },
+  ],
 };
 
 const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?: (feature: FeatureKey) => void; refreshTicker?: number }> = ({ tenantId, tenantPlan, onUpgrade, refreshTicker = 0 }) => {
@@ -85,6 +109,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
   const [avisoModes, setAvisoModes] = useState<FollowUpNamedMode[]>([]);
   const [lembreteModes, setLembreteModes] = useState<FollowUpNamedMode[]>([]);
   const [reativacaoModes, setReativacaoModes] = useState<FollowUpNamedMode[]>([]);
+  const [aniversarioModes, setAniversarioModes] = useState<FollowUpNamedMode[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -132,6 +157,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
     setAvisoModes(s.avisoModes || []);
     setLembreteModes(s.lembreteModes || []);
     setReativacaoModes(s.reativacaoModes || []);
+    setAniversarioModes(s.aniversarioModes || []);
     firstLoad.current = false;
     setLoading(false);
   }, [tenantId, refreshTicker]);
@@ -145,11 +171,12 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
     setNewName(''); setNewMsg(''); setNewTiming(60); setNewFixedTime('08:00'); setNewDaysBefore(0);
   }
 
-  const getModes = (tab: MainTab) => tab === 'aviso' ? avisoModes : tab === 'lembrete' ? lembreteModes : reativacaoModes;
+  const getModes = (tab: MainTab) => tab === 'aviso' ? avisoModes : tab === 'lembrete' ? lembreteModes : tab === 'reativacao' ? reativacaoModes : aniversarioModes;
   const setModes = (tab: MainTab, modes: FollowUpNamedMode[]) => {
     if (tab === 'aviso') setAvisoModes(modes);
     else if (tab === 'lembrete') setLembreteModes(modes);
-    else setReativacaoModes(modes);
+    else if (tab === 'reativacao') setReativacaoModes(modes);
+    else setAniversarioModes(modes);
   };
   const getKey = (tab: MainTab) => TAB_CONFIG[tab].tabKey;
 
@@ -237,7 +264,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
       fixedTime: cfg.timingType === 'fixed' ? (tpl.fixedTime || '08:00') : undefined,
       ...(cfg.timingType === 'fixed' ? { daysBefore: tpl.daysBefore ?? 0 } : {}),
     };
-    const current = tab === 'aviso' ? avisoModes : tab === 'lembrete' ? lembreteModes : reativacaoModes;
+    const current = getModes(tab);
     const updated = [...current, mode];
     await db.updateSettings(tenantId, { [cfg.tabKey]: updated });
     setModes(tab, updated);
@@ -259,7 +286,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
       {/* Tabs */}
       <div className="flex bg-slate-100 p-1 sm:p-2 rounded-[30px] shadow-sm overflow-x-auto">
         {(Object.entries(TAB_CONFIG) as [ModeTab, typeof TAB_CONFIG[ModeTab]][]).map(([key, c]) => {
-          const tabModes = key === 'aviso' ? avisoModes : key === 'lembrete' ? lembreteModes : reativacaoModes;
+          const tabModes = getModes(key);
           const activeCount = tabModes.filter(m => m.active).length;
           return (
             <Tab key={key} active={activeTab === key} count={activeCount} onClick={() => {
@@ -313,12 +340,12 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
               rows={4}
               value={newMsg}
               onChange={e => setNewMsg(e.target.value)}
-              placeholder="Mensagem que será enviada via WhatsApp... Use {nome}, {dia}, {hora}, {servico}, {profissional}"
+              placeholder={`Mensagem que será enviada via WhatsApp... Use ${cfg.variables.join(', ')}`}
               className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl outline-none font-bold resize-none focus:border-orange-500 transition-all text-sm leading-relaxed"
             />
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">inserir:</span>
-              {['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'].map(v => (
+              {cfg.variables.map(v => (
                 <Tag key={v} label={v} onClick={() => insertVar(v, addMsgRef, newMsg, setNewMsg)} />
               ))}
             </div>
@@ -430,7 +457,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
                   />
                   <div className="flex flex-wrap gap-2 items-center">
                     <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">inserir:</span>
-                    {['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'].map(v => (
+                    {cfg.variables.map(v => (
                       <Tag key={v} label={v} onClick={() => insertVar(v, editMsgRef, editFields.message || '', (val) => setEditFields(f => ({ ...f, message: val })))} />
                     ))}
                   </div>

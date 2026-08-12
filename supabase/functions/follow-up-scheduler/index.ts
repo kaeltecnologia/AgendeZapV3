@@ -53,7 +53,9 @@ function interpolate(template: string, vars: Record<string, string>): string {
     .replace(/\{dia\}/gi, vars.dia || '')
     .replace(/\{hora\}/gi, vars.hora || '')
     .replace(/\{servico\}/gi, vars.servico || '')
-    .replace(/\{profissional\}/gi, vars.profissional || '');
+    .replace(/\{profissional\}/gi, vars.profissional || '')
+    .replace(/\{telefone\}/gi, vars.telefone || '')
+    .replace(/\{idade\}/gi, vars.idade || '');
 }
 
 // ── Evolution API ─────────────────────────────────────────────────────
@@ -206,9 +208,11 @@ interface FollowUpSettings {
   avisoModes: any[];
   lembreteModes: any[];
   reativacaoModes: any[];
+  aniversarioModes: any[];
   customerData: Record<string, any>;
   followUpSent: Record<string, string>;
   profAgendaSent: Record<string, string>;
+  aniversarioSent: Record<string, string>;
   agendaDiariaHora: string;
   ratingEnabled: boolean;
   ratingSent: Record<string, string>;
@@ -222,9 +226,11 @@ function parseSettings(row: any): FollowUpSettings {
     avisoModes: fu._avisoModes || [],
     lembreteModes: fu._lembreteModes || [],
     reativacaoModes: fu._reativacaoModes || [],
+    aniversarioModes: fu._aniversarioModes || [],
     customerData: fu._customerData || {},
     followUpSent: fu._followUpSent || {},
     profAgendaSent: fu._profAgendaSent || {},
+    aniversarioSent: fu._aniversarioSent || {},
     agendaDiariaHora: fu._agendaDiariaHora || '00:01',
     ratingEnabled: fu._ratingEnabled ?? false,
     ratingSent: fu._ratingSent || {},
@@ -261,7 +267,7 @@ async function saveFollowUpField(tenantId: string, _rawFollowUp: Record<string, 
  * Falls back to the first active mode if the customer has no specific assignment
  * (new customers default to 'standard' which may not match any real mode UUID).
  */
-function getCustModeId(customerData: Record<string, any>, custId: string, type: 'aviso' | 'lembrete' | 'reativacao', modes: any[]): string {
+function getCustModeId(customerData: Record<string, any>, custId: string, type: 'aviso' | 'lembrete' | 'reativacao' | 'aniversario', modes: any[]): string {
   const cd = customerData[custId] || {};
   const key = `${type}ModeId`;
   const stored = cd[key];
@@ -358,9 +364,11 @@ Deno.serve(async (_req) => {
           id: c.id,
           name: c.nome || 'Sem Nome',
           phone: c.telefone || '',
+          birthDate: c.birth_date || null,
           avisoModeId: getCustModeId(settings.customerData, c.id, 'aviso', settings.avisoModes),
           lembreteModeId: getCustModeId(settings.customerData, c.id, 'lembrete', settings.lembreteModes),
           reativacaoModeId: getCustModeId(settings.customerData, c.id, 'reativacao', settings.reativacaoModes),
+          aniversarioModeId: getCustModeId(settings.customerData, c.id, 'aniversario', settings.aniversarioModes),
         }));
         const services = (svcsResult.data || []).map((s: any) => ({
           id: s.id, name: s.nome || '',
@@ -382,7 +390,9 @@ Deno.serve(async (_req) => {
         const newFollowUpSent = { ...settings.followUpSent };
         const newProfAgendaSent = { ...settings.profAgendaSent };
         const newRatingSent = { ...settings.ratingSent };
+        const newAniversarioSent = { ...settings.aniversarioSent };
         let anyFollowUpSent = false;
+        let anyAniversarioSent = false;
         let anyAgendaSent = false;
         let anyRatingSent = false;
 
@@ -719,6 +729,55 @@ Deno.serve(async (_req) => {
           }
         }
 
+        // ── ANIVERSÁRIO (mensagem de aniversário) ──────────────────────
+        if (settings.aniversarioModes.length > 0) {
+          const waStatus = await checkWhatsAppStatus(instance);
+          if (waStatus === 'open') {
+            const nowYear = now.getUTCFullYear();
+            for (const cust of customers) {
+              if (!cust.phone || !cust.birthDate) continue;
+
+              const [, bmRaw, bdRaw] = cust.birthDate.split('-').map((n: string) => Number(n));
+              if (!bmRaw || !bdRaw) continue;
+              let bm = bmRaw, bd = bdRaw;
+              if (bm === 2 && bd === 29) {
+                const isLeap = (nowYear % 4 === 0 && nowYear % 100 !== 0) || nowYear % 400 === 0;
+                if (!isLeap) bd = 28;
+              }
+
+              const mode = settings.aniversarioModes.find((m: any) => m.id === cust.aniversarioModeId && m.active);
+              if (!mode) continue;
+
+              const daysBefore = mode.daysBefore || 0;
+              const sendDate = (() => {
+                const d = new Date(Date.UTC(nowYear, bm - 1, bd, 12));
+                d.setUTCDate(d.getUTCDate() - daysBefore);
+                return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+              })();
+              if (sendDate !== nowDate) continue;
+
+              const fixedHHMM = mode.fixedTime || '09:00';
+              if (nowHHMM < fixedHHMM) continue;
+
+              const sentKey = `${cust.id}::${nowYear}`;
+              if (newAniversarioSent[sentKey]) continue;
+              if (!(await claimMessage(`birthday::${cust.id}::${nowYear}`))) continue;
+
+              const birthYear = Number(cust.birthDate.split('-')[0]) || undefined;
+              const idade = birthYear ? String(nowYear - birthYear) : '';
+
+              const msg = interpolate(mode.message, { nome: cust.name, telefone: cust.phone, idade });
+
+              const sent = await sendWhatsApp(instance, cust.phone, msg);
+              if (sent) {
+                newAniversarioSent[sentKey] = nowDate;
+                anyAniversarioSent = true;
+                console.log(`[Aniversario] ${tenant.nome} → ${cust.name}`);
+              }
+            }
+          }
+        }
+
         // ── Persist updated tracking maps ─────────────────────────────
         if (anyFollowUpSent) {
           await saveFollowUpField(tenantId, settings.rawFollowUp, '_followUpSent', newFollowUpSent);
@@ -728,6 +787,9 @@ Deno.serve(async (_req) => {
         }
         if (anyRatingSent) {
           await saveFollowUpField(tenantId, settings.rawFollowUp, '_ratingSent', newRatingSent);
+        }
+        if (anyAniversarioSent) {
+          await saveFollowUpField(tenantId, settings.rawFollowUp, '_aniversarioSent', newAniversarioSent);
         }
 
         // ── 7. RELATÓRIO SEMANAL (domingo 09:00 → admins via WA) ────

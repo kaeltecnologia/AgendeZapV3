@@ -266,6 +266,7 @@ export interface TenantSettings {
   avisoModes?: FollowUpNamedMode[];    // named check-in strategies
   lembreteModes?: FollowUpNamedMode[]; // named reminder strategies
   reativacaoModes?: FollowUpNamedMode[];// named reactivation strategies
+  aniversarioModes?: FollowUpNamedMode[];// named birthday message strategies
   plans?: Plan[];                       // monthly plans (stored in JSONB)
   planUsage?: Record<string, number>;   // { "customerId::YYYY-MM": count }
   professionalOrder?: string[];          // ordered list of professional IDs for calendar columns
@@ -290,6 +291,7 @@ export interface TenantSettings {
     avisoModeId?: string;
     lembreteModeId?: string;
     reativacaoModeId?: string;
+    aniversarioModeId?: string;
     recurringSchedule?: RecurringSchedule;  // @deprecated
     recurringEntries?: RecurringEntry[];    // new multi-entry recurring system
     aiPaused?: boolean;                  // true = IA desativada manualmente para este lead
@@ -307,6 +309,7 @@ export interface TenantSettings {
   subscriptionConfig?: SubscriptionConfig; // configurações do sistema de assinatura
   followUpSent?: Record<string, string>; // tracks sent messages e.g. "aviso::apptId" → "YYYY-MM-DD"
   profAgendaSent?: Record<string, string>; // tracks daily agenda sent: "profId::YYYY-MM-DD" → "sent"
+  aniversarioSent?: Record<string, string>; // tracks sent birthday messages: "custId::YYYY" → "YYYY-MM-DD"
   agendaDiariaHora?: string;             // HH:MM to send daily professional agenda (default "00:01")
   inventory?: InventoryItem[];           // product stock list (insumos)
   products?: Product[];                  // retail products for sale to clients
