@@ -197,7 +197,12 @@ async function processarMensagem(tenant: any, msg: any, settings?: any) {
       !!msg.message?.pttMessage;
     if (isAudio) {
       audioReceived = true;
-      const geminiKey: string = (settings?.openaiApiKey || '').trim() || (tenant as any).gemini_api_key || '';
+      // Key hierarchy: tenant's own key → shared global key (SuperAdmin) → tenant's Gemini key
+      let geminiKey: string = (settings?.openaiApiKey || '').trim();
+      if (!geminiKey) {
+        const globalCfg = await db.getGlobalConfig();
+        geminiKey = (globalCfg['shared_openai_key'] || '').trim() || ((tenant as any).gemini_api_key || '').trim();
+      }
       console.log('[AiPolling] Áudio detectado. geminiKey presente:', !!geminiKey, '| msgType:', msgType);
       if (geminiKey) {
         const instanceName = tenant.evolution_instance || evolutionService.getInstanceName(tenant.slug);

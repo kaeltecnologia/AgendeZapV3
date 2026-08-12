@@ -197,7 +197,12 @@ const ConversationsView: React.FC<{ tenantId: string; onUnreadCount?: (n: number
       ]);
       setCustomers(custs);
       setCustomerData(settings.customerData || {});
-      const key = (settings.openaiApiKey || '').trim() || ((tenant as any).gemini_api_key || '').trim();
+      // Key hierarchy: tenant's own key → shared global key (SuperAdmin) → tenant's Gemini key
+      let key = (settings.openaiApiKey || '').trim();
+      if (!key) {
+        const globalCfg = await db.getGlobalConfig();
+        key = (globalCfg['shared_openai_key'] || '').trim() || (tenant.gemini_api_key || '').trim();
+      }
       setApiKey(key);
 
       // ── Sync from Evolution API → save to DB ──────────────────────────
