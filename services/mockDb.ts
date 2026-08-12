@@ -841,6 +841,7 @@ class DatabaseService {
       avisoModeId: cData.avisoModeId || 'standard',
       lembreteModeId: cData.lembreteModeId || 'standard',
       reativacaoModeId: cData.reativacaoModeId || 'standard',
+      aniversarioModeId: cData.aniversarioModeId || 'standard',
       planId: cData.planId || null,
       planStatus: cData.planStatus || (cData.planId ? 'ativo' : undefined),
       planServiceId: cData.planServiceId || null,
@@ -975,6 +976,7 @@ class DatabaseService {
         updates.avisoModeId !== undefined ||
         updates.lembreteModeId !== undefined ||
         updates.reativacaoModeId !== undefined ||
+        updates.aniversarioModeId !== undefined ||
         'subscriptionPlanId' in updates ||
         'subscriptionStatus' in updates ||
         'subscriptionDueDay' in updates ||
@@ -995,6 +997,7 @@ class DatabaseService {
           avisoModeId: updates.avisoModeId !== undefined ? updates.avisoModeId : prev.avisoModeId,
           lembreteModeId: updates.lembreteModeId !== undefined ? updates.lembreteModeId : prev.lembreteModeId,
           reativacaoModeId: updates.reativacaoModeId !== undefined ? updates.reativacaoModeId : prev.reativacaoModeId,
+          aniversarioModeId: updates.aniversarioModeId !== undefined ? updates.aniversarioModeId : prev.aniversarioModeId,
           recurringSchedule: 'recurringSchedule' in updates ? (updates.recurringSchedule as RecurringSchedule | undefined) : prev.recurringSchedule,
           recurringEntries: 'recurringEntries' in updates ? (updates.recurringEntries as RecurringEntry[] | undefined) : prev.recurringEntries,
           subscriptionPlanId: 'subscriptionPlanId' in updates ? (updates.subscriptionPlanId ?? null) : prev.subscriptionPlanId,

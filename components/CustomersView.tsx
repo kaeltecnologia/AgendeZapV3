@@ -20,6 +20,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
   const [avisoModes, setAvisoModes] = useState<FollowUpNamedMode[]>([]);
   const [lembreteModes, setLembreteModes] = useState<FollowUpNamedMode[]>([]);
   const [reativacaoModes, setReativacaoModes] = useState<FollowUpNamedMode[]>([]);
+  const [aniversarioModes, setAniversarioModes] = useState<FollowUpNamedMode[]>([]);
 
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -89,6 +90,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
       setAvisoModes(settings.avisoModes || []);
       setLembreteModes(settings.lembreteModes || []);
       setReativacaoModes(settings.reativacaoModes || []);
+      setAniversarioModes(settings.aniversarioModes || []);
     } catch (err) {
       console.error("Erro ao carregar clientes", err);
     } finally {
@@ -172,6 +174,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
         avisoModeId: editingCustomer.avisoModeId,
         lembreteModeId: editingCustomer.lembreteModeId,
         reativacaoModeId: editingCustomer.reativacaoModeId,
+        aniversarioModeId: editingCustomer.aniversarioModeId,
         planId: editingCustomer.planId,
         planStatus: editingCustomer.planStatus as PlanStatus | undefined,
         planServiceId: editingCustomer.planServiceId,
@@ -232,14 +235,15 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
   const hasAnyMode = (c: Customer) =>
     (c.avisoModeId && c.avisoModeId !== 'standard') ||
     (c.lembreteModeId && c.lembreteModeId !== 'standard') ||
-    (c.reativacaoModeId && c.reativacaoModeId !== 'standard');
+    (c.reativacaoModeId && c.reativacaoModeId !== 'standard') ||
+    (c.aniversarioModeId && c.aniversarioModeId !== 'standard');
 
   const getModeName = (modeId: string | undefined, modes: FollowUpNamedMode[]) => {
     if (!modeId || modeId === 'standard') return null;
     return modes.find(m => m.id === modeId)?.name || null;
   };
 
-  const hasModes = avisoModes.length > 0 || lembreteModes.length > 0 || reativacaoModes.length > 0;
+  const hasModes = avisoModes.length > 0 || lembreteModes.length > 0 || reativacaoModes.length > 0 || aniversarioModes.length > 0;
 
   if (loading) return <div className="p-20 text-center font-black animate-pulse">CARREGANDO CLIENTES...</div>;
 
@@ -392,6 +396,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
                 const avisoName = getModeName(c.avisoModeId, avisoModes);
                 const lembreteName = getModeName(c.lembreteModeId, lembreteModes);
                 const reativacaoName = getModeName(c.reativacaoModeId, reativacaoModes);
+                const aniversarioName = getModeName(c.aniversarioModeId, aniversarioModes);
                 const hasRecurring = (c.recurringEntries || []).some(e => e.active);
                 rows.push(
                   <div key={c.id}
@@ -417,6 +422,7 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
                       {avisoName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600">Aviso</span>}
                       {lembreteName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Lembrete</span>}
                       {reativacaoName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">Reativação</span>}
+                      {aniversarioName && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-600">Aniversário</span>}
                       {hasRecurring && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Recorrente</span>}
                     </div>
                     <svg className="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -1084,6 +1090,20 @@ const CustomersView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({
                       >
                         <option value="standard">Padrão</option>
                         {reativacaoModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {aniversarioModes.length > 0 && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-pink-600 uppercase tracking-widest ml-1">🎂 Aniversário</label>
+                      <select
+                        value={editingCustomer.aniversarioModeId || 'standard'}
+                        onChange={e => setEditingCustomer({ ...editingCustomer, aniversarioModeId: e.target.value })}
+                        className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500"
+                      >
+                        <option value="standard">Padrão</option>
+                        {aniversarioModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </select>
                     </div>
                   )}

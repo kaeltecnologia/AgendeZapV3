@@ -495,6 +495,7 @@ export interface Customer {
   avisoModeId?: string;       // named aviso mode id (or 'standard')
   lembreteModeId?: string;    // named lembrete mode id (or 'standard')
   reativacaoModeId?: string;  // named reativacao mode id (or 'standard')
+  aniversarioModeId?: string; // named aniversario mode id (or 'standard')
   planId?: string | null;     // active plan id
   planStatus?: PlanStatus;    // 'ativo' | 'pendente' | 'cancelado'
   planServiceId?: string | null; // LEGACY — specific service covered by plan

@@ -525,13 +525,6 @@ function _persistBirthdaySent(key: string): void {
 
 _loadBirthdaySentLS();
 
-function getCustAniversarioModeId(customerData: Record<string, any>, custId: string, modes: any[]): string {
-  const cd = customerData[custId] || {};
-  const stored = cd.aniversarioModeId;
-  if (stored && stored !== 'standard') return stored;
-  return modes.find((m: any) => m.active)?.id || stored || 'standard';
-}
-
 // "YYYY-MM-DD" birthDate → { month, day } for this year, folding 29/fev onto
 // 28/fev in non-leap years so those customers still get a message.
 function birthdayOccurrenceThisYear(birthDate: string, year: number): { month: number; day: number } | null {
@@ -570,7 +563,6 @@ export async function runBirthdayMessages(tenant: any): Promise<void> {
 
     const newSent: Record<string, string> = { ...(settings.aniversarioSent || {}) };
     let anySent = false;
-    const customerData = settings.customerData || {};
 
     for (const cust of customers) {
       if (!cust.active || !cust.phone || !cust.birthDate) continue;
@@ -578,7 +570,8 @@ export async function runBirthdayMessages(tenant: any): Promise<void> {
       const occ = birthdayOccurrenceThisYear(cust.birthDate, nowYear);
       if (!occ) continue;
 
-      const mode = modes.find((m: any) => m.id === getCustAniversarioModeId(customerData, cust.id, modes) && m.active);
+      const mode = modes.find((m: any) => m.id === cust.aniversarioModeId && m.active)
+        ?? modes.find((m: any) => m.active); // fallback: first active mode (covers 'standard' default)
       if (!mode) continue;
 
       const daysBefore = mode.daysBefore || 0;

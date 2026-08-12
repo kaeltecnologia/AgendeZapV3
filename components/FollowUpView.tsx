@@ -13,11 +13,11 @@ function generateId(): string {
     : Math.random().toString(36).substring(2, 11);
 }
 
-const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes' | 'aniversarioModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days'; customerModeField: 'avisoModeId' | 'lembreteModeId' | 'reativacaoModeId' | 'aniversarioModeId'; variables: string[] }> = {
-  aviso: { label: 'Check-in Diário', icon: '📢', tabKey: 'avisoModes', timingLabel: 'Horário de envio', timingType: 'fixed', customerModeField: 'avisoModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'] },
-  lembrete: { label: 'Lembrete Próximo', icon: '🕒', tabKey: 'lembreteModes', timingLabel: 'Antecipar em (minutos)', timingType: 'minutes', customerModeField: 'lembreteModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'] },
-  reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'] },
-  aniversario: { label: 'Aniversário', icon: '🎂', tabKey: 'aniversarioModes', timingLabel: 'Quando enviar', timingType: 'fixed', customerModeField: 'aniversarioModeId', variables: ['{nome}', '{telefone}', '{idade}'] },
+const TAB_CONFIG: Record<ModeTab, { label: string; icon: string; tabKey: 'avisoModes' | 'lembreteModes' | 'reativacaoModes' | 'aniversarioModes'; timingLabel: string; timingType: 'fixed' | 'minutes' | 'days'; customerModeField: 'avisoModeId' | 'lembreteModeId' | 'reativacaoModeId' | 'aniversarioModeId'; variables: string[]; dateLabel: string }> = {
+  aviso: { label: 'Check-in Diário', icon: '📢', tabKey: 'avisoModes', timingLabel: 'Horário de envio', timingType: 'fixed', customerModeField: 'avisoModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'], dateLabel: 'agendamento' },
+  lembrete: { label: 'Lembrete Próximo', icon: '🕒', tabKey: 'lembreteModes', timingLabel: 'Antecipar em (minutos)', timingType: 'minutes', customerModeField: 'lembreteModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'], dateLabel: 'agendamento' },
+  reativacao: { label: 'Recuperação', icon: '♻️', tabKey: 'reativacaoModes', timingLabel: 'Dias de ausência', timingType: 'days', customerModeField: 'reativacaoModeId', variables: ['{nome}', '{dia}', '{hora}', '{servico}', '{profissional}'], dateLabel: 'agendamento' },
+  aniversario: { label: 'Aniversário', icon: '🎂', tabKey: 'aniversarioModes', timingLabel: 'Quando enviar', timingType: 'fixed', customerModeField: 'aniversarioModeId', variables: ['{nome}', '{telefone}', '{idade}'], dateLabel: 'aniversário' },
 };
 
 const PRESET_TEMPLATES: Record<ModeTab, { name: string; message: string; timing: number; fixedTime?: string; daysBefore?: number }[]> = {
@@ -356,7 +356,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
                   <div className="flex items-center gap-3">
                     <input type="number" min={0} max={7} value={newDaysBefore} onChange={e => setNewDaysBefore(Math.max(0, Math.min(7, Number(e.target.value))))}
                       className="w-20 p-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-center text-xl outline-none focus:border-orange-500" />
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{newDaysBefore === 0 ? 'No dia do agendamento' : newDaysBefore === 1 ? 'dia antes' : 'dias antes'}</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{newDaysBefore === 0 ? `No dia do ${cfg.dateLabel}` : newDaysBefore === 1 ? 'dia antes' : 'dias antes'}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <input type="time" value={newFixedTime} onChange={e => setNewFixedTime(e.target.value)}
@@ -409,7 +409,7 @@ const FollowUpView: React.FC<{ tenantId: string; tenantPlan?: string; onUpgrade?
                     <span className="font-black text-sm text-black">{tpl.name}</span>
                     {cfg.timingType === 'fixed' && (
                       <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-full">
-                        ⏰ {tpl.daysBefore ? `${tpl.daysBefore}d antes, ` : 'Dia do agend., '}{tpl.fixedTime}
+                        ⏰ {tpl.daysBefore ? `${tpl.daysBefore}d antes, ` : `Dia do ${cfg.dateLabel}, `}{tpl.fixedTime}
                       </span>
                     )}
                     {cfg.timingType === 'minutes' && (
