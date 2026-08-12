@@ -204,6 +204,7 @@ class DatabaseService {
         descricao: data.descricao,
         marketplaceVisible: data.marketplace_visible ?? false,
         referred_by: data.referred_by ?? undefined,
+        gemini_api_key: data.gemini_api_key ?? undefined,
       };
       _cache.set(ck, result, TTL_LONG);
       return result;
@@ -243,6 +244,7 @@ class DatabaseService {
         descricao: data.descricao,
         marketplaceVisible: data.marketplace_visible ?? false,
         referred_by: data.referred_by ?? undefined,
+        gemini_api_key: data.gemini_api_key ?? undefined,
       };
       _cache.set(ck, result, TTL_LONG);
       return result;

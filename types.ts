@@ -443,6 +443,7 @@ export interface Tenant {
   longitude?: number;
   descricao?: string;
   marketplaceVisible?: boolean;
+  gemini_api_key?: string;
 }
 
 export interface Professional {
