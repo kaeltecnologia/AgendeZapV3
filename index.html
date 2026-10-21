@@ -48,6 +48,17 @@
 </head>
 <body class="text-black">
     <div id="root"></div>
+<script>
+  // Fallback: if nothing rendered after 12s (script failed to load/parse), show the error instead of a blank page
+  window.__agzErr = '';
+  window.addEventListener('error', function (e) { window.__agzErr = (e && e.message) || String(e); });
+  setTimeout(function () {
+    var r = document.getElementById('root');
+    if (r && !r.children.length) {
+      r.innerHTML = '<div style="font-family:sans-serif;text-align:center;padding:40px 24px"><p style="font-weight:900;text-transform:uppercase;font-size:13px">Não foi possível carregar o sistema</p><p style="font-size:12px;color:#94a3b8;margin:12px 0">' + String(window.__agzErr || 'Verifique sua conexão e atualize o navegador.').replace(/</g, '&lt;') + '</p><button onclick="try{navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(x){x.unregister()})});caches.keys().then(function(ks){ks.forEach(function(k){caches.delete(k)})})}catch(e){};setTimeout(function(){location.reload()},400)" style="padding:10px 20px;background:#000;color:#fff;border:0;border-radius:12px;font-weight:900;font-size:11px;text-transform:uppercase">Limpar cache e recarregar</button></div>';
+    }
+  }, 12000);
+</script>
 <script type="module" src="/index.tsx"></script>
 <script>
   if ('serviceWorker' in navigator) {
