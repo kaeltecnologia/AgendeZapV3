@@ -204,7 +204,10 @@ th {
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+/* 'backwards' (e não 'forwards'): ao terminar, o transform é solto. Com 'forwards' o
+   translateY(0) fica preso e vira referência para os modais 'fixed' — no celular a janela
+   abria no topo da página, fora da tela. */
+.animate-fadeIn { animation: fadeIn 0.4s ease-out backwards; }
 
 @keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 .animate-scaleUp { animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
@@ -253,7 +256,7 @@ button:active:not(:disabled) { transform: scale(0.96) !important; }
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-fadeInUp { animation: fadeInUp 0.5s ease-out forwards; }
+.animate-fadeInUp { animation: fadeInUp 0.5s ease-out backwards; }
 
 /* Número animado (counter) */
 @keyframes countUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -748,3 +751,25 @@ html.nv .bg-white:not(button):not(input):not(textarea):not(select):not([class*="
 html.nv .bg-white[class*="border"]:not(button):not([class*="shadow-"]) { box-shadow: none !important; }
 html.nv .shadow-xl, html.nv .shadow-2xl { box-shadow: 0 12px 32px rgba(15, 23, 42, 0.10) !important; }
 html.nv .shadow-lg { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08) !important; }
+
+/* ── Celular: campos de data/hora do iPhone não estouram a largura (vale para todos) ── */
+@media (max-width: 768px) {
+  input[type="date"], input[type="time"], input[type="datetime-local"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+  }
+  input[type="date"]::-webkit-date-and-time-value,
+  input[type="time"]::-webkit-date-and-time-value { text-align: center; }
+}
+
+/* ── NOVO VISUAL no celular: janelas (modais) mais leves e com mais espaço útil ── */
+@media (max-width: 640px) {
+  html.nv .border-4 { border-width: 1px !important; }
+  html.nv .animate-scaleUp.p-8,
+  html.nv .animate-scaleUp.p-10 { padding: 20px !important; }
+  html.nv .animate-scaleUp { border-radius: 20px !important; }
+}

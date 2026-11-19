@@ -1701,7 +1701,7 @@ const App: React.FC = () => {
         tabs.push({ key: 'mais', label: 'Mais', icon: 'M4 6h16M4 12h16M4 18h16', active: sidebarOpen, onClick: () => setSidebarOpen(v => !v) });
         return (
           <nav aria-label="Menu principal"
-            className="md:hidden fixed bottom-0 inset-x-0 z-[450] bg-white border-t border-slate-200 flex px-2 pt-1.5"
+            className="md:hidden fixed bottom-0 inset-x-0 z-[45] bg-white border-t border-slate-200 flex px-2 pt-1.5"
             style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' }}>
             {tabs.map(t => (
               <button key={t.key} type="button" onClick={() => { t.onClick(); if (t.key !== 'mais') setSidebarOpen(false); }}

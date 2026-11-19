@@ -2109,7 +2109,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       {/* ─── Novo visual (celular): botão flutuante de novo agendamento ─── */}
       {nv && !readOnly && calView === 'dia' && (
         <button type="button" onClick={() => openBookingModal()} aria-label="Novo agendamento"
-          className="md:hidden fixed right-4 z-[440] w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg"
+          className="md:hidden fixed right-4 z-[44] w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg"
           style={{ bottom: 'calc(84px + env(safe-area-inset-bottom))', background: 'var(--color-primary)', color: '#111113' }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         </button>
