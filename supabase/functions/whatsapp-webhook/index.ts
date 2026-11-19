@@ -98,14 +98,16 @@ async function getSession(tenantId: string, phone: string): Promise<any | null> 
 }
 
 async function saveSession(tenantId: string, phone: string, data: any, history: any[]) {
-  await supabase.from('agent_sessions').upsert(
+  const { error } = await supabase.from('agent_sessions').upsert(
     { tenant_id: tenantId, phone, data, history: history.slice(-20), updated_at: new Date().toISOString() },
     { onConflict: 'tenant_id,phone' }
   );
+  if (error) console.error(`[saveSession] falhou tenant=${tenantId} phone=${phone}:`, error);
 }
 
 async function clearSession(tenantId: string, phone: string) {
-  await supabase.from('agent_sessions').delete().eq('tenant_id', tenantId).eq('phone', phone);
+  const { error } = await supabase.from('agent_sessions').delete().eq('tenant_id', tenantId).eq('phone', phone);
+  if (error) console.error(`[clearSession] falhou tenant=${tenantId} phone=${phone}:`, error);
 }
 
 // ── Persistent WhatsApp message history ──────────────────────────────
@@ -114,7 +116,7 @@ async function saveWaMsg(
   body: string, ts: number, pushName: string, msgType: string, fromMe: boolean, raw: any = {}
 ) {
   try {
-    await supabase.from('whatsapp_messages').upsert({
+    const { error } = await supabase.from('whatsapp_messages').upsert({
       msg_id:    msgId || `${phone}_${ts}`,
       tenant_id: tenantId,
       phone,
@@ -126,7 +128,8 @@ async function saveWaMsg(
       ts,
       raw,
     }, { onConflict: 'tenant_id,msg_id', ignoreDuplicates: true });
-  } catch { /* non-fatal */ }
+    if (error) console.error(`[saveWaMsg] falhou tenant=${tenantId} phone=${phone}:`, error);
+  } catch (e) { console.error(`[saveWaMsg] exceção tenant=${tenantId} phone=${phone}:`, e); }
 }
 
 // ── Dedup (shares msg_dedup table with browser polling) ──────────────
@@ -4150,6 +4153,13 @@ Deno.serve(async (req) => {
       planUsage: (fu._planUsage || {}) as Record<string, number>,
       professionalMeta: (fu._professionalMeta || {}) as Record<string, { disableAI?: boolean }>,
     };
+
+    // Tenant bloqueado/cancelado: mensagens continuam sendo salvas, mas sem atendimento automático.
+    const _tenantStatus = String(tenant.status || '').toUpperCase();
+    if (_tenantStatus === 'BLOQUEADA' || _tenantStatus === 'CANCELADA') {
+      if (settings.aiActive) console.log(`[Webhook] IA desligada: tenant ${tenant.id} está ${tenant.status}`);
+      settings.aiActive = false;
+    }
 
     // Process each message — ALWAYS persist (even if aiActive is off)
     for (const msg of messages) {

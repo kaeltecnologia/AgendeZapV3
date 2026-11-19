@@ -191,6 +191,9 @@ const BookingPage: React.FC<{ slug: string }> = ({ slug }) => {
       try {
         const t = await db.getTenantBySlug(slug || '');
         if (!t) { setError('Estabelecimento não encontrado.'); setLoading(false); return; }
+        if (t.status === 'BLOQUEADA' || t.status === 'CANCELADA') {
+          setError('Agenda online indisponível no momento.'); setLoading(false); return;
+        }
         setTenant(t);
         const [svcs, profs, sett] = await Promise.all([
           db.getServices(t.id),

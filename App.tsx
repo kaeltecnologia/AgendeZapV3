@@ -739,18 +739,36 @@ const App: React.FC = () => {
     return () => { unsub(); if (debounceTimer) clearTimeout(debounceTimer); };
   }, [tenantId]);
 
-  // ── Pending payment check — detects unpaid tenants ──────────────────
+  // ── Status check — pagamento pendente + derruba sessão de conta bloqueada/cancelada ──
+  // Roda ao abrir o app, a cada 5 min e quando a aba volta ao foco, porque sessões
+  // salvas no navegador não passam pelo login de novo.
   useEffect(() => {
-    if (!tenantId || !isAuthenticated || role !== 'TENANT') return;
-    const checkPayment = async () => {
+    if (!tenantId || !isAuthenticated || (role !== 'TENANT' && role !== 'PROFESSIONAL')) return;
+    let kicked = false;
+    const checkStatus = async () => {
+      if (kicked) return;
       try {
-        const tenant = await db.getTenant(tenantId);
-        setPendingPayment(tenant?.status === TenantStatus.PENDING_PAYMENT);
-        if (tenant?.nicho) setTenantNicho(tenant.nicho);
+        const tenant = await db.getTenant(tenantId, { fresh: true });
+        if (!tenant) return; // erro de rede/consulta: não derruba ninguém por engano
+        if (!isImpersonating && (tenant.status === TenantStatus.BLOCKED || tenant.status === TenantStatus.CANCELLED)) {
+          kicked = true;
+          handleLogout();
+          alert('Sua conta está bloqueada. Entre em contato com o setor comercial para regularizar o acesso.');
+          return;
+        }
+        if (role === 'TENANT') {
+          setPendingPayment(tenant.status === TenantStatus.PENDING_PAYMENT);
+          if (tenant.nicho) setTenantNicho(tenant.nicho);
+        }
       } catch { /* ignore */ }
     };
-    checkPayment();
-  }, [tenantId, isAuthenticated, role]);
+    checkStatus();
+    const interval = setInterval(checkStatus, 5 * 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') checkStatus(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, isAuthenticated, role, isImpersonating]);
 
   useEffect(() => {
     const init = async () => {
@@ -917,7 +935,7 @@ const App: React.FC = () => {
           throw new Error(data?.error || 'Credenciais inválidas ou barbearia não encontrada.');
         }
         const loginTenant = await db.getTenant(data.id);
-        if (loginTenant?.status === TenantStatus.BLOCKED) {
+        if (loginTenant?.status === TenantStatus.BLOCKED || loginTenant?.status === TenantStatus.CANCELLED) {
           throw new Error('Sua conta está bloqueada. Entre em contato com o setor comercial para regularizar o acesso.');
         }
         setTenantId(data.id);
