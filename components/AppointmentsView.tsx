@@ -549,7 +549,7 @@ function DayCalendar({
     const { openPx } = parseOpHours(date.getDay());
     bodyRef.current.scrollTop = Math.max(0, openPx - 8);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nv, dateStr]);
+  }, [nv, dateStr, operatingHours]);
 
   return (
     <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
@@ -2000,7 +2000,9 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           if (busy) continue;
           const onBreak = breaks.some(b => brkApplies(b, p.id) && toM(b.startTime) < t + slotLen && toM(b.endTime) > t);
           if (onBreak) continue;
-          nvFree.push({ time: nvHHMM(t), profId: p.id, profName: p.name.split(' ')[0] });
+          const first = p.name.split(' ')[0];
+          const dupFirst = profsList.filter(o => o.name.split(' ')[0].toLowerCase() === first.toLowerCase()).length > 1;
+          nvFree.push({ time: nvHHMM(t), profId: p.id, profName: dupFirst ? p.name : first });
         }
       }
     }
