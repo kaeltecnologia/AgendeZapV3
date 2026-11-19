@@ -693,3 +693,58 @@ html.nv .text-slate-300 { color: color-mix(in srgb, var(--theme-text-subtle, #94
 /* 7. Laranja usado como TEXTO fica mais escuro no tema claro (botões não mudam) */
 html.nv:not(.dark) .text-orange-500 { color: color-mix(in srgb, var(--color-primary) 75%, black) !important; }
 html.nv:not(.dark) .text-orange-400 { color: color-mix(in srgb, var(--color-primary) 85%, black) !important; }
+
+/* ── NOVO VISUAL — menu lateral (como na prévia) ─────────────────────── */
+html.nv .agz-sidebar nav { padding: 8px 12px !important; }
+html.nv .agz-sidebar nav > div { border-top-color: transparent !important; padding-top: 14px !important; }
+/* títulos de grupo: pequenos, em maiúsculas discretas */
+html.nv .agz-sidebar nav p {
+  text-transform: uppercase !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em !important;
+  color: var(--theme-text-muted, #64748B) !important;
+  padding: 0 10px 6px !important;
+}
+/* item do menu */
+html.nv .agz-nav-item {
+  min-height: 40px !important;
+  padding-top: 0 !important; padding-bottom: 0 !important;
+  border-radius: 9px !important;
+  box-shadow: none !important;
+}
+html.nv .agz-nav-item:not(.justify-center) { padding-left: 10px !important; padding-right: 10px !important; }
+html.nv .agz-nav-label {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  color: var(--theme-text-body, #334155) !important;
+}
+html.nv .agz-nav-icon { color: var(--theme-text-muted, #64748B) !important; }
+html.nv .agz-nav-icon svg { width: 18px !important; height: 18px !important; }
+/* item ativo: fundo laranja suave, texto escuro (no lugar do laranja sólido) */
+html.nv .agz-nav-item.is-active { background-color: var(--color-primary-bg) !important; }
+html.nv .agz-nav-item.is-active .agz-nav-label { color: var(--theme-text-heading, #0F172A) !important; font-weight: 600 !important; }
+html.nv .agz-nav-item.is-active .agz-nav-icon { color: var(--color-primary-dark) !important; }
+html.nv.dark .agz-nav-item.is-active { background-color: color-mix(in srgb, var(--color-primary) 18%, transparent) !important; }
+html.nv.dark .agz-nav-item.is-active .agz-nav-icon { color: var(--color-primary) !important; }
+/* botões "Convidar parceiro" / "Download do app": discretos */
+html.nv .agz-side-cta {
+  border-width: 1px !important;
+  border-color: var(--theme-border-subtle, #E2E8F0) !important;
+  min-height: 40px;
+}
+html.nv .agz-side-cta span { color: var(--theme-text-body, #334155) !important; font-size: 13px !important; font-weight: 500 !important; }
+
+/* ── NOVO VISUAL — cartões, bordas, cantos e sombras ─────────────────── */
+html.nv .border-2 { border-width: 1px !important; }
+html.nv .rounded-3xl,
+html.nv [class*="rounded-[2"],
+html.nv [class*="rounded-[3"] { border-radius: 16px !important; }
+/* cartões brancos sem borda própria ganham um contorno fino no lugar da sombra */
+html.nv .bg-white:not(button):not(input):not(textarea):not(select):not([class*="border"]):not([class*="shadow-"]) {
+  box-shadow: 0 0 0 1px var(--theme-border-subtle, #E2E8F0) !important;
+}
+html.nv .bg-white[class*="border"]:not(button):not([class*="shadow-"]) { box-shadow: none !important; }
+html.nv .shadow-xl, html.nv .shadow-2xl { box-shadow: 0 12px 32px rgba(15, 23, 42, 0.10) !important; }
+html.nv .shadow-lg { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08) !important; }

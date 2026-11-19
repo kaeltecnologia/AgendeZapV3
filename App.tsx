@@ -1377,7 +1377,7 @@ const App: React.FC = () => {
               {!resellerProfile && (
               <button
                 onClick={navTo(() => setShowInviteModal(true))}
-                className={`w-full flex items-center gap-2 ${effectiveCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-white hover:bg-orange-50 border-2 border-orange-400 transition-all group mb-1`}
+                className={`w-full flex items-center gap-2 ${effectiveCollapsed ? 'justify-center px-2' : 'px-4'} py-2 agz-side-cta rounded-xl bg-white hover:bg-orange-50 border-2 border-orange-400 transition-all group mb-1`}
               >
                 <IconGift />
                 {!effectiveCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Convidar Parceiro</span>}
@@ -1386,7 +1386,7 @@ const App: React.FC = () => {
               {/* ── Tutorial: Salvar app ── */}
               <button
                 onClick={navTo(() => setShowInstallTutorial(true))}
-                className={`w-full flex items-center gap-2 ${effectiveCollapsed ? 'justify-center px-2' : 'px-4'} py-2 rounded-xl bg-white hover:bg-orange-50 border-2 border-orange-400 transition-all group mb-3`}
+                className={`w-full flex items-center gap-2 ${effectiveCollapsed ? 'justify-center px-2' : 'px-4'} py-2 agz-side-cta rounded-xl bg-white hover:bg-orange-50 border-2 border-orange-400 transition-all group mb-3`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                 {!effectiveCollapsed && <span className="font-black text-[9px] uppercase tracking-widest text-orange-500">Download do App</span>}
@@ -2083,12 +2083,12 @@ const NavItem = ({ active, onClick, icon, label, color, collapsed, badge }: any)
     <button
       onClick={onClick}
       style={active ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 4px 12px var(--accent-glow-strong)' } : undefined}
-      className={`w-full flex items-center ${collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3'} rounded-xl transition-all group ${
+      className={`agz-nav-item ${active ? 'is-active' : ''} w-full flex items-center ${collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3'} rounded-xl transition-all group ${
         active ? 'text-white shadow-none' : `text-slate-500 hover:bg-slate-100 ${color || ''}`
       }`}
     >
-      <span className={`text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-white' : 'group-hover:text-black'}`} style={!active ? { color: 'var(--reseller-icon-color, #94a3b8)' } : undefined}>{icon}</span>
-      {!collapsed && <span className={`font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>}
+      <span className={`agz-nav-icon text-xl ${collapsed ? '' : 'mr-3'} ${active ? 'text-white' : 'group-hover:text-black'}`} style={!active ? { color: 'var(--reseller-icon-color, #94a3b8)' } : undefined}>{icon}</span>
+      {!collapsed && <span className={`agz-nav-label font-black text-[10px] uppercase tracking-widest ${active ? 'text-white' : ''}`}>{label}</span>}
       {!collapsed && badge > 0 && (
         <span className="ml-auto bg-orange-500 text-white text-[9px] font-black rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
           {badge > 99 ? '99+' : badge}
