@@ -208,6 +208,8 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
   const [cfgEmail, setCfgEmail] = useState('');
   const [cfgPass, setCfgPass] = useState('');
   const [cfgPassConfirm, setCfgPassConfirm] = useState('');
+  const [cfgCurrentEmail, setCfgCurrentEmail] = useState('');
+  const [cfgCurrentPass, setCfgCurrentPass] = useState('');
   const [cfgPlatformName, setCfgPlatformName] = useState('AgendeZap');
   const [cfgSupportEmail, setCfgSupportEmail] = useState('');
   const [cfgSaving, setCfgSaving] = useState(false);
@@ -352,6 +354,7 @@ const SuperAdminView: React.FC<SuperAdminViewProps> = ({ activeTab: tab, onTabCh
     if (tab === 'config') {
       db.getGlobalConfig().then(cfg => {
         setCfgEmail(cfg['admin_email'] || '');
+        setCfgCurrentEmail(cfg['admin_email'] || '');
         setCfgPlatformName(cfg['platform_name'] || 'AgendeZap');
         setCfgSupportEmail(cfg['support_email'] || '');
       });
@@ -2063,6 +2066,16 @@ CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH 
             </div>
             <div className="space-y-3">
               <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha Atual (obrigatória)</label>
+                <input
+                  type="password"
+                  value={cfgCurrentPass}
+                  onChange={e => setCfgCurrentPass(e.target.value)}
+                  placeholder="Confirme sua senha atual"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-mono text-sm outline-none focus:border-orange-500 transition-all"
+                />
+              </div>
+              <div className="space-y-1">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Novo E-mail de Acesso</label>
                 <input
                   type="email"
@@ -2106,13 +2119,14 @@ CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH 
                 if (!cfgEmail.trim()) { setCfgError('Informe o e-mail.'); return; }
                 if (cfgPass && cfgPass !== cfgPassConfirm) { setCfgError('As senhas não coincidem.'); return; }
                 if (cfgPass && cfgPass.length < 8) { setCfgError('Senha deve ter no mínimo 8 caracteres.'); return; }
+                if (!cfgCurrentPass) { setCfgError('Informe sua senha atual.'); return; }
                 setCfgSaving(true);
                 try {
-                  const updates: Record<string, string> = { admin_email: cfgEmail.trim() };
-                  if (cfgPass) updates['admin_password'] = cfgPass;
-                  await db.saveGlobalConfig(updates);
+                  const res = await db.updateAdminCredentials(cfgCurrentEmail, cfgCurrentPass, cfgEmail.trim(), cfgPass);
+                  if (!res.success) { setCfgError(res.error || 'Não foi possível salvar.'); return; }
+                  setCfgCurrentEmail(cfgEmail.trim());
                   setCfgSaved(true);
-                  setCfgPass(''); setCfgPassConfirm('');
+                  setCfgPass(''); setCfgPassConfirm(''); setCfgCurrentPass('');
                   setTimeout(() => setCfgSaved(false), 3000);
                 } finally { setCfgSaving(false); }
               }}
@@ -2378,7 +2392,7 @@ CREATE POLICY "anon_expenses_all" ON expenses FOR ALL TO anon USING (true) WITH 
               <div className="space-y-4">
                 {([
                   ['E-mail', editingTenant.email || '', (v: string) => setEditingTenant({ ...editingTenant, email: v }), 'email'],
-                  ['Senha', editingTenant.password || '', (v: string) => setEditingTenant({ ...editingTenant, password: v }), 'text'],
+                  ['Nova senha (vazio = manter)', editingTenant.password || '', (v: string) => setEditingTenant({ ...editingTenant, password: v }), 'text'],
                   ['Telefone do proprietário', editingTenant.phone || '', (v: string) => setEditingTenant({ ...editingTenant, phone: v }), 'text'],
                 ] as [string, string, (v: string) => void, string][]).map(([label, val, fn, type]) => (
                   <div key={label} className="space-y-1">

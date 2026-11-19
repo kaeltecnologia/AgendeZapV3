@@ -869,19 +869,14 @@ const App: React.FC = () => {
             p_email: userEmail || '',
             p_password: userPassword || '',
           });
-          if (error || !data || data.error) {
-            // Fallback to client-side check if RPC not yet deployed
-            const cfg = await db.getGlobalConfig();
-            const customEmail = (cfg['admin_email'] || '').trim();
-            const customPass  = (cfg['admin_password'] || '').trim();
-            if (!customEmail || !customPass) {
-              alert('Credenciais de administrador não configuradas no sistema.');
-              return;
-            }
-            if (userEmail !== customEmail || userPassword !== customPass) {
-              alert('Credenciais incorretas.');
-              return;
-            }
+          // Validação 100% no servidor — sem fallback no navegador.
+          if (error) {
+            alert('Não foi possível verificar as credenciais. Tente novamente.');
+            return;
+          }
+          if (!data || data.error || !data.success) {
+            alert(data?.error || 'Credenciais incorretas.');
+            return;
           }
         } catch {
           alert('Não foi possível verificar as credenciais. Verifique sua conexão.');
@@ -910,65 +905,30 @@ const App: React.FC = () => {
       }
 
       if (userSlug) {
-        // Use secure RPC for tenant login (password validated server-side)
-        let _rpcBlocked = false;
-        try {
-          const { data, error } = await supabase.rpc('tenant_login', {
-            p_email: userEmail || '',
-            p_password: userPassword || '',
-          });
-          if (!error && data && !data.error) {
-            const loginTenant = await db.getTenant(data.id);
-            if (loginTenant?.status === TenantStatus.BLOCKED) {
-              _rpcBlocked = true;
-            } else {
-              setTenantId(data.id);
-              setTenantSlug(data.slug);
-              setTenantName(data.name);
-              setTenantPlan(data.plan || 'PROFISSIONAL');
-              setRole('TENANT');
-              setIsAuthenticated(true);
-              if (loginTenant?.nicho) setTenantNicho(loginTenant.nicho);
-              if (loginTenant?.status === TenantStatus.PENDING_PAYMENT) setPendingPayment(true);
-              supabase.from('tenants').update({ last_login_at: new Date().toISOString() }).eq('id', data.id).then(() => {});
-              setCurrentView(View.DASHBOARD);
-              return;
-            }
-          }
-        } catch { /* RPC not available — fallback below */ }
-        if (_rpcBlocked) throw new Error('Sua conta está bloqueada. Entre em contato com o setor comercial para regularizar o acesso.');
-
-        // Fallback: direct DB query (for when RPC migration hasn't been run yet)
-        const targetSlug = userSlug.toLowerCase().trim();
-        const tenants = await db.getAllTenants();
-
-        let myTenant = tenants.find(t => t.slug === targetSlug);
-        if (!myTenant && userEmail) {
-          myTenant = tenants.find(t => t.email?.toLowerCase() === userEmail.toLowerCase());
+        // Senha validada 100% no servidor (RPC tenant_login) — sem fallback no navegador.
+        const { data, error } = await supabase.rpc('tenant_login', {
+          p_email: userEmail || '',
+          p_password: userPassword || '',
+        });
+        if (error) {
+          throw new Error('Não foi possível verificar as credenciais. Verifique sua conexão e tente novamente.');
         }
-        if (!myTenant) {
-          alert("Barbearia não encontrada. Verifique o e-mail cadastrado ou entre em contato com o suporte.");
-          return;
+        if (!data || data.error) {
+          throw new Error(data?.error || 'Credenciais inválidas ou barbearia não encontrada.');
         }
-        if (myTenant.password && userPassword && myTenant.password !== userPassword) {
-          alert("Senha incorreta.");
-          return;
-        }
-        if (myTenant.status === TenantStatus.BLOCKED) {
+        const loginTenant = await db.getTenant(data.id);
+        if (loginTenant?.status === TenantStatus.BLOCKED) {
           throw new Error('Sua conta está bloqueada. Entre em contato com o setor comercial para regularizar o acesso.');
         }
-        setTenantId(myTenant.id);
-        setTenantSlug(myTenant.slug);
-        setTenantName(myTenant.name);
-        setTenantPlan(myTenant.plan || 'PROFISSIONAL');
-        if (myTenant.nicho) setTenantNicho(myTenant.nicho);
+        setTenantId(data.id);
+        setTenantSlug(data.slug);
+        setTenantName(data.name);
+        setTenantPlan(data.plan || 'PROFISSIONAL');
         setRole('TENANT');
         setIsAuthenticated(true);
-        if (myTenant.status === TenantStatus.PENDING_PAYMENT) {
-          setPendingPayment(true);
-        }
-        // Save last login timestamp
-        supabase.from('tenants').update({ last_login_at: new Date().toISOString() }).eq('id', myTenant.id).then(() => {});
+        if (loginTenant?.nicho) setTenantNicho(loginTenant.nicho);
+        if (loginTenant?.status === TenantStatus.PENDING_PAYMENT) setPendingPayment(true);
+        supabase.from('tenants').update({ last_login_at: new Date().toISOString() }).eq('id', data.id).then(() => {});
         setCurrentView(View.DASHBOARD);
       }
     } catch (err) {

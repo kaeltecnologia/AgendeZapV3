@@ -2511,6 +2511,18 @@ class DatabaseService {
     return {};
   }
 
+  /** Troca e-mail/senha do superadmin no servidor. Exige a senha atual. */
+  async updateAdminCredentials(currentEmail: string, currentPassword: string, newEmail: string, newPassword: string): Promise<{ success?: boolean; error?: string }> {
+    const { data, error } = await supabase.rpc('admin_update_credentials', {
+      p_current_email: currentEmail,
+      p_current_password: currentPassword,
+      p_new_email: newEmail,
+      p_new_password: newPassword,
+    });
+    if (error) return { error: 'Não foi possível salvar. Tente novamente.' };
+    return data || { error: 'Resposta inválida do servidor.' };
+  }
+
   async saveGlobalConfig(updates: Record<string, string>): Promise<void> {
     try {
       const rows = Object.entries(updates).map(([key, value]) => ({ key, value }));
@@ -3047,13 +3059,20 @@ class DatabaseService {
 
   async affiliateLogin(email: string, password: string): Promise<AffiliateLink | null> {
     try {
-      const { data, error } = await supabase
-        .from('affiliate_links')
-        .select('*')
-        .eq('email', email.trim().toLowerCase())
-        .eq('password', password)
-        .eq('active', true)
-        .maybeSingle();
+      // Senha validada no servidor (RPC affiliate_login, bcrypt em schema privado).
+      let { data, error } = await supabase.rpc('affiliate_login', { p_email: email, p_password: password });
+      // TODO(segurança etapa 1): remover este fallback depois que a migration
+      // 20261119000001_private_credentials.sql estiver aplicada. Ele só roda se a
+      // RPC ainda não existir (PGRST202); após a migration a coluna password é sempre NULL.
+      if (error?.code === 'PGRST202') {
+        ({ data, error } = await supabase
+          .from('affiliate_links')
+          .select('*')
+          .eq('email', email.trim().toLowerCase())
+          .eq('password', password)
+          .eq('active', true)
+          .maybeSingle());
+      }
       if (error || !data) return null;
       return {
         id: data.id, name: data.name, slug: data.slug, phone: data.phone || undefined,
