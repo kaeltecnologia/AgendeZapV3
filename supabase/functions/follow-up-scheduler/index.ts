@@ -277,6 +277,29 @@ function getCustModeId(customerData: Record<string, any>, custId: string, type: 
   return modes.find((m: any) => m.active)?.id || stored || 'standard';
 }
 
+// Busca TODAS as linhas de um tenant em páginas de 1000 (limite do PostgREST).
+// Retorna no mesmo formato { data, error } de uma consulta normal.
+async function fetchAllByTenant(table: string, tenantId: string): Promise<{ data: any[] | null; error: any }> {
+  const PAGE = 1000;
+  const rows: any[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from(table).select('*')
+      .eq('tenant_id', tenantId)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) {
+      console.error(`[fetchAllByTenant] ${table} tenant=${tenantId} página ${from}:`, error);
+      // Nunca devolve dados parciais: reativação com histórico incompleto mandaria
+      // "faz tempo que não vem" pra quem veio semana passada. Tenta de novo no próximo minuto.
+      return { data: null, error };
+    }
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  return { data: rows, error: null };
+}
+
 // ── Main handler ──────────────────────────────────────────────────────
 
 Deno.serve(async (_req) => {
@@ -344,13 +367,20 @@ Deno.serve(async (_req) => {
 
       try {
         // Load all data for this tenant in parallel
+        // appointments/customers paginados: o PostgREST corta em 1000 linhas por consulta,
+        // e salões grandes ficavam sem lembrete/aviso dos agendamentos mais novos.
         const [settingsRow, apptsResult, custsResult, svcsResult, profsResult] = await Promise.all([
           supabase.from('tenant_settings').select('*').eq('tenant_id', tenantId).maybeSingle(),
-          supabase.from('appointments').select('*').eq('tenant_id', tenantId),
-          supabase.from('customers').select('*').eq('tenant_id', tenantId),
+          fetchAllByTenant('appointments', tenantId),
+          fetchAllByTenant('customers', tenantId),
           supabase.from('services').select('*').eq('tenant_id', tenantId),
           supabase.from('professionals').select('*').eq('tenant_id', tenantId),
         ]);
+
+        if (apptsResult.error || custsResult.error) {
+          console.error(`[Scheduler] ${tenant.nome}: falha ao carregar agendamentos/clientes — pulando nesta rodada`);
+          continue;
+        }
 
         const settings = parseSettings(settingsRow.data);
         const allAppts = (apptsResult.data || []).map((a: any) => ({

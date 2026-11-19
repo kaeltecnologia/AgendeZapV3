@@ -353,9 +353,20 @@ class DatabaseService {
       const since = new Date();
       since.setDate(since.getDate() - daysBack);
       const sinceISO = since.toISOString().slice(0, 10) + 'T00:00:00';
-      const { data, error } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId).gte('inicio', sinceISO).order('inicio', { ascending: false });
-      if (error) throw error;
-      const result = (data || []).filter(a => a.inicio).map(a => {
+      // Paginado em blocos de 1000 (limite do PostgREST) — salões grandes perdiam
+      // a parte mais antiga dos 90 dias (relatórios/histórico incompletos).
+      const PAGE = 1000;
+      const data: any[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data: page, error } = await supabase.from('appointments').select('*')
+          .eq('tenant_id', tenantId).gte('inicio', sinceISO)
+          .order('inicio', { ascending: false }).order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        data.push(...(page || []));
+        if (!page || page.length < PAGE) break;
+      }
+      const result = data.filter(a => a.inicio).map(a => {
         const start = new Date(a.inicio);
         const end = new Date(a.fim);
         const duration = Math.round((end.getTime() - start.getTime()) / 60000);
