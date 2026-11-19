@@ -1683,12 +1683,43 @@ const App: React.FC = () => {
             <ErrorBoundary key={currentView}>
               {trialInfo?.isExpired && role === 'TENANT' && !resellerProfile
                 ? <TrialExpiredView tenantId={tenantId} onActivated={() => { setTrialInfo(null); window.location.reload(); }} />
-                : <div className="p-4 md:p-6">{renderView()}</div>
+                : <div className={nv && role === 'TENANT' ? 'p-4 pb-28 md:p-6' : 'p-4 md:p-6'}>{renderView()}</div>
               }
             </ErrorBoundary>
           </Suspense>
         </div>
       </main>
+
+      {/* ── Novo visual: menu inferior no celular ── */}
+      {nv && role === 'TENANT' && tenantId && (() => {
+        const tabs: { key: string; label: string; icon: string; active: boolean; onClick: () => void; badge?: number }[] = [
+          { key: 'inicio', label: 'Início', icon: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', active: currentView === View.DASHBOARD, onClick: () => setCurrentView(View.DASHBOARD) },
+        ];
+        if (resellerAllows('agendamentos')) tabs.push({ key: 'agenda', label: 'Agenda', icon: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', active: currentView === View.AGENDAMENTOS, onClick: () => setCurrentView(View.AGENDAMENTOS) });
+        if (resellerAllows('conversas')) tabs.push({ key: 'conversas', label: 'Conversas', icon: 'M21 12a8.5 8.5 0 0 1-12.4 7.6L4 21l1.4-4.4A8.5 8.5 0 1 1 21 12z', active: currentView === View.CONVERSAS, onClick: () => setCurrentView(View.CONVERSAS), badge: unreadConvCount });
+        if (resellerAllows('comandas')) tabs.push({ key: 'caixa', label: 'Caixa', icon: 'M6 2h12v20l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6', active: currentView === View.COMANDAS, onClick: () => handleGatedNav(View.COMANDAS, 'caixaAvancado') });
+        tabs.push({ key: 'mais', label: 'Mais', icon: 'M4 6h16M4 12h16M4 18h16', active: sidebarOpen, onClick: () => setSidebarOpen(v => !v) });
+        return (
+          <nav aria-label="Menu principal"
+            className="md:hidden fixed bottom-0 inset-x-0 z-[450] bg-white border-t border-slate-200 flex px-2 pt-1.5"
+            style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' }}>
+            {tabs.map(t => (
+              <button key={t.key} type="button" onClick={() => { t.onClick(); if (t.key !== 'mais') setSidebarOpen(false); }}
+                aria-current={t.active ? 'page' : undefined}
+                className="relative flex-1 min-h-[52px] flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors"
+                style={t.active ? { background: 'var(--color-primary-bg)', color: 'color-mix(in srgb, var(--color-primary) 75%, black)' } : { color: '#52525B' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={t.icon} /></svg>
+                <span style={{ fontSize: 11, fontWeight: 500 }}>{t.label}</span>
+                {!!t.badge && t.badge > 0 && (
+                  <span className="absolute top-1 right-[22%] min-w-[18px] h-[18px] px-1 rounded-full bg-black text-white flex items-center justify-center" style={{ fontSize: 10, fontWeight: 600 }}>
+                    {t.badge > 99 ? '99+' : t.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+        );
+      })()}
 
       {/* Upgrade modal: never shown for reseller clients (reseller controls access via visible_features) */}
       {upgradeModal && !resellerProfile && (

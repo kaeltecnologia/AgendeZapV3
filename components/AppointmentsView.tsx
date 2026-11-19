@@ -1010,6 +1010,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
   const [calView, setCalView] = useState<'dia' | 'lista'>('dia');
   const nv = useNewVisual();
+  const [nvMobPro, setNvMobPro] = useState('');
   const [dayDate, setDayDate] = useState<Date>(new Date());
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const now = new Date();
@@ -2105,6 +2106,15 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         </div>
       )}
 
+      {/* ─── Novo visual (celular): botão flutuante de novo agendamento ─── */}
+      {nv && !readOnly && calView === 'dia' && (
+        <button type="button" onClick={() => openBookingModal()} aria-label="Novo agendamento"
+          className="md:hidden fixed right-4 z-[440] w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg"
+          style={{ bottom: 'calc(84px + env(safe-area-inset-bottom))', background: 'var(--color-primary)', color: '#111113' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+      )}
+
       {/* ─── Novo visual: resumo do dia ─── */}
       {nv && calView === 'dia' && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -2120,7 +2130,89 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       {/* ─── Dia view (professional columns) ─── */}
       {calView === 'dia' && (
         <div className={nv ? 'flex flex-col xl:flex-row gap-4 items-start' : ''}>
-        <div className={nv ? 'flex-1 min-w-0 w-full' : ''}>
+        {/* ─── Novo visual (celular): agenda em lista ─── */}
+        {nv && (() => {
+          const base = new Date(dayDate);
+          const monday = new Date(base); monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+          const week = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+          const wdNames = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+          const list = appointments
+            .filter(a => a.startTime?.startsWith(nvDayStr) && (!nvMobPro || a.professional_id === nvMobPro))
+            .sort((x, y) => x.startTime.localeCompare(y.startTime));
+          const nowT = new Date();
+          const nowMin = nowT.getHours() * 60 + nowT.getMinutes();
+          const nowIdx = nvIsToday ? list.findIndex(a => { const d = new Date(a.startTime); return d.getHours() * 60 + d.getMinutes() > nowMin; }) : -1;
+          const nowMark = (
+            <div key="__now" className="flex items-center gap-2 py-0.5" aria-label={`Agora, ${nvHHMM(nowMin)}`}>
+              <span className="text-xs font-semibold text-white px-1.5 py-0.5 rounded-md" style={{ background: 'color-mix(in srgb, var(--color-primary) 75%, black)' }}>Agora {nvHHMM(nowMin)}</span>
+              <span className="flex-1 h-0.5 rounded" style={{ background: 'var(--color-primary)' }} />
+            </div>
+          );
+          const rows: React.ReactNode[] = [];
+          list.forEach((a, i) => {
+            if (i === nowIdx) rows.push(nowMark);
+            const d = new Date(a.startTime);
+            const cancelled = a.status === AppointmentStatus.CANCELLED;
+            const faded = cancelled || a.status === AppointmentStatus.FINISHED || a.status === AppointmentStatus.NO_SHOW;
+            const profIdx = professionals.findIndex(pr => pr.id === a.professional_id);
+            const [r, g, b] = hexToRgb(PROF_COLORS[profIdx >= 0 ? profIdx % PROF_COLORS.length : 0]);
+            const st = NV_STATUS[a.status];
+            const c = customers.find(x => x.id === a.customer_id);
+            const svc = services.find(sv => sv.id === a.service_id);
+            const pro = professionals.find(pr => pr.id === a.professional_id);
+            rows.push(
+              <div key={a.id} className="flex gap-3 items-stretch">
+                <div className="w-12 shrink-0 pt-3">
+                  <span className="block text-[15px] font-semibold" style={{ fontFamily: 'Poppins, Inter, sans-serif', color: faded ? '#71717A' : '#111113' }}>{nvHHMM(d.getHours() * 60 + d.getMinutes())}</span>
+                  <span className="block text-xs text-slate-500">{a.durationMinutes || 30} min</span>
+                </div>
+                <button type="button" onClick={() => setInfoAppt(a)}
+                  className="flex-1 min-w-0 text-left rounded-2xl px-3.5 py-3 border"
+                  style={{ background: faded ? '#FFFFFF' : `rgba(${r},${g},${b},0.14)`, borderColor: faded ? '#E7E5E4' : 'transparent' }}>
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-[15px] font-semibold truncate" style={{ color: faded ? '#52525B' : '#111113', textDecoration: cancelled ? 'line-through' : 'none' }}>{c?.name || '—'}</span>
+                    {st && <span className="shrink-0 text-[11px] font-semibold px-1.5 py-0.5 rounded-md" style={{ background: st[1], color: st[2] }}>{st[0]}</span>}
+                  </span>
+                  <span className="block text-[13px] truncate" style={{ color: faded ? '#71717A' : '#3F3F46' }}>{[svc?.name, pro?.name.split(' ')[0]].filter(Boolean).join(' · ')}</span>
+                </button>
+              </div>
+            );
+          });
+          if (nvIsToday && nowIdx === -1 && list.length) rows.push(nowMark);
+          return (
+            <div className="md:hidden w-full space-y-3">
+              <div role="group" aria-label="Escolher dia" className="grid grid-cols-7 gap-1">
+                {week.map((d, i) => {
+                  const on = localDateStr(d) === nvDayStr;
+                  return (
+                    <button key={i} type="button" onClick={() => gotoDay(d)}
+                      className="h-[52px] rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors"
+                      style={on ? { background: '#111113', color: '#FFFFFF' } : { color: '#111113' }}>
+                      <span style={{ fontSize: 11, fontWeight: 500, color: on ? '#FFFFFF' : '#71717A' }}>{wdNames[i]}</span>
+                      <span style={{ fontSize: 16, fontWeight: 600 }}>{d.getDate()}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                {[{ id: '', name: 'Todos' }, ...professionals.filter((pr: any) => pr.active !== false)].map(pr => {
+                  const on = nvMobPro === pr.id;
+                  return (
+                    <button key={pr.id || 'todos'} type="button" onClick={() => setNvMobPro(pr.id)}
+                      className="shrink-0 h-9 px-3.5 rounded-full text-[13px] font-medium border transition-colors"
+                      style={on ? { background: '#111113', color: '#FFFFFF', borderColor: '#111113' } : { background: '#FFFFFF', color: '#3F3F46', borderColor: '#E7E5E4' }}>
+                      {pr.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {rows.length === 0
+                ? <p className="text-sm text-slate-500 py-6 text-center">Nenhum agendamento neste dia.</p>
+                : <div className="space-y-2">{rows}</div>}
+            </div>
+          );
+        })()}
+        <div className={nv ? 'hidden md:block flex-1 min-w-0 w-full' : ''}>
         <DayCalendar
           nv={nv}
           date={dayDate}
