@@ -680,6 +680,24 @@ const App: React.FC = () => {
     localStorage.setItem('agz_theme', colorTheme);
   }, [colorTheme, resellerProfile]);
 
+  // ── Novo visual (Fase 1): liga a camada `html.nv` do index.css ──────────
+  // ?nv=1 liga só neste navegador, ?nv=0 desliga; sem escolha local, segue
+  // global_settings.new_visual ('all' = todos os clientes).
+  useEffect(() => {
+    const root = document.documentElement;
+    try {
+      const p = new URLSearchParams(window.location.search).get('nv');
+      if (p === '1' || p === '0') localStorage.setItem('agz_nv', p);
+    } catch { /* storage bloqueado */ }
+    let local: string | null = null;
+    try { local = localStorage.getItem('agz_nv'); } catch { /* ignore */ }
+    if (local === '1') { root.classList.add('nv'); return; }
+    if (local === '0') { root.classList.remove('nv'); return; }
+    db.getGlobalConfig()
+      .then(cfg => { root.classList.toggle('nv', cfg['new_visual'] === 'all'); })
+      .catch(() => {});
+  }, []);
+
   // Close theme picker on outside click
   useEffect(() => {
     if (!showThemePicker) return;

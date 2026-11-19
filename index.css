@@ -632,3 +632,61 @@ body:has(.theme-manicure) {
     /* Reduce fixed-width inputs */
     input, textarea, select { max-width: 100% !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NOVO VISUAL (Fase 1) — só vale com <html class="nv">.
+   Liga/desliga em App.tsx (?nv=1 / ?nv=0, ou global_settings.new_visual='all').
+   Não muda cores de tema/revenda nem layout: só tipografia e contraste,
+   sempre derivando das variáveis do tema (funciona nos 7 temas e no escuro).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+html.nv body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 1. Peso: o 900 em tudo vira 700; em texto miúdo, 600 */
+html.nv .font-black { font-weight: 700 !important; }
+html.nv .font-black:is(.text-\[7px\], .text-\[8px\], .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-xs) { font-weight: 600 !important; }
+
+/* 2. Texto miúdo fica legível (mantém a largura parecida, pois o espaçamento diminui) */
+html.nv .text-\[7px\],
+html.nv .text-\[8px\],
+html.nv .text-\[9px\]  { font-size: 10.5px !important; }
+html.nv .text-\[10px\] { font-size: 11px !important; }
+
+/* 3. Espaçamento entre letras mais contido */
+html.nv .tracking-widest,
+html.nv .tracking-\[0\.2em\],
+html.nv .tracking-\[0\.3em\],
+html.nv .tracking-\[0\.4em\] { letter-spacing: 0.05em !important; }
+html.nv .tracking-wider   { letter-spacing: 0.03em !important; }
+html.nv .tracking-tighter { letter-spacing: -0.01em !important; }
+
+/* 4. Títulos: sai o MAIÚSCULO ITÁLICO, entra título normal em Poppins */
+html.nv .uppercase.italic,
+html.nv .uppercase:is(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-5xl) {
+  text-transform: none !important;
+  font-style: normal !important;
+  font-family: 'Poppins', 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* 5. Botões e links-botão: caixa normal, letra um pouco maior */
+html.nv :is(button, a).uppercase {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+html.nv :is(button, a).uppercase:is(.text-\[8px\], .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-xs) {
+  font-size: 12.5px !important;
+}
+
+/* 6. Contraste: cinzas claros escurecem puxando para a cor do texto do tema
+      (no tema escuro, clareia — a mistura segue o tema) */
+html.nv .text-slate-400 { color: color-mix(in srgb, var(--theme-text-subtle, #94A3B8) 45%, var(--theme-text-body, #334155)) !important; }
+html.nv .text-slate-300 { color: color-mix(in srgb, var(--theme-text-subtle, #94A3B8) 60%, var(--theme-text-body, #334155)) !important; }
+
+/* 7. Laranja usado como TEXTO fica mais escuro no tema claro (botões não mudam) */
+html.nv:not(.dark) .text-orange-500 { color: color-mix(in srgb, var(--color-primary) 75%, black) !important; }
+html.nv:not(.dark) .text-orange-400 { color: color-mix(in srgb, var(--color-primary) 85%, black) !important; }
