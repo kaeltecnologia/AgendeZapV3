@@ -54,6 +54,7 @@ import { hasFeature, FeatureKey } from './config/planConfig';
 import { nichoIconMap, NichoKey } from './config/nichoConfigs';
 import Toast, { ToastMessage } from './components/Toast';
 import WhatsNew from './components/WhatsNew';
+import { useNewVisual } from './hooks/useNewVisual';
 export const ToastContext = React.createContext<(msg: Omit<ToastMessage, 'id'>) => void>(() => {});
 
 enum View {
@@ -258,6 +259,9 @@ const App: React.FC = () => {
     if (oldDark === '1') return 'dark';
     return 'white';
   });
+  // Novo visual: só tema claro (a escolha salva do usuário volta se a chave for desligada)
+  const nv = useNewVisual();
+  const activeTheme: keyof typeof THEMES = nv ? 'white' : colorTheme;
   const [showThemePicker, setShowThemePicker] = useState(false);
   const themePickerRef = useRef<HTMLDivElement>(null);
   // ── Notificações de chegada de clientes ──────────────────────────────
@@ -365,7 +369,7 @@ const App: React.FC = () => {
     }
 
     // Pick light or dark color set based on current dark mode
-    const isDark = THEMES[colorTheme].isDark;
+    const isDark = THEMES[activeTheme].isDark;
     const rp = resellerProfile;
     const bgColor      = isDark ? (rp?.dark_bg_color      || rp?.bg_color)       : rp?.bg_color;
     const fontColor    = isDark ? (rp?.dark_font_color    || rp?.font_color)     : rp?.font_color;
@@ -412,7 +416,7 @@ const App: React.FC = () => {
       link.href = faviconUrl + '?v=' + Date.now();
       document.head.appendChild(link);
     }
-  }, [resellerProfile, colorTheme]);
+  }, [resellerProfile, activeTheme]);
   const showToast = React.useCallback((msg: Omit<ToastMessage, 'id'>) => {
     setToasts(prev => [...prev, { ...msg, id: `${Date.now()}_${Math.random()}` }]);
   }, []);
@@ -639,7 +643,7 @@ const App: React.FC = () => {
 
   // Apply color theme: CSS variables + dark class + page background
   useEffect(() => {
-    const t = THEMES[colorTheme];
+    const t = THEMES[activeTheme];
     const root = document.documentElement;
     // Only apply color vars if no reseller is overriding them
     if (!resellerProfile?.primary_color) {
@@ -678,7 +682,7 @@ const App: React.FC = () => {
     root.style.setProperty('--theme-text-subtle',    t.textSubtle);
     if (t.isDark) { root.classList.add('dark'); } else { root.classList.remove('dark'); }
     localStorage.setItem('agz_theme', colorTheme);
-  }, [colorTheme, resellerProfile]);
+  }, [activeTheme, colorTheme, resellerProfile]);
 
   // ── Novo visual (Fase 1): liga a camada `html.nv` do index.css ──────────
   // ?nv=1 liga só neste navegador, ?nv=0 desliga; sem escolha local, segue
@@ -1273,8 +1277,8 @@ const App: React.FC = () => {
         onMouseLeave={handleSidebarLeave}
         className={`agz-sidebar fixed md:relative inset-y-0 left-0 ${effectiveCollapsed ? 'w-[68px]' : 'w-64'} flex flex-col shrink-0 border-r z-[500] h-screen md:sticky md:top-0 transition-all duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
         style={{
-          ...(() => { const _isDark = THEMES[colorTheme].isDark; return (_isDark ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color) ? { backgroundColor: _isDark ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color } : {}; })(),
-          ...(() => { const _isDark = THEMES[colorTheme].isDark; return (_isDark ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color) ? { color: _isDark ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color } : {}; })(),
+          ...(() => { const _isDark = THEMES[activeTheme].isDark; return (_isDark ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color) ? { backgroundColor: _isDark ? (resellerProfile?.dark_bg_color || resellerProfile?.bg_color) : resellerProfile?.bg_color } : {}; })(),
+          ...(() => { const _isDark = THEMES[activeTheme].isDark; return (_isDark ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color) ? { color: _isDark ? (resellerProfile?.dark_font_color || resellerProfile?.font_color) : resellerProfile?.font_color } : {}; })(),
         }}
       >
         {/* Logo / toggle */}
@@ -1608,13 +1612,13 @@ const App: React.FC = () => {
               </button>
             )}
             {/* Theme picker */}
-            <div className="relative" ref={themePickerRef}>
+            <div className="relative" ref={themePickerRef} style={nv ? { display: 'none' } : undefined}>
               <button
                 onClick={() => setShowThemePicker(v => !v)}
                 title="Escolher tema de cores"
                 className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center hover:border-slate-400 hover:bg-slate-100 transition-all"
               >
-                <span className="w-4 h-4 rounded-full border-2 border-white shadow-md block" style={{ backgroundColor: THEMES[colorTheme].primary }} />
+                <span className="w-4 h-4 rounded-full border-2 border-white shadow-md block" style={{ backgroundColor: THEMES[activeTheme].primary }} />
               </button>
               {showThemePicker && (
                 <div className="absolute right-0 top-full mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 min-w-[160px]">

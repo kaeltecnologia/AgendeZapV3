@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/mockDb';
+import { useNewVisual } from '../hooks/useNewVisual';
 import { supabase } from '../services/supabase';
 import { Appointment, AppointmentStatus, BookingSource, PaymentMethod, Professional, Service, Customer, BreakPeriod, ComandaItem, parseServiceIds, encodeServiceIds } from '../types';
 import { sendProfessionalNotification, sendClientArrivedNotification, sendApptConfirmationToClient, sendMultiApptConfirmationToClient } from '../services/notificationService';
@@ -144,6 +145,16 @@ const CATEGORY_COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', 
 const HOUR_START = 6;
 const HOUR_END = 24;
 const HOUR_PX = 96; // px per hour
+
+// Novo visual: etiqueta de status nos cartões da agenda [texto, fundo, cor]
+const NV_STATUS: Record<string, [string, string, string]> = {
+  PENDING:   ['Aguardando', '#FEF3C7', '#92400E'],
+  CONFIRMED: ['Confirmado', '#DCFCE7', '#166534'],
+  ARRIVED:   ['Chegou',     '#DBEAFE', '#1E40AF'],
+  FINISHED:  ['Finalizado', '#F4F4F5', '#3F3F46'],
+  NO_SHOW:   ['Faltou',     '#FEE2E2', '#991B1B'],
+  CANCELLED: ['Cancelado',  '#FEE2E2', '#991B1B'],
+};
 
 function hexToRgb(hex: string): [number, number, number] {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -455,8 +466,9 @@ function WeekCalendar({
 }
 
 function DayCalendar({
-  date, appointments, customers, professionals, services, filterProfId, breaks = [], breakColor = '#f97316', gridInterval = 30, operatingHours, onApptClick, onSlotClick, onReorder, onApptRightClick, onBreakRightClick,
+  date, appointments, customers, professionals, services, filterProfId, breaks = [], breakColor = '#f97316', gridInterval = 30, operatingHours, onApptClick, onSlotClick, onReorder, onApptRightClick, onBreakRightClick, nv = false,
 }: {
+  nv?: boolean;
   date: Date;
   appointments: Appointment[];
   customers: Customer[];
@@ -531,6 +543,14 @@ function DayCalendar({
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
+  // Novo visual: abre a agenda já no horário de abertura (sem as horas fechadas no topo)
+  useEffect(() => {
+    if (!nv || !bodyRef.current) return;
+    const { openPx } = parseOpHours(date.getDay());
+    bodyRef.current.scrollTop = Math.max(0, openPx - 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nv, dateStr]);
+
   return (
     <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
 
@@ -583,8 +603,11 @@ function DayCalendar({
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 4px' }}>
                   <span style={{ fontSize: 13, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{p.name.charAt(0).toUpperCase()}</span>
                 </div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#1E293B', margin: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '100%' }}>{p.name}</p>
-                {profDayCount > 0 && (
+                <p style={{ fontSize: nv ? 14 : 11, fontWeight: nv ? 600 : 700, color: '#1E293B', margin: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '100%' }}>{p.name}</p>
+                {nv && (
+                  <p style={{ fontSize: 12, color: '#52525B', margin: '2px 0 0' }}>{profDayCount} hoje</p>
+                )}
+                {!nv && profDayCount > 0 && (
                   <div style={{ margin: '3px auto 0', width: 'fit-content', borderRadius: 99, fontSize: 9, fontWeight: 700, padding: '2px 6px', background: '#FEF3C7', color: '#92400E' }}>
                     {profDayCount}
                   </div>
@@ -597,7 +620,7 @@ function DayCalendar({
       </div>
 
       {/* ── Time grid (scrollable: X + Y) ── */}
-      <div ref={bodyRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 560 }} onScroll={onBodyScroll}>
+      <div ref={bodyRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: nv ? 640 : 560 }} onScroll={onBodyScroll}>
         <div style={{ display: 'grid', gridTemplateColumns: colTemplate, minWidth: minGridW, width: '100%', height: totalHeight, position: 'relative' }}>
 
           {/* Time labels — sticky left so they don't scroll away horizontally */}
@@ -776,7 +799,7 @@ function DayCalendar({
                   // bg color: category color (if service has category), else professional color
                   const catColor = svc?.category ? (categoryColorsMap[svc.category] ?? color) : color;
                   const [cr, cg, cb] = isCancelled ? [203, 213, 225] : hexToRgb(catColor);
-                  const bgAlpha = isCancelled ? 0.05 : isFinished ? 0.10 : 0.18;
+                  const bgAlpha = nv ? (isCancelled ? 0.04 : isFinished ? 0.07 : 0.16) : (isCancelled ? 0.05 : isFinished ? 0.10 : 0.18);
                   const bgColor = `rgba(${cr},${cg},${cb},${bgAlpha})`;
                   const borderColor = isCancelled ? '#CBD5E1' : color; // border = professional color
 
@@ -798,10 +821,11 @@ function DayCalendar({
                         position: 'absolute',
                         top: `${topPx}px`, height: `${heightPx}px`,
                         left: leftPos, width: colW,
-                        borderRadius: 7, cursor: 'pointer', overflow: 'hidden',
+                        borderRadius: nv ? 9 : 7, cursor: 'pointer', overflow: 'hidden',
                         backgroundColor: bgColor,
-                        borderLeft: `3px solid ${borderColor}`,
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                        ...(nv
+                          ? { border: `1px solid ${isFinished || isCancelled ? '#E7E5E4' : `rgba(${cr},${cg},${cb},0.30)`}`, boxShadow: 'none' }
+                          : { borderLeft: `3px solid ${borderColor}`, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }),
                         opacity: isCancelled ? 0.45 : 1,
                         transition: 'transform 0.1s, box-shadow 0.1s',
                         zIndex: 3,
@@ -829,6 +853,25 @@ function DayCalendar({
                             {hasPlan && <span title="Plano">🎟️</span>}
                           </div>
                         )}
+                        {nv ? (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, paddingRight: (isBilled || hasPlan) ? 30 : 0 }}>
+                              <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: isFinished || isCancelled ? '#71717A' : `color-mix(in srgb, ${catColor} 70%, black)` }}>{timeRange}</span>
+                              {heightPx >= 44 && totalCols === 1 && NV_STATUS[a.status] && (
+                                <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 6, whiteSpace: 'nowrap', background: NV_STATUS[a.status][1], color: NV_STATUS[a.status][2] }}>{NV_STATUS[a.status][0]}</span>
+                              )}
+                            </div>
+                            {heightPx >= 34 && (
+                              <p style={{ fontSize: 13, fontWeight: 600, color: isFinished || isCancelled ? '#52525B' : '#111113', lineHeight: 1.3, margin: '1px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textDecoration: isCancelled ? 'line-through' : 'none' }}>
+                                {cust?.name || '—'}
+                              </p>
+                            )}
+                            {heightPx >= 52 && svc && (
+                              <p style={{ fontSize: 12, color: '#52525B', lineHeight: 1.3, margin: '1px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{svc.name}</p>
+                            )}
+                          </>
+                        ) : (
+                          <>
                         <p style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, margin: 0, color: borderColor, fontVariantNumeric: 'tabular-nums', paddingRight: (isBilled || hasPlan) ? 18 : 0 }}>
                           {timeRange}
                         </p>
@@ -839,6 +882,8 @@ function DayCalendar({
                         )}
                         {heightPx >= 56 && svc && (
                           <p style={{ fontSize: 10, color: '#64748B', lineHeight: 1.3, margin: '1px 0 0', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{svc.name}</p>
+                        )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -964,6 +1009,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [showBreakModal, setShowBreakModal] = useState(false);
 
   const [calView, setCalView] = useState<'dia' | 'lista'>('dia');
+  const nv = useNewVisual();
   const [dayDate, setDayDate] = useState<Date>(new Date());
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const now = new Date();
@@ -1885,6 +1931,81 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       })
     : appointments;
 
+  // ── Novo visual: resumo do dia + painel lateral (Próximos / Horários livres) ──
+  const nvDayStr = localDateStr(dayDate);
+  const nvIsToday = nvDayStr === localDateStr();
+  const nvDayAppts = nv
+    ? appointments.filter(a => a.startTime?.startsWith(nvDayStr) && a.status !== AppointmentStatus.CANCELLED)
+    : [];
+  const nvPrice = (a: Appointment) => {
+    const ids = a.serviceIds && a.serviceIds.length ? a.serviceIds : (a.service_id ? [a.service_id] : []);
+    return ids.reduce((sum, id) => sum + (services.find(sv => sv.id === id)?.price || 0), 0);
+  };
+  const nvStats = nv ? [
+    { label: 'Agendamentos do dia', value: String(nvDayAppts.length) },
+    { label: 'Confirmados', value: String(nvDayAppts.filter(a => a.status === AppointmentStatus.CONFIRMED || a.status === AppointmentStatus.ARRIVED || a.status === AppointmentStatus.FINISHED).length) },
+    { label: 'Aguardando confirmação', value: String(nvDayAppts.filter(a => a.status === AppointmentStatus.PENDING).length) },
+    { label: 'Previsto para o dia', value: nvDayAppts.reduce((sum, a) => sum + (a.amountPaid && a.amountPaid > 0 ? a.amountPaid : nvPrice(a)), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
+  ] : [];
+  const nvNowMs = Date.now();
+  const nvNext = nv
+    ? nvDayAppts
+        .filter(a => a.status !== AppointmentStatus.FINISHED && a.status !== AppointmentStatus.NO_SHOW && (!nvIsToday || new Date(a.startTime).getTime() > nvNowMs))
+        .sort((x, y) => x.startTime.localeCompare(y.startTime))
+        .slice(0, 4)
+    : [];
+  const nvWaLink = (phone?: string) => {
+    const d = (phone || '').replace(/\D/g, '');
+    if (!d) return null;
+    return 'https://wa.me/' + (d.length <= 11 ? '55' + d : d);
+  };
+  const nvHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const nvFree: { time: string; profId: string; profName: string }[] = [];
+  if (nv) {
+    const cfg = operatingHours?.[dayDate.getDay()];
+    if (cfg?.active) {
+      const toM = (t: string) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+      const [openStr, closeStr] = (cfg.range || '09:00-18:00').split('-');
+      const step = calendarGridInterval || 30;
+      const slotLen = Math.max(step, 30);
+      let startM = toM(openStr);
+      if (nvIsToday) {
+        const n = new Date();
+        startM = Math.max(startM, Math.ceil((n.getHours() * 60 + n.getMinutes()) / step) * step);
+      }
+      const closeM = toM(closeStr);
+      const brkApplies = (b: BreakPeriod, profId: string) => {
+        if (b.type === 'holiday') return b.date === nvDayStr;
+        if (b.type === 'vacation') {
+          if (b.professionalId && b.professionalId !== profId) return false;
+          const vs = b.date || ''; const ve = b.vacationEndDate || b.date || '';
+          return !!vs && nvDayStr >= vs && nvDayStr <= ve;
+        }
+        if (b.professionalId && b.professionalId !== profId) return false;
+        if (b.date) return b.date === nvDayStr;
+        if (b.dayOfWeek !== null && b.dayOfWeek !== undefined) return b.dayOfWeek === dayDate.getDay();
+        return true;
+      };
+      const profsList = (filterProfId ? professionals.filter(p => p.id === filterProfId) : professionals)
+        .filter((p: any) => p.active !== false);
+      for (let t = startM; t + slotLen <= closeM && nvFree.length < 8; t += step) {
+        for (const p of profsList) {
+          if (nvFree.length >= 8) break;
+          const busy = nvDayAppts.some(a => {
+            if (a.professional_id !== p.id) return false;
+            const d = new Date(a.startTime);
+            const st = d.getHours() * 60 + d.getMinutes();
+            return st < t + slotLen && st + (a.durationMinutes || 30) > t;
+          });
+          if (busy) continue;
+          const onBreak = breaks.some(b => brkApplies(b, p.id) && toM(b.startTime) < t + slotLen && toM(b.endTime) > t);
+          if (onBreak) continue;
+          nvFree.push({ time: nvHHMM(t), profId: p.id, profName: p.name.split(' ')[0] });
+        }
+      }
+    }
+  }
+
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* Header */}
@@ -1982,9 +2103,24 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
         </div>
       )}
 
+      {/* ─── Novo visual: resumo do dia ─── */}
+      {nv && calView === 'dia' && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {nvStats.map(st => (
+            <div key={st.label} className="bg-white rounded-xl border border-slate-200 px-4 py-3">
+              <p className="text-[13px] text-slate-500">{st.label}</p>
+              <p className="text-xl font-semibold text-black" style={{ fontFamily: 'Poppins, Inter, sans-serif' }}>{st.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ─── Dia view (professional columns) ─── */}
       {calView === 'dia' && (
+        <div className={nv ? 'flex flex-col xl:flex-row gap-4 items-start' : ''}>
+        <div className={nv ? 'flex-1 min-w-0 w-full' : ''}>
         <DayCalendar
+          nv={nv}
           date={dayDate}
           appointments={appointments}
           customers={customers}
@@ -2012,6 +2148,58 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
           onApptRightClick={(appt, x, y) => setHoverAppt({ appt, x: x + 12, y: y - 10 })}
           onBreakRightClick={(brk, x, y) => setHoverBreak({ brk, x: x + 12, y: y - 10 })}
         />
+        </div>
+        {nv && (
+          <aside className="w-full xl:w-[300px] shrink-0 space-y-4">
+            <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold text-black">{nvIsToday ? 'Próximos' : 'Primeiros do dia'}</h2>
+              {nvNext.length === 0 && <p className="text-[13px] text-slate-500">Nenhum atendimento pela frente.</p>}
+              {nvNext.map(a => {
+                const c = customers.find(x => x.id === a.customer_id);
+                const svc = services.find(sv => sv.id === a.service_id);
+                const pro = professionals.find(pr => pr.id === a.professional_id);
+                const wa = nvWaLink(c?.phone);
+                const d = new Date(a.startTime);
+                const sub = [svc?.name, pro?.name.split(' ')[0]].filter(Boolean).join(' · ');
+                return (
+                  <div key={a.id} className="flex items-center gap-3">
+                    <button type="button" onClick={() => setInfoAppt(a)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                      <span className="w-12 shrink-0 text-[15px] font-semibold text-black" style={{ fontFamily: 'Poppins, Inter, sans-serif' }}>{nvHHMM(d.getHours() * 60 + d.getMinutes())}</span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-black truncate">{c?.name || '—'}</span>
+                        <span className="block text-[13px] text-slate-500 truncate">{sub}</span>
+                      </span>
+                    </button>
+                    {wa && (
+                      <a href={wa} target="_blank" rel="noopener noreferrer" aria-label={'Abrir WhatsApp de ' + (c?.name || 'cliente')}
+                        className="w-11 h-11 shrink-0 rounded-lg border border-slate-200 flex items-center justify-center text-green-700 hover:bg-slate-50">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.4 7.6L4 21l1.4-4.4A8.5 8.5 0 1 1 21 12z" /></svg>
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+            <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold text-black">Horários livres {nvIsToday ? 'hoje' : 'no dia'}</h2>
+              {nvFree.length === 0 ? (
+                <p className="text-[13px] text-slate-500">Nenhum horário livre {nvIsToday ? 'pelo resto do dia' : 'neste dia'}.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {nvFree.map(f => (
+                    <button key={f.time + f.profId} type="button" disabled={readOnly}
+                      onClick={() => openBookingModalWithSlot(nvDayStr, f.time, f.profId)}
+                      className="h-9 px-3 rounded-full border border-slate-200 text-[13px] text-black hover:border-orange-300 hover:bg-orange-50 transition-colors">
+                      {f.time} · {f.profName}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!readOnly && nvFree.length > 0 && <p className="text-[13px] text-slate-500">Toque num horário para encaixar um cliente.</p>}
+            </section>
+          </aside>
+        )}
+        </div>
       )}
 
       {/* ─── Lista view (existing table layout) ─── */}
