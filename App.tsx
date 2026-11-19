@@ -5,6 +5,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 // Lazy-loaded views (code splitting — only loaded when needed)
 const Dashboard = lazy(() => import('./components/Dashboard'));
+const NvDashboard = lazy(() => import('./components/NvDashboard'));
 const EvolutionConfig = lazy(() => import('./components/EvolutionConfig'));
 const AIChatSimulator = lazy(() => import('./components/AIChatSimulator'));
 const AppointmentsView = lazy(() => import('./components/AppointmentsView'));
@@ -1197,7 +1198,9 @@ const App: React.FC = () => {
     if (role === 'SUPERADMIN') return <SuperAdminView activeTab={superAdminTab} onTabChange={setSuperAdminTab} onImpersonate={handleImpersonate} />;
 
     switch (currentView) {
-      case View.DASHBOARD: return <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} refreshTicker={refreshTicker} />;
+      case View.DASHBOARD: return nv
+        ? <NvDashboard tenantId={tenantId} tenantName={tenantName} onNavigate={(v) => setCurrentView(v as View)} refreshTicker={refreshTicker} />
+        : <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} refreshTicker={refreshTicker} />;
       case View.AGENDAMENTOS: return <AppointmentsView tenantId={tenantId} onOpenComandas={() => setCurrentView(View.COMANDAS)} onOpenComandaForAppt={(apptId) => { setInitialApptId(apptId); setCurrentView(View.COMANDAS); }} refreshTicker={refreshTicker} />;
       case View.SERVICOS: return <ServicesView tenantId={tenantId} refreshTicker={refreshTicker} />;
       case View.PROFISSIONAIS: return <ProfessionalsView tenantId={tenantId} tenantPlan={effectivePlan} onNavigate={(v) => setCurrentView(v as View)} refreshTicker={refreshTicker} />;
