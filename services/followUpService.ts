@@ -592,6 +592,12 @@ export async function runBirthdayMessages(tenant: any): Promise<void> {
 
       const msg = interpolate(mode.message, { nome: cust.name, telefone: cust.phone, idade });
 
+      // Reserva atômica compartilhada com o servidor (follow-up-scheduler usa a mesma chave):
+      // quem chegar primeiro envia, o outro pula — evita parabéns em dobro.
+      // prefixo fu:: = TTL de 25h no msg_dedup (chaves sem prefixo somem em 30s)
+      const claimedB = await db.claimMessage(`fu::birthday::${cust.id}::${nowYear}`);
+      if (!claimedB) { _persistBirthdaySent(memKey); continue; }
+
       try {
         await evolutionService.sendMessage(instance, cust.phone, msg);
         newSent[sentKey] = nowDate;

@@ -4390,6 +4390,12 @@ Deno.serve(async (req) => {
       // ── AI processing — only if aiActive ──────────────────────────
       if (!settings.aiActive) continue;
 
+      // ── Plan gate: plano START não tem acesso ao agente IA ──────
+      // (estava só na versão publicada v151; trazido pro repo sem mudança de comportamento.
+      //  Obs: `plano` é 'basico' em todos os tenants, então na prática esse gate não bloqueia ninguém.)
+      const tenantPlan = (tenant.plano || tenant.plan || 'START').toUpperCase();
+      if (tenantPlan === 'START') continue;
+
       // Se aiLeadActive estiver desativado, ignora mensagens de números desconhecidos
       // Também verifica se a IA foi pausada manualmente para este lead específico
       const hasPausedCustomers = Object.values(settings.customerData).some(cd => cd?.aiPaused);

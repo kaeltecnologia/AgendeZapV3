@@ -791,7 +791,8 @@ Deno.serve(async (_req) => {
 
               const sentKey = `${cust.id}::${nowYear}`;
               if (newAniversarioSent[sentKey]) continue;
-              if (!(await claimMessage(`birthday::${cust.id}::${nowYear}`))) continue;
+              // prefixo fu:: = TTL de 25h no msg_dedup (outras chaves são apagadas em 30s pelo navegador)
+              if (!(await claimMessage(`fu::birthday::${cust.id}::${nowYear}`))) continue;
 
               const birthYear = Number(cust.birthDate.split('-')[0]) || undefined;
               const idade = birthYear ? String(nowYear - birthYear) : '';
