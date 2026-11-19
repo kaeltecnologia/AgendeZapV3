@@ -663,21 +663,24 @@ html.nv .tracking-\[0\.4em\] { letter-spacing: 0.05em !important; }
 html.nv .tracking-wider   { letter-spacing: 0.03em !important; }
 html.nv .tracking-tighter { letter-spacing: -0.01em !important; }
 
-/* 4. Títulos: sai o MAIÚSCULO ITÁLICO, entra título normal em Poppins */
+/* 4. Sem MAIÚSCULAS em lugar nenhum (rótulos, botões, títulos), como na prévia aprovada */
+html.nv .uppercase {
+  text-transform: none !important;
+  letter-spacing: 0.005em !important;
+}
+/* rótulos que eram miúdos em maiúsculas ficam no tamanho de leitura da prévia */
+html.nv .uppercase:is(.text-\[7px\], .text-\[8px\], .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-xs) {
+  font-size: 12px !important;
+}
+/* títulos que eram MAIÚSCULO ITÁLICO viram título em Poppins */
 html.nv .uppercase.italic,
 html.nv .uppercase:is(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-5xl) {
-  text-transform: none !important;
   font-style: normal !important;
   font-family: 'Poppins', 'Inter', sans-serif !important;
   font-weight: 600 !important;
   letter-spacing: -0.01em !important;
 }
-
-/* 5. Botões e links-botão: caixa normal, letra um pouco maior */
-html.nv :is(button, a).uppercase {
-  text-transform: none !important;
-  letter-spacing: 0 !important;
-}
+/* botões: letra de leitura confortável */
 html.nv :is(button, a).uppercase:is(.text-\[8px\], .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-xs) {
   font-size: 12.5px !important;
 }
