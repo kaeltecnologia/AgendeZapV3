@@ -21,6 +21,8 @@ const ServicesView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ 
   // Modal de categoria (criar/renomear)
   const [catModal, setCatModal] = useState<{ show: boolean; oldName: string }>({ show: false, oldName: '' });
   const [catName, setCatName] = useState('');
+  // Categorias criadas agora e ainda sem serviço (as categorias vêm dos serviços)
+  const [newCats, setNewCats] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
     if (firstLoad.current) setLoading(true);
@@ -36,7 +38,7 @@ const ServicesView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ 
   useEffect(() => { loadData(); }, [loadData]);
 
   // Categorias derivadas dos serviços (+ "Sem Categoria")
-  const categories = Array.from(new Set(services.map(s => s.category || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const categories = Array.from(new Set([...services.map(s => s.category || ''), ...newCats].filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const servicesByCategory = (cat: string) =>
     services.filter(s => (s.category || '') === cat).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -98,6 +100,14 @@ const ServicesView: React.FC<{ tenantId: string; refreshTicker?: number }> = ({ 
   const handleRenameCategory = async () => {
     const newName = catName.trim();
     if (!newName) return;
+    // Criar (sem nome antigo): NÃO mexe em nenhum serviço — antes isso movia todos os
+    // serviços "sem categoria" para a nova. Abre direto o cadastro do 1º serviço nela.
+    if (!catModal.oldName) {
+      setNewCats(prev => (prev.includes(newName) ? prev : [...prev, newName]));
+      setCatModal({ show: false, oldName: '' });
+      openNew(newName);
+      return;
+    }
     const toUpdate = services.filter(s => (s.category || '') === catModal.oldName);
     await Promise.all(toUpdate.map(s => db.updateService(s.id, { ...s, category: newName })));
     await loadData();
