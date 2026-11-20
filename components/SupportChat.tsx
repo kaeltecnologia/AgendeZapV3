@@ -233,7 +233,7 @@ export default function SupportChat({ tenantId, tenantName, open: externalOpen, 
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     )}
-                    {msg.content && <span>{msg.content}</span>}
+                    {msg.content && <span className="whitespace-pre-wrap break-words">{msg.content}</span>}
                   </div>
                   <div className="flex items-center gap-1 px-1">
                     <span className="text-[10px] text-slate-300 font-bold">{formatTime(msg.createdAt)}</span>
