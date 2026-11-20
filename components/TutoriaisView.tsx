@@ -10,7 +10,7 @@ const PlayIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.53.85l10.4-6.5a1 1 0 0 0 0-1.7L9.53 4.65A1 1 0 0 0 8 5.5z" /></svg>
 );
 
-const TutoriaisView: React.FC = () => {
+const TutoriaisView: React.FC<{ onAbrirGuiasTexto?: () => void }> = ({ onAbrirGuiasTexto }) => {
   const [aberto, setAberto] = useState<Tutorial | null>(null);
   const prontos = TUTORIAIS.filter(t => t.arquivo).length;
 
@@ -28,6 +28,11 @@ const TutoriaisView: React.FC = () => {
         <p className="text-sm text-slate-500 mt-1">
           Vídeos curtos mostrando como usar cada parte do AgendeZap. {prontos} de {TUTORIAIS.length} disponíveis — novos tutoriais chegam toda semana.
         </p>
+        {onAbrirGuiasTexto && (
+          <button type="button" onClick={onAbrirGuiasTexto} className="mt-2 text-sm font-medium text-orange-600 hover:underline">
+            Prefere ler? Ver guias em texto
+          </button>
+        )}
       </div>
 
       {GRUPOS.map(grupo => (
