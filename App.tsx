@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 // Lazy-loaded views (code splitting — only loaded when needed)
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const NvDashboard = lazy(() => import('./components/NvDashboard'));
+const TutoriaisView = lazy(() => import('./components/TutoriaisView'));
 const EvolutionConfig = lazy(() => import('./components/EvolutionConfig'));
 const AIChatSimulator = lazy(() => import('./components/AIChatSimulator'));
 const AppointmentsView = lazy(() => import('./components/AppointmentsView'));
@@ -87,6 +88,7 @@ enum View {
   SOCIAL_MIDIA = 'SOCIAL_MIDIA',
   INDICACOES = 'INDICACOES',
   ASSINATURAS = 'ASSINATURAS',
+  TUTORIAIS = 'TUTORIAIS',
 }
 
 type Role = 'TENANT' | 'SUPERADMIN' | 'AFFILIATE' | 'PROFESSIONAL';
@@ -1198,6 +1200,7 @@ const App: React.FC = () => {
     if (role === 'SUPERADMIN') return <SuperAdminView activeTab={superAdminTab} onTabChange={setSuperAdminTab} onImpersonate={handleImpersonate} />;
 
     switch (currentView) {
+      case View.TUTORIAIS: return <TutoriaisView />;
       case View.DASHBOARD: return nv
         ? <NvDashboard tenantId={tenantId} tenantName={tenantName} onNavigate={(v) => setCurrentView(v as View)} refreshTicker={refreshTicker} />
         : <Dashboard tenantId={tenantId} tenantName={tenantName} onNavigate={setCurrentView} refreshTicker={refreshTicker} />;
@@ -1436,6 +1439,7 @@ const App: React.FC = () => {
                 {resellerAllows('equipe') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.PROFISSIONAIS} onClick={navTo(() => setCurrentView(View.PROFISSIONAIS))} icon={<IconUsers />} label="Equipe" />}
                 {resellerAllows('conexoes') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.CONEXOES} onClick={navTo(() => setCurrentView(View.CONEXOES))} icon={<IconWhatsapp />} label="Conexões" color="text-green-600" />}
                 {resellerAllows('configuracoes') && <NavItem collapsed={effectiveCollapsed} active={currentView === View.CONFIGURACOES} onClick={navTo(() => setCurrentView(View.CONFIGURACOES))} icon={<IconSettings />} label="Configurações" />}
+                {!resellerProfile && <NavItem collapsed={effectiveCollapsed} active={currentView === View.TUTORIAIS} onClick={navTo(() => setCurrentView(View.TUTORIAIS))} icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></svg>} label="Tutoriais" />}
               </div>
             </>
           )}
