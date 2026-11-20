@@ -1011,6 +1011,14 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
   const [calView, setCalView] = useState<'dia' | 'lista'>('dia');
   const nv = useNewVisual();
   const [nvMobPro, setNvMobPro] = useState('');
+  // Celular: 'grade' (colunas por profissional, padrão — os salões querem ver os vãos) ou 'lista'.
+  const [nvMobModo, setNvMobModoRaw] = useState<'grade' | 'lista'>(() => {
+    try { return localStorage.getItem('agz_agenda_celular') === 'lista' ? 'lista' : 'grade'; } catch { return 'grade'; }
+  });
+  const setNvMobModo = (m: 'grade' | 'lista') => {
+    setNvMobModoRaw(m);
+    try { localStorage.setItem('agz_agenda_celular', m); } catch { /* sem armazenamento: só nesta sessão */ }
+  };
   const [dayDate, setDayDate] = useState<Date>(new Date());
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const now = new Date();
@@ -1375,9 +1383,20 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
     setBookingRows(prev => prev.filter(r => r.rowId !== rowId));
 
   const handleCreateBooking = async () => {
-    const incomplete = bookingRows.some(r => !r.svcId || !r.profId || !r.startTime || !r.endTime);
-    if (!customerId || !bookingDate || incomplete) {
-      setErrorMsg('Por favor, preencha todos os campos.'); return;
+    // Diz exatamente o que falta (antes era só "preencha todos os campos").
+    const faltam: string[] = [];
+    if (!customerId) faltam.push('o cliente');
+    if (!bookingDate) faltam.push('a data');
+    bookingRows.forEach((r, i) => {
+      const qual = bookingRows.length > 1 ? ` do serviço ${i + 1}` : '';
+      if (!r.svcId) faltam.push(`o serviço${qual}`);
+      if (!r.profId) faltam.push(`o profissional${qual}`);
+      if (!r.startTime) faltam.push(`o horário de início${qual}`);
+      else if (!r.endTime) faltam.push(`o horário de fim${qual}`);
+    });
+    if (faltam.length) {
+      const lista = faltam.length > 1 ? `${faltam.slice(0, -1).join(', ')} e ${faltam[faltam.length - 1]}` : faltam[0];
+      setErrorMsg(`Falta escolher ${lista}.`); return;
     }
     try {
       const customer = customers.find(cu => cu.id === customerId);
@@ -2120,7 +2139,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
 
       {/* ─── Novo visual (celular): botão flutuante de novo agendamento ─── */}
       {nv && !readOnly && calView === 'dia' && (
-        <button type="button" onClick={() => openBookingModal()} aria-label="Novo agendamento"
+        <button type="button" onClick={() => openBookingModalWithSlot(nvDayStr, '', nvMobModo === 'lista' && nvMobPro ? nvMobPro : undefined)} aria-label="Novo agendamento"
           className="md:hidden fixed right-4 z-[44] w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg"
           style={{ bottom: 'calc(84px + env(safe-area-inset-bottom))', background: 'var(--color-primary)', color: '#111113' }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
@@ -2142,8 +2161,19 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       {/* ─── Dia view (professional columns) ─── */}
       {calView === 'dia' && (
         <div className={nv ? 'flex flex-col xl:flex-row gap-4 items-start' : ''}>
+        {/* ─── Novo visual (celular): escolher colunas ou lista ─── */}
+        {nv && (
+          <div role="group" aria-label="Forma de ver a agenda" className="md:hidden flex bg-slate-100 rounded-xl p-1 gap-0.5 w-full">
+            {([['grade', 'Colunas'], ['lista', 'Sequência']] as const).map(([m, rot]) => (
+              <button key={m} type="button" onClick={() => setNvMobModo(m)} aria-pressed={nvMobModo === m}
+                className={`flex-1 px-4 py-1.5 rounded-lg text-[13px] font-semibold transition-all ${nvMobModo === m ? 'bg-white text-black shadow-sm' : 'text-slate-500'}`}>
+                {rot}
+              </button>
+            ))}
+          </div>
+        )}
         {/* ─── Novo visual (celular): agenda em lista ─── */}
-        {nv && (() => {
+        {nv && nvMobModo === 'lista' && (() => {
           const base = new Date(dayDate);
           const monday = new Date(base); monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
           const week = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
@@ -2224,7 +2254,7 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
             </div>
           );
         })()}
-        <div className={nv ? 'hidden md:block flex-1 min-w-0 w-full' : ''}>
+        <div className={nv ? `${nvMobModo === 'lista' ? 'hidden md:block' : 'block'} flex-1 min-w-0 w-full` : ''}>
         <DayCalendar
           nv={nv}
           date={dayDate}
