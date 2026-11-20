@@ -1989,17 +1989,29 @@ const AppointmentsView: React.FC<{ tenantId: string; onOpenComandas?: () => void
       };
       const profsList = (filterProfId ? professionals.filter(p => p.id === filterProfId) : professionals)
         .filter((p: any) => p.active !== false);
+      // Tempo mínimo que precisa estar livre = o serviço mais curto que o profissional realiza
+      // (senão a sugestão encavala com o próximo atendimento).
+      const needByProf = new Map<string, number>();
+      profsList.forEach((p: any) => {
+        const own = (p.serviceIds && p.serviceIds.length)
+          ? services.filter((sv: any) => p.serviceIds.includes(sv.id))
+          : services;
+        const durs = own.filter((sv: any) => sv.active !== false && sv.durationMinutes > 0).map((sv: any) => sv.durationMinutes);
+        needByProf.set(p.id, Math.max(slotLen, durs.length ? Math.min(...durs) : slotLen));
+      });
       for (let t = startM; t + slotLen <= closeM && nvFree.length < 8; t += step) {
         for (const p of profsList) {
           if (nvFree.length >= 8) break;
+          const need = needByProf.get(p.id) || slotLen;
+          if (t + need > closeM) continue;
           const busy = nvDayAppts.some(a => {
             if (a.professional_id !== p.id) return false;
             const d = new Date(a.startTime);
             const st = d.getHours() * 60 + d.getMinutes();
-            return st < t + slotLen && st + (a.durationMinutes || 30) > t;
+            return st < t + need && st + (a.durationMinutes || 30) > t;
           });
           if (busy) continue;
-          const onBreak = breaks.some(b => brkApplies(b, p.id) && toM(b.startTime) < t + slotLen && toM(b.endTime) > t);
+          const onBreak = breaks.some(b => brkApplies(b, p.id) && toM(b.startTime) < t + need && toM(b.endTime) > t);
           if (onBreak) continue;
           const first = p.name.split(' ')[0];
           const dupFirst = profsList.filter(o => o.name.split(' ')[0].toLowerCase() === first.toLowerCase()).length > 1;
