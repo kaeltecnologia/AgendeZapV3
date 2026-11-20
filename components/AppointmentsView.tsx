@@ -822,7 +822,10 @@ function DayCalendar({
                         top: `${topPx}px`, height: `${heightPx}px`,
                         left: leftPos, width: colW,
                         borderRadius: nv ? 9 : 7, cursor: 'pointer', overflow: 'hidden',
-                        backgroundColor: bgColor,
+                        // Fundo sólido (branco) por baixo da cor clara: senão o intervalo/pausa que fica
+                        // atrás do cartão aparece através dele e embaralha o texto.
+                        backgroundColor: '#FFFFFF',
+                        backgroundImage: `linear-gradient(${bgColor}, ${bgColor})`,
                         ...(nv
                           ? { border: `1px solid ${isFinished || isCancelled ? '#E7E5E4' : `rgba(${cr},${cg},${cb},0.30)`}`, boxShadow: 'none' }
                           : { borderLeft: `3px solid ${borderColor}`, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }),
